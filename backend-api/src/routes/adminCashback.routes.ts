@@ -241,11 +241,11 @@ router.delete('/rates/snapshot/:iso', requirePermission('cashback.write'), async
 router.get('/payout-thresholds', requirePermission('cashback.read'), async (_req: AuthRequest, res: Response) => {
   const fallback = {
     BASIC:   Math.round(PAYOUT_THRESHOLD_BASIC_EUR * EUR_TO_BGN_RATE * 100) / 100,
-    LIGHT:   Math.round(PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR * EUR_TO_BGN_RATE * 100) / 100,
+    PREMIUM_WEEKLY: Math.round(PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR * EUR_TO_BGN_RATE * 100) / 100,
     PREMIUM: Math.round(PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR * EUR_TO_BGN_RATE * 100) / 100,
   };
   try {
-    const plans = ['BASIC', 'LIGHT', 'PREMIUM'] as const;
+    const plans = ['BASIC', 'PREMIUM_WEEKLY', 'PREMIUM'] as const;
     const rows = await Promise.all(
       plans.map((plan) =>
         prisma.payoutThreshold.findFirst({ where: { plan }, orderBy: { createdAt: 'desc' } })

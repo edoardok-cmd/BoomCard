@@ -245,14 +245,14 @@ class StickerService {
    * "no cashback" (Finding #1 fix). Using Subscription.plan as the single source of
    * truth (not Card.type) resolves Finding #2.
    */
-  private async resolveCashbackTier(userId: string): Promise<'LIGHT' | 'BASIC' | 'PREMIUM' | null> {
+  private async resolveCashbackTier(userId: string): Promise<'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' | null> {
     const sub = await prisma.subscription.findFirst({
       where: { userId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAUSED] } },
       orderBy: { currentPeriodEnd: 'desc' },
     });
     if (!sub) return null;
-    const plan = sub.plan as 'LIGHT' | 'BASIC' | 'PREMIUM';
-    return plan === 'LIGHT' || plan === 'BASIC' || plan === 'PREMIUM' ? plan : null;
+    const plan = sub.plan as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM';
+    return plan === 'PREMIUM_WEEKLY' || plan === 'BASIC' || plan === 'PREMIUM' ? plan : null;
   }
 
   /**
@@ -368,17 +368,78 @@ class StickerService {
   }
 
   /**
-   * Mark sticker as printed and active
+   * Mark sticker as dispatched for physical deployment (PENDING → PROCESSING).
+   * Spec §5.4 — PROCESSING = "В обработка": the label has been ordered/printed
+   * but not yet confirmed deployed at the venue. Admins advance PROCESSING → ACTIVE
+   * once the sticker is confirmed live.
+   */
+  async markStickerProcessing(stickerId: string): Promise<Sticker> {
+    const sticker = await prisma.sticker.findUnique({ where: { stickerId }, select: { status: true } });
+    if (!sticker) throw new Error(`Sticker ${stickerId} not found`);
+    if (sticker.status !== StickerStatus.PENDING) {
+      throw new Error(`Sticker ${stickerId} must be in PENDING state to mark as processing (current: ${sticker.status})`);
+    }
+    return prisma.sticker.update({
+      where: { stickerId },
+      data: { status: StickerStatus.PROCESSING, printedAt: new Date() },
+    });
+  }
+
+  /**
+   * Mark sticker as printed and active (PENDING or PROCESSING → ACTIVE).
    */
   async activateSticker(stickerId: string): Promise<Sticker> {
+    const sticker = await prisma.sticker.findUnique({ where: { stickerId }, select: { status: true } });
+    if (!sticker) throw new Error(`Sticker ${stickerId} not found`);
+    const activatable: StickerStatus[] = [StickerStatus.PENDING, StickerStatus.PROCESSING];
+    if (!activatable.includes(sticker.status)) {
+      throw new Error(`Sticker ${stickerId} cannot be activated from ${sticker.status} state`);
+    }
     return prisma.sticker.update({
       where: { stickerId },
       data: {
         status: StickerStatus.ACTIVE,
-        printedAt: new Date(),
+        printedAt: sticker.status === StickerStatus.PENDING ? new Date() : undefined,
         activatedAt: new Date(),
       },
     });
+  }
+
+  /**
+   * Spec §5.4 — replace a sticker with a new one. Atomically:
+   *   1. Marks the old sticker REPLACED + stamps deactivatedAt.
+   *   2. Generates a new sticker on the same location (starts as PENDING).
+   *   3. Sets newSticker.replacedById = oldSticker.id so the chain is queryable.
+   *
+   * The new sticker must be separately activated (markStickerProcessing + activateSticker)
+   * once the physical label is confirmed deployed.
+   */
+  async replaceSticker(oldStickerId: string): Promise<{ oldSticker: Sticker; newSticker: Sticker }> {
+    const old = await prisma.sticker.findUnique({
+      where: { stickerId: oldStickerId },
+      select: { id: true, locationId: true, status: true },
+    });
+    if (!old) throw new Error(`Sticker ${oldStickerId} not found`);
+    if (old.status === StickerStatus.REPLACED) {
+      throw new Error(`Sticker ${oldStickerId} is already replaced`);
+    }
+
+    // Mark old sticker as REPLACED
+    const oldSticker = await prisma.sticker.update({
+      where: { stickerId: oldStickerId },
+      data: { status: StickerStatus.REPLACED, deactivatedAt: new Date() },
+    });
+
+    // Generate a new sticker on the same location
+    const newSticker = await this.generateSticker(old.locationId);
+
+    // Link the new sticker back to the old one
+    await prisma.sticker.update({
+      where: { id: newSticker.id },
+      data: { replacedById: old.id },
+    });
+
+    return { oldSticker, newSticker: { ...newSticker, replacedById: old.id } as Sticker };
   }
 
   /**
@@ -412,6 +473,7 @@ class StickerService {
     const sticker = await prisma.sticker.findUnique({
       where: { stickerId },
       include: {
+        location: { select: { isActive: true } },
         venue: {
           select: {
             id: true,
@@ -427,8 +489,27 @@ class StickerService {
       return { valid: false, message: 'Sticker not found' };
     }
 
+    if (sticker.status === StickerStatus.REPLACED) {
+      return {
+        valid: false,
+        message: 'STICKER_REPLACED: Този QR код е заменен. Моля, потърсете новия QR код на масата/обекта.',
+      };
+    }
+
     if (sticker.status !== StickerStatus.ACTIVE) {
       return { valid: false, message: `Sticker is ${sticker.status.toLowerCase()}` };
+    }
+
+    // Spec §5.4 v1.1 — if the physical location is deactivated by admin, QR scans
+    // at that location must be blocked regardless of sticker row status.
+    // StickerLocation.isActive=false means the spot is out of service (renovations,
+    // decommissioned table, etc.). This is distinct from Sticker.status which tracks
+    // the physical QR label lifecycle.
+    if (sticker.location && !sticker.location.isActive) {
+      return {
+        valid: false,
+        message: 'LOCATION_INACTIVE: Тази локация временно не е активна. Опитайте на друго място в обекта.',
+      };
     }
 
     // Spec §5.3 v1.1 — even if the sticker row is ACTIVE, the partner's status
@@ -500,7 +581,14 @@ class StickerService {
     });
 
     if (!sticker) throw new Error('Invalid sticker code');
+    if (sticker.status === StickerStatus.REPLACED) {
+      throw new Error('STICKER_REPLACED: Този QR код е заменен. Моля, потърсете новия QR код на масата/обекта.');
+    }
     if (sticker.status !== StickerStatus.ACTIVE) throw new Error('Sticker is not active');
+    // Spec §5.4 — location.isActive=false means the physical spot is decommissioned.
+    if (sticker.location && !sticker.location.isActive) {
+      throw new Error('LOCATION_INACTIVE: Тази локация временно не е активна. Опитайте на друго място в обекта.');
+    }
 
     // Final cross-check: payload venueId must match the sticker's true venue.
     if (data.payloadVenueId !== sticker.venueId) {
@@ -762,8 +850,15 @@ class StickerService {
       throw new Error('Invalid sticker code');
     }
 
+    if (sticker.status === StickerStatus.REPLACED) {
+      throw new Error('STICKER_REPLACED: Този QR код е заменен. Моля, потърсете новия QR код на масата/обекта.');
+    }
     if (sticker.status !== StickerStatus.ACTIVE) {
       throw new Error('Sticker is not active');
+    }
+    // Spec §5.4 — location.isActive=false means the physical spot is decommissioned.
+    if (sticker.location && !sticker.location.isActive) {
+      throw new Error('LOCATION_INACTIVE: Тази локация временно не е активна. Опитайте на друго място в обекта.');
     }
 
     // Final cross-check: payload venueId must match the sticker's true venue.
@@ -1269,7 +1364,11 @@ class StickerService {
       where: { id: scanId },
       include: {
         user: true,
-        venue: true,
+        venue: {
+          include: {
+            partner: { select: { id: true, discountRate: true, partnerType: { select: { maxDiscountRate: true } } } },
+          },
+        },
         card: true,
         sticker: {
           include: {
@@ -1410,14 +1509,33 @@ class StickerService {
       // receipt+stickerScan at query time.
       const persistedRiskScore = Math.round(scan.fraudScore ?? 0);
 
+      // Spec §4.2/4.3 — snapshot the active subscription at approval time so
+      // history remains queryable even after the sub is later expired/cancelled.
+      const activeSub = await prisma.subscription.findFirst({
+        where: { userId: scan.userId, status: { in: ['ACTIVE', 'TRIALING', 'PAUSED'] } },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      });
+
+      // Spec §4.3 — persist margin at creation so historical reports are immune
+      // to partner rate renegotiations. Formula: partnerCharge − userCashback.
+      const partner = scan.venue?.partner ?? null;
+      const discountRate = partner?.discountRate ?? partner?.partnerType?.maxDiscountRate ?? null;
+      const persistedMargin = discountRate != null
+        ? Math.round(((discountRate / 100) * effectiveBillAmount - effectiveCashbackAmount) * 100) / 100
+        : null;
+
       const transaction = await prisma.transaction.create({
         data: {
           userId: scan.userId,
+          subscriptionId: activeSub?.id ?? null,
+          partnerId: partner?.id ?? null,
           venueId: scan.venueId,
           cardId: scan.cardId,
           type: TransactionType.PURCHASE,
           paymentMethod: PaymentMethod.CARD,
           amount: effectiveBillAmount,
+          marginAmount: persistedMargin,
           discount: effectiveCashbackPercent,
           discountAmount: effectiveCashbackAmount,
           finalAmount: effectiveBillAmount - effectiveCashbackAmount,

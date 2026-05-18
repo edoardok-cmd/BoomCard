@@ -64,7 +64,7 @@ interface FraudCheckParams {
   perceptualHash?: string;  // dHash hex for visual template comparison
   userId: string;
   venueId?: string;
-  cardTier?: 'LIGHT' | 'BASIC' | 'PREMIUM';
+  cardTier?: 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM';
   deviceFingerprint?: string;  // SHA-256 hash of device properties
   /** When re-checking an existing receipt (e.g. admin amount correction), pass its ID
    *  so the duplicate-image check doesn't penalise the receipt against itself. */
@@ -644,7 +644,7 @@ class FraudDetectionService {
    *
    * The cashback % is determined by:
    *   1. The partner's effective discount rate (discountRate or partnerType.maxDiscountRate)
-   *   2. The user's card tier (BASIC → basic column; LIGHT/PREMIUM → premium column)
+   *   2. The user's card tier (BASIC → basic column; PREMIUM_WEEKLY/PREMIUM → premium column)
    *
    * Matrix rows are keyed by partner discount steps [5, 10, 15, 20, 25].
    * The nearest step that does not exceed the partner's actual discount is used.
@@ -658,7 +658,7 @@ class FraudDetectionService {
      * (see resolveCashbackTier). Pass `null` when the user has no active subscription —
      * in that case cashback is 0 regardless of Card.type (Finding #1 fix).
      */
-    cardTier: 'LIGHT' | 'BASIC' | 'PREMIUM' | null;
+    cardTier: 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' | null;
     /** When provided, rolling daily/monthly cashback caps are enforced. */
     userId?: string;
   }): Promise<{ cashbackAmount: number; cashbackPercent: number }> {
@@ -719,7 +719,7 @@ class FraudDetectionService {
     } catch {
       // Non-fatal: fall back to hardcoded constants if DB lookup fails
     }
-    const isPremium = params.cardTier === 'PREMIUM' || params.cardTier === 'LIGHT';
+    const isPremium = params.cardTier === 'PREMIUM' || params.cardTier === 'PREMIUM_WEEKLY';
     const cashbackPercent = isPremium ? matrixRow.premium : matrixRow.basic;
 
     // Step 4: calculate amount and cap at max per scan

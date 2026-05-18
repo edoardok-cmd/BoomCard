@@ -1681,20 +1681,17 @@ router.post(
       }
     }
 
-    // Fire partner.created for all wizard-created partners.
-    // Wizard partners are born ACTIVE (no separate approval step), so also fire
-    // partner.approved immediately so both welcome and approval automations run.
+    // Fire partner.created for wizard-created partners.
+    // partner.approved is NOT fired here — wizard partners receive an activation
+    // link (issued above) and partner.approved fires at auth.routes.ts when they
+    // click it, identical to the standard onboarding path. Firing it here would
+    // send the "approved" notification twice: once before the partner can even
+    // log in, and once on link-click.
     fireAutomation('partner.created', {
       partnerId: result.partner.id,
       recipientEmail: result.partner.email ?? undefined,
       recipientName: result.partner.businessName,
     }).catch((err) => logger.error('[automation] partner.created fire failed (onboard):', err));
-
-    fireAutomation('partner.approved', {
-      partnerId: result.partner.id,
-      recipientEmail: result.partner.email ?? undefined,
-      recipientName: result.partner.businessName,
-    }).catch((err) => logger.error('[automation] partner.approved fire failed (onboard):', err));
 
     const typeMax = result.partner.partnerType?.maxDiscountRate ?? null;
     res.status(201).json({

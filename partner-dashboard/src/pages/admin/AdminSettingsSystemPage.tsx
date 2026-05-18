@@ -49,6 +49,7 @@ const TextInput = styled.input`
   box-sizing: border-box;
   outline: none;
   &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; background: ${palette.border}; }
 `;
 const SaveBtn = styled.button`
   padding: 0.5625rem 1.25rem;
@@ -78,6 +79,7 @@ const TextArea = styled.textarea`
   font-family: inherit;
   &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
   &::placeholder { color: ${palette.textSubtle}; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; background: ${palette.border}; }
 `;
 
 const ToggleRow = styled.div`
@@ -707,11 +709,13 @@ export default function AdminSettingsSystemPage() {
               </div>
               <div>
                 <FieldLabel>Причина за промяната (по желание)</FieldLabel>
-                <TextInput
-                  type="text"
+                <TextArea
+                  rows={2}
+                  style={{ minHeight: '2.75rem' }}
                   placeholder="напр. Актуализиране на контактния имейл"
                   value={contactNotes}
                   onChange={(e) => setContactNotes(e.target.value)}
+                  disabled={contactMutation.isPending}
                 />
               </div>
             </FieldGroup>
@@ -780,6 +784,17 @@ export default function AdminSettingsSystemPage() {
                 </SelectInput>
                 <FieldHint>Десетичен разделител за суми и проценти в отчети и потребителски интерфейс.</FieldHint>
               </div>
+              <div>
+                <FieldLabel>Причина за промяната (по желание)</FieldLabel>
+                <TextArea
+                  rows={2}
+                  style={{ minHeight: '2.75rem' }}
+                  placeholder="напр. Промяна на часовата зона"
+                  value={localizationNotes}
+                  onChange={(e) => setLocalizationNotes(e.target.value)}
+                  disabled={localizationMutation.isPending}
+                />
+              </div>
             </FieldGroup>
           )}
           <CardFooter>
@@ -823,8 +838,20 @@ export default function AdminSettingsSystemPage() {
                   placeholder="напр. Системата се обновява. Очаквайте ни отново до 30 минути."
                   value={maintenanceMessage}
                   onChange={(e) => setMaintenanceMessage(e.target.value)}
+                  disabled={maintenanceMutation.isPending}
                 />
                 <FieldHint>Показва се на потребителите, докато режимът на поддръжка е активен. Оставете празно за съобщение по подразбиране.</FieldHint>
+              </div>
+              <div>
+                <FieldLabel>Причина за промяната (по желание)</FieldLabel>
+                <TextArea
+                  rows={2}
+                  style={{ minHeight: '2.75rem' }}
+                  placeholder="напр. Планирана техническа поддръжка"
+                  value={maintenanceNotes}
+                  onChange={(e) => setMaintenanceNotes(e.target.value)}
+                  disabled={maintenanceMutation.isPending}
+                />
               </div>
             </FieldGroup>
           )}

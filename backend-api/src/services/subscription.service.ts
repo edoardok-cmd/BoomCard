@@ -67,7 +67,8 @@ import {
 
 // Stripe Price IDs (create these in Stripe Dashboard)
 const PRICE_IDS = {
-  LIGHT: process.env.STRIPE_LIGHT_PRICE_ID || 'price_LIGHT',
+  // Env var kept as STRIPE_LIGHT_PRICE_ID for backward compat with existing deployments.
+  PREMIUM_WEEKLY: process.env.STRIPE_PREMIUM_WEEKLY_PRICE_ID || process.env.STRIPE_LIGHT_PRICE_ID || 'price_PREMIUM_WEEKLY',
   BASIC: process.env.STRIPE_BASIC_PRICE_ID || 'price_BASIC',
   PREMIUM: process.env.STRIPE_PREMIUM_PRICE_ID || 'price_PREMIUM',
 };
@@ -83,12 +84,12 @@ export class SubscriptionService {
   }) {
     const { userId, plan, paymentMethodId } = params;
 
-    if (plan === 'LIGHT') {
-      // LIGHT (Premium Weekly) subscriptions must be purchased through Paysera.
+    if (plan === 'PREMIUM_WEEKLY') {
+      // PREMIUM_WEEKLY subscriptions must be purchased through Paysera.
       // The Paysera webhook (POST /api/payments/paysera/callback) creates the subscription
       // directly in the DB once payment is confirmed. Allowing free creation here would
       // bypass payment entirely.
-      throw new Error('LIGHT plan must be purchased via the Paysera payment flow');
+      throw new Error('PREMIUM_WEEKLY plan must be purchased via the Paysera payment flow');
     }
 
     // Get user email for Stripe customer
@@ -154,7 +155,7 @@ export class SubscriptionService {
       },
     });
 
-    // Ensure the user has a card; create a LIGHT card if not (will be upgraded below)
+    // Ensure the user has a card; create a PREMIUM_WEEKLY card if not (will be upgraded below)
     await this.ensureCardExists(userId);
 
     // Sync card type immediately if Stripe activated the subscription right away
@@ -193,7 +194,7 @@ export class SubscriptionService {
     let updated: typeof subscription;
 
     if (!subscription.stripeSubscriptionId) {
-      // Paysera-based subscription (LIGHT or legacy) — no external billing to cancel.
+      // Paysera-based subscription (PREMIUM_WEEKLY or legacy) — no external billing to cancel.
       // Mark it to expire at the end of the current period so the user keeps access
       // until then, mirroring Stripe's cancel_at_period_end behaviour.
       // PAUSED rows (or rows whose period has already ended) need immediate
@@ -222,7 +223,7 @@ export class SubscriptionService {
         });
       } else {
         // Immediate cancellation — end it now and downgrade the card
-        await cardService.syncCardTypeWithSubscription(subscription.userId, 'LIGHT');
+        await cardService.syncCardTypeWithSubscription(subscription.userId, 'PREMIUM_WEEKLY');
         updated = await prisma.subscription.update({
           where: { id: subscriptionId },
           data: {
@@ -286,7 +287,7 @@ export class SubscriptionService {
    * Upgrade/Downgrade subscription.
    *
    * Upgrade credit rules (credited to wallet before plan change):
-   *   LIGHT  → PREMIUM : 100% of remaining weekly value
+   *   PREMIUM_WEEKLY  → PREMIUM : 100% of remaining weekly value
    *   BASIC  → PREMIUM : 60%  of remaining monthly value
    *   All other transitions: no credit
    */
@@ -307,17 +308,17 @@ export class SubscriptionService {
     // Calculate and credit any applicable upgrade credit to the user's wallet
     await this.applyUpgradeCredit(subscription, newPlan);
 
-    if (newPlan === 'LIGHT') {
+    if (newPlan === 'PREMIUM_WEEKLY') {
       // Downgrade to light - cancel current subscription
       if (subscription.stripeSubscriptionId) {
         await this.cancelSubscription(subscriptionId, false);
       }
 
-      await cardService.syncCardTypeWithSubscription(subscription.userId, 'LIGHT');
+      await cardService.syncCardTypeWithSubscription(subscription.userId, 'PREMIUM_WEEKLY');
       return prisma.subscription.update({
         where: { id: subscriptionId },
         data: {
-          plan: 'LIGHT',
+          plan: 'PREMIUM_WEEKLY',
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           // New period → eligible for a fresh pre-expiry reminder.
@@ -330,7 +331,7 @@ export class SubscriptionService {
 
     if (!subscription.stripeSubscriptionId) {
       // Paysera-based subscription — update plan directly in DB
-      // BASIC and PREMIUM are both monthly (30d). The LIGHT case is handled above.
+      // BASIC and PREMIUM are both monthly (30d). The PREMIUM_WEEKLY case is handled above.
       const now = new Date();
       const newPeriodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
@@ -381,7 +382,7 @@ export class SubscriptionService {
 
   /**
    * Calculate and apply upgrade wallet credit based on document rules:
-   *   LIGHT → PREMIUM : 100% of remaining weekly value
+   *   PREMIUM_WEEKLY → PREMIUM : 100% of remaining weekly value
    *   BASIC → PREMIUM : 60%  of remaining monthly value
    */
   private async applyUpgradeCredit(
@@ -399,7 +400,7 @@ export class SubscriptionService {
 
     // Determine credit percentage
     let creditPct: number;
-    if (oldPlan === 'LIGHT' && newPlan === 'PREMIUM') {
+    if (oldPlan === 'PREMIUM_WEEKLY' && newPlan === 'PREMIUM') {
       creditPct = UPGRADE_CREDIT_WEEKLY_TO_MONTHLY;
     } else if (oldPlan === 'BASIC' && newPlan === 'PREMIUM') {
       creditPct = UPGRADE_CREDIT_BASIC_TO_PREMIUM;
@@ -416,7 +417,7 @@ export class SubscriptionService {
       });
     }
 
-    const priceEurCents = oldPlan === 'LIGHT'
+    const priceEurCents = oldPlan === 'PREMIUM_WEEKLY'
       ? (planDetails?.priceWeeklyEur ?? 0)
       : (planDetails?.priceMonthlyEur ?? 0);
 
@@ -457,15 +458,15 @@ export class SubscriptionService {
   }
 
   /**
-   * Ensure the user has a card. If none exists, creates a LIGHT card.
+   * Ensure the user has a card. If none exists, creates a PREMIUM_WEEKLY card.
    * Called during subscription creation so the card is always present
    * before syncCardTypeWithSubscription runs.
    */
   private async ensureCardExists(userId: string) {
     const existing = await prisma.card.findFirst({ where: { userId } });
     if (!existing) {
-      await cardService.createCard({ userId, cardType: 'LIGHT' });
-      logger.info(`Auto-created LIGHT card for user ${userId} during subscription creation`);
+      await cardService.createCard({ userId, cardType: 'PREMIUM_WEEKLY' });
+      logger.info(`Auto-created PREMIUM_WEEKLY card for user ${userId} during subscription creation`);
     }
   }
 
@@ -839,7 +840,7 @@ export class SubscriptionService {
     if (paid.status === 'paid') {
       return prisma.subscription.update({
         where: { id: subscriptionId },
-        data: { status: 'ACTIVE', gracePeriodEndsAt: null },
+        data: { status: 'ACTIVE', pauseEndsAt: null },
       });
     }
 

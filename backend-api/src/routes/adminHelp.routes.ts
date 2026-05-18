@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { TicketStatus, TicketPriority, TicketCategory } from '@prisma/client';
 import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
-import { auditMiddleware } from '../middleware/audit.middleware';
+import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { notificationService } from '../services/notification.service';
 import { emailService } from '../services/email.service';
@@ -173,6 +173,9 @@ router.get('/', authorize('SUPER_ADMIN'), async (req, res, next) => {
     if (category && Object.values(TicketCategory).includes(category as TicketCategory)) {
       where.category = category as TicketCategory;
     }
+    if (req.query.requestType && typeof req.query.requestType === 'string') {
+      where.requestType = req.query.requestType;
+    }
     if (search) {
       where.OR = [
         { subject: { contains: search, mode: 'insensitive' } },
@@ -213,6 +216,9 @@ router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res
     if (category && Object.values(TicketCategory).includes(category as TicketCategory)) {
       conditions.push({ category: category as TicketCategory });
     }
+    if (req.query.requestType && typeof req.query.requestType === 'string') {
+      conditions.push({ requestType: req.query.requestType });
+    }
     if (search) {
       conditions.push({ OR: [
         { subject: { contains: search, mode: 'insensitive' } },
@@ -245,6 +251,11 @@ router.get('/:id', requirePermission('help.read'), async (req: AuthRequest, res,
         category: true,
         status: true,
         priority: true,
+        requestType: true,
+        source: true,
+        externalEmail: true,
+        linkedTicketId: true,
+        reopenedAt: true,
         createdAt: true,
         updatedAt: true,
         user: { select: { id: true, firstName: true, lastName: true, email: true } },
@@ -307,6 +318,11 @@ router.post('/:id/assign', requirePermission('help.write'), async (req: AuthRequ
       return res.json({ ok: true });
     }
 
+    const newStatus =
+      resolvedAssigneeId !== null && (ticket.status === 'NEW' || ticket.status === 'OPEN')
+        ? 'IN_REVIEW'
+        : ticket.status;
+
     await prisma.helpTicket.update({
       where: { id: req.params.id },
       data: {
@@ -317,12 +333,19 @@ router.post('/:id/assign', requirePermission('help.write'), async (req: AuthRequ
         // still effectively "newly assigned" if a different admin then picks
         // it up — also move OPEN → IN_REVIEW on assignment. Other in-progress
         // states (IN_REVIEW, WAITING, RESOLVED, CLOSED) stay untouched.
-        status:
-          resolvedAssigneeId !== null && (ticket.status === 'NEW' || ticket.status === 'OPEN')
-            ? 'IN_REVIEW'
-            : ticket.status,
+        status: newStatus,
       },
     });
+
+    req.skipAudit = true;
+    writeAudit({
+      actorUserId: req.user!.id,
+      action: 'ticket.assign',
+      objectType: 'ticket',
+      objectId: req.params.id,
+      before: { assigneeId: ticket.assigneeId, status: ticket.status },
+      after: { assigneeId: resolvedAssigneeId, status: newStatus },
+    }).catch(() => {});
 
     res.json({ ok: true });
   } catch (error) {
@@ -384,6 +407,16 @@ router.post('/:id/reject', requirePermission('help.write'), async (req: AuthRequ
       });
     });
 
+    req.skipAudit = true;
+    writeAudit({
+      actorUserId: req.user!.id,
+      action: 'ticket.reject',
+      objectType: 'ticket',
+      objectId: req.params.id,
+      before: { status: ticket.status },
+      after: { status: 'REJECTED', reason: trimmedReason },
+    }).catch(() => {});
+
     // Notify the creator (non-fatal; do not block the response).
     if (ticket.user.email) {
       const escR = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -420,8 +453,8 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
     if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
       return res.status(403).json({ error: 'Отказан достъп' });
     }
-    if (ticket.status === 'CLOSED' && !hasFullAccess(req)) {
-      return res.status(400).json({ error: 'Не може да се променя затворена заявка' });
+    if ((ticket.status === 'CLOSED' || ticket.status === 'REJECTED') && !hasFullAccess(req)) {
+      return res.status(400).json({ error: 'Не може да се променя заявка в крайно състояние' });
     }
 
     // Creators who are not also the assignee may only mark their own ticket as RESOLVED;
@@ -451,6 +484,19 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
     }
 
     await prisma.helpTicket.update({ where: { id: req.params.id }, data });
+
+    req.skipAudit = true;
+    writeAudit({
+      actorUserId: req.user!.id,
+      action: 'ticket.update',
+      objectType: 'ticket',
+      objectId: req.params.id,
+      before: {
+        ...(data.status !== undefined ? { status: ticket.status } : {}),
+        ...(data.priority !== undefined ? { priority: ticket.priority } : {}),
+      },
+      after: data as object,
+    }).catch(() => {});
 
     // Notify the creator when SUPER_ADMIN closes their ticket — terminal state with no further replies.
     // Guard ticket.status !== 'CLOSED' to prevent duplicate emails when a SUPER_ADMIN re-saves
@@ -505,8 +551,8 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
     if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
       return res.status(403).json({ error: 'Отказан достъп' });
     }
-    if (ticket.status === 'CLOSED') {
-      return res.status(400).json({ error: 'Не може да се отговаря на затворена заявка' });
+    if (ticket.status === 'CLOSED' || ticket.status === 'REJECTED') {
+      return res.status(400).json({ error: 'Не може да се отговаря на заявка в крайно състояние' });
     }
 
     // Author-aware status transition matrix:
@@ -520,14 +566,21 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
     // Spec §11.2 — outbound system emails on a ticket must carry threading
     // headers. We mint the Message-ID up-front and persist it on the reply row
     // so an inbound reply's In-Reply-To resolves directly to a TicketReply.
-    const threadingPrev = await prisma.ticketReply.findFirst({
+    // Fetch all prior message IDs for the RFC 5322 References chain (oldest first).
+    const priorMessages = await prisma.ticketReply.findMany({
       where: { ticketId: req.params.id, messageId: { not: null } },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: 'asc' },
       select: { messageId: true },
     });
+    const refChain: string[] = [
+      ticket.rootMessageId,
+      ...priorMessages.map((r) => r.messageId),
+    ].filter((id): id is string => !!id);
+
     const threading = buildTicketHeaders({
       ticketId: req.params.id,
-      inReplyTo: threadingPrev?.messageId ?? ticket.rootMessageId ?? null,
+      inReplyTo: refChain.at(-1) ?? null,
+      references: refChain,
     });
 
     const reply = await prisma.ticketReply.create({
@@ -539,7 +592,7 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
         // support replies appear on the "admin" side.
         isAdmin: !isCreator,
         messageId: threading.messageId,
-        inReplyTo: threadingPrev?.messageId ?? ticket.rootMessageId ?? null,
+        inReplyTo: refChain.at(-1) ?? null,
         channel: 'EMAIL',
       },
       include: {
@@ -572,6 +625,20 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
     if (newStatus) {
       await prisma.helpTicket.update({ where: { id: req.params.id }, data: { status: newStatus } });
     }
+
+    req.skipAudit = true;
+    writeAudit({
+      actorUserId: req.user!.id,
+      action: 'ticket.reply',
+      objectType: 'ticket',
+      objectId: req.params.id,
+      before: { status: ticket.status },
+      after: {
+        status: newStatus ?? ticket.status,
+        isAdmin: !isCreator,
+        replyId: reply.id,
+      },
+    }).catch(() => {});
 
     // Shared helpers for reply notification emails
     const CATEGORY_BG: Record<string, string> = {

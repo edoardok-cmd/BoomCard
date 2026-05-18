@@ -37,7 +37,7 @@ const VALID_PAYOUT_STATUSES = ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', '
 // scan-side classification (users without an active sub at scan time) even though it
 // isn't a real Prisma SubscriptionPlan enum value — wallet/payout queries treat it as
 // "no subscribers" rather than issuing an invalid enum query.
-const VALID_PLANS = ['LIGHT', 'BASIC', 'PREMIUM', 'UNKNOWN'] as const;
+const VALID_PLANS = ['PREMIUM_WEEKLY', 'BASIC', 'PREMIUM', 'UNKNOWN'] as const;
 
 /* ─── Invoices ────────────────────────────────────────────────────────────── */
 
@@ -655,7 +655,7 @@ router.get(
         : planParam
           ? prisma.subscription
               .findMany({
-                where: { plan: planParam as 'LIGHT' | 'BASIC' | 'PREMIUM' },
+                where: { plan: planParam as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' },
                 select: { userId: true },
                 distinct: ['userId'],
               })
@@ -937,11 +937,11 @@ router.get(
   requirePermission('finance.payouts.read'),
   asyncHandler(async (_req: AuthRequest, res: Response) => {
     const [light, basic, premium] = await Promise.all([
-      getPayoutThresholdBGN('LIGHT'),
+      getPayoutThresholdBGN('PREMIUM_WEEKLY'),
       getPayoutThresholdBGN('BASIC'),
       getPayoutThresholdBGN('PREMIUM'),
     ]);
-    res.json({ success: true, data: { LIGHT: light, BASIC: basic, PREMIUM: premium } });
+    res.json({ success: true, data: { PREMIUM_WEEKLY: light, BASIC: basic, PREMIUM: premium } });
   })
 );
 
@@ -1405,7 +1405,7 @@ router.get(
           : expPlanFilter
             ? prisma.subscription
                 .findMany({
-                  where: { plan: expPlanFilter as 'LIGHT' | 'BASIC' | 'PREMIUM' },
+                  where: { plan: expPlanFilter as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' },
                   select: { userId: true },
                   distinct: ['userId'],
                 })
@@ -1519,7 +1519,7 @@ router.get(
 
       // Section 2 — plan breakdown rows: one row per subscription plan (plan + cashback + turnover)
       const PLAN_LABELS_BG: Record<string, string> = {
-        LIGHT: 'Premium Weekly', BASIC: 'Basic', PREMIUM: 'Premium', UNKNOWN: 'Без абонамент',
+        PREMIUM_WEEKLY: 'Premium Weekly', BASIC: 'Basic', PREMIUM: 'Premium', UNKNOWN: 'Без абонамент',
       };
       const planSection = Object.entries(expPlanAccum)
         .sort((a, b) => b[1].cashback - a[1].cashback)
@@ -1546,7 +1546,7 @@ router.get(
       const WALLET_TYPE_BG: Record<string, string> = {
         CASHBACK_CREDIT: 'Кешбек кредит', WITHDRAWAL: 'Плащане към абонат', TOP_UP: 'Зареждане',
       };
-      const EXP_PLAN_LABELS: Record<string, string> = { LIGHT: 'Premium Weekly', BASIC: 'Basic', PREMIUM: 'Premium', UNKNOWN: 'Без абонамент' };
+      const EXP_PLAN_LABELS: Record<string, string> = { PREMIUM_WEEKLY: 'Premium Weekly', BASIC: 'Basic', PREMIUM: 'Premium', UNKNOWN: 'Без абонамент' };
       // Wallet stats are subscriber-side, so the partnerId filter does not apply here.
       // Lead the parenthetical with the plan scope (always shown when any filter is active
       // so the partner-only branch isn't ambiguous), then append the partner caveat as
@@ -1629,7 +1629,7 @@ router.get(
         payoutPlanUserIds = [];
       } else if (payoutPlanParam) {
         const planSubs = await prisma.subscription.findMany({
-          where: { plan: payoutPlanParam as 'LIGHT' | 'BASIC' | 'PREMIUM' },
+          where: { plan: payoutPlanParam as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' },
           select: { userId: true },
           distinct: ['userId'],
         });

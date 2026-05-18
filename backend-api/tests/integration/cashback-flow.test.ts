@@ -61,7 +61,7 @@ describe('Cashback Flow Integration Tests', () => {
       });
 
       expect(card).toBeDefined();
-      expect(card?.type).toBe('LIGHT');
+      expect(card?.type).toBe('PREMIUM_WEEKLY');
       expect(card?.status).toBe('ACTIVE');
     });
   });
@@ -275,7 +275,7 @@ describe('Cashback Flow Integration Tests', () => {
         where: { userId },
       });
 
-      expect(card?.type).toBe('LIGHT');
+      expect(card?.type).toBe('PREMIUM_WEEKLY');
 
       // Create receipt with 100 BGN
       const receipt = await prisma.receipt.create({

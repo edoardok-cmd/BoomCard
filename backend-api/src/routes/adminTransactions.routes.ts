@@ -369,6 +369,8 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
           type: true,
           status: true,
           amount: true,
+          marginAmount: true,
+          subscriptionId: true,
           discount: true,
           discountAmount: true,
           finalAmount: true,
@@ -495,10 +497,12 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
         tx.cashbackAmount ??
         (receiptCashbackTrustworthy ? tx.receipt?.cashbackAmount ?? null : null);
       const cashback = cashbackAmountResolved ?? 0;
-      const margin =
-        partnerDiscountRate != null
-          ? (partnerDiscountRate / 100) * tx.amount - cashback
-          : null;
+      // Prefer the persisted marginAmount (written at transaction creation, immutable
+      // to later rate changes). Fall back to runtime calculation for legacy rows.
+      const margin = tx.marginAmount ??
+        (partnerDiscountRate != null
+          ? Math.round(((partnerDiscountRate / 100) * tx.amount - cashback) * 100) / 100
+          : null);
 
       // Prefer the persisted Transaction.riskScore (spec §4.3 v1.1, written at
        // approval time). Fall back to the live max of receipt/stickerScan
@@ -552,6 +556,9 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
         partnerDiscountRate,
         riskScore,
         cashbackStatus,
+        // receiptApplicable distinguishes "no receipt uploaded yet" (true + null date)
+        // from "receipt not part of this transaction type" (false + null date).
+        receiptApplicable: tx.stickerScan != null || tx.receipt != null,
         receiptUploadedAt: tx.receipt?.createdAt ?? null,
         sessionStartedAt: tx.stickerScan?.sessionStartedAt ?? null,
         userRiskScore: tx.user.riskScore,

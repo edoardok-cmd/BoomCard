@@ -35,7 +35,7 @@ describe('Card API Integration Tests', () => {
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('cardNumber');
       expect(res.body).toHaveProperty('qrCode');
-      expect(res.body.type).toBe('LIGHT');
+      expect(res.body.type).toBe('PREMIUM_WEEKLY');
       expect(res.body.status).toBe('ACTIVE');
       expect(res.body.benefits).toBeDefined();
 
@@ -46,7 +46,7 @@ describe('Card API Integration Tests', () => {
       const res = await request(app)
         .post('/api/cards')
         .set('Authorization', `Bearer ${authToken}`)
-        .send({ cardType: 'LIGHT' });
+        .send({ cardType: 'PREMIUM_WEEKLY' });
 
       // Service throws Error (not AppError), so may return 400 or 500
       expect(res.status).toBeGreaterThanOrEqual(400);
@@ -97,7 +97,7 @@ describe('Card API Integration Tests', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.tiers).toHaveLength(3);
-      expect(res.body.tiers[0].tier).toBe('LIGHT');
+      expect(res.body.tiers[0].tier).toBe('PREMIUM_WEEKLY');
       expect(res.body.tiers[1].tier).toBe('BASIC');
       expect(res.body.tiers[2].tier).toBe('PREMIUM');
     });
@@ -115,11 +115,11 @@ describe('Card API Integration Tests', () => {
     });
 
     test('should reject invalid tier for upgrade', async () => {
-      // 'LIGHT' is not in the allowed enum values ['BASIC', 'PREMIUM']
+      // 'PREMIUM_WEEKLY' is not in the allowed enum values ['BASIC', 'PREMIUM']
       const res = await request(app)
         .post(`/api/cards/${cardId}/upgrade`)
         .set('Authorization', `Bearer ${authToken}`)
-        .send({ newTier: 'LIGHT' });
+        .send({ newTier: 'PREMIUM_WEEKLY' });
 
       // ZodError from schema validation — returns 400 or 500
       expect(res.status).toBeGreaterThanOrEqual(400);
@@ -161,7 +161,7 @@ describe('Card API Integration Tests', () => {
       expect(res.body).toHaveProperty('totalCashbackEarned');
       expect(res.body).toHaveProperty('cardType');
       expect(res.body).toHaveProperty('memberSince');
-      expect(res.body.cardType).toBe('LIGHT');
+      expect(res.body.cardType).toBe('PREMIUM_WEEKLY');
     });
   });
 

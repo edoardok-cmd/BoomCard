@@ -91,7 +91,7 @@ export async function loginTestUser(
  */
 export async function createTestSubscription(
   userId: string,
-  plan: 'LIGHT' | 'BASIC' | 'PREMIUM' = 'BASIC',
+  plan: 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' = 'BASIC',
   status: 'ACTIVE' | 'PAST_DUE' | 'CANCELLED' | 'INCOMPLETE' | 'INCOMPLETE_EXPIRED' | 'TRIALING' | 'UNPAID' | 'PAUSED' = 'ACTIVE'
 ) {
   // Get or create plan details

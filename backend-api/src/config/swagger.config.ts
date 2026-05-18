@@ -215,7 +215,7 @@ const swaggerOptions: swaggerJsdoc.Options = {
             },
             cardType: {
               type: 'string',
-              enum: ['LIGHT', 'BASIC', 'PREMIUM'],
+              enum: ['PREMIUM_WEEKLY', 'BASIC', 'PREMIUM'],
               example: 'BASIC',
             },
             cardNumber: {

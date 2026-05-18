@@ -129,7 +129,7 @@ describe('API Contract Validation (Mobile Client Compatibility)', () => {
       // Each plan should have the expected fields
       for (const plan of res.body.plans) {
         expect(plan).toHaveProperty('plan');
-        expect(['LIGHT', 'BASIC', 'PREMIUM']).toContain(plan.plan);
+        expect(['PREMIUM_WEEKLY', 'BASIC', 'PREMIUM']).toContain(plan.plan);
       }
     });
 

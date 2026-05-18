@@ -103,7 +103,7 @@ export const UPGRADE_CREDIT_WEEKLY_TO_MONTHLY = 1.00;
 export const UPGRADE_CREDIT_BASIC_TO_PREMIUM = 0.60;
 
 // ── Default Card Tier ──────────────────────────────────────────────────────────
-export const DEFAULT_CARD_TIER = 'LIGHT' as const;
+export const DEFAULT_CARD_TIER = 'PREMIUM_WEEKLY' as const;
 
 // ── Receipt Template Comparison ────────────────────────────────────────────────
 /** Side length of the dHash resize grid (16×16 pixels). */

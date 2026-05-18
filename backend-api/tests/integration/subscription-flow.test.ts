@@ -40,7 +40,7 @@ describe('Subscription Flow (F02, F03)', () => {
       expect(res.body.plans.length).toBe(3);
 
       const planNames = res.body.plans.map((p: any) => p.plan);
-      expect(planNames).toContain('LIGHT');
+      expect(planNames).toContain('PREMIUM_WEEKLY');
       expect(planNames).toContain('BASIC');
       expect(planNames).toContain('PREMIUM');
     });
@@ -61,7 +61,7 @@ describe('Subscription Flow (F02, F03)', () => {
       const res = await authRequest(accessToken).get('/api/subscriptions/current');
 
       expect(res.status).toBe(200);
-      expect(res.body.plan).toBe('LIGHT');
+      expect(res.body.plan).toBe('PREMIUM_WEEKLY');
       expect(res.body.status).toBe('ACTIVE');
       expect(res.body).toHaveProperty('benefits');
     });

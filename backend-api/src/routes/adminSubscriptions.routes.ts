@@ -509,7 +509,7 @@ router.post('/:id/reactivate', requirePermission('subscriptions.write'), async (
 //   (a) advance currentPeriodEnd by one billing period — otherwise the next
 //       paysera-renewal cron pass immediately re-PAUSES the row (it matches
 //       on currentPeriodEnd <= now).
-//   (b) clear gracePeriodEndsAt and any stale canceledAt so the
+//   (b) clear pauseEndsAt and any stale canceledAt so the
 //       canceledAt-as-EXPIRED-vs-CANCELLED discriminator stays correct on
 //       the next natural lapse.
 router.post('/:id/resume', requirePermission('subscriptions.write'), async (req, res, next) => {
@@ -528,7 +528,7 @@ router.post('/:id/resume', requirePermission('subscriptions.write'), async (req,
         where: { id: req.params.id, status: 'PAUSED' },
         data: {
           status: SubscriptionStatus.ACTIVE,
-          gracePeriodEndsAt: null,
+          pauseEndsAt: null,
           canceledAt: null,
           cancelAtPeriodEnd: false,
           cancelAt: null,
@@ -564,7 +564,7 @@ router.post('/:id/resume', requirePermission('subscriptions.write'), async (req,
           where: { id: req.params.id, status: SubscriptionStatus.ACTIVE },
           data: {
             status: 'PAUSED',
-            gracePeriodEndsAt: subscription.gracePeriodEndsAt,
+            pauseEndsAt: subscription.pauseEndsAt,
             canceledAt: subscription.canceledAt,
             cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
             cancelAt: subscription.cancelAt,
@@ -608,7 +608,7 @@ router.post('/:id/resume', requirePermission('subscriptions.write'), async (req,
         where: { id: req.params.id, status: 'PAUSED' },
         data: {
           status: SubscriptionStatus.ACTIVE,
-          gracePeriodEndsAt: null,
+          pauseEndsAt: null,
           canceledAt: null,
           cancelAtPeriodEnd: false,
           cancelAt: null,

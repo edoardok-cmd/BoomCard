@@ -46,7 +46,7 @@ export class WalletService {
       orderBy: { createdAt: 'desc' },
     });
 
-    const plan: SubscriptionPlan = subscription?.plan ?? 'LIGHT';
+    const plan: SubscriptionPlan = subscription?.plan ?? 'PREMIUM_WEEKLY';
     const threshold = await getPayoutThresholdBGN(plan);
 
     // Spec §4.2 / §6.1 v1.1 — FAILED_PAYMENT blocks payout, BUT a user who has
@@ -255,7 +255,7 @@ export class WalletService {
             where: { userId, status: { in: ['ACTIVE', 'TRIALING', 'PAUSED'] } },
             orderBy: { createdAt: 'desc' },
           });
-          const plan: SubscriptionPlan = subscription?.plan ?? 'LIGHT';
+          const plan: SubscriptionPlan = subscription?.plan ?? 'PREMIUM_WEEKLY';
           const threshold = await getPayoutThresholdBGN(plan);
           if (preCreditAvailable < threshold && updatedWallet.availableBalance >= threshold) {
             notificationService

@@ -13,7 +13,7 @@ export class CardService {
     cardNumber?: string;
     cardType?: CardType;
   }) {
-    const { userId, cardNumber, cardType = 'LIGHT' } = params;
+    const { userId, cardNumber, cardType = 'PREMIUM_WEEKLY' } = params;
 
     // Check if user already has a card
     const existingCard = await prisma.card.findFirst({
@@ -89,7 +89,7 @@ export class CardService {
     }
 
     // Check tier progression
-    const tierOrder = ['LIGHT', 'BASIC', 'PREMIUM'];
+    const tierOrder = ['PREMIUM_WEEKLY', 'BASIC', 'PREMIUM'];
     const currentIndex = tierOrder.indexOf(card.type);
     const newIndex = tierOrder.indexOf(newTier);
 
@@ -151,7 +151,7 @@ export class CardService {
 
   /**
    * Get card benefits based on tier — reads from DB Plans table (source of truth).
-   * CardType maps 1-to-1 to plan planCode (LIGHT / BASIC / PREMIUM).
+   * CardType maps 1-to-1 to plan planCode (PREMIUM_WEEKLY / BASIC / PREMIUM).
    */
   async getCardBenefits(cardType: CardType) {
     const plan = await prisma.plan.findFirst({
@@ -171,21 +171,21 @@ export class CardService {
    * Sync the user's card type to match their active subscription plan.
    *
    * Plan → CardType mapping:
-   *   LIGHT   → LIGHT   (entry-level weekly plan)
-   *   BASIC   → BASIC
-   *   PREMIUM → PREMIUM
+   *   PREMIUM_WEEKLY → PREMIUM_WEEKLY  (entry-level weekly plan)
+   *   BASIC          → BASIC
+   *   PREMIUM        → PREMIUM
    *
    * Upgrades are always applied. Downgrades are only applied when
-   * the target is LIGHT (subscription expired / cancelled) to prevent
+   * the target is PREMIUM_WEEKLY (subscription expired / cancelled) to prevent
    * accidental loss of benefits mid-period for tier swaps.
    *
    * Returns the (possibly updated) card, or null if the user has no card.
    */
   async syncCardTypeWithSubscription(userId: string, plan: string) {
     const planToCardType: Record<string, CardType> = {
-      LIGHT:   CardType.LIGHT,
-      BASIC:   CardType.BASIC,
-      PREMIUM: CardType.PREMIUM,
+      PREMIUM_WEEKLY: CardType.PREMIUM_WEEKLY,
+      BASIC:          CardType.BASIC,
+      PREMIUM:        CardType.PREMIUM,
     };
 
     const targetType = planToCardType[plan];
@@ -200,7 +200,7 @@ export class CardService {
       return null;
     }
 
-    const tierOrder: CardType[] = [CardType.LIGHT, CardType.BASIC, CardType.PREMIUM];
+    const tierOrder: CardType[] = [CardType.PREMIUM_WEEKLY, CardType.BASIC, CardType.PREMIUM];
     const currentIndex = tierOrder.indexOf(card.type);
     const targetIndex = tierOrder.indexOf(targetType);
 
@@ -208,9 +208,9 @@ export class CardService {
       return card;
     }
 
-    // Allow downgrades only to LIGHT (subscription expired).
+    // Allow downgrades only to PREMIUM_WEEKLY (subscription expired).
     // Block mid-tier downgrades (PREMIUM→BASIC) to prevent accidental benefit loss.
-    if (targetIndex < currentIndex && targetType !== CardType.LIGHT) {
+    if (targetIndex < currentIndex && targetType !== CardType.PREMIUM_WEEKLY) {
       return card;
     }
 

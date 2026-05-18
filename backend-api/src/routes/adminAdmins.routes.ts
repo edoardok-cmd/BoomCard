@@ -200,12 +200,12 @@ router.get('/pending-super', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), re
   }
 });
 
-// GET /api/admin/admins/pending-all — combined view of both pending types (#9)
-// Returns role-assignment-pending admins AND pending SUPER_ADMIN creation requests
-// in a single call so dashboards can show a unified approvals count.
+// GET /api/admin/admins/pending-all — combined view of all pending approval types (§10.3)
+// Returns role-assignment-pending admins, pending SUPER_ADMIN creation requests, AND
+// pending critical-action requests so dashboards show a unified approvals count.
 router.get('/pending-all', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.read'), async (_req, res, next) => {
   try {
-    const [pendingRoleAssignments, pendingSuperAdmins] = await Promise.all([
+    const [pendingRoleAssignments, pendingSuperAdmins, pendingCriticalActions] = await Promise.all([
       prisma.user.findMany({
         where: { role: 'ADMIN' as UserRole, adminRoles: { none: {} } },
         orderBy: { createdAt: 'desc' },
@@ -222,13 +222,155 @@ router.get('/pending-all', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requ
           requestedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
         },
       }),
+      prisma.criticalActionRequest.findMany({
+        where: { status: 'PENDING' },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          actionType: true,
+          payload: true,
+          note: true,
+          createdAt: true,
+          requestedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+        },
+      }),
     ]);
 
     res.json({
       pendingRoleAssignments,
       pendingSuperAdmins,
-      total: pendingRoleAssignments.length + pendingSuperAdmins.length,
+      pendingCriticalActions,
+      total: pendingRoleAssignments.length + pendingSuperAdmins.length + pendingCriticalActions.length,
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/admin/admins/critical-actions — list critical action requests (§10.3)
+router.get('/critical-actions', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.read'), async (req, res, next) => {
+  try {
+    const status = typeof req.query.status === 'string' ? req.query.status : 'PENDING';
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
+    const skip = (page - 1) * limit;
+
+    const where = status !== 'ALL' ? { status } : {};
+    const [items, total] = await Promise.all([
+      prisma.criticalActionRequest.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          requestedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+          resolvedBy:  { select: { id: true, firstName: true, lastName: true, email: true } },
+        },
+      }),
+      prisma.criticalActionRequest.count({ where }),
+    ]);
+    res.json({ items, total, page, limit, pages: Math.ceil(total / limit) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/admin/admins/critical-actions — submit a new critical action request (§10.3)
+router.post('/critical-actions', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.write'), async (req: AuthRequest, res, next) => {
+  try {
+    const { actionType, payload, note } = req.body as { actionType?: string; payload?: unknown; note?: string };
+    if (!actionType?.trim()) return res.status(400).json({ error: 'actionType is required' });
+    if (!payload || typeof payload !== 'object') return res.status(400).json({ error: 'payload (object) is required' });
+
+    const item = await prisma.criticalActionRequest.create({
+      data: {
+        actionType: actionType.trim(),
+        payload: payload as object,
+        note: note?.trim() || null,
+        requestedById: req.user!.id,
+        status: 'PENDING',
+      },
+      include: {
+        requestedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    });
+
+    req.skipAudit = true;
+    await writeAudit({
+      actorUserId: req.user!.id,
+      action: 'admin.critical-action.request',
+      objectType: 'admin',
+      objectId: item.id,
+      after: { actionType: item.actionType, note: item.note },
+      ip: getClientIp(req) ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
+
+    res.status(201).json({ item });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/admin/admins/critical-actions/:id/approve — SUPER_ADMIN approves (§10.3)
+router.post('/critical-actions/:id/approve', authenticate, authorize('SUPER_ADMIN'), requirePermission('admins.write'), async (req: AuthRequest, res, next) => {
+  try {
+    const { note } = req.body as { note?: string };
+    const item = await prisma.criticalActionRequest.findUnique({ where: { id: req.params.id } });
+    if (!item) return res.status(404).json({ error: 'Critical action request not found' });
+    if (item.status !== 'PENDING') return res.status(400).json({ error: 'Request is no longer pending' });
+    if (item.requestedById === req.user!.id) return res.status(400).json({ error: 'Cannot approve your own critical action request' });
+
+    const updated = await prisma.criticalActionRequest.update({
+      where: { id: req.params.id },
+      data: { status: 'APPROVED', resolvedById: req.user!.id, resolvedAt: new Date(), resolvedNote: note?.trim() || null },
+    });
+
+    req.skipAudit = true;
+    await writeAudit({
+      actorUserId: req.user!.id,
+      action: 'admin.critical-action.approve',
+      objectType: 'admin',
+      objectId: item.id,
+      before: { status: 'PENDING', actionType: item.actionType },
+      after: { status: 'APPROVED', resolvedNote: note?.trim() || null },
+      ip: getClientIp(req) ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
+
+    res.json({ item: updated });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/admin/admins/critical-actions/:id/reject — SUPER_ADMIN rejects (§10.3)
+router.post('/critical-actions/:id/reject', authenticate, authorize('SUPER_ADMIN'), requirePermission('admins.write'), async (req: AuthRequest, res, next) => {
+  try {
+    const { note } = req.body as { note?: string };
+    if (!note?.trim()) return res.status(400).json({ error: 'note (rejection reason) is required' });
+    const item = await prisma.criticalActionRequest.findUnique({ where: { id: req.params.id } });
+    if (!item) return res.status(404).json({ error: 'Critical action request not found' });
+    if (item.status !== 'PENDING') return res.status(400).json({ error: 'Request is no longer pending' });
+
+    const updated = await prisma.criticalActionRequest.update({
+      where: { id: req.params.id },
+      data: { status: 'REJECTED', resolvedById: req.user!.id, resolvedAt: new Date(), resolvedNote: note.trim() },
+    });
+
+    req.skipAudit = true;
+    await writeAudit({
+      actorUserId: req.user!.id,
+      action: 'admin.critical-action.reject',
+      objectType: 'admin',
+      objectId: item.id,
+      before: { status: 'PENDING', actionType: item.actionType },
+      after: { status: 'REJECTED', resolvedNote: note.trim() },
+      ip: getClientIp(req) ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
+
+    res.json({ item: updated });
   } catch (error) {
     next(error);
   }
@@ -541,7 +683,7 @@ router.get('/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermi
 router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.write'), async (req: AuthRequest, res, next) => {
   try {
     const { id } = req.params;
-    const { status } = req.body as { status?: string };
+    const { status, reason } = req.body as { status?: string; reason?: string };
 
     if (status !== 'ACTIVE' && status !== 'SUSPENDED') {
       return res.status(400).json({ error: 'status must be ACTIVE or SUSPENDED' });
@@ -582,7 +724,7 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
       objectType: 'admin',
       objectId: id,
       before: { status: beforeStatus },
-      after: { status },
+      after: { status, reason: reason?.trim() || null },
       ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
     });

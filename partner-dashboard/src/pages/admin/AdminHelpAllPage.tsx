@@ -47,7 +47,8 @@ const NewTicketBtn = styled(Link)`
 `;
 
 const STATUS_BG_LABELS: Record<TicketStatus, string> = {
-  NEW: 'Нова', OPEN: 'Отворена', WAITING: 'Изчакване', RESOLVED: 'Решена', CLOSED: 'Затворена',
+  NEW: 'Нова', OPEN: 'Отворена', IN_REVIEW: 'В преглед', WAITING: 'Изчакване',
+  RESOLVED: 'Решена', CLOSED: 'Затворена', REJECTED: 'Отказана',
 };
 
 const PRIORITY_BG_LABELS: Record<TicketPriority, string> = {
@@ -72,10 +73,12 @@ const StatusBadge = styled.span<{ $status: TicketStatus }>`
   ${({ $status }) => {
     switch ($status) {
       case 'NEW':      return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
-      case 'OPEN':     return `background: ${palette.infoSoft}; color: ${palette.info};`;
-      case 'WAITING':  return `background: ${palette.warningSoft}; color: ${palette.warning};`;
-      case 'RESOLVED': return `background: ${palette.successSoft}; color: ${palette.success};`;
-      default:         return `background: ${palette.border}; color: ${palette.textMuted};`;
+      case 'OPEN':      return `background: ${palette.infoSoft}; color: ${palette.info};`;
+      case 'IN_REVIEW': return `background: ${palette.infoSoft}; color: ${palette.info};`;
+      case 'WAITING':   return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+      case 'RESOLVED':  return `background: ${palette.successSoft}; color: ${palette.success};`;
+      case 'REJECTED':  return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
+      default:          return `background: ${palette.border}; color: ${palette.textMuted};`;
     }
   }}
 `;
@@ -266,9 +269,11 @@ export default function AdminHelpAllPage() {
             <option value="">Всички статуси</option>
             <option value="NEW">Нова</option>
             <option value="OPEN">Отворена</option>
+            <option value="IN_REVIEW">В преглед</option>
             <option value="WAITING">Изчакване</option>
             <option value="RESOLVED">Решена</option>
             <option value="CLOSED">Затворена</option>
+            <option value="REJECTED">Отказана</option>
           </Select>
           <Select value={priorityFilter} onChange={(e) => { setPriorityFilter(e.target.value as TicketPriority | ''); setPage(1); }}>
             <option value="">Всички приоритети</option>

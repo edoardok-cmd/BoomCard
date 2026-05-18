@@ -102,14 +102,14 @@ class ReceiptService {
    * Returns null when no active subscription → cashback must be 0 (Finding #1+#2).
    * Mirrors sticker.service.ts resolveCashbackTier so both flows share the same gate.
    */
-  private async resolveCashbackTier(userId: string): Promise<'LIGHT' | 'BASIC' | 'PREMIUM' | null> {
+  private async resolveCashbackTier(userId: string): Promise<'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' | null> {
     const sub = await prisma.subscription.findFirst({
       where: { userId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAUSED] } },
       orderBy: { currentPeriodEnd: 'desc' },
     });
     if (!sub) return null;
-    const plan = sub.plan as 'LIGHT' | 'BASIC' | 'PREMIUM';
-    return plan === 'LIGHT' || plan === 'BASIC' || plan === 'PREMIUM' ? plan : null;
+    const plan = sub.plan as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM';
+    return plan === 'PREMIUM_WEEKLY' || plan === 'BASIC' || plan === 'PREMIUM' ? plan : null;
   }
 
   /**

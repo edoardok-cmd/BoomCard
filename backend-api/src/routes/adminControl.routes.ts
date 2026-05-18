@@ -21,7 +21,7 @@
 import { Router, Response } from 'express';
 import { DisputeStatus, DisputeSubjectType, ScanStatus } from '@prisma/client';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
-import { auditMiddleware } from '../middleware/audit.middleware';
+import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
 import { receiptService } from '../services/receipt.service';
@@ -52,6 +52,7 @@ const SECURITY_ACTION_PREFIXES = [
   'dispute.',          // disputes + dispute-cases lifecycle        ('disputes'/'dispute-cases' → 'dispute')
   'receipt-template.', // template create / update / deactivate    ('receipt-templates' → 'receipt-template')
   'payout.',           // payout process / hold / release           ('payouts' → 'payout')
+  'ticket.',           // ticket assign / reject / update / reply   ('help' router)
 ];
 
 /**
@@ -180,6 +181,11 @@ router.post(
     const verifiedAmount = typeof req.body?.verifiedAmount === 'number' ? req.body.verifiedAmount : undefined;
     const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : undefined;
 
+    const before = await prisma.receipt.findUnique({
+      where: { id },
+      select: { status: true, totalAmount: true, fraudScore: true },
+    });
+
     const result = await receiptService.reviewReceipt({
       receiptId: id,
       action: 'APPROVE',
@@ -188,6 +194,16 @@ router.post(
       notes,
     });
     const { fraudWarning, ...rest } = result;
+
+    req.skipAudit = true;
+    writeAudit({
+      actorUserId: req.user!.id,
+      action: 'dispute.approve',
+      objectType: 'dispute',
+      objectId: id,
+      before: before ? { status: before.status, totalAmount: before.totalAmount, fraudScore: before.fraudScore } : null,
+      after: { status: 'APPROVED', verifiedAmount: verifiedAmount ?? null, notes: notes ?? null },
+    }).catch(() => {});
 
     res.json({ success: true, data: rest, message: 'Receipt approved', ...(fraudWarning && { fraudWarning }) });
   })
@@ -206,12 +222,27 @@ router.post(
       typeof req.body?.reason === 'string' ? req.body.reason.trim() :
       typeof req.body?.notes  === 'string' ? req.body.notes.trim()  : undefined;
 
+    const before = await prisma.receipt.findUnique({
+      where: { id },
+      select: { status: true, totalAmount: true, fraudScore: true },
+    });
+
     const updated = await receiptService.reviewReceipt({
       receiptId: id,
       action: 'REJECT',
       reviewedBy: req.user!.id,
       rejectionReason,
     });
+
+    req.skipAudit = true;
+    writeAudit({
+      actorUserId: req.user!.id,
+      action: 'dispute.reject',
+      objectType: 'dispute',
+      objectId: id,
+      before: before ? { status: before.status, totalAmount: before.totalAmount, fraudScore: before.fraudScore } : null,
+      after: { status: 'REJECTED', reason: rejectionReason ?? null },
+    }).catch(() => {});
 
     res.json({ success: true, data: updated, message: 'Receipt rejected' });
   })
@@ -440,11 +471,27 @@ router.post(
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const verifiedAmount = typeof req.body?.verifiedAmount === 'number' ? req.body.verifiedAmount : undefined;
     const notes = typeof req.body?.notes === 'string' && req.body.notes.trim() ? req.body.notes.trim() : undefined;
+
+    const scanBefore = await prisma.stickerScan.findUnique({
+      where: { id: req.params.id },
+      select: { status: true, fraudScore: true, fraudReasons: true, billAmount: true },
+    });
+
     const scan = await stickerService.approveScan(req.params.id, {
       verifiedAmount,
       adminUserId: req.user!.id,
       notes,
     });
+
+    req.skipAudit = true;
+    writeAudit({
+      actorUserId: req.user!.id,
+      action: 'risk.approve',
+      objectType: 'risk',
+      objectId: req.params.id,
+      before: scanBefore ? { status: scanBefore.status, fraudScore: scanBefore.fraudScore, fraudReasons: scanBefore.fraudReasons, billAmount: scanBefore.billAmount } : null,
+      after: { status: scan.status, verifiedAmount: verifiedAmount ?? null, notes: notes ?? null },
+    }).catch(() => {});
 
     let fraudWarning: string | undefined;
     if (verifiedAmount !== undefined) {
@@ -470,9 +517,26 @@ router.post(
     if (!reason) {
       return res.status(400).json({ error: 'reason is required' });
     }
+
+    const scanBefore = await prisma.stickerScan.findUnique({
+      where: { id: req.params.id },
+      select: { status: true, fraudScore: true, fraudReasons: true, billAmount: true },
+    });
+
     // Spec §7.1 v1.1 — actorUserId threads into cashbackLifecycleService so the
     // Voided ghost record carries `voidedByUserId` for the audit trail.
     const scan = await stickerService.rejectScan(req.params.id, reason, req.user?.id ?? null);
+
+    req.skipAudit = true;
+    writeAudit({
+      actorUserId: req.user?.id ?? null,
+      action: 'risk.reject',
+      objectType: 'risk',
+      objectId: req.params.id,
+      before: scanBefore ? { status: scanBefore.status, fraudScore: scanBefore.fraudScore, fraudReasons: scanBefore.fraudReasons, billAmount: scanBefore.billAmount } : null,
+      after: { status: scan.status, reason },
+    }).catch(() => {});
+
     res.json({ success: true, data: scan, message: 'Signal rejected' });
   })
 );
@@ -512,7 +576,28 @@ router.post(
     if (!reason) {
       return res.status(400).json({ error: 'reason is required' });
     }
+
+    const scansBefore = await prisma.stickerScan.findMany({
+      where: { id: { in: uniqueIds } },
+      select: { id: true, status: true, fraudScore: true, fraudReasons: true, billAmount: true },
+    });
+    const beforeMap = new Map(scansBefore.map((s) => [s.id, s]));
+
     const result = await stickerService.bulkReject(uniqueIds, reason, req.user?.id ?? null);
+
+    req.skipAudit = true;
+    for (const scanId of uniqueIds) {
+      const b = beforeMap.get(scanId);
+      writeAudit({
+        actorUserId: req.user?.id ?? null,
+        action: 'risk.reject',
+        objectType: 'risk',
+        objectId: scanId,
+        before: b ? { status: b.status, fraudScore: b.fraudScore, fraudReasons: b.fraudReasons, billAmount: b.billAmount } : null,
+        after: { status: 'REJECTED', reason, bulk: true },
+      }).catch(() => {});
+    }
+
     res.json({ success: true, data: result, message: 'Bulk reject completed' });
   })
 );
@@ -982,7 +1067,7 @@ router.post(
         imageKey: imageKey.trim(),
         perceptualHash: perceptualHash.trim(),
         description: description?.trim() ?? null,
-        expectedKeywords: expectedKeywords ? JSON.stringify(expectedKeywords) : null,
+        expectedKeywords: expectedKeywords ?? [],
         uploadedBy: req.user!.id,
       },
     });
@@ -1013,7 +1098,7 @@ router.patch(
     const data: Parameters<typeof prisma.venueReceiptTemplate.update>[0]['data'] = {};
     if (merchantName !== undefined) data.merchantName = merchantName.trim();
     if (description !== undefined) data.description = description;
-    if (expectedKeywords !== undefined) data.expectedKeywords = expectedKeywords ? JSON.stringify(expectedKeywords) : null;
+    if (expectedKeywords !== undefined) data.expectedKeywords = expectedKeywords ?? [];
     if (isActive !== undefined) data.isActive = isActive;
 
     if (Object.keys(data).length === 0) {

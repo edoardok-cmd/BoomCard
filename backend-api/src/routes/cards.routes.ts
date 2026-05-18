@@ -11,13 +11,13 @@ router.use(authenticate);
 
 /**
  * POST /api/cards
- * Create a LIGHT card for users who don't have one yet.
- * Card type is always LIGHT at creation — use /upgrade to promote
+ * Create a PREMIUM_WEEKLY card for users who don't have one yet.
+ * Card type is always PREMIUM_WEEKLY at creation — use /upgrade to promote
  * after an active subscription has been confirmed.
  */
 router.post('/', asyncHandler(async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
-  const card = await cardService.createCard({ userId, cardType: 'LIGHT' });
+  const card = await cardService.createCard({ userId, cardType: 'PREMIUM_WEEKLY' });
   res.status(201).json(card);
 }));
 
@@ -59,7 +59,7 @@ router.get('/my-card', asyncHandler(async (req: AuthRequest, res: Response) => {
  */
 router.get('/benefits', asyncHandler(async (req: AuthRequest, res: Response) => {
   const tiers = await Promise.all(
-    (['LIGHT', 'BASIC', 'PREMIUM'] as const).map(async tier => ({
+    (['PREMIUM_WEEKLY', 'BASIC', 'PREMIUM'] as const).map(async tier => ({
       tier,
       ...await cardService.getCardBenefits(tier),
     })),

@@ -115,10 +115,10 @@ class PartnerTypeService {
    */
   async getRedeemableTypeIdsForPlan(plan: SubscriptionPlan | null): Promise<string[]> {
     if (plan === null) {
-      // Unauthenticated: only types explicitly granted canRedeem to LIGHT
+      // Unauthenticated: only types explicitly granted canRedeem to PREMIUM_WEEKLY
       // (treat as least-permissive plan, same as before)
       const rows = await prisma.planTypeAccess.findMany({
-        where: { plan: SubscriptionPlan.LIGHT, canRedeem: true },
+        where: { plan: SubscriptionPlan.PREMIUM_WEEKLY, canRedeem: true },
         select: { partnerTypeId: true },
       });
       return rows.map(r => r.partnerTypeId);
@@ -141,7 +141,7 @@ class PartnerTypeService {
       select: { id: true },
     });
 
-    const effectivePlan = plan ?? SubscriptionPlan.LIGHT;
+    const effectivePlan = plan ?? SubscriptionPlan.PREMIUM_WEEKLY;
     const visibleRows = await prisma.planTypeAccess.findMany({
       where: { plan: effectivePlan, canView: true },
       select: { partnerTypeId: true },

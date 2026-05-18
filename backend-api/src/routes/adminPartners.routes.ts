@@ -354,6 +354,19 @@ router.patch(
       select: PARTNER_SELECT,
     });
 
+    // Spec §10.4 — log every pipeline status change with before/after context.
+    writeAudit({
+      actorUserId: req.user!.id,
+      action: 'partner.request.status',
+      objectType: 'partner',
+      objectId: req.params.id,
+      before: { requestStatus: current },
+      after: {
+        requestStatus,
+        ...(isOdobrenaTransition ? { onboardingCompleted: true } : {}),
+      },
+    }).catch((err) => logger.error('[adminPartners] pipeline writeAudit failed:', err));
+
     res.json({ partner: updated });
   })
 );
@@ -614,9 +627,15 @@ router.post(
         error: 'Partner is already activated. Resending an activation link is unnecessary.',
       });
     }
-    if (partner.status !== PartnerStatus.ACTIVE) {
+    // Spec §5.2 — resend is valid whenever the partner has an un-consumed activation
+    // link regardless of status. PENDING partners are admin-onboarded partners for whom
+    // a link was issued but never consumed (consume() advances them to ACTIVE). Blocking
+    // resend on PENDING was a bug: the ONLY way forward for those partners IS the link.
+    // Block only terminal/irreversible statuses that genuinely cannot be re-activated via link.
+    const RESEND_BLOCKED_STATUSES: PartnerStatus[] = [PartnerStatus.ARCHIVED, PartnerStatus.REJECTED];
+    if (RESEND_BLOCKED_STATUSES.includes(partner.status)) {
       return res.status(400).json({
-        error: 'Activation links are only issued after admin approval. Approve the partner first.',
+        error: `Activation links cannot be resent to a partner with status ${partner.status}.`,
       });
     }
 
@@ -803,7 +822,7 @@ router.patch(
     // append-only admin audit trail.
     writeAudit({
       actorUserId: req.user!.id,
-      action: 'PARTNER_STATUS_CHANGED',
+      action: 'partner.status.update',
       objectType: 'partner',
       objectId: req.params.id,
       before: { status: change.fromStatus },

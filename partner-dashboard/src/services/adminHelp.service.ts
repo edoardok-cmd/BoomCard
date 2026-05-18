@@ -1,6 +1,6 @@
 import { apiService } from './api.service';
 
-export type TicketStatus = 'NEW' | 'OPEN' | 'WAITING' | 'RESOLVED' | 'CLOSED';
+export type TicketStatus = 'NEW' | 'OPEN' | 'IN_REVIEW' | 'WAITING' | 'RESOLVED' | 'CLOSED' | 'REJECTED';
 export type TicketPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 export type TicketCategory = 'CASHBACK' | 'ACCOUNT' | 'PAYMENT' | 'TECHNICAL' | 'OTHER';
 
@@ -25,6 +25,11 @@ export interface HelpTicket {
 
 export interface HelpTicketFull extends HelpTicket {
   body: string;
+  requestType: string;
+  source: string;
+  externalEmail: string | null;
+  linkedTicketId: string | null;
+  reopenedAt: string | null;
 }
 
 export interface TicketListResult<T> {
@@ -107,5 +112,9 @@ export const adminHelpService = {
 
   update(id: string, data: { status?: TicketStatus; priority?: TicketPriority }): Promise<{ ok: boolean }> {
     return apiService.patch(`/admin/help/${id}`, data);
+  },
+
+  reject(id: string, reason: string): Promise<{ ok: boolean }> {
+    return apiService.post(`/admin/help/${id}/reject`, { reason });
   },
 };

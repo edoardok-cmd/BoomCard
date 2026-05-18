@@ -89,7 +89,7 @@ router.get('/status/:orderId', asyncHandler(async (req: Request, res: Response) 
  */
 router.get('/plans', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
   const plans = await Promise.all(
-    (['LIGHT', 'BASIC', 'PREMIUM'] as const).map(async plan => ({
+    (['PREMIUM_WEEKLY', 'BASIC', 'PREMIUM'] as const).map(async plan => ({
       plan,
       ...await subscriptionService.getPlanBenefits(plan),
     })),
@@ -108,9 +108,9 @@ router.get('/current', authenticate, asyncHandler(async (req: AuthRequest, res: 
 
   if (!subscription) {
     return res.json({
-      plan: 'LIGHT',
+      plan: 'PREMIUM_WEEKLY',
       status: 'ACTIVE',
-      benefits: await subscriptionService.getPlanBenefits('LIGHT'),
+      benefits: await subscriptionService.getPlanBenefits('PREMIUM_WEEKLY'),
     });
   }
 
@@ -236,7 +236,7 @@ router.get('/history', authenticate, asyncHandler(async (req: AuthRequest, res: 
 /**
  * POST /api/subscriptions/create
  * Create new subscription (BASIC or PREMIUM only via Stripe).
- * The LIGHT (Premium Weekly) plan must be purchased via POST /api/payments/subscription (Paysera).
+ * The PREMIUM_WEEKLY plan must be purchased via POST /api/payments/subscription (Paysera).
  */
 const createSchema = z.object({
   plan: z.enum(['BASIC', 'PREMIUM']),
@@ -342,7 +342,7 @@ router.post('/:id/retry-payment', authenticate, asyncHandler(async (req: AuthReq
  * Upgrade or downgrade subscription
  */
 const updatePlanSchema = z.object({
-  plan: z.enum(['LIGHT', 'BASIC', 'PREMIUM']),
+  plan: z.enum(['PREMIUM_WEEKLY', 'BASIC', 'PREMIUM']),
 });
 
 router.post('/:id/update-plan', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {

@@ -385,6 +385,7 @@ router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
             cancelAt: true,
             canceledAt: true,
             createdAt: true,
+            metadata: true,
           },
         },
       },
@@ -394,7 +395,7 @@ router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
       return res.status(404).json({ error: 'Subscriber not found' });
     }
 
-    // Enrich each subscription with a human-readable plan name (LIGHT → "Premium Weekly")
+    // Enrich each subscription with a human-readable plan name (PREMIUM_WEEKLY → "Premium Weekly")
     const enriched = {
       ...user,
       subscriptions: user.subscriptions.map((s) => ({
@@ -558,8 +559,8 @@ router.patch('/:userId/plan', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), r
     }
 
     if (subscription.stripeSubscriptionId) {
-      if (plan === 'LIGHT') {
-        // Downgrading to LIGHT exits Stripe billing — cancel at period end to avoid mid-period refund
+      if (plan === 'PREMIUM_WEEKLY') {
+        // Downgrading to PREMIUM_WEEKLY exits Stripe billing — cancel at period end to avoid mid-period refund
         const stripeSub = await stripeService.stripe.subscriptions.update(
           subscription.stripeSubscriptionId,
           { cancel_at_period_end: true },

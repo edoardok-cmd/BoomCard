@@ -969,7 +969,8 @@ router.post(
     const passwordHash = await bcrypt.hash(password, 12);
 
     const planCodeMap: Record<string, SubscriptionPlan> = {
-      LIGHT: SubscriptionPlan.LIGHT,
+      PREMIUM_WEEKLY: SubscriptionPlan.PREMIUM_WEEKLY,
+      LIGHT: SubscriptionPlan.PREMIUM_WEEKLY, // legacy Plan.planCode shim — remove once plans table migrated
       BASIC: SubscriptionPlan.BASIC,
       PREMIUM: SubscriptionPlan.PREMIUM,
     };
@@ -978,7 +979,7 @@ router.post(
       return res.status(500).json({ success: false, message: 'Invalid plan configuration' });
     }
 
-    // Derive billingPeriod from plan code (LIGHT = weekly, others = monthly)
+    // Derive billingPeriod from plan code (PREMIUM_WEEKLY = weekly, others = monthly)
     // Use the billingPeriod stored at checkout — fall back to plan-code inference only for
     // legacy PendingSubscriptions created before the billingPeriod field was added.
     const billingPeriod: 'weekly' | 'monthly' | 'yearly' =
@@ -994,11 +995,12 @@ router.post(
       return `BOOM-${part()}-${part()}-${part()}`;
     })();
     const planToCardType: Record<string, CardType> = {
-      LIGHT: CardType.LIGHT,
+      PREMIUM_WEEKLY: CardType.PREMIUM_WEEKLY,
+      LIGHT: CardType.PREMIUM_WEEKLY, // legacy Plan.planCode shim
       BASIC: CardType.BASIC,
       PREMIUM: CardType.PREMIUM,
     };
-    const cardTypeForPlan = planToCardType[subscriptionPlan] ?? CardType.LIGHT;
+    const cardTypeForPlan = planToCardType[subscriptionPlan] ?? CardType.PREMIUM_WEEKLY;
     const qrCodeData = JSON.stringify({ cardNumber, type: cardTypeForPlan, issuedAt: now.toISOString() });
     const qrCodeUrl = await QRCode.toDataURL(qrCodeData, { errorCorrectionLevel: 'H', width: 300, margin: 2 });
 

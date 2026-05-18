@@ -34,7 +34,7 @@ router.get('/me', authenticate, asyncHandler(async (req: AuthRequest, res: Respo
 
   const resolvedSubscription = subscription
     ? { ...subscription, benefits: await subscriptionService.getPlanBenefits(subscription.plan) }
-    : { plan: 'LIGHT', status: 'ACTIVE', benefits: await subscriptionService.getPlanBenefits('LIGHT') };
+    : { plan: 'PREMIUM_WEEKLY', status: 'ACTIVE', benefits: await subscriptionService.getPlanBenefits('PREMIUM_WEEKLY') };
 
   // Show upgrade-to-Premium-Monthly prompt for BASIC or Premium Weekly subscribers only (per spec §6.1)
   const subMetadata = (() => {

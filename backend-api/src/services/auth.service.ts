@@ -13,6 +13,7 @@ import { emailService } from './email.service';
 import { notificationService } from './notification.service';
 import { SECURITY_CONFIG } from '../config/security.config';
 import { resolveUserPermissions } from './permission.service';
+import { writeAudit } from '../middleware/audit.middleware';
 import { findInvalidCategoryEntry } from '../constants/categoryRegistry';
 import { parseVenueCountBucket } from './partnerVenueCountBucket.helper';
 
@@ -395,7 +396,7 @@ export class AuthService {
           lifetimePoints: 0,
         },
       }),
-      cardService.createCard({ userId: user.id, cardType: 'LIGHT' }),
+      cardService.createCard({ userId: user.id, cardType: 'PREMIUM_WEEKLY' }),
       walletService.getOrCreateWallet(user.id),
     ]);
 
@@ -443,6 +444,17 @@ export class AuthService {
         for (const u of unverified) {
           try {
             await AuthService.issueAndSendVerification(u);
+            // Spec §10.4 — log public email verification requests.
+            await prisma.linkResendLog.create({
+              data: { linkType: 'EMAIL_VERIFICATION', subjectId: u.id, actorId: null },
+            }).catch((err: unknown) => logger.error(`[requestEmailVerificationByEmail] linkResendLog failed for ${u.id}:`, err));
+            writeAudit({
+              actorUserId: null,
+              action: 'auth.email-verification.request',
+              objectType: 'user',
+              objectId: u.id,
+              after: { selfService: true, publicEndpoint: true },
+            }).catch((err: unknown) => logger.error(`[requestEmailVerificationByEmail] writeAudit failed for ${u.id}:`, err));
           } catch (err) {
             logger.error(`[auth.requestEmailVerificationByEmail] failed for ${u.id}:`, err);
           }
@@ -525,6 +537,17 @@ export class AuthService {
     this.issueAndSendVerification(user).catch((err) =>
       logger.error('Failed to resend email verification:', err),
     );
+    // Spec §10.4 — log self-service email verification resends to LinkResendLog and AuditLog.
+    prisma.linkResendLog.create({
+      data: { linkType: 'EMAIL_VERIFICATION', subjectId: userId, actorId: userId },
+    }).catch((err: unknown) => logger.error('[resendEmailVerification] linkResendLog.create failed', err));
+    writeAudit({
+      actorUserId: userId,
+      action: 'auth.email-verification.resend',
+      objectType: 'user',
+      objectId: userId,
+      after: { selfService: true },
+    }).catch((err: unknown) => logger.error('[resendEmailVerification] writeAudit failed', err));
     return { alreadyVerified: false };
   }
 
@@ -1455,11 +1478,21 @@ export class AuthService {
         logger.info(`Password reset OTP sent to ${user.email} (account ${user.id})`);
       }
 
-      // Spec §9.5 — log each admin reset request and fire an alert when repeated.
+      // Spec §10.4 — log every password reset request to LinkResendLog + AuditLog, not
+      // just admin accounts. Alert logic below still only fires for ADMIN/SUPER_ADMIN.
+      await prisma.linkResendLog.create({
+        data: { linkType: 'PASSWORD_RESET', subjectId: user.id, actorId: user.id },
+      }).catch((err: unknown) => logger.error('[forgotPassword] linkResendLog.create failed', err));
+      writeAudit({
+        actorUserId: user.id,
+        action: 'auth.password-reset.request',
+        objectType: 'user',
+        objectId: user.id,
+        after: { selfService: true },
+      }).catch((err: unknown) => logger.error('[forgotPassword] writeAudit failed', err));
+
+      // Spec §9.5 — alert when admin accounts are repeatedly reset.
       if (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN') {
-        await prisma.linkResendLog.create({
-          data: { linkType: 'PASSWORD_RESET', subjectId: user.id, actorId: user.id },
-        }).catch((err: unknown) => logger.error('[forgotPassword] linkResendLog.create failed', err));
 
         // Count resets in the last 24 h for this admin account.
         const ALERT_WINDOW_HOURS = 24;

@@ -48,7 +48,7 @@ describe('Sticker Scan Flow (F06)', () => {
     cardId = card!.id;
 
     // Create LIGHT subscription (cashback requires active subscription)
-    await createTestSubscription(userId, 'LIGHT');
+    await createTestSubscription(userId, 'PREMIUM_WEEKLY');
 
     // Create test venue with sticker
     const venueData = await createTestVenue(userId);

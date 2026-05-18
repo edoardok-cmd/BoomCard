@@ -9,16 +9,16 @@ import {
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const FALLBACK_BGN: Record<SubscriptionPlan, number> = {
-  BASIC:   r2(PAYOUT_THRESHOLD_BASIC_EUR * EUR_TO_BGN_RATE),
-  LIGHT:   r2(PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR * EUR_TO_BGN_RATE),
-  PREMIUM: r2(PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR * EUR_TO_BGN_RATE),
+  BASIC:          r2(PAYOUT_THRESHOLD_BASIC_EUR * EUR_TO_BGN_RATE),
+  PREMIUM_WEEKLY: r2(PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR * EUR_TO_BGN_RATE),
+  PREMIUM:        r2(PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR * EUR_TO_BGN_RATE),
 };
 
 // 5-minute in-process cache — avoids a DB hit per subscriber during nightly sweeps.
 let _cache: { data: Record<SubscriptionPlan, number>; expiresAt: number } | null = null;
 
 async function loadFromDb(): Promise<Record<SubscriptionPlan, number>> {
-  const plans = ['BASIC', 'LIGHT', 'PREMIUM'] as SubscriptionPlan[];
+  const plans = ['BASIC', 'PREMIUM_WEEKLY', 'PREMIUM'] as SubscriptionPlan[];
   // Query latest row per plan individually so table growth never causes a plan to be missed
   const rows = await Promise.all(
     plans.map((plan) =>

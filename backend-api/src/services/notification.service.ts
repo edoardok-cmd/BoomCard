@@ -862,10 +862,10 @@ export class NotificationService {
    */
   async notifySubscriptionPaused(params: {
     userId: string;
-    gracePeriodEndsAt: Date;
+    pauseEndsAt: Date;
   }): Promise<void> {
     try {
-      const dateStr = params.gracePeriodEndsAt.toLocaleDateString('bg-BG', { timeZone: 'Europe/Sofia' });
+      const dateStr = params.pauseEndsAt.toLocaleDateString('bg-BG', { timeZone: 'Europe/Sofia' });
       await this.createNotification({
         userId: params.userId,
         type: 'SUBSCRIPTION_EXPIRING',
@@ -877,7 +877,7 @@ export class NotificationService {
         actionUrl: '/subscription',
         actionText: 'Renew',
         actionTextBg: 'Поднови',
-        data: { type: 'subscription_paused', gracePeriodEndsAt: params.gracePeriodEndsAt.toISOString() },
+        data: { type: 'subscription_paused', pauseEndsAt: params.pauseEndsAt.toISOString() },
       });
       await this.sendPushNotification({
         userId: params.userId,

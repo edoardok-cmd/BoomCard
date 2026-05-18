@@ -53,7 +53,7 @@ const copy = {
     ticketClosed: 'This ticket is closed — replies are disabled.',
     opened: 'Opened',
     statuses: {
-      NEW: 'New', OPEN: 'Open', WAITING: 'Waiting', RESOLVED: 'Resolved', CLOSED: 'Closed',
+      NEW: 'New', OPEN: 'Open', IN_REVIEW: 'In Review', WAITING: 'Waiting', RESOLVED: 'Resolved', CLOSED: 'Closed', REJECTED: 'Rejected',
     } as Record<TicketStatus, string>,
     priorities: {
       LOW: 'Low', MEDIUM: 'Medium', HIGH: 'High', URGENT: 'Urgent',
@@ -90,7 +90,7 @@ const copy = {
     ticketClosed: 'Заявката е затворена — отговорите са забранени.',
     opened: 'Подадена',
     statuses: {
-      NEW: 'Нова', OPEN: 'Отворена', WAITING: 'Изчакване', RESOLVED: 'Решена', CLOSED: 'Затворена',
+      NEW: 'Нова', OPEN: 'Отворена', IN_REVIEW: 'В преглед', WAITING: 'Изчакване', RESOLVED: 'Решена', CLOSED: 'Затворена', REJECTED: 'Отказана',
     } as Record<TicketStatus, string>,
     priorities: {
       LOW: 'Нисък', MEDIUM: 'Среден', HIGH: 'Висок', URGENT: 'Спешен',
@@ -133,6 +133,8 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
   const t = copy[language as keyof typeof copy] ?? copy.en;
   const qc = useQueryClient();
   const [replyBody, setReplyBody] = useState('');
+  const [rejectReason, setRejectReason] = useState('');
+  const [showRejectInput, setShowRejectInput] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -186,6 +188,17 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
     onError: (err) => toast.error(extractApiError(err, t.priorityError)),
   });
 
+  const rejectMutation = useMutation({
+    mutationFn: (reason: string) => adminHelpService.reject(ticketId!, reason),
+    onSuccess: () => {
+      toast.success(language === 'bg' ? 'Заявката е отказана' : 'Ticket rejected');
+      setShowRejectInput(false);
+      setRejectReason('');
+      invalidateAll();
+    },
+    onError: (err) => toast.error(extractApiError(err, language === 'bg' ? 'Грешка при отказване' : 'Failed to reject ticket')),
+  });
+
   const assignMutation = useMutation({
     // undefined  → self-assign (no body, backend defaults to caller)
     // null       → unassign   (sends { assigneeId: null })
@@ -220,7 +233,7 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
 
   if (!ticketId) return null;
 
-  const isClosed = ticket?.status === 'CLOSED';
+  const isClosed = ticket?.status === 'CLOSED' || ticket?.status === 'REJECTED';
   const busy = replyMutation.isPending;
   const isSuperAdmin = currentUser?.rawRole === 'SUPER_ADMIN';
   // isCreator: true when the current user submitted this ticket, regardless of role.
@@ -317,6 +330,12 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
                   <MetaLabel>{t.opened}</MetaLabel>
                   <MetaValue style={{ fontSize: '0.8125rem' }}>{fmtDate(ticket.createdAt)}</MetaValue>
                 </MetaItem>
+                {(ticket as any).externalEmail && (
+                  <MetaItem>
+                    <MetaLabel>{language === 'bg' ? 'Имейл на подател' : 'Sender email'}</MetaLabel>
+                    <MetaValue style={{ fontSize: '0.8125rem', fontWeight: 500 }}>{(ticket as any).externalEmail}</MetaValue>
+                  </MetaItem>
+                )}
               </MetaGrid>
 
               {/* Controls */}
@@ -328,7 +347,7 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
                     onChange={(e) => statusMutation.mutate(e.target.value as TicketStatus)}
                     disabled={statusMutation.isPending || (isClosed && !isSuperAdmin)}
                   >
-                    {((['NEW', 'OPEN', 'WAITING', 'RESOLVED', 'CLOSED'] as TicketStatus[])
+                    {((['NEW', 'OPEN', 'IN_REVIEW', 'WAITING', 'RESOLVED', 'CLOSED', 'REJECTED'] as TicketStatus[])
                       .filter((s) => !isCreatorOnly || s === ticket.status || s === 'RESOLVED')
                     ).map((s) => (
                       <option key={s} value={s}>{t.statuses[s]}</option>
@@ -351,6 +370,34 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
                     ))}
                   </ControlSelect>
                 </ControlGroup>
+                {ticket && !isClosed && (isSuperAdmin || ticket.assignee?.id === currentUser?.id) && (
+                  <ControlGroup style={{ marginLeft: 'auto' }}>
+                    {showRejectInput ? (
+                      <>
+                        <input
+                          type="text"
+                          placeholder={language === 'bg' ? 'Причина за отказване…' : 'Rejection reason…'}
+                          value={rejectReason}
+                          onChange={(e) => setRejectReason(e.target.value)}
+                          style={{ padding: '0.3rem 0.5rem', border: '1px solid #e8e5dc', borderRadius: '0.375rem', fontSize: '0.8125rem', width: '14rem' }}
+                        />
+                        <RejectBtn
+                          onClick={() => { if (rejectReason.trim().length >= 10) rejectMutation.mutate(rejectReason.trim()); }}
+                          disabled={rejectMutation.isPending || rejectReason.trim().length < 10}
+                        >
+                          {rejectMutation.isPending ? (language === 'bg' ? 'Обработване…' : 'Processing…') : (language === 'bg' ? 'Потвърди' : 'Confirm')}
+                        </RejectBtn>
+                        <CancelBtn onClick={() => { setShowRejectInput(false); setRejectReason(''); }}>
+                          {language === 'bg' ? 'Отказ' : 'Cancel'}
+                        </CancelBtn>
+                      </>
+                    ) : (
+                      <RejectBtn onClick={() => setShowRejectInput(true)}>
+                        {language === 'bg' ? 'Откажи заявката' : 'Reject ticket'}
+                      </RejectBtn>
+                    )}
+                  </ControlGroup>
+                )}
               </ControlsRow>
             </>
           )}
@@ -391,7 +438,9 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
         <ReplyArea>
           {ticketError ? null : isClosed ? (
             <ClosedNote>
-              {t.ticketClosed}
+              {ticket?.status === 'REJECTED'
+                ? (language === 'bg' ? 'Заявката е отказана — отговорите са забранени.' : 'This ticket is rejected — replies are disabled.')
+                : t.ticketClosed}
               {isSuperAdmin && (
                 <ReopenHint>
                   {language === 'bg'
@@ -501,12 +550,14 @@ const CategoryPill = styled.span<{ $cat: TicketCategory }>`
 const StatusPill = styled.span<{ $status: TicketStatus }>`
   ${pill}
   background: ${({ $status }) => ({
-    NEW: palette.dangerSoft, OPEN: palette.infoSoft, WAITING: palette.warningSoft,
-    RESOLVED: palette.successSoft, CLOSED: palette.border,
+    NEW: palette.dangerSoft, OPEN: palette.infoSoft, IN_REVIEW: palette.infoSoft,
+    WAITING: palette.warningSoft, RESOLVED: palette.successSoft, CLOSED: palette.border,
+    REJECTED: palette.dangerSoft,
   }[$status])};
   color: ${({ $status }) => ({
-    NEW: palette.danger, OPEN: palette.info, WAITING: palette.warning,
-    RESOLVED: palette.success, CLOSED: palette.textMuted,
+    NEW: palette.danger, OPEN: palette.info, IN_REVIEW: palette.info,
+    WAITING: palette.warning, RESOLVED: palette.success, CLOSED: palette.textMuted,
+    REJECTED: palette.danger,
   }[$status])};
 `;
 
@@ -616,4 +667,19 @@ const ClosedNote = styled.p`
 
 const ReopenHint = styled.span`
   font-style: italic;
+`;
+
+const RejectBtn = styled.button`
+  padding: 0.3rem 0.75rem; border: 1px solid ${palette.danger}; border-radius: 0.375rem;
+  background: transparent; color: ${palette.danger}; font-size: 0.8rem; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+  &:hover:not(:disabled) { background: ${palette.dangerSoft}; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
+
+const CancelBtn = styled.button`
+  padding: 0.3rem 0.6rem; border: 1px solid ${palette.border}; border-radius: 0.375rem;
+  background: transparent; color: ${palette.textMuted}; font-size: 0.8rem;
+  cursor: pointer;
+  &:hover { background: ${palette.border}; }
 `;

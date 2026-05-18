@@ -86,7 +86,10 @@ model User {
   superAdminRequests      PendingSuperAdminRequest[] @relation("SuperAdminRequester")
   subscriptions           Subscription[]
   triggeredLinkResends    LinkResendLog[]            @relation("LinkResendLogActor")
-  wallet                  Wallet?
+  partnerStatusChanges         PartnerStatusChange[]      @relation("PartnerStatusChanger")
+  criticalActionRequests       CriticalActionRequest[]    @relation("CriticalActionRequester")
+  criticalActionResolutions    CriticalActionRequest[]    @relation("CriticalActionResolver")
+  wallet                       Wallet?
 
   @@unique([email, role])
   @@index([email])
@@ -107,6 +110,37 @@ model PendingSuperAdminRequest {
 
   @@index([requestedById])
   @@map("pending_super_admin_requests")
+}
+
+// Spec §10.3 — generic queue for critical admin actions that require a second
+// SUPER_ADMIN to approve before execution. The `actionType` field identifies
+// the class of action; `payload` carries the action-specific data (e.g. target
+// user ID, new value). The resolver (approver or rejecter) acts on the pending
+// row and then executes or discards the underlying operation.
+//
+// Supported actionTypes (extend as needed):
+//   BULK_PAYOUT_OVERRIDE   — bulk payout amount override above the safety cap
+//   PARTNER_ARCHIVE        — irreversible archive of an active partner
+//   ADMIN_PERMISSION_GRANT — granting a sensitive permission outside normal flow
+model CriticalActionRequest {
+  id             String    @id @default(uuid())
+  actionType     String    // e.g. "BULK_PAYOUT_OVERRIDE", "PARTNER_ARCHIVE"
+  requestedById  String
+  status         String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  payload        Json
+  note           String?
+  resolvedById   String?
+  resolvedAt     DateTime?
+  resolvedNote   String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  requestedBy    User      @relation("CriticalActionRequester", fields: [requestedById], references: [id])
+  resolvedBy     User?     @relation("CriticalActionResolver",  fields: [resolvedById],  references: [id])
+
+  @@index([status])
+  @@index([requestedById])
+  @@index([createdAt])
+  @@map("critical_action_requests")
 }
 
 model RefreshToken {
@@ -272,9 +306,11 @@ model PartnerStatusChange {
   changedById String?
   createdAt   DateTime      @default(now())
   partner     Partner       @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  changedBy   User?         @relation("PartnerStatusChanger", fields: [changedById], references: [id], onDelete: SetNull)
 
   @@index([partnerId])
   @@index([partnerId, createdAt])
+  @@index([changedById])
 }
 
 model PartnerRequestNote {
@@ -480,6 +516,7 @@ model Plan {
 model Transaction {
   id                String             @id @default(uuid())
   userId            String
+  subscriptionId    String?            // Spec §4.2/4.3 — subscription active at transaction time
   partnerId         String?
   venueId           String?
   offerId           String?
@@ -488,6 +525,7 @@ model Transaction {
   type              TransactionType
   status            TransactionStatus
   amount            Float
+  marginAmount      Float?             // Spec §4.3 — persisted at creation; immutable to rate changes
   discount          Float?
   discountAmount    Float?
   finalAmount       Float?
@@ -513,11 +551,13 @@ model Transaction {
   booking           Booking?           @relation(fields: [bookingId], references: [id])
   offer             Offer?             @relation(fields: [offerId], references: [id])
   partner           Partner?           @relation(fields: [partnerId], references: [id])
+  subscription      Subscription?      @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
   user              User               @relation(fields: [userId], references: [id])
   venue             Venue?             @relation(fields: [venueId], references: [id])
   walletTransaction WalletTransaction?
 
   @@index([userId])
+  @@index([subscriptionId])
   @@index([partnerId])
   @@index([venueId])
   @@index([cardId])
@@ -576,7 +616,7 @@ model WalletTransaction {
   receipt               Receipt?                @relation(fields: [receiptId], references: [id])
   stickerScan           StickerScan?            @relation(fields: [stickerScanId], references: [id])
   transaction           Transaction?            @relation(fields: [transactionId], references: [id])
-  wallet                Wallet                  @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  wallet                Wallet                  @relation(fields: [walletId], references: [id], onDelete: Restrict)
 
   @@index([walletId])
   @@index([type])
@@ -609,7 +649,7 @@ model Subscription {
   payseraOrderId            String?            @unique
   planId                    String?
   autoRenewal               Boolean            @default(true)
-  gracePeriodEndsAt         DateTime?
+  pauseEndsAt               DateTime?
   // Stripe-only: incremented by the stripe.service webhook handler on each
   // invoice.payment_failed event; reset to 0 on payment success or on
   // FAILED_PAYMENT transition. Always 0 for Paysera subscriptions (Paysera
@@ -630,7 +670,8 @@ model Subscription {
   // bit 0 = 3d, bit 1 = 1d, bit 2 = day-of. Reset on renewal.
   renewalRemindersSent      Int                @default(0)
   planDetails               Plan?              @relation(fields: [planId], references: [id])
-  user                      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                      User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  transactions              Transaction[]
 
   @@index([userId])
   @@index([status])
@@ -813,7 +854,7 @@ model VenueReceiptTemplate {
   venueId          String
   merchantName     String
   description      String?
-  expectedKeywords String?
+  expectedKeywords String[]
   imageUrl         String
   imageKey         String
   perceptualHash   String
@@ -1123,7 +1164,7 @@ model Card {
   id           String        @id @default(uuid())
   userId       String
   cardNumber   String        @unique
-  type         CardType      @default(LIGHT)
+  type         CardType      @default(PREMIUM_WEEKLY)
   status       CardStatus    @default(ACTIVE)
   qrCode       String
   createdAt    DateTime      @default(now())
@@ -1149,6 +1190,11 @@ model Sticker {
   totalScans    Int             @default(0)
   lastScannedAt DateTime?
   metadata      String?
+  // Spec §5.4 — when a QR label is physically replaced, the new sticker's row
+  // links back to the superseded one so the replacement chain is queryable.
+  replacedById  String?
+  replacedBy    Sticker?        @relation("StickerReplacement", fields: [replacedById], references: [id])
+  replacedByOf  Sticker[]       @relation("StickerReplacement")
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   location      StickerLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
@@ -1672,6 +1718,24 @@ model OrphanInboundEmail {
   @@index([replayedAt])
 }
 
+/// Spec §G7 — inbound bounces (delivery failures, auto-replies, OOO that match
+/// no open ticket). Persisted for alerting and audit; not surfaced in the
+/// ticket UI unless the operator queries directly.
+model InboundBounce {
+  id        String   @id @default(uuid())
+  fromEmail String
+  toEmail   String?
+  subject   String?
+  messageId String?
+  ticketId  String?
+  alerted   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([fromEmail])
+  @@index([ticketId])
+  @@index([createdAt])
+}
+
 enum UserRole {
   USER
   PARTNER
@@ -1838,7 +1902,7 @@ enum WalletTransactionStatus {
 }
 
 enum SubscriptionPlan {
-  LIGHT
+  PREMIUM_WEEKLY
   BASIC
   PREMIUM
 }
@@ -1992,7 +2056,7 @@ enum ScanStatus {
 }
 
 enum CardType {
-  LIGHT
+  PREMIUM_WEEKLY
   BASIC
   PREMIUM
 }

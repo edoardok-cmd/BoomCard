@@ -258,6 +258,17 @@ class StripeService {
 
   /**
    * Create Subscription
+   *
+   * Spec §4.2 — single-attempt enforcement:
+   * We do NOT disable Stripe smart retries at the API level here (e.g. via
+   * `payment_settings.payment_method_options` or a separate smart-retry toggle)
+   * because Stripe's retry window is controlled at the account level and
+   * overriding per-subscription is unreliable across Stripe API versions.
+   * Instead, the webhook handler (handleInvoicePaymentFailed) enforces the
+   * single-attempt policy: the very first `invoice.payment_failed` event sets
+   * the subscription to FAILED_PAYMENT and increments `retryAttempt`; any
+   * subsequent retry events are ignored via the `retryAttempt > 0` guard.
+   * If a retry eventually succeeds, handlePaymentSucceeded resets the counter.
    */
   async createSubscription(params: {
     customerId: string;
@@ -742,17 +753,18 @@ class StripeService {
     try {
       // Determine plan from Stripe price ID, falling back to metadata
       const priceId = subscription.items.data[0]?.price.id;
-      let plan: 'LIGHT' | 'BASIC' | 'PREMIUM' = 'LIGHT';
+      let plan: 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' = 'PREMIUM_WEEKLY';
 
       // Reverse-lookup the plan from the configured Stripe price IDs
-      const priceIdToPlan: Record<string, 'LIGHT' | 'BASIC' | 'PREMIUM'> = {};
+      const priceIdToPlan: Record<string, 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM'> = {};
       const PRICE_IDS = {
-        LIGHT: process.env.STRIPE_LIGHT_PRICE_ID || 'price_LIGHT',
+        // Env var kept as STRIPE_LIGHT_PRICE_ID for backward compat with existing deployments.
+        PREMIUM_WEEKLY: process.env.STRIPE_PREMIUM_WEEKLY_PRICE_ID || process.env.STRIPE_LIGHT_PRICE_ID || 'price_PREMIUM_WEEKLY',
         BASIC: process.env.STRIPE_BASIC_PRICE_ID || 'price_BASIC',
         PREMIUM: process.env.STRIPE_PREMIUM_PRICE_ID || 'price_PREMIUM',
       };
       for (const [key, val] of Object.entries(PRICE_IDS)) {
-        priceIdToPlan[val] = key as 'LIGHT' | 'BASIC' | 'PREMIUM';
+        priceIdToPlan[val] = key as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM';
       }
 
       if (priceId && priceIdToPlan[priceId]) {
@@ -818,7 +830,7 @@ class StripeService {
 
       // Sync card type when subscription becomes active (handles INCOMPLETE→ACTIVE
       // transitions after payment completes). Without this, users who create an
-      // incomplete subscription and pay later keep a LIGHT card indefinitely.
+      // incomplete subscription and pay later keep a PREMIUM_WEEKLY card indefinitely.
       if (mappedStatus === 'ACTIVE' || mappedStatus === 'TRIALING') {
         const { cardService } = await import('./card.service');
         await cardService.syncCardTypeWithSubscription(userId, plan);
@@ -893,14 +905,14 @@ class StripeService {
             canceledAt: finalStatus === 'CANCELLED'
               ? (dbSub.canceledAt ?? new Date())
               : dbSub.canceledAt,
-            gracePeriodEndsAt: null,
+            pauseEndsAt: null,
             retryAttempt: 0,
           },
         });
 
         // Check if the user has another active subscription (e.g. they upgraded
         // to a new Stripe subscription before the old one was deleted). Sync card
-        // to the surviving plan rather than blindly downgrading to LIGHT.
+        // to the surviving plan rather than blindly downgrading to PREMIUM_WEEKLY.
         const otherActiveSub = await prisma.subscription.findFirst({
           where: {
             userId: dbSub.userId,
@@ -910,7 +922,7 @@ class StripeService {
           orderBy: { createdAt: 'desc' },
         });
 
-        const targetPlan = otherActiveSub?.plan ?? 'LIGHT';
+        const targetPlan = otherActiveSub?.plan ?? 'PREMIUM_WEEKLY';
         const { cardService } = await import('./card.service');
         await cardService.syncCardTypeWithSubscription(dbSub.userId, targetPlan);
 
@@ -1005,7 +1017,7 @@ class StripeService {
             status: 'ACTIVE',
             retryAttempt: 0,
             failedPaymentAt: null,
-            gracePeriodEndsAt: null,
+            pauseEndsAt: null,
             currentPeriodStart: invoice.period_start ? new Date(invoice.period_start * 1000) : undefined,
             currentPeriodEnd: invoice.period_end ? new Date(invoice.period_end * 1000) : undefined,
             // Spec §8.3 v1.1 — new period → fresh reminder cadence.

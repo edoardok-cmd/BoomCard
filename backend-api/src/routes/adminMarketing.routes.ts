@@ -207,7 +207,7 @@ async function buildRecipientsFromSyncKey(syncKey: string): Promise<DispatchReci
     }
     case 'premium_holders': {
       const rows = await prisma.user.findMany({
-        where: { marketingConsentEmail: true, status: { not: UserStatus.DELETED }, subscriptions: { some: { status: { in: ['ACTIVE', 'TRIALING'] }, plan: { in: ['PREMIUM', 'LIGHT'] } } } },
+        where: { marketingConsentEmail: true, status: { not: UserStatus.DELETED }, subscriptions: { some: { status: { in: ['ACTIVE', 'TRIALING'] }, plan: { in: ['PREMIUM', 'PREMIUM_WEEKLY'] } } } },
         select: userSel,
       });
       return rows.map(toUser);
@@ -1395,11 +1395,15 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
         status: 'ACTIVE',
       },
       // Spec §8.2/#8.3 — billing.month_end: scheduler fires this for every active partner at month start.
+      // DRAFT: notificationService.notifyPartnerMonthlyStatement() already sends a rich email (with
+      // actual figures) AND an in-app notification. Activating this automation would send a second,
+      // generic email with no financial data. Keep DRAFT until automationDispatcher supports template
+      // variable interpolation so the automation can replace the service-level email entirely.
       {
         trigger: 'billing.month_end',
         name: 'Partner Monthly Financial Summary',
         templateId: tplPartnerMonthlySummary.id,
-        status: 'ACTIVE',
+        status: 'DRAFT',
       },
       // Spec §8.2 — support.reply: DRAFT until §11 ticketing fires this trigger on staff reply.
       {
@@ -1424,12 +1428,20 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
       },
     ];
 
-    const results: { trigger: string; action: 'created' | 'ok' }[] = [];
+    const results: { trigger: string; action: 'created' | 'updated' | 'ok' }[] = [];
     for (const def of specDefaults) {
       const existing = await prisma.marketingAutomation.findUnique({ where: { trigger: def.trigger } });
       if (!existing) {
         await prisma.marketingAutomation.create({ data: def });
         results.push({ trigger: def.trigger, action: 'created' });
+      } else if (existing.templateId !== def.templateId) {
+        // Template was deleted and re-seeded with a new ID — update the pointer so
+        // the automation doesn't silently skip with a dangling FK.
+        await prisma.marketingAutomation.update({
+          where: { trigger: def.trigger },
+          data: { templateId: def.templateId },
+        });
+        results.push({ trigger: def.trigger, action: 'updated' });
       } else {
         results.push({ trigger: def.trigger, action: 'ok' });
       }

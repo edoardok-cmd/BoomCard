@@ -61,10 +61,15 @@ export interface TicketEmailHeaders {
  *
  * `inReplyTo` — when set, populates In-Reply-To + References so the recipient's
  * mail client visually threads the response under their original message.
+ *
+ * `references` — full RFC 5322 ancestry chain (oldest first). If provided,
+ * used as-is for the References header. If omitted but `inReplyTo` is set,
+ * falls back to `[inReplyTo]` as a single-element chain.
  */
 export function buildTicketHeaders(args: {
   ticketId: string;
   inReplyTo?: string | null;
+  references?: string[];  // full chain of prior Message-IDs, oldest first
 }): TicketEmailHeaders {
   const messageId = newMessageId(args.ticketId);
   const headers: Record<string, string> = {
@@ -73,7 +78,8 @@ export function buildTicketHeaders(args: {
   };
   if (args.inReplyTo) {
     headers['In-Reply-To'] = args.inReplyTo;
-    headers['References'] = args.inReplyTo;
+    const refs = args.references?.length ? args.references : [args.inReplyTo];
+    headers['References'] = refs.join(' ');
   }
   return { headers, messageId };
 }

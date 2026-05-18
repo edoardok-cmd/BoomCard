@@ -25,6 +25,7 @@ import { logger } from '../utils/logger';
 import { writeAudit } from '../middleware/audit.middleware';
 import { emailService } from './email.service';
 import { buildTicketSubject, buildTicketHeaders } from './ticketEmail.service';
+import { notificationService } from './notification.service';
 
 export interface InboundEmailPayload {
   /** RFC 5321 sender — bare email or "Name <email@host>" */
@@ -170,11 +171,50 @@ export interface IngestResult {
 export async function ingestInboundEmail(
   payload: InboundEmailPayload
 ): Promise<IngestResult> {
-  // Bounce / DSN: never create a ticket, never reply. Just log.
+  // Bounce / DSN: never create a ticket, never reply.
   if (isBounce(payload)) {
-    logger.warn(
-      `[ticketInbound] bounce/DSN detected from=${payload.from} subject="${payload.subject}" — dropped`
-    );
+    logger.warn(`[ticketInbound] bounce/DSN from=${payload.from} subject="${payload.subject}" — dropped`);
+
+    // Persist for multi-bounce tracking
+    try {
+      await prisma.inboundBounce.create({
+        data: {
+          fromEmail: normalizeAddress(payload.from),
+          toEmail: payload.to || null,
+          subject: payload.subject || null,
+          messageId: payload.messageId || null,
+        },
+      });
+      // Alert assignee if 3+ bounces from same address in last 30 days
+      const bounceCount = await prisma.inboundBounce.count({
+        where: {
+          fromEmail: normalizeAddress(payload.from),
+          alerted: false,
+          createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+        },
+      });
+      if (bounceCount >= 3) {
+        await prisma.inboundBounce.updateMany({
+          where: {
+            fromEmail: normalizeAddress(payload.from),
+            alerted: false,
+          },
+          data: { alerted: true },
+        });
+        notificationService
+          .notifyAdminOps({
+            opsType: `bounce_alert_${normalizeAddress(payload.from)}`,
+            title: 'Многократни bounce-и от имейл адрес',
+            message: `${bounceCount} bounce-а от ${normalizeAddress(payload.from)} за последните 30 дни`,
+            severity: 'warning',
+            fields: [{ label: 'Адрес', value: normalizeAddress(payload.from) }],
+          })
+          .catch(() => {});
+      }
+    } catch (err) {
+      logger.error('[ticketInbound] failed to persist bounce record:', err);
+    }
+
     return { ticketId: '', replyId: undefined, created: false };
   }
 
@@ -256,6 +296,20 @@ export async function ingestInboundEmail(
     }).catch((err) =>
       logger.error(`[ticketInbound] failed to send auto-reply for ${ticket.id}:`, err),
     );
+
+    notificationService
+      .notifyAdminOps({
+        opsType: `help_ticket_created_email_${ticket.id}`,
+        title: `Имейл заявка: ${inferRequestType(payload.to || '')}`,
+        message: cleanedSubject,
+        severity: 'info',
+        fields: [
+          { label: 'От', value: fromEmail },
+          { label: 'До', value: payload.to || '' },
+          { label: 'Ticket ID', value: ticket.id },
+        ],
+      })
+      .catch((err) => logger.warn('[ticketInbound] failed to notify admin ops of email ticket:', err));
 
     return { ticketId: ticket.id, created: true };
   }
@@ -400,6 +454,7 @@ async function sendInboundAutoReply(args: {
   const threading = buildTicketHeaders({
     ticketId: args.ticketId,
     inReplyTo: args.inReplyTo,
+    references: args.inReplyTo ? [args.inReplyTo] : [],
   });
   const subject = buildTicketSubject(args.ticketId, `Re: ${args.originalSubject}`);
 
@@ -428,12 +483,8 @@ async function sendInboundAutoReply(args: {
     </table>
   </td></tr></table>
 </body></html>`;
-  const text =
-    `Здравейте,\n\n` +
-    `Получихме вашата заявка и тя е регистрирана. ` +
-    `За да добавите информация, просто отговорете на този имейл — съобщението ще бъде прикачено автоматично.\n\n` +
-    `Спешен случай: support@boomcard.bg\n\n` +
-    `— Екипът на BoomCard`;
+  const ref = subject.match(/\[#[a-f0-9]+\]/i)?.[0] ?? '';
+  const text = `Здравейте,\n\nПолучихме вашата заявка и тя е регистрирана с референция ${ref}. За да добавите информация, просто отговорете на този имейл — съобщението ще бъде прикачено автоматично.\n\nСпешен случай: support@boomcard.bg\n\n— Екипът на BoomCard`;
 
   // Audit-pass [5.4]: persist the reply row FIRST. If we sent the email
   // before recording the Message-ID and the DB write failed, a user reply

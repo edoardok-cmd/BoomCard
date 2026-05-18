@@ -184,14 +184,8 @@ class ReceiptTemplateService {
         : 0.5;
 
       // 3. Keyword presence (full score when no keywords or no OCR text)
-      const keywords: string[] = template.expectedKeywords
-        ? (() => {
-            try {
-              return JSON.parse(template.expectedKeywords) as string[];
-            } catch {
-              return [];
-            }
-          })()
+      const keywords: string[] = Array.isArray(template.expectedKeywords)
+        ? template.expectedKeywords
         : [];
       const kwScore =
         ocrRawText && keywords.length > 0
@@ -227,9 +221,7 @@ class ReceiptTemplateService {
         venueId:          params.venueId,
         merchantName:     params.merchantName,
         description:      params.description,
-        expectedKeywords: params.expectedKeywords
-          ? JSON.stringify(params.expectedKeywords)
-          : undefined,
+        expectedKeywords: params.expectedKeywords ?? [],
         imageUrl:         params.imageUrl,
         imageKey:         params.imageKey,
         perceptualHash:   params.perceptualHash,
@@ -240,24 +232,10 @@ class ReceiptTemplateService {
 
   /** Returns all templates for a venue (active and inactive), newest first. */
   async listTemplates(venueId: string) {
-    const templates = await prisma.venueReceiptTemplate.findMany({
+    return prisma.venueReceiptTemplate.findMany({
       where:   { venueId },
       orderBy: { createdAt: 'desc' },
     });
-
-    // Parse expectedKeywords JSON for consumers
-    return templates.map(t => ({
-      ...t,
-      expectedKeywords: t.expectedKeywords
-        ? (() => {
-            try {
-              return JSON.parse(t.expectedKeywords) as string[];
-            } catch {
-              return [];
-            }
-          })()
-        : [],
-    }));
   }
 
   async updateTemplate(id: string, params: UpdateTemplateParams) {
@@ -271,7 +249,7 @@ class ReceiptTemplateService {
         ...(params.description  !== undefined && { description:  params.description }),
         ...(params.isActive     !== undefined && { isActive:     params.isActive }),
         ...(params.expectedKeywords !== undefined && {
-          expectedKeywords: JSON.stringify(params.expectedKeywords),
+          expectedKeywords: params.expectedKeywords,
         }),
       },
     });

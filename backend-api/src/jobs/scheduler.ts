@@ -25,6 +25,8 @@
  *   marketing-list-sync              — 30 2 * * *   (2:30 AM daily — after cashback-expiry)
  *   inactive-user-nudge              — 30 4 * * *   (4:30 AM daily — 30-day inactivity automations)
  *   activation-link-expiry-reminder  — 30 10 * * *  (10:30 AM daily — §8.3 email + admin alert 24h before expiry)
+ *   partner-sla-escalation           — 0 * * * *    (every hour — §5.1 admin alert for partner applications past 24h SLA)
+ *   ticket-auto-close                — 0 23 * * *   (11:00 PM daily — §11.4 auto-close RESOLVED tickets after 7 days)
  */
 
 import cron from 'node-cron';
@@ -116,7 +118,15 @@ export async function expireWallet(walletId: string, now: Date): Promise<number>
         //     status=COMPLETED and does not clear cashbackExpiresAt, so without
         //     this filter the next nightly sweep would cancel a paid-out row
         //     and erase the PAID audit trail.
-        cashbackStatus: { notIn: [CashbackEntryStatus.LOCKED, CashbackEntryStatus.PAID] },
+        // OR null — legacy pre-lifecycle-column entries that pre-date the
+        //   cashbackStatus column. SQL `NOT IN (...)` never matches NULL
+        //   (NULL comparisons are undefined in SQL), so the OR branch is
+        //   required to include them; omitting it would leave those entries
+        //   expiring in the notification job but never in the actual sweep.
+        OR: [
+          { cashbackStatus: { notIn: [CashbackEntryStatus.LOCKED, CashbackEntryStatus.PAID] } },
+          { cashbackStatus: null },
+        ],
       },
     });
 
@@ -202,6 +212,15 @@ async function runCashbackExpiry(): Promise<void> {
       type: WalletTransactionType.CASHBACK_CREDIT,
       status: WalletTransactionStatus.COMPLETED,
       cashbackExpiresAt: { lt: now },
+      // Mirror expireWallet's own OR guard: skip LOCKED (in-flight payout,
+      // balance already debited) and PAID (terminal), but include null-status
+      // legacy entries. SQL `NOT IN (...)` excludes NULLs, so the OR branch
+      // is required to pick up pre-lifecycle-column rows that expireWallet
+      // now also processes.
+      OR: [
+        { cashbackStatus: { notIn: [CashbackEntryStatus.LOCKED, CashbackEntryStatus.PAID] } },
+        { cashbackStatus: null },
+      ],
     },
     select: { walletId: true },
     distinct: ['walletId'],
@@ -349,7 +368,7 @@ async function expireCancelledSubscriptions(): Promise<void> {
 
       // Check if the user has another active subscription (e.g. they re-subscribed
       // before the old period ended). If so, sync card to the new plan rather than
-      // blindly downgrading to LIGHT.
+      // blindly downgrading to PREMIUM_WEEKLY.
       const otherActiveSub = await prisma.subscription.findFirst({
         where: {
           userId: sub.userId,
@@ -359,7 +378,7 @@ async function expireCancelledSubscriptions(): Promise<void> {
         orderBy: { createdAt: 'desc' },
       });
 
-      const targetPlan = otherActiveSub?.plan ?? 'LIGHT';
+      const targetPlan = otherActiveSub?.plan ?? 'PREMIUM_WEEKLY';
 
       // Dynamic import to avoid circular dependency (card → subscription → scheduler)
       const { cardService } = await import('../services/card.service');
@@ -806,7 +825,7 @@ async function resolveTrialPendingCashback(): Promise<void> {
           orderBy: { createdAt: 'desc' },
           select: { plan: true, metadata: true },
         });
-        const plan: SubscriptionPlan = sub?.plan ?? 'LIGHT';
+        const plan: SubscriptionPlan = sub?.plan ?? 'PREMIUM_WEEKLY';
         const threshold = await getPayoutThresholdBGN(plan);
         const preBal = updatedWallet.availableBalance - totalAmount;
         if (preBal < threshold && updatedWallet.availableBalance >= threshold) {
@@ -921,7 +940,7 @@ export async function syncMarketingListSizes(): Promise<void> {
         where: {
           marketingConsentEmail: true,
           status: { not: 'DELETED' as any },
-          subscriptions: { some: { status: { in: ['ACTIVE', 'TRIALING'] }, plan: { in: ['PREMIUM', 'LIGHT'] } } },
+          subscriptions: { some: { status: { in: ['ACTIVE', 'TRIALING'] }, plan: { in: ['PREMIUM', 'PREMIUM_WEEKLY'] } } },
         },
       }),
     basic_holders: () =>
@@ -1016,11 +1035,17 @@ async function notifyCashbackExpiring(): Promise<void> {
     where: {
       type: WalletTransactionType.CASHBACK_CREDIT,
       status: WalletTransactionStatus.COMPLETED,
-      // Only CLEARED cashback is at risk of expiry. PAID entries keep
-      // status=COMPLETED but do not clear cashbackExpiresAt (see expireWallet
-      // comment), so without this filter paid-out cashback would trigger
-      // spurious "expiring soon" warnings.
-      cashbackStatus: CashbackEntryStatus.CLEARED,
+      // Warn for CLEARED entries and legacy entries with null cashbackStatus.
+      // PAID entries keep status=COMPLETED but must not trigger spurious warnings
+      // (they no longer carry a spendable balance). LOCKED entries are committed
+      // to an in-flight payout and will not expire, so no warning is needed.
+      // null rows are legacy pre-lifecycle-column entries; expireWallet's OR
+      // clause now includes them in the sweep. Warn here so users aren't
+      // expired without notice.
+      OR: [
+        { cashbackStatus: CashbackEntryStatus.CLEARED },
+        { cashbackStatus: null },
+      ],
       cashbackExpiresAt: { gte: warnFrom, lte: warnUntil },
     },
     select: { walletId: true },
@@ -1167,6 +1192,88 @@ async function remindExpiringActivationLinks(): Promise<void> {
   }
 
   logger.info(`[activation-link-expiry-reminder] Done — reminded ${reminded}/${links.length} partner(s)`);
+}
+
+// ── Partner SLA overdue escalation (Spec §5.1) ───────────────────────────────
+// Hourly scan: find partner applications stuck in a non-terminal request status
+// for more than 24 h. Posts an admin-ops alert per overdue partner (with a 20 h
+// cooldown so we don't spam on every tick).
+
+async function escalateOverduePartnerSla(): Promise<void> {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  const overduePartners = await prisma.partner.findMany({
+    where: {
+      joinedAt: { lte: cutoff },
+      requestStatus: {
+        notIn: ['ODOBRENA', 'OTKAZANA'],
+        not: null,
+      },
+    },
+    select: { id: true, businessName: true, joinedAt: true, requestStatus: true },
+  });
+
+  if (overduePartners.length === 0) {
+    logger.info('[partner-sla-escalation] No overdue partner applications');
+    return;
+  }
+
+  logger.info(`[partner-sla-escalation] ${overduePartners.length} overdue partner application(s)`);
+
+  for (const partner of overduePartners) {
+    const hoursElapsed = Math.round((Date.now() - partner.joinedAt.getTime()) / 36e5 * 10) / 10;
+    try {
+      await notificationService.notifyAdminOps({
+        opsType: `partner-sla-overdue-${partner.id}`,
+        title: 'Partner SLA Overdue',
+        message: `Application "${partner.businessName}" (status: ${partner.requestStatus}) has been open for ${hoursElapsed}h — past the 24h internal SLA.`,
+        severity: 'critical',
+        actionUrl: `/admin/partners?id=${partner.id}`,
+        relatedEntityType: 'Partner',
+        relatedEntityId: partner.id,
+        cooldownHours: 20,
+      });
+    } catch (err) {
+      logger.error(`[partner-sla-escalation] Failed to alert for partner ${partner.id}:`, err);
+    }
+  }
+
+  logger.info(`[partner-sla-escalation] Alerted on ${overduePartners.length} overdue application(s)`);
+}
+
+// ── Ticket auto-close (Spec §11.4) ────────────────────────────────────────────
+// "Затворена: Заявителят е потвърдил или 7 дни без отговор след 'Решена'."
+// Runs at 11 PM nightly: auto-close RESOLVED tickets with no activity for 7+ days.
+
+async function autoCloseResolvedTickets(): Promise<void> {
+  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const tickets = await prisma.helpTicket.findMany({
+    where: { status: 'RESOLVED', updatedAt: { lte: cutoff } },
+    select: { id: true, subject: true, userId: true, user: { select: { email: true, firstName: true } } },
+    take: 200,
+  });
+  if (!tickets.length) return;
+
+  await prisma.helpTicket.updateMany({
+    where: { id: { in: tickets.map((t) => t.id) } },
+    data: { status: 'CLOSED' },
+  });
+
+  // Notify each creator — fire-and-forget per ticket
+  for (const t of tickets) {
+    if (t.user.email) {
+      emailService
+        .sendEmail({
+          to: t.user.email,
+          subject: `[Заявката затворена] ${t.subject}`,
+          html: `<p>Здравей, ${t.user.firstName || t.user.email},</p><p>Вашата заявка беше затворена автоматично, тъй като 7 дни са изминали след маркирането й като решена без допълнителна комуникация.</p><p style="color:#999;font-size:12px;">Ticket ID: ${t.id}</p>`,
+          text: `Здравей, ${t.user.firstName || t.user.email},\n\nВашата заявка беше затворена автоматично след 7 дни без активност след маркиране като решена.\n\nTicket ID: ${t.id}`,
+        })
+        .catch(() => {});
+    }
+  }
+
+  logger.info(`[ticket-auto-close] closed ${tickets.length} RESOLVED tickets older than 7 days`);
 }
 
 export function registerScheduledJobs(): void {
@@ -1325,4 +1432,20 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: activation-link-expiry-reminder (30 10 * * *)');
+
+  // Every hour — scan for partner applications past the 24h internal SLA.
+  // Spec §5.1: posts an admin-ops alert per overdue application (20h cooldown).
+  cron.schedule('0 * * * *', () => {
+    escalateOverduePartnerSla().catch((err) => alertSchedulerFailure('partner-sla-escalation', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: partner-sla-escalation (0 * * * *)');
+
+  // 11 PM every day — auto-close RESOLVED tickets with no activity for 7+ days.
+  // Spec §11.4: "Затворена: Заявителят е потвърдил или 7 дни без отговор след 'Решена'."
+  cron.schedule('0 23 * * *', () => {
+    autoCloseResolvedTickets().catch((err) => alertSchedulerFailure('ticket-auto-close', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: ticket-auto-close (0 23 * * *)');
 }

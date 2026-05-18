@@ -26,11 +26,10 @@
  *      may need to join Partner.status — see Open Questions in the audit
  *      report; a v_active_stickers view is the cleanest follow-up if needed.
  *
- * TODO(post-§5-audit M6): no current reporting code filters on
- * Sticker.status='ACTIVE' alone, so no regression today. Any future
- * "operationally active stickers" query MUST also gate on the owning
- * partner being status=ACTIVE AND verifiedAt IS NOT NULL — extract to a
- * `v_active_stickers` SQL view if more than one caller needs it.
+ * Any future "operationally active stickers" query MUST also gate on the
+ * owning partner — use isPartnerOperationallyActive(partner) exported from
+ * this module. No current reporting code filters on Sticker.status='ACTIVE'
+ * alone, so no regression today, but the helper is now the authoritative check.
  *
  * NB: This service deliberately does NOT call writeAudit() — the AuditLog row
  * with the action label "PARTNER_STATUS_CHANGED" is written by the caller so
@@ -41,6 +40,25 @@
 import { PartnerStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { logger } from '../utils/logger';
+
+/**
+ * Spec §5.3 / §5.4 v1.1 — single source of truth for "is this partner
+ * operationally active?"  A partner is operationally active when BOTH:
+ *   1. status === ACTIVE
+ *   2. verifiedAt IS NOT NULL  (activation link was consumed by the partner)
+ *
+ * Use this instead of checking only `partner.status === 'ACTIVE'` everywhere.
+ * The verifiedAt=null case means admin approved but partner never clicked the
+ * link — QR scans must be blocked (handled in sticker.service) and the partner
+ * must not appear in public venue listings.
+ *
+ * Reporting queries: any query filtering on `Sticker.status = 'ACTIVE'` MUST
+ * also join the owning partner and call this check, otherwise suspended partners'
+ * stickers appear active in reports.
+ */
+export function isPartnerOperationallyActive(partner: { status: string; verifiedAt: Date | null }): boolean {
+  return partner.status === PartnerStatus.ACTIVE && partner.verifiedAt !== null;
+}
 
 export interface SetPartnerStatusParams {
   partnerId: string;

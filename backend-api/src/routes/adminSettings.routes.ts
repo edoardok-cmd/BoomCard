@@ -57,7 +57,7 @@ async function resolveAdminName(userId: string): Promise<string | null> {
 
 const PLAN_FALLBACK_BGN: Record<SubscriptionPlan, number> = {
   BASIC:   Math.round(PAYOUT_THRESHOLD_BASIC_EUR * EUR_TO_BGN_RATE * 100) / 100,
-  LIGHT:   Math.round(PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR * EUR_TO_BGN_RATE * 100) / 100,
+  PREMIUM_WEEKLY: Math.round(PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR * EUR_TO_BGN_RATE * 100) / 100,
   PREMIUM: Math.round(PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR * EUR_TO_BGN_RATE * 100) / 100,
 };
 
@@ -70,7 +70,7 @@ router.get(
   '/payout-thresholds',
   requirePermission('settings.read'),
   asyncHandler(async (_req: AuthRequest, res: Response) => {
-    const plans: SubscriptionPlan[] = ['BASIC', 'LIGHT', 'PREMIUM'];
+    const plans: SubscriptionPlan[] = ['BASIC', 'PREMIUM_WEEKLY', 'PREMIUM'];
     const rows = await Promise.all(
       plans.map((plan) =>
         prisma.payoutThreshold.findFirst({ where: { plan }, orderBy: { createdAt: 'desc' } })
@@ -131,7 +131,7 @@ router.get(
 
 /**
  * PUT /api/admin/settings/payout-thresholds
- * Body: { thresholds: { BASIC?: number; LIGHT?: number; PREMIUM?: number }, notes?: string }
+ * Body: { thresholds: { BASIC?: number; PREMIUM_WEEKLY?: number; PREMIUM?: number }, notes?: string }
  * Creates versioned rows for each plan supplied.
  */
 router.put(
@@ -147,11 +147,11 @@ router.put(
       return res.status(400).json({ success: false, error: 'thresholds object with at least one plan is required' });
     }
 
-    const validPlans = new Set<string>(['BASIC', 'LIGHT', 'PREMIUM']);
+    const validPlans = new Set<string>(['BASIC', 'PREMIUM_WEEKLY', 'PREMIUM']);
     const entries = Object.entries(thresholds) as [SubscriptionPlan, number][];
     for (const [plan, amount] of entries) {
       if (!validPlans.has(plan)) {
-        return res.status(400).json({ success: false, error: `Invalid plan: ${plan}. Must be BASIC, LIGHT, or PREMIUM.` });
+        return res.status(400).json({ success: false, error: `Invalid plan: ${plan}. Must be BASIC, PREMIUM_WEEKLY, or PREMIUM.` });
       }
       if (typeof amount !== 'number' || isNaN(amount) || amount < 0 || amount > 10000) {
         return res.status(400).json({ success: false, error: `minAmount for ${plan} must be a number between 0 and 10000` });

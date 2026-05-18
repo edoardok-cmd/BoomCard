@@ -1284,20 +1284,22 @@ export async function payEntry(entryId: string, adminUserId: string): Promise<vo
 }
 
 /**
- * Backfill cashbackExpiresAt = createdAt + 60 days for pre-migration CASHBACK_CREDIT rows.
+ * Backfill cashbackExpiresAt = clearedAt + 60 days for pre-migration CASHBACK_CREDIT rows.
+ * Uses clearedAt per spec §4.4 (60-day window anchored to when cashback cleared, not created).
+ * Falls back to createdAt for rows where clearedAt is null (immediate-credit legacy rows).
  * Idempotent — only touches rows where cashbackExpiresAt IS NULL.
  */
 export async function backfillCashbackExpiry(): Promise<number> {
   const rows = await prisma.walletTransaction.findMany({
     where: { type: 'CASHBACK_CREDIT', cashbackExpiresAt: null },
-    select: { id: true, createdAt: true },
+    select: { id: true, createdAt: true, clearedAt: true },
   });
   if (rows.length === 0) return 0;
   await Promise.all(
     rows.map(r =>
       prisma.walletTransaction.update({
         where: { id: r.id },
-        data: { cashbackExpiresAt: new Date(r.createdAt.getTime() + 60 * 24 * 60 * 60 * 1000) },
+        data: { cashbackExpiresAt: new Date((r.clearedAt ?? r.createdAt).getTime() + 60 * 24 * 60 * 60 * 1000) },
       }),
     ),
   );

@@ -152,7 +152,7 @@ describe('Receipt Upload & Offer Redemption (F07, F08)', () => {
       createdUserIds.push(user.id);
 
       const card = await prisma.card.findFirst({ where: { userId: user.id } });
-      expect(card?.type).toBe('LIGHT');
+      expect(card?.type).toBe('PREMIUM_WEEKLY');
 
       const receipt = await prisma.receipt.create({
         data: {
