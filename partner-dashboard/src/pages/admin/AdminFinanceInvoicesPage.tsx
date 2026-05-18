@@ -26,7 +26,10 @@ const palette = {
   purple: '#7c3aed', purpleSoft: '#ede9fe',
 };
 
-const PageShell = styled.div`background: ${palette.bg}; min-height: calc(100vh - 4rem); padding: 2rem 2.5rem;`;
+const PageShell = styled.div`
+  background: ${palette.bg}; min-height: calc(100vh - 4rem); padding: 2rem 2.5rem;
+  @media print { visibility: hidden; }
+`;
 const PageHeader = styled.div`display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; gap: 1rem; flex-wrap: wrap;`;
 const TitleBlock = styled.div``;
 const Eyebrow = styled.p`font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: ${palette.textSubtle}; margin-bottom: 0.25rem;`;
@@ -107,6 +110,58 @@ const BtnSecondary = styled.button`padding: 0.5rem 1.125rem; background: ${palet
 // Generate modal
 const GenModalBody = styled.div`display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem;`;
 const GenInput = styled.input`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.9rem; background: ${palette.bg}; color: ${palette.text}; outline: none; &:focus { border-color: ${palette.accent}; }`;
+
+// Print invoice modal
+const PrintOverlay = styled.div`
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000;
+  display: flex; align-items: center; justify-content: center; padding: 1.5rem;
+  @media print {
+    visibility: visible;
+    background: none; position: fixed; inset: 0; padding: 0;
+    align-items: flex-start; justify-content: flex-start;
+  }
+`;
+const PrintSheet = styled.div`
+  background: #fff; border-radius: 0.75rem; padding: 3rem;
+  width: 100%; max-width: 44rem; max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.2);
+  @media print {
+    visibility: visible;
+    max-height: none; overflow: visible; border-radius: 0; box-shadow: none; padding: 2rem;
+    max-width: 100%;
+  }
+`;
+const PrintActions = styled.div`
+  display: flex; gap: 0.75rem; margin-bottom: 2rem;
+  @media print { display: none; }
+`;
+const InvHeader = styled.div`display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2.5rem;`;
+const InvLogo = styled.div`font-size: 1.5rem; font-weight: 900; color: #c96442; letter-spacing: -0.02em;`;
+const InvTitle = styled.div`text-align: right;`;
+const InvNum = styled.div`font-size: 1rem; font-weight: 700; color: #141413;`;
+const InvDate = styled.div`font-size: 0.8125rem; color: #605a50; margin-top: 0.25rem;`;
+const InvParties = styled.div`display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2.5rem;`;
+const InvParty = styled.div``;
+const InvPartyLabel = styled.div`font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #8c8678; margin-bottom: 0.5rem;`;
+const InvPartyName = styled.div`font-size: 0.9375rem; font-weight: 700; color: #141413;`;
+const InvPartyMeta = styled.div`font-size: 0.8125rem; color: #605a50; margin-top: 0.25rem;`;
+const InvTable = styled.table`width: 100%; border-collapse: collapse; margin-bottom: 2rem;`;
+const InvTh = styled.th`text-align: left; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: #8c8678; padding: 0.625rem 0.75rem; border-bottom: 2px solid #e8e5dc;`;
+const InvThRight = styled(InvTh)`text-align: right;`;
+const InvTd = styled.td`padding: 0.75rem 0.75rem; font-size: 0.875rem; color: #605a50; border-bottom: 1px solid #f0ede6;`;
+const InvTdRight = styled(InvTd)`text-align: right; font-variant-numeric: tabular-nums;`;
+const InvTdBold = styled(InvTd)`font-weight: 700; color: #141413;`;
+const InvTotalRow = styled.tr`background: #faf9f5;`;
+const InvTotalLabel = styled.td`padding: 0.875rem 0.75rem; font-weight: 700; font-size: 0.9375rem; color: #141413;`;
+const InvTotalAmount = styled.td`padding: 0.875rem 0.75rem; font-weight: 800; font-size: 1.125rem; color: #141413; text-align: right; font-variant-numeric: tabular-nums;`;
+const InvFooter = styled.div`margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid #e8e5dc; font-size: 0.75rem; color: #8c8678; text-align: center;`;
+const InvStatusBanner = styled.div<{ $paid: boolean }>`
+  display: inline-flex; align-items: center; gap: 0.375rem;
+  padding: 0.25rem 0.75rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 700;
+  background: ${(p) => p.$paid ? '#e6efe3' : '#f5ead2'};
+  color: ${(p) => p.$paid ? '#4a7c59' : '#b5803a'};
+  margin-bottom: 2rem;
+`;
 
 // Cashback mark-paid modal state type
 interface CbMarkPaidModalState {
@@ -274,8 +329,11 @@ export default function AdminFinanceInvoicesPage() {
   const [notesValue, setNotesValue]   = useState('');
   const [cbMarkPaidModal, setCbMarkPaidModal] = useState<CbMarkPaidModalState | null>(null);
   const [invoiceActionModal, setInvoiceActionModal] = useState<InvoiceActionModal | null>(null);
-  const [exporting, setExporting]     = useState(false);
-  const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv'>('xlsx');
+  const [printInvoice, setPrintInvoice]   = useState<AdminInvoice | null>(null);
+  const [exporting, setExporting]         = useState(false);
+  const [exportFormat, setExportFormat]   = useState<'xlsx' | 'csv'>('xlsx');
+  const [cbExporting, setCbExporting]     = useState(false);
+  const [cbExportFormat, setCbExportFormat] = useState<'xlsx' | 'csv'>('xlsx');
   const [generateModal, setGenerateModal] = useState(false);
   const [generateMonth, setGenerateMonth] = useState(() => {
     const now = new Date();
@@ -291,6 +349,17 @@ export default function AdminFinanceInvoicesPage() {
       toast.error('Грешка при експорт');
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleCbExport = async () => {
+    setCbExporting(true);
+    try {
+      await adminFinanceService.exportCashbackSummary({ month: cbMonth || undefined, status: cbStatusFilter || undefined, format: cbExportFormat });
+    } catch {
+      toast.error('Грешка при експорт');
+    } finally {
+      setCbExporting(false);
     }
   };
 
@@ -376,6 +445,15 @@ export default function AdminFinanceInvoicesPage() {
   };
 
   const columns: ColumnDef<AdminInvoice>[] = [
+    {
+      key: 'invoiceNumber',
+      header: 'Номер',
+      render: (row) => (
+        <span style={{ fontFamily: 'monospace', fontSize: '0.8125rem', fontWeight: 700, color: row.invoiceNumber ? palette.text : palette.textSubtle }}>
+          {row.invoiceNumber ?? '—'}
+        </span>
+      ),
+    },
     {
       key: 'partner',
       header: 'Партньор',
@@ -514,6 +592,23 @@ export default function AdminFinanceInvoicesPage() {
             </ExportBtn>
           </HeaderActions>
         )}
+        {view === 'cashback' && (
+          <HeaderActions>
+            <div style={{ display: 'flex', gap: 0 }}>
+              <ExportBtn
+                style={{ borderRadius: '0.5rem 0 0 0.5rem', borderRight: 'none', background: cbExportFormat === 'xlsx' ? palette.accent : palette.surface, color: cbExportFormat === 'xlsx' ? '#fff' : palette.textMuted }}
+                onClick={() => setCbExportFormat('xlsx')} disabled={cbExporting}
+              >XLSX</ExportBtn>
+              <ExportBtn
+                style={{ borderRadius: '0 0.5rem 0.5rem 0', background: cbExportFormat === 'csv' ? palette.accent : palette.surface, color: cbExportFormat === 'csv' ? '#fff' : palette.textMuted }}
+                onClick={() => setCbExportFormat('csv')} disabled={cbExporting}
+              >CSV</ExportBtn>
+            </div>
+            <ExportBtn onClick={handleCbExport} disabled={cbExporting}>
+              {cbExporting ? 'Експортиране…' : '↓ Експорт'}
+            </ExportBtn>
+          </HeaderActions>
+        )}
       </PageHeader>
 
       {view === 'cashback' && (
@@ -627,6 +722,11 @@ export default function AdminFinanceInvoicesPage() {
               onClick: (row) => setInvoiceActionModal({ type: 'pending', row }),
             },
             {
+              label: 'Разпечатай фактура',
+              hidden: () => false,
+              onClick: (row) => setPrintInvoice(row),
+            },
+            {
               // Notes are allowed on any period status — see PATCH /invoices/:id/notes
               label: 'Редакция бележки',
               hidden: () => false,
@@ -666,7 +766,7 @@ export default function AdminFinanceInvoicesPage() {
             <ModalTitle>Генерирай фактури за месец</ModalTitle>
             <ModalSub>
               Създава PENDING фактури за всички партньори с одобрени сканирания.
-              Съществуващи записи се обновяват с новите суми.
+              Съществуващи неплатени записи се обновяват с новите суми; платените фактури се запазват непроменени.
             </ModalSub>
             <GenModalBody>
               <FilterLabel htmlFor="gen-month">Месец</FilterLabel>
@@ -772,6 +872,100 @@ export default function AdminFinanceInvoicesPage() {
               </ModalActions>
             </Modal>
           </Overlay>
+        );
+      })()}
+
+      {/* ── Printable invoice modal ─────────────────────────────────────────── */}
+      {printInvoice && (() => {
+        const inv = printInvoice;
+        const obligation = inv.totalCashbackOwed + inv.marginAmount;
+        const issueDate = inv.paidAt ? new Date(inv.paidAt) : new Date(inv.createdAt);
+        return (
+          <PrintOverlay onClick={() => setPrintInvoice(null)}>
+            <PrintSheet onClick={(e) => e.stopPropagation()}>
+              <PrintActions>
+                <BtnPrimary onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                  🖨 Разпечатай
+                </BtnPrimary>
+                <BtnSecondary onClick={() => setPrintInvoice(null)}>Затвори</BtnSecondary>
+              </PrintActions>
+
+              <InvHeader>
+                <InvLogo>BoomCard</InvLogo>
+                <InvTitle>
+                  <InvNum>Фактура {inv.invoiceNumber ?? '—'}</InvNum>
+                  <InvDate>Период: {inv.month}</InvDate>
+                  <InvDate>Издадена: {issueDate.toLocaleDateString('bg-BG', { day: '2-digit', month: 'long', year: 'numeric' })}</InvDate>
+                </InvTitle>
+              </InvHeader>
+
+              {inv.status === 'PAID'
+                ? <InvStatusBanner $paid={true}>✓ ПЛАТЕНА</InvStatusBanner>
+                : inv.status === 'OVERDUE'
+                  ? <InvStatusBanner $paid={false}>⚠ ПРОСРОЧЕНА</InvStatusBanner>
+                  : <InvStatusBanner $paid={false}>ИЗЧАКВАНЕ НА ПЛАЩАНЕ</InvStatusBanner>
+              }
+
+              <InvParties>
+                <InvParty>
+                  <InvPartyLabel>Издател</InvPartyLabel>
+                  <InvPartyName>BoomCard</InvPartyName>
+                  <InvPartyMeta>office@boomcard.bg</InvPartyMeta>
+                </InvParty>
+                <InvParty>
+                  <InvPartyLabel>Получател</InvPartyLabel>
+                  <InvPartyName>{inv.partner.businessName}</InvPartyName>
+                  {inv.partner.city && <InvPartyMeta>{inv.partner.city}</InvPartyMeta>}
+                </InvParty>
+              </InvParties>
+
+              <InvTable>
+                <thead>
+                  <tr>
+                    <InvTh>Описание</InvTh>
+                    <InvThRight>Оборот</InvThRight>
+                    <InvThRight>%</InvThRight>
+                    <InvThRight>Сума</InvThRight>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <InvTdBold>Кешбек задължение — {inv.month}</InvTdBold>
+                    <InvTdRight>{inv.turnoverAmount ? bgn(inv.turnoverAmount) : '—'}</InvTdRight>
+                    <InvTdRight>{inv.contractedRate != null ? `${inv.contractedRate}%` : '—'}</InvTdRight>
+                    <InvTdRight>{bgn(inv.totalCashbackOwed)}</InvTdRight>
+                  </tr>
+                  {inv.marginAmount > 0 && (
+                    <tr>
+                      <InvTd>Марджин BoomCard</InvTd>
+                      <InvTdRight>—</InvTdRight>
+                      <InvTdRight>—</InvTdRight>
+                      <InvTdRight>{bgn(inv.marginAmount)}</InvTdRight>
+                    </tr>
+                  )}
+                  <InvTotalRow>
+                    <InvTotalLabel colSpan={3}>Общо дължимо</InvTotalLabel>
+                    <InvTotalAmount>{bgn(obligation)}</InvTotalAmount>
+                  </InvTotalRow>
+                </tbody>
+              </InvTable>
+
+              {inv.notes && (
+                <div style={{ fontSize: '0.8125rem', color: '#605a50', marginBottom: '1rem' }}>
+                  <strong>Бележки:</strong> {inv.notes}
+                </div>
+              )}
+
+              <InvFooter>
+                BoomCard · office@boomcard.bg · boomcard.bg
+                {inv.paidAt && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    Платено на: {new Date(inv.paidAt).toLocaleDateString('bg-BG', { day: '2-digit', month: 'long', year: 'numeric' })}
+                  </div>
+                )}
+              </InvFooter>
+            </PrintSheet>
+          </PrintOverlay>
         );
       })()}
     </PageShell>

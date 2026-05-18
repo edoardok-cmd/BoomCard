@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
-import { adminSettingsService } from '../../services/adminSettings.service';
+import { adminSettingsService, SystemSettingHistoryRow } from '../../services/adminSettings.service';
 import { latestMeta, formatAuditStamp, describeApiError } from '../../utils/systemSettingsAudit';
 
 const palette = {
@@ -27,6 +27,17 @@ const CardTitle = styled.h2`font-size: 1rem; font-weight: 700; color: ${palette.
 const FieldGroup = styled.div`display: flex; flex-direction: column; gap: 1.25rem; margin-bottom: 1.5rem;`;
 const FieldLabel = styled.label`font-size: 0.875rem; font-weight: 600; color: ${palette.textMuted}; display: block; margin-bottom: 0.375rem;`;
 const FieldHint = styled.p`font-size: 0.8rem; color: ${palette.textSubtle}; margin: 0.25rem 0 0;`;
+const ResetLink = styled.button`
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: ${palette.accent};
+  cursor: pointer;
+  margin-left: 0.375rem;
+  &:hover { text-decoration: underline; }
+`;
 const TextInput = styled.input`
   width: 100%;
   padding: 0.5rem 0.875rem;
@@ -249,6 +260,75 @@ const DangerBtn = styled.button`
   &:hover { opacity: 0.9; }
 `;
 
+// ── History ───────────────────────────────────────────────────────────────────
+
+const HistoryList = styled.div`display: flex; flex-direction: column; gap: 0.4rem; max-height: 16rem; overflow-y: auto; margin-top: 0.75rem;`;
+const HistoryItem = styled.div`
+  display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 0.5rem;
+  padding: 0.5rem 0.625rem; border: 1px solid ${palette.border}; border-radius: 0.5rem;
+  background: ${palette.bg}; font-size: 0.7875rem;
+`;
+const KeyBadge = styled.span`
+  display: inline-block; padding: 0.08rem 0.4rem; border-radius: 0.2rem;
+  font-size: 0.67rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  background: #f3e8de; color: #c96442; white-space: nowrap;
+`;
+const HistoryDate = styled.span`font-size: 0.7rem; color: ${palette.textSubtle}; white-space: nowrap;`;
+
+const SYSTEM_KEY_LABELS: Record<string, string> = {
+  support_email:       'Email поддръжка',
+  support_phone:       'Телефон',
+  reply_to_email:      'Reply-To',
+  from_email:          'From имейл',
+  sender_name:         'Изпращач',
+  language:            'Език',
+  currency:            'Валута',
+  timezone:            'Часова зона',
+  maintenance_mode:    'Поддръжка',
+  maintenance_message: 'Съобщение',
+};
+
+const CONTACT_KEYS      = ['support_email', 'support_phone', 'reply_to_email', 'from_email', 'sender_name'];
+const LOCALIZATION_KEYS = ['language', 'currency', 'timezone'];
+const MAINTENANCE_KEYS  = ['maintenance_mode', 'maintenance_message'];
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleString('bg-BG', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+function SystemHistoryRows({ rows, loading }: { rows: SystemSettingHistoryRow[]; loading: boolean }) {
+  if (loading) return <p style={{ color: '#8c8678', fontSize: '0.8125rem', margin: '0.5rem 0 0' }}>Зареждане…</p>;
+  if (rows.length === 0) return <p style={{ color: '#8c8678', fontSize: '0.8125rem', margin: '0.5rem 0 0' }}>Няма история.</p>;
+  return (
+    <HistoryList>
+      {rows.map(row => (
+        <HistoryItem key={row.id}>
+          <div>
+            <KeyBadge>{SYSTEM_KEY_LABELS[row.key] ?? row.key}</KeyBadge>
+            <div style={{ marginTop: '0.25rem', color: '#141413', fontSize: '0.7875rem' }}>
+              {row.oldValue !== null && row.oldValue !== ''
+                ? <><span style={{ color: '#8c8678' }}>{row.oldValue || '—'}</span>{' → '}<strong>{row.newValue || '(изчистено)'}</strong></>
+                : <strong>{row.newValue || '(изчистено)'}</strong>
+              }
+            </div>
+            {row.changedByName && (
+              <div style={{ fontSize: '0.7rem', color: '#8c8678', marginTop: '0.1rem' }}>от {row.changedByName}</div>
+            )}
+            {row.notes && (
+              <div style={{ fontSize: '0.7rem', color: '#605a50', marginTop: '0.15rem', fontStyle: 'italic' }}>
+                „{row.notes}"
+              </div>
+            )}
+          </div>
+          <HistoryDate>{fmtDate(row.createdAt)}</HistoryDate>
+        </HistoryItem>
+      ))}
+    </HistoryList>
+  );
+}
+
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const TIMEZONES = [
@@ -284,6 +364,7 @@ function useSystemSettingsMutation(successMsg: string) {
     onSuccess: () => {
       toast.success(successMsg);
       queryClient.invalidateQueries({ queryKey: ['admin-system-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-system-settings-history'] });
     },
     onError: (err: unknown) => {
       toast.error(describeApiError(err).message);
@@ -316,6 +397,21 @@ export default function AdminSettingsSystemPage() {
   const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ['admin-system-settings'],
     queryFn: () => adminSettingsService.getSystemSettings(),
+  });
+
+  const { data: contactHistoryData, isLoading: contactHistoryLoading } = useQuery({
+    queryKey: ['admin-system-settings-history', 'contact'],
+    queryFn: () => adminSettingsService.getSystemSettingsHistory(CONTACT_KEYS),
+  });
+
+  const { data: localizationHistoryData, isLoading: localizationHistoryLoading } = useQuery({
+    queryKey: ['admin-system-settings-history', 'localization'],
+    queryFn: () => adminSettingsService.getSystemSettingsHistory(LOCALIZATION_KEYS),
+  });
+
+  const { data: maintenanceHistoryData, isLoading: maintenanceHistoryLoading } = useQuery({
+    queryKey: ['admin-system-settings-history', 'maintenance'],
+    queryFn: () => adminSettingsService.getSystemSettingsHistory(MAINTENANCE_KEYS),
   });
 
   const meta = data?.meta ?? {};
@@ -384,6 +480,10 @@ export default function AdminSettingsSystemPage() {
   };
 
   const serverMaintenanceEnabled = data?.data?.maintenance_mode === 'true';
+
+  const contactHistoryRows      = contactHistoryData?.data      ?? [];
+  const localizationHistoryRows = localizationHistoryData?.data ?? [];
+  const maintenanceHistoryRows  = maintenanceHistoryData?.data  ?? [];
 
   // Toggle: enabling requires confirmation only when the server is currently OFF.
   // If the server is already ON and the user toggled OFF then back ON (local-only
@@ -529,6 +629,14 @@ export default function AdminSettingsSystemPage() {
                 />
                 <FieldHint>
                   Адресът в полето „От:" на всички системни имейли. При липса се използва адресът от SMTP конфигурацията на сървъра.
+                  {fromEmail !== 'noreply@boomcard.bg' && (
+                    <ResetLink
+                      type="button"
+                      onClick={() => setFromEmail('noreply@boomcard.bg')}
+                    >
+                      Възстанови по подразбиране
+                    </ResetLink>
+                  )}
                 </FieldHint>
               </div>
               <div>
@@ -551,6 +659,7 @@ export default function AdminSettingsSystemPage() {
               {contactMutation.isPending ? 'Запазване…' : 'Запази'}
             </SaveBtn>
           </CardFooter>
+          <SystemHistoryRows rows={contactHistoryRows} loading={contactHistoryLoading} />
         </Card>
 
         {/* ── Card 2: Локализация ───────────────────────────────────────── */}
@@ -599,6 +708,7 @@ export default function AdminSettingsSystemPage() {
               {localizationMutation.isPending ? 'Запазване…' : 'Запази'}
             </SaveBtn>
           </CardFooter>
+          <SystemHistoryRows rows={localizationHistoryRows} loading={localizationHistoryLoading} />
         </Card>
 
         {/* ── Card 3: Режим на поддръжка ───────────────────────────────── */}
@@ -647,6 +757,7 @@ export default function AdminSettingsSystemPage() {
               {maintenanceMutation.isPending ? 'Запазване…' : 'Запази'}
             </SaveBtn>
           </CardFooter>
+          <SystemHistoryRows rows={maintenanceHistoryRows} loading={maintenanceHistoryLoading} />
         </Card>
       </Grid>
       )}

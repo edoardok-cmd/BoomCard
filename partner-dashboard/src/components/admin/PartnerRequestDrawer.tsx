@@ -79,13 +79,14 @@ interface Props {
   canWrite: boolean;
   onApproved?: () => void;
   onRejected?: () => void;
+  initialTab?: Tab;
 }
 
-export default function PartnerRequestDrawer({ partnerId, onClose, canWrite, onApproved, onRejected }: Props) {
-  const { language } = useLanguage();
+export default function PartnerRequestDrawer({ partnerId, onClose, canWrite, onApproved, onRejected, initialTab }: Props) {
+  const { language, t } = useLanguage();
   const { user: currentUser } = useAuth();
   const qc = useQueryClient();
-  const [activeTab, setActiveTab] = useState<Tab>('details');
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab ?? 'details');
   const [noteBody, setNoteBody] = useState('');
   const [noteInternal, setNoteInternal] = useState(true);
   const [rejectReason, setRejectReason] = useState('');
@@ -100,10 +101,10 @@ export default function PartnerRequestDrawer({ partnerId, onClose, canWrite, onA
     return () => document.removeEventListener('keydown', onKey);
   }, [partnerId, onClose]);
 
-  // Reset tab when drawer opens for a different partner
+  // Reset tab when drawer opens for a different partner, respecting initialTab
   useEffect(() => {
-    if (partnerId) { setActiveTab('details'); setShowReject(false); setNoteBody(''); }
-  }, [partnerId]);
+    if (partnerId) { setActiveTab(initialTab ?? 'details'); setShowReject(false); setNoteBody(''); }
+  }, [partnerId, initialTab]);
 
   const { data: detailData, isLoading, isError } = useQuery({
     queryKey: ['partner-request-detail', partnerId],
@@ -138,54 +139,84 @@ export default function PartnerRequestDrawer({ partnerId, onClose, canWrite, onA
   const approveMutation = useMutation({
     mutationFn: () => adminPartnerRequestsService.approve(partnerId!),
     onSuccess: () => {
-      toast.success(isEn ? 'Partner approved' : 'Партньорът е одобрен');
+      toast.success(t('admin.requestApproved'));
       invalidate();
       onApproved?.();
       onClose();
     },
-    onError: () => toast.error(isEn ? 'Error approving partner' : 'Грешка при одобряване'),
+    onError: () => toast.error(t('admin.drawerErrorApproving')),
   });
 
   const rejectMutation = useMutation({
     mutationFn: () => adminPartnerRequestsService.reject(partnerId!, rejectReason),
     onSuccess: () => {
-      toast.success(isEn ? 'Request rejected' : 'Заявката е отхвърлена');
+      toast.success(t('admin.drawerRequestRejected'));
       setShowReject(false);
       invalidate();
       onRejected?.();
       onClose();
     },
-    onError: () => toast.error(isEn ? 'Error rejecting request' : 'Грешка при отхвърляне'),
+    onError: () => toast.error(t('admin.drawerErrorRejecting')),
   });
 
   const advanceMutation = useMutation({
     mutationFn: (requestStatus: string) =>
       adminPartnerRequestsService.advancePipeline(partnerId!, requestStatus),
     onSuccess: () => {
-      toast.success(isEn ? 'Status advanced' : 'Статусът е обновен');
+      toast.success(t('admin.drawerStatusAdvanced'));
       invalidate();
     },
-    onError: () => toast.error(isEn ? 'Error updating status' : 'Грешка при обновяване'),
+    onError: () => toast.error(t('admin.drawerErrorUpdatingStatus')),
   });
 
   const assignMutation = useMutation({
     mutationFn: (adminId: string | null) =>
       adminPartnerRequestsService.assign(partnerId!, adminId),
     onSuccess: () => {
-      toast.success(isEn ? 'Assigned' : 'Назначено');
+      toast.success(t('admin.drawerAssigned'));
       invalidate();
     },
-    onError: () => toast.error(isEn ? 'Error assigning' : 'Грешка при назначаване'),
+    onError: () => toast.error(t('admin.drawerErrorAssigning')),
   });
 
   const addNoteMutation = useMutation({
     mutationFn: () => adminPartnerRequestsService.addNote(partnerId!, noteBody.trim(), noteInternal),
     onSuccess: () => {
-      toast.success(isEn ? 'Note added' : 'Бележката е добавена');
+      toast.success(t('admin.drawerNoteAdded'));
       setNoteBody('');
       qc.invalidateQueries({ queryKey: ['partner-request-notes', partnerId] });
     },
-    onError: () => toast.error(isEn ? 'Error adding note' : 'Грешка при добавяне'),
+    onError: () => toast.error(t('admin.drawerErrorAddingNote')),
+  });
+
+  const contractMutation = useMutation({
+    mutationFn: (signed: boolean) => adminPartnerRequestsService.setContractSigned(partnerId!, signed),
+    onSuccess: () => {
+      toast.success(isEn ? 'Contract status updated' : 'Статусът на договора е обновен');
+      invalidate();
+    },
+    onError: () => toast.error(isEn ? 'Error updating contract status' : 'Грешка при обновяване на договор'),
+  });
+
+  // Spec §5.2 v1.1 — resend activation link
+  const resendActivationMutation = useMutation({
+    mutationFn: () => adminPartnerRequestsService.resendActivation(partnerId!),
+    onSuccess: () => {
+      toast.success(isEn ? 'Activation link resent' : 'Активационният линк е изпратен повторно');
+      invalidate();
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error || (isEn ? 'Failed to resend' : 'Грешка при изпращане');
+      toast.error(msg);
+    },
+  });
+
+  // Activation link history — only loaded when partner is approved but not yet activated
+  const { data: activationLinksData } = useQuery({
+    queryKey: ['partner-activation-links', partnerId],
+    queryFn: () => adminPartnerRequestsService.getActivationLinks(partnerId!),
+    enabled: !!partnerId && !!detailData?.partner && detailData.partner.status === 'ACTIVE' && !detailData.partner.verifiedAt,
+    staleTime: 30_000,
   });
 
   const partner: PartnerDetail | undefined = detailData?.partner;
@@ -199,7 +230,7 @@ export default function PartnerRequestDrawer({ partnerId, onClose, canWrite, onA
   const pipelineLabel = PIPELINE_LABELS[pipelineStatus];
   const nextStep = NEXT_PIPELINE_STEP[pipelineStatus];
 
-  const canApprove = canWrite && pipelineStatus === 'ONBOARDING';
+  const canApprove = canWrite && pipelineStatus === 'ODOBRENA';
   const canAdvance = canWrite && !!nextStep && pipelineStatus !== 'ODOBRENA' && pipelineStatus !== 'OTKAZANA';
   const canAssignSelf = canWrite && !partner?.assignedAdminId;
   const canUnassign = canWrite && !!partner?.assignedAdminId;
@@ -395,8 +426,195 @@ export default function PartnerRequestDrawer({ partnerId, onClose, canWrite, onA
               )}
               {partner.discountRate != null && (
                 <Field>
-                  <FieldLabel>{isEn ? 'Discount rate' : 'Отстъпка'}</FieldLabel>
+                  <FieldLabel>{isEn ? 'Negotiated discount %' : 'Договорена отстъпка %'}</FieldLabel>
                   <FieldValue>{partner.discountRate}%</FieldValue>
+                </Field>
+              )}
+              {/* Spec §5.1 v1.1 — declared number of venues */}
+              {partner.requestObjectCount && (
+                <Field>
+                  <FieldLabel>{isEn ? 'Declared venues' : 'Брой обекти (заявени)'}</FieldLabel>
+                  <FieldValue>{partner.requestObjectCount}</FieldValue>
+                </Field>
+              )}
+              {/* Spec §5.1 v1.1 — internal 24h SLA badge */}
+              {partner.sla && !partner.sla.isClosed && (
+                <Field>
+                  <FieldLabel>{isEn ? 'Pickup SLA (24h internal)' : 'SLA за поемане (24ч вътрешен)'}</FieldLabel>
+                  <FieldValue>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center',
+                      padding: '0.2rem 0.625rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 700,
+                      background: partner.sla.state === 'overdue' ? palette.dangerSoft
+                               : partner.sla.state === 'warning' ? palette.warningSoft
+                               : palette.successSoft,
+                      color: partner.sla.state === 'overdue' ? palette.danger
+                           : partner.sla.state === 'warning' ? palette.warning
+                           : palette.success,
+                    }}>
+                      {partner.sla.state === 'overdue'
+                        ? (isEn ? `Overdue by ${Math.round(partner.sla.hoursElapsed - 24)}h` : `Просрочена с ${Math.round(partner.sla.hoursElapsed - 24)}ч`)
+                        : (isEn ? `${Math.round(partner.sla.hoursRemaining)}h remaining` : `${Math.round(partner.sla.hoursRemaining)}ч остават`)
+                      }
+                    </span>
+                    <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: palette.textSubtle }}>
+                      {isEn ? '(external: до 2 working days)' : '(външно: до 2 работни дни)'}
+                    </span>
+                  </FieldValue>
+                </Field>
+              )}
+              {/* Spec §5.2 — contract tracking */}
+              {(() => {
+                const f = partner.features as Record<string, unknown> | null | undefined;
+                const contractSigned = !!f?.contractSigned;
+                const contractDate = f?.contractSignedAt as string | undefined;
+                return (
+                  <Field>
+                    <FieldLabel>{isEn ? 'Contract' : 'Договор'}</FieldLabel>
+                    <FieldValue>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                          padding: '0.2rem 0.625rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 700,
+                          background: contractSigned ? palette.successSoft : palette.warningSoft,
+                          color: contractSigned ? palette.success : palette.warning,
+                        }}>
+                          {contractSigned ? '✓ ' : '⚠ '}
+                          {contractSigned
+                            ? (isEn ? 'Signed' : 'Подписан')
+                            : (isEn ? 'Not signed' : 'Не е подписан')}
+                        </span>
+                        {contractSigned && contractDate && (
+                          <span style={{ fontSize: '0.75rem', color: palette.textSubtle }}>
+                            {fmtDateShort(contractDate, isEn ? 'en-GB' : 'bg-BG')}
+                          </span>
+                        )}
+                        {canWrite && (
+                          <button
+                            onClick={() => contractMutation.mutate(!contractSigned)}
+                            disabled={contractMutation.isPending}
+                            style={{
+                              padding: '0.2rem 0.625rem', borderRadius: '0.375rem',
+                              fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
+                              background: 'transparent',
+                              border: `1px solid ${palette.border}`,
+                              color: palette.textMuted,
+                            }}
+                          >
+                            {contractSigned
+                              ? (isEn ? 'Mark unsigned' : 'Отмени')
+                              : (isEn ? 'Mark signed' : 'Маркирай като подписан')}
+                          </button>
+                        )}
+                      </div>
+                    </FieldValue>
+                  </Field>
+                );
+              })()}
+              {/* Spec §5.2 v1.1 — activation panel: shown while partner is approved
+                  (status=ACTIVE) but not yet activated (verifiedAt is null). */}
+              {partner.status === 'ACTIVE' && !partner.verifiedAt && (
+                <Field $wide>
+                  <FieldLabel>{isEn ? 'Activation link' : 'Активационен линк'}</FieldLabel>
+                  <div style={{
+                    border: `1px solid ${palette.warning}`,
+                    background: palette.warningSoft,
+                    borderRadius: '0.5rem',
+                    padding: '0.75rem 0.875rem',
+                    display: 'flex', flexDirection: 'column', gap: '0.5rem',
+                  }}>
+                    <div style={{ fontSize: '0.8125rem', color: palette.text }}>
+                      {isEn
+                        ? 'Awaiting activation. Partner has 72h from issue to click the link. Each resend invalidates the previous link.'
+                        : 'Очаква активиране. Партньорът има 72ч от изпращане. Всеки resend инвалидира предходния линк.'}
+                    </div>
+                    {(() => {
+                      const links = activationLinksData?.links ?? [];
+                      const active = links.find(l => !l.consumedAt && !l.invalidatedAt && new Date(l.expiresAt) > new Date());
+                      // Spec §5.2 — count resends from the explicit `reason`
+                      // field instead of links.length - 1, which was off-by-one
+                      // when the initial issue failed and the first row was a
+                      // resend.
+                      const resendCount = links.filter(l => l.reason === 'RESEND').length;
+                      const lastFailed = active && active.emailError && !active.emailSentAt
+                        ? active
+                        : (!active && links[0]?.emailError && !links[0]?.emailSentAt ? links[0] : null);
+                      return (
+                        <div style={{ fontSize: '0.75rem', color: palette.textMuted, display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
+                          {active ? (
+                            <>
+                              <span>
+                                {isEn ? 'Active link expires:' : 'Активен линк изтича:'} <strong>{fmtDate(active.expiresAt, isEn ? 'en-GB' : 'bg-BG')}</strong>
+                              </span>
+                              {active.emailSentAt ? (
+                                <span style={{ color: palette.success }}>
+                                  ✓ {isEn ? 'Email sent' : 'Имейл изпратен'}: {fmtDate(active.emailSentAt, isEn ? 'en-GB' : 'bg-BG')}
+                                </span>
+                              ) : active.emailError ? (
+                                <span style={{ color: palette.danger, fontWeight: 600 }}>
+                                  {isEn ? 'Email send failed' : 'Грешка при имейл'}: {active.emailError.slice(0, 120)}
+                                </span>
+                              ) : (
+                                <span style={{ color: palette.textSubtle }}>
+                                  {isEn ? 'Email status pending…' : 'Изпращане на имейл…'}
+                                </span>
+                              )}
+                            </>
+                          ) : links.length === 0 ? (
+                            <span style={{ color: palette.danger, fontWeight: 600 }}>
+                              {isEn
+                                ? '⚠ No activation link was issued for this partner. Click "Resend activation link" below to issue one.'
+                                : '⚠ За този партньор не е създаден активационен линк. Натиснете „Прати повторно activation линк" по-долу.'}
+                            </span>
+                          ) : (
+                            <span style={{ color: palette.danger, fontWeight: 600 }}>
+                              {isEn ? 'No active link (expired or invalidated)' : 'Няма активен линк (изтекъл или анулиран)'}
+                            </span>
+                          )}
+                          {resendCount > 0 && (
+                            <span>{isEn ? `Resends: ${resendCount}` : `Изпратен повторно: ${resendCount} пъти`}</span>
+                          )}
+                          {lastFailed && !active?.emailError && (
+                            <span style={{ color: palette.danger }}>
+                              {isEn ? 'Last attempt: email send failed' : 'Последен опит: имейлът не е изпратен'}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {canWrite && (
+                      <button
+                        onClick={() => resendActivationMutation.mutate()}
+                        disabled={resendActivationMutation.isPending}
+                        style={{
+                          alignSelf: 'flex-start',
+                          padding: '0.4rem 0.875rem',
+                          background: palette.warning, color: '#fff', border: 'none',
+                          borderRadius: '0.375rem', fontSize: '0.8125rem', fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {resendActivationMutation.isPending
+                          ? (isEn ? 'Sending…' : 'Изпращане…')
+                          : (isEn ? 'Resend activation link' : 'Прати повторно activation линк')}
+                      </button>
+                    )}
+                  </div>
+                </Field>
+              )}
+              {/* Activated indicator */}
+              {partner.status === 'ACTIVE' && partner.verifiedAt && (
+                <Field>
+                  <FieldLabel>{isEn ? 'Activated' : 'Активиран'}</FieldLabel>
+                  <FieldValue>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                      padding: '0.2rem 0.625rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 700,
+                      background: palette.successSoft, color: palette.success,
+                    }}>
+                      ✓ {fmtDateShort(partner.verifiedAt, isEn ? 'en-GB' : 'bg-BG')}
+                    </span>
+                  </FieldValue>
                 </Field>
               )}
               {partner.description && (

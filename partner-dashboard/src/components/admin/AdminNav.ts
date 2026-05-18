@@ -3,6 +3,9 @@ export interface AdminSubItem {
   labelEn: string;
   path: string;
   permissionKey?: string;
+  superAdminOnly?: boolean;
+  /** When true, CategoryShell renders this as a logout action button instead of a NavLink. */
+  logoutAction?: boolean;
 }
 
 export interface AdminNavCategory {
@@ -28,7 +31,7 @@ export const ADMIN_NAV: AdminNavCategory[] = [
     permissionKey: 'dashboard.read',
     subItems: [
       { labelBg: 'Обзор', labelEn: 'Overview', path: '/admin/dashboard', permissionKey: 'dashboard.read' },
-      { labelBg: 'Сигнали', labelEn: 'Alerts', path: '/admin/dashboard/alerts', permissionKey: 'dashboard.read' },
+      { labelBg: 'Сигнали и известия', labelEn: 'Alerts & Notifications', path: '/admin/dashboard/alerts', permissionKey: 'dashboard.read' },
     ],
   },
   {
@@ -39,7 +42,7 @@ export const ADMIN_NAV: AdminNavCategory[] = [
     icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z',
     permissionKey: 'subscribers.read',
     subItems: [
-      { labelBg: 'Всички', labelEn: 'All', path: '/admin/subscribers/all', permissionKey: 'subscribers.read' },
+      { labelBg: 'Всички абонати', labelEn: 'All Subscribers', path: '/admin/subscribers/all', permissionKey: 'subscribers.read' },
       { labelBg: 'Абонаменти', labelEn: 'Subscriptions', path: '/admin/subscribers/subscriptions', permissionKey: 'subscriptions.read' },
       { labelBg: 'Транзакции', labelEn: 'Transactions', path: '/admin/subscribers/transactions', permissionKey: 'transactions.read' },
       { labelBg: 'Кешбек', labelEn: 'Cashback', path: '/admin/subscribers/cashback', permissionKey: 'cashback.read' },
@@ -55,8 +58,8 @@ export const ADMIN_NAV: AdminNavCategory[] = [
     subItems: [
       { labelBg: 'Заявки', labelEn: 'Requests', path: '/admin/partners/requests', permissionKey: 'partners.requests.read' },
       { labelBg: 'Комуникация и онбординг', labelEn: 'Communication & Onboarding', path: '/admin/partners/onboarding', permissionKey: 'partners.onboarding.read' },
-      { labelBg: 'Активни', labelEn: 'Active', path: '/admin/partners/active', permissionKey: 'partners.read' },
-      { labelBg: 'Локации & QR', labelEn: 'Locations & QR', path: '/admin/partners/locations', permissionKey: 'partners.locations.read' },
+      { labelBg: 'Активни партньори', labelEn: 'Active Partners', path: '/admin/partners/active', permissionKey: 'partners.read' },
+      { labelBg: 'Локации и QR кодове', labelEn: 'Locations & QR Codes', path: '/admin/partners/locations', permissionKey: 'partners.locations.read' },
       { labelBg: 'Касови бележки', labelEn: 'Receipt Profiles', path: '/admin/partners/receipt-profiles', permissionKey: 'partners.receipts.read' },
     ],
   },
@@ -86,7 +89,6 @@ export const ADMIN_NAV: AdminNavCategory[] = [
       { labelBg: 'Риск и сигурност', labelEn: 'Risk & Security', path: '/admin/control/risk-signals', permissionKey: 'control.risk.read' },
       { labelBg: 'Спорове', labelEn: 'Disputes', path: '/admin/control/disputes', permissionKey: 'control.disputes.read' },
       { labelBg: 'Лимити и правила', labelEn: 'Limits & Rules', path: '/admin/control/rules', permissionKey: 'control.rules.read' },
-      { labelBg: 'Конфигурация по обект', labelEn: 'Venue Fraud Config', path: '/admin/control/venue-config', permissionKey: 'control.rules.read' },
     ],
   },
   {
@@ -98,8 +100,6 @@ export const ADMIN_NAV: AdminNavCategory[] = [
     permissionKey: 'marketing.read',
     subItems: [
       { labelBg: 'Кампании', labelEn: 'Campaigns', path: '/admin/marketing/campaigns', permissionKey: 'marketing.read' },
-      // Spec §8 names this "Имейл шаблони". The page also accepts SMS/Push templates
-      // (multi-channel was a later product call), but the nav label follows the spec wording.
       { labelBg: 'Имейл шаблони', labelEn: 'Email Templates', path: '/admin/marketing/templates', permissionKey: 'marketing.read' },
       { labelBg: 'Автоматизации', labelEn: 'Automations', path: '/admin/marketing/automations', permissionKey: 'marketing.read' },
       { labelBg: 'Списъци', labelEn: 'Lists', path: '/admin/marketing/lists', permissionKey: 'marketing.read' },
@@ -128,9 +128,9 @@ export const ADMIN_NAV: AdminNavCategory[] = [
     icon: 'M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z',
     permissionKey: 'admins.read',
     subItems: [
-      { labelBg: 'Всички', labelEn: 'All Admins', path: '/admin/admins/all', permissionKey: 'admins.read' },
-      { labelBg: 'Нов администратор', labelEn: 'Create Admin', path: '/admin/admins/create', permissionKey: 'admins.write' },
-      { labelBg: 'Чакащи одобрения', labelEn: 'Pending Approvals', path: '/admin/admins/pending', permissionKey: 'admins.write' },
+      { labelBg: 'Всички администратори', labelEn: 'All Admins', path: '/admin/admins/all', permissionKey: 'admins.read' },
+      { labelBg: 'Създай администратор', labelEn: 'Create Admin', path: '/admin/admins/create', permissionKey: 'admins.write' },
+      { labelBg: 'Чакащи одобрения', labelEn: 'Pending Approvals', path: '/admin/admins/pending', permissionKey: 'admins.read' },
       { labelBg: 'История на действията', labelEn: 'Action History', path: '/admin/admins/audit', permissionKey: 'admins.audit.read' },
     ],
   },
@@ -142,9 +142,9 @@ export const ADMIN_NAV: AdminNavCategory[] = [
     icon: 'M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
     permissionKey: 'help.read',
     subItems: [
-      { labelBg: 'Нова заявка', labelEn: 'New Request', path: '/admin/help/new', permissionKey: 'help.read' },
+      { labelBg: 'Нова заявка', labelEn: 'New Request', path: '/admin/help/new', permissionKey: 'help.write' },
       { labelBg: 'Моите заявки', labelEn: 'My Requests', path: '/admin/help/mine', permissionKey: 'help.read' },
-      { labelBg: 'Всички заявки', labelEn: 'All Requests', path: '/admin/help/all', permissionKey: 'help.read.all' },
+      { labelBg: 'Всички заявки', labelEn: 'All Requests', path: '/admin/help/all', superAdminOnly: true },
     ],
   },
   {
@@ -157,7 +157,7 @@ export const ADMIN_NAV: AdminNavCategory[] = [
     subItems: [
       { labelBg: 'Моите данни', labelEn: 'My Data', path: '/admin/profile/my-data', permissionKey: 'dashboard.read' },
       { labelBg: 'Сигурност', labelEn: 'Security', path: '/admin/profile/security', permissionKey: 'dashboard.read' },
-      { labelBg: 'Изход', labelEn: 'Logout', path: '/admin/profile/logout', permissionKey: 'dashboard.read' },
+      { labelBg: 'Изход', labelEn: 'Logout', path: '/admin/profile/logout', permissionKey: 'dashboard.read', logoutAction: true },
     ],
   },
 ];

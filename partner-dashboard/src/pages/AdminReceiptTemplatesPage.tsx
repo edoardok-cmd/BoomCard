@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { toast } from 'react-hot-toast';
+import { useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { fraudAdminService } from '../services/fraudAdmin.service';
 import { apiService } from '../services/api.service';
@@ -15,6 +16,7 @@ interface Venue {
   city?: string | null;
   partner?: { id: string; businessName: string } | null;
 }
+
 
 // ─────────────────────── Styled Components ───────────────────────
 
@@ -371,6 +373,8 @@ const LoadingBox = styled.div`
 
 export const AdminReceiptTemplatesPage: React.FC = () => {
   const { language, t } = useLanguage();
+  const [searchParams] = useSearchParams();
+  const partnerIdParam = searchParams.get('partnerId');
 
   // Venues
   const [venues, setVenues] = useState<Venue[]>([]);
@@ -379,6 +383,7 @@ export const AdminReceiptTemplatesPage: React.FC = () => {
   // Templates
   const [templates, setTemplates] = useState<ReceiptTemplate[]>([]);
   const [loading, setLoading] = useState(false);
+  const [templateSearch, setTemplateSearch] = useState('');
 
   // Modals
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -394,19 +399,24 @@ export const AdminReceiptTemplatesPage: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // ── Load venues on mount ──
+  // ── Load venues on mount; auto-select first venue when partnerId is in URL ──
   useEffect(() => {
     const fetchVenues = async () => {
       try {
         const res = await apiService.get<{ data: Venue[] }>('/admin/venues', { limit: 200 });
-        setVenues(res.data ?? []);
+        const loaded = res.data ?? [];
+        setVenues(loaded);
+        if (partnerIdParam) {
+          const first = loaded.find(v => v.partner?.id === partnerIdParam);
+          if (first) setSelectedVenueId(first.id);
+        }
       } catch (err) {
         console.error('Failed to load venues:', err);
         toast.error(t('common.error'));
       }
     };
     fetchVenues();
-  }, []);
+  }, [partnerIdParam]);
 
   // ── Load templates when venue changes ──
   useEffect(() => {
@@ -518,6 +528,21 @@ export const AdminReceiptTemplatesPage: React.FC = () => {
           {language === 'bg' ? 'Касови бележки' : 'Receipt Profiles'}
         </Title>
         <HeaderActions>
+          <input
+            type="text"
+            value={templateSearch}
+            onChange={e => setTemplateSearch(e.target.value)}
+            placeholder={language === 'bg' ? 'Търсене по търговец или ключова дума…' : 'Search by merchant or keyword…'}
+            style={{
+              padding: '0.625rem 1rem',
+              border: '2px solid var(--color-border)',
+              borderRadius: '0.75rem',
+              fontSize: '0.9rem',
+              color: 'var(--color-text-primary)',
+              background: 'var(--color-background)',
+              minWidth: '220px',
+            }}
+          />
           <VenueSelector
             value={selectedVenueId}
             onChange={e => setSelectedVenueId(e.target.value)}
@@ -543,7 +568,7 @@ export const AdminReceiptTemplatesPage: React.FC = () => {
       {!selectedVenueId ? (
         <EmptyState>
           <Image size={48} />
-          <div>{language === 'bg' ? 'Изберете обект първо' : 'Select a venue first'}</div>
+          <div>{language === 'bg' ? 'Изберете обект, за да видите шаблоните' : 'Select a venue to view its receipt templates'}</div>
         </EmptyState>
       ) : loading ? (
         <LoadingBox>
@@ -552,15 +577,29 @@ export const AdminReceiptTemplatesPage: React.FC = () => {
       ) : templates.length === 0 ? (
         <EmptyState>
           <Image size={48} />
-          <div>
-            {language === 'bg'
-              ? 'Няма шаблони за този обект'
-              : 'No templates for this venue'}
-          </div>
+          <div>{language === 'bg' ? 'Няма шаблони за този обект' : 'No templates for this venue'}</div>
         </EmptyState>
       ) : (
         <TemplateGrid>
-          {templates.map(tpl => (
+          {(() => {
+            const q = templateSearch.trim().toLowerCase();
+            const filteredTemplates = q
+              ? templates.filter(tpl =>
+                  tpl.merchantName.toLowerCase().includes(q)
+                  || (tpl.description ?? '').toLowerCase().includes(q)
+                  || tpl.expectedKeywords.some(k => k.toLowerCase().includes(q))
+                )
+              : templates;
+            return <>
+              {filteredTemplates.length === 0 ? (
+                <div style={{ gridColumn: '1/-1' }}>
+                  <EmptyState>
+                    <Image size={48} />
+                    <div>{language === 'bg' ? 'Няма намерени шаблони' : 'No templates found'}</div>
+                  </EmptyState>
+                </div>
+              ) : null}
+              {filteredTemplates.map(tpl => (
             <TemplateCard key={tpl.id}>
               <CardImage onClick={() => openImagePreview(tpl)}>
                 <img src={tpl.imageUrl} alt={tpl.merchantName} />
@@ -599,6 +638,13 @@ export const AdminReceiptTemplatesPage: React.FC = () => {
                 </div>
                 <MetaRow>
                   <span>{new Date(tpl.createdAt).toLocaleDateString()}</span>
+                  <span
+                    title={language === 'bg' ? 'ID на профила (щракни за копиране)' : 'Profile ID (click to copy)'}
+                    style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: 'var(--color-text-tertiary, #9ca3af)', cursor: 'pointer' }}
+                    onClick={() => navigator.clipboard.writeText(tpl.id).then(() => toast.success('Profile ID copied'))}
+                  >
+                    {tpl.id.slice(0, 8)}… 📋
+                  </span>
                 </MetaRow>
               </CardBody>
               <CardActions>
@@ -615,6 +661,8 @@ export const AdminReceiptTemplatesPage: React.FC = () => {
               </CardActions>
             </TemplateCard>
           ))}
+            </>;
+          })()}
         </TemplateGrid>
       )}
 
@@ -658,12 +706,14 @@ export const AdminReceiptTemplatesPage: React.FC = () => {
 
             <FormGroup>
               <FormLabel>
-                {language === 'bg' ? 'Вариации' : 'Variations'}
+                {language === 'bg' ? 'Вариации на имена' : 'Name Variations'}
               </FormLabel>
               <FormTextArea
                 value={uploadDescription}
                 onChange={e => setUploadDescription(e.target.value)}
-                placeholder={language === 'bg' ? 'Незадължителни вариации...' : 'Optional variations...'}
+                placeholder={language === 'bg'
+                  ? 'Различни имена, под които търговецът се изписва на бележки, по едно на ред — напр.\nАСТОРИЯ ООД\nАСТОРИЯ ЕООД\nRESTAURANT ASTORIA'
+                  : 'Merchant name variants as they appear on receipts, one per line — e.g.\nASTORIA OOD\nASTORIA EOOD\nRESTAURANT ASTORIA'}
               />
             </FormGroup>
 

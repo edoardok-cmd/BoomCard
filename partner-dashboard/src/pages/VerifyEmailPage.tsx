@@ -5,7 +5,32 @@ import { motion } from 'framer-motion';
 import { CheckCircle2, XCircle, Loader } from 'lucide-react';
 import { Button } from '../components/common/Button/Button';
 import { useLanguage } from '../contexts/LanguageContext';
+import { apiService } from '../services/api.service';
 import toast from 'react-hot-toast';
+
+// Audit-pass [10.3]: production fallback when VITE_API_URL is unset. The
+// previous empty-string fallback caused `window.location.replace` to hit
+// /api/auth/verify-email on the partner-dashboard origin (Vercel) and 404
+// because Vercel doesn't serve that path. Hardcode the prod backend URL so
+// a misconfigured build still works rather than silently breaking.
+const FALLBACK_API_URL = 'https://boomcard-api.fly.dev';
+
+// Audit-pass [10.1]: redirect SYNCHRONOUSLY at module top before any React
+// mount so the "Verifying..." card never flashes. Uses
+// `window.location.search` directly to avoid waiting for react-router.
+if (typeof window !== 'undefined') {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const earlyToken = params.get('token');
+    if (earlyToken) {
+      const earlyApiBase = (import.meta as any).env?.VITE_API_URL || FALLBACK_API_URL;
+      // Use replace so the verify-email URL doesn't pollute history.
+      window.location.replace(`${earlyApiBase}/api/auth/verify-email?token=${encodeURIComponent(earlyToken)}`);
+    }
+  } catch {
+    /* noop — fall through to React-side handling */
+  }
+}
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -217,62 +242,60 @@ const VerifyEmailPage: React.FC = () => {
   const t = content[language as keyof typeof content];
 
   useEffect(() => {
-    const verifyEmail = async () => {
-      if (!token) {
-        setStatus('error');
-        return;
-      }
+    if (!token) {
+      // No token — the URL was hit without a verification link. Show the
+      // error/resend state so the user can request a new email.
+      setStatus('error');
+      return;
+    }
 
-      try {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        // In a real app, you would call the API here:
-        // await verifyEmailApi(token);
-
-        // Simulate success (90% success rate for demo)
-        const isSuccess = Math.random() > 0.1;
-
-        if (isSuccess) {
-          setStatus('success');
-          toast.success(language === 'bg' ? 'Имейлът е потвърден успешно' : 'Email verified successfully');
-        } else {
-          setStatus('expired');
-        }
-      } catch (error) {
-        console.error('Email verification error:', error);
-        setStatus('error');
-        toast.error(language === 'bg' ? 'Грешка при проверка на имейла' : 'Error verifying email');
-      }
-    };
-
-    verifyEmail();
+    // The real verification lives on the backend: GET /api/auth/verify-email
+    // returns a 302 to /login?emailVerified=true|already (or error=...).
+    // Letting the browser follow that redirect natively is both simpler and
+    // ensures status flags (?emailVerified=already vs true) propagate.
+    //
+    // Audit-pass [10.1]: the module-top synchronous redirect above already
+    // fired for clients that have window. This effect remains as a fallback
+    // for SSR/hydration cases where the early redirect was skipped.
+    // Audit-pass [10.3]: use FALLBACK_API_URL so a missing VITE_API_URL
+    // doesn't 404 against the partner-dashboard origin.
+    const apiBase = (import.meta as any).env?.VITE_API_URL || FALLBACK_API_URL;
+    window.location.replace(`${apiBase}/api/auth/verify-email?token=${encodeURIComponent(token)}`);
   }, [token, language]);
 
   const handleResendEmail = async () => {
-    if (!email) {
-      toast.error(language === 'bg' ? 'Имейл адресът не е намерен' : 'Email address not found');
-      return;
+    // Audit-pass [10.2]: when the backend redirect on token failure lands
+    // here without ?email=, prompt the user to type one in rather than
+    // disabling the button. The backend rate-limits + always returns success,
+    // so we don't leak account existence by accepting an arbitrary input.
+    let targetEmail = email;
+    if (!targetEmail) {
+      const prompted = window.prompt(
+        language === 'bg'
+          ? 'Въведете имейл адрес, на който да изпратим нов линк за потвърждение:'
+          : 'Enter the email address to receive a new verification link:',
+      );
+      const trimmed = prompted?.trim() || '';
+      if (!trimmed) return;
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+        toast.error(language === 'bg' ? 'Невалиден имейл адрес' : 'Invalid email address');
+        return;
+      }
+      targetEmail = trimmed;
     }
 
     setIsResending(true);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Spec §9.5: public unauthenticated endpoint — the user can't be logged
+      // in until they verify, so the authenticated variant isn't usable here.
+      await apiService.post('/auth/request-email-verification', { email: targetEmail });
 
-      // In a real app, you would call the API here:
-      // await resendVerificationEmail(email);
-
-      toast.success(language === 'bg' ? 'Имейлът за потвърждение е изпратен отново' : 'Verification email sent again');
-
-      // Reset to loading state
-      setStatus('loading');
-
-      // Simulate verification after resend
-      setTimeout(() => {
-        setStatus('success');
-      }, 2000);
+      toast.success(
+        language === 'bg'
+          ? 'Ако имейлът съществува и не е потвърден, ще получите нова връзка за потвърждение.'
+          : 'If the email exists and is unverified, a new verification link has been sent.'
+      );
     } catch (error) {
       console.error('Resend email error:', error);
       toast.error(language === 'bg' ? 'Грешка при изпращане на имейл' : 'Error sending email');
@@ -341,7 +364,7 @@ const VerifyEmailPage: React.FC = () => {
                 size="large"
                 onClick={handleResendEmail}
                 isLoading={isResending}
-                disabled={isResending || !email}
+                disabled={isResending}
               >
                 {isResending ? t.resending : t.resendButton}
               </StyledButton>

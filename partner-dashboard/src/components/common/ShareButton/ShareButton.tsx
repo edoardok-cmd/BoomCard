@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Share2, Facebook, Twitter, Linkedin, Mail, Link as LinkIcon, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 const ShareContainer = styled.div`
   position: relative;
@@ -123,6 +124,7 @@ export const SocialShareButton: React.FC<ShareButtonProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const { t } = useLanguage();
 
   const shareOptions = [
     {
@@ -161,14 +163,14 @@ export const SocialShareButton: React.FC<ShareButtonProps> = ({
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
-      toast.success('Link copied to clipboard!');
+      toast.success(t('common.linkCopied'));
       setTimeout(() => {
         setCopied(false);
         setIsOpen(false);
       }, 2000);
     } catch (error) {
       console.error('Failed to copy:', error);
-      toast.error('Failed to copy link');
+      toast.error(t('common.failedToCopyLink'));
     }
   };
 

@@ -119,6 +119,8 @@ export default function AdminHelpMinePage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<TicketStatus | ''>('');
+  const [priorityFilter, setPriorityFilter] = useState<TicketPriority | ''>('');
+  const [categoryFilter, setCategoryFilter] = useState<TicketCategory | ''>('');
   const [page, setPage] = useState(1);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstSearch = useRef(true);
@@ -149,12 +151,14 @@ export default function AdminHelpMinePage() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-help-mine', page, search, statusFilter],
+    queryKey: ['admin-help-mine', page, search, statusFilter, priorityFilter, categoryFilter],
     queryFn: () => adminHelpService.listMine({
       page,
       limit: PAGE_SIZE,
       search: search || undefined,
       status: statusFilter || undefined,
+      priority: priorityFilter || undefined,
+      category: categoryFilter || undefined,
     }),
   });
 
@@ -166,12 +170,13 @@ export default function AdminHelpMinePage() {
       queryClient.invalidateQueries({ queryKey: ['admin-help-all'] });
       queryClient.invalidateQueries({ queryKey: ['admin-help-ticket', id] });
       queryClient.invalidateQueries({ queryKey: ['admin-help-replies', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin-help-new-count'] });
     },
     onError: () => toast.error('Грешка при обновяване'),
   });
 
   const fmt = (iso: string) =>
-    new Date(iso).toLocaleString('bg-BG', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    new Date(iso).toLocaleString('bg-BG', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
   const columns: ColumnDef<HelpTicket>[] = [
     {
@@ -238,7 +243,7 @@ export default function AdminHelpMinePage() {
         <FilterRow>
           <SearchInput
             type="text"
-            placeholder="Търсене по тема…"
+            placeholder="Търсене по тема или съдържание…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { if (debounceRef.current) clearTimeout(debounceRef.current); setSearch(searchInput); setPage(1); } }}
@@ -251,6 +256,21 @@ export default function AdminHelpMinePage() {
             <option value="RESOLVED">Решена</option>
             <option value="CLOSED">Затворена</option>
           </Select>
+          <Select value={priorityFilter} onChange={(e) => { setPriorityFilter(e.target.value as TicketPriority | ''); setPage(1); }}>
+            <option value="">Всички приоритети</option>
+            <option value="URGENT">Спешен</option>
+            <option value="HIGH">Висок</option>
+            <option value="MEDIUM">Среден</option>
+            <option value="LOW">Нисък</option>
+          </Select>
+          <Select value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value as TicketCategory | ''); setPage(1); }}>
+            <option value="">Всички категории</option>
+            <option value="CASHBACK">Кешбек</option>
+            <option value="ACCOUNT">Акаунт</option>
+            <option value="PAYMENT">Плащане</option>
+            <option value="TECHNICAL">Техническо</option>
+            <option value="OTHER">Друго</option>
+          </Select>
         </FilterRow>
 
         <DataTable
@@ -260,7 +280,7 @@ export default function AdminHelpMinePage() {
           onRowClick={(row) => openTicket(row.id)}
           loading={isLoading}
           emptyMessage={
-            !search && !statusFilter
+            !search && !statusFilter && !priorityFilter && !categoryFilter
               ? <span>Нямате подадени заявки. <EmptyLink to="/admin/help/new">Подайте нова заявка →</EmptyLink></span>
               : 'Няма заявки, отговарящи на критериите'
           }

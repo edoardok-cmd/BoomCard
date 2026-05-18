@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCookieConsent } from '../../../contexts/CookieConsentContext';
@@ -120,9 +120,31 @@ const StyledButton = styled.button<{ $variant: 'primary' | 'secondary' | 'outlin
   }
 `;
 
+const BANNER_HEIGHT_VAR = '--cookie-banner-h';
+
 const CookieConsentBanner: React.FC = () => {
   const { showBanner, acceptAll, rejectNonEssential, openSettings } = useCookieConsent();
   const { language } = useLanguage();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Publish the banner's rendered height as a CSS variable so the layout can
+  // add matching bottom padding and prevent the banner from covering page content.
+  // Ref is on BannerOverlay so offsetHeight includes the overlay's own padding,
+  // which is responsive (1rem desktop / 0.75rem mobile) — no hardcoded offset needed.
+  useEffect(() => {
+    if (!showBanner) {
+      document.documentElement.style.setProperty(BANNER_HEIGHT_VAR, '0px');
+      return;
+    }
+    const measure = () => {
+      const h = containerRef.current?.offsetHeight ?? 0;
+      document.documentElement.style.setProperty(BANNER_HEIGHT_VAR, `${h}px`);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (containerRef.current) ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [showBanner]);
 
   const content = {
     en: {
@@ -147,6 +169,7 @@ const CookieConsentBanner: React.FC = () => {
     <AnimatePresence>
       {showBanner && (
         <BannerOverlay
+          ref={containerRef}
           initial={{ opacity: 0, y: 100 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 100 }}

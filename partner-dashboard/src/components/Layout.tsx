@@ -21,7 +21,7 @@ const Layout: React.FC = () => {
           // --imp-banner-h; the fallback of 0 keeps non-impersonation users
           // at the original 65px.
           paddingTop: 'calc(65px + var(--imp-banner-h, 0px))',
-          paddingBottom: '1px',
+          paddingBottom: 'calc(1px + var(--cookie-banner-h, 0px))',
         }}
       >
         <Outlet />

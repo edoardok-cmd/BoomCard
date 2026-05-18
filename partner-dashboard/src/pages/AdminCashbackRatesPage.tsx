@@ -390,13 +390,12 @@ const t = (lang: 'en' | 'bg') => ({
   step:             lang === 'bg' ? 'Стъпка' : 'Discount step',
   stepHint:         lang === 'bg' ? 'договорен % отстъпка на партньора' : "partner's contracted discount %",
   basic:            'BASIC (%)',
-  // Fix #1: label now references the spec plan names (Premium седмичен / месечен)
-  premium:          lang === 'bg' ? 'LIGHT / PREMIUM (%)' : 'LIGHT / PREMIUM (%)',
+  premium:          lang === 'bg' ? 'PREMIUM (%)' : 'PREMIUM (%)',
   premiumHint:      lang === 'bg'
-    ? 'Premium седмичен (LIGHT) + Premium месечен (PREMIUM)'
-    : 'Premium Weekly (LIGHT) + Premium Monthly (PREMIUM)',
+    ? 'Premium седмичен + Premium месечен'
+    : 'Premium Weekly + Premium Monthly',
   marginBasic:      lang === 'bg' ? 'Марж BASIC (%)' : 'Margin BASIC (%)',
-  marginPremium:    lang === 'bg' ? 'Марж LIGHT/PREMIUM (%)' : 'Margin LIGHT/PREMIUM (%)',
+  marginPremium:    lang === 'bg' ? 'Марж PREMIUM (%)' : 'Margin PREMIUM (%)',
   effectiveFrom:    lang === 'bg' ? 'В сила от' : 'Effective from',
   effectiveHint:    lang === 'bg' ? '(по подразбиране: сега)' : '(defaults to now)',
   notes:            lang === 'bg' ? 'Бележки (незадължително)' : 'Notes (optional)',
@@ -424,8 +423,8 @@ const t = (lang: 'en' | 'bg') => ({
   thEffective:      lang === 'bg' ? 'В сила от' : 'Effective from',
   mustBeNumbers:    (step: number) =>
     lang === 'bg'
-      ? `Стъпка ${step}%: BASIC и LIGHT/PREMIUM трябва да са числа`
-      : `Step ${step}%: BASIC and LIGHT/PREMIUM must be numbers`,
+      ? `Стъпка ${step}%: BASIC и PREMIUM трябва да са числа`
+      : `Step ${step}%: BASIC and PREMIUM must be numbers`,
   outOfRange:       (step: number) =>
     lang === 'bg'
       ? `Стъпка ${step}%: стойностите не могат да са отрицателни`

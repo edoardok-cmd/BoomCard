@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import QRCode from 'qrcode';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -366,6 +367,67 @@ const Btn = styled.button<{ $variant?: 'danger' | 'primary' | 'ghost' }>`
 
 const PAGE_SIZE = 25;
 
+/* ─── QR Code Card (spec §5.4) ─────────────────────────────────────────────── */
+function QrCodeCard({ qrValue, language }: { qrValue: string; language: string }) {
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    QRCode.toDataURL(qrValue, { width: 160, margin: 1, color: { dark: '#000', light: '#fff' } })
+      .then(setDataUrl)
+      .catch(() => setDataUrl(null));
+  }, [qrValue]);
+
+  const handleDownload = () => {
+    if (!dataUrl) return;
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = `qr-${qrValue.slice(0, 8)}.png`;
+    a.click();
+  };
+
+  return (
+    <div style={{
+      padding: '0.75rem', background: palette.bg, border: `1px solid ${palette.border}`,
+      borderRadius: '0.5rem', marginBottom: '0.5rem',
+    }}>
+      {dataUrl ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+          <img src={dataUrl} alt="QR code" style={{ width: 80, height: 80, imageRendering: 'pixelated', flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: 'monospace', fontSize: '0.65rem', color: palette.textMuted, wordBreak: 'break-all', marginBottom: '0.5rem' }}>
+              {qrValue}
+            </div>
+            <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => navigator.clipboard.writeText(qrValue).then(() => toast.success('QR value copied'))}
+                style={{ padding: '0.25rem 0.625rem', fontSize: '0.75rem', fontWeight: 600, background: palette.surface, border: `1px solid ${palette.border}`, borderRadius: '0.375rem', cursor: 'pointer' }}
+              >
+                📋 {language === 'bg' ? 'Копирай' : 'Copy'}
+              </button>
+              <button
+                onClick={handleDownload}
+                style={{ padding: '0.25rem 0.625rem', fontSize: '0.75rem', fontWeight: 600, background: palette.surface, border: `1px solid ${palette.border}`, borderRadius: '0.375rem', cursor: 'pointer' }}
+              >
+                ↓ {language === 'bg' ? 'Свали PNG' : 'Download PNG'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: palette.textMuted, wordBreak: 'break-all', flex: 1 }}>{qrValue}</span>
+          <button
+            onClick={() => navigator.clipboard.writeText(qrValue).then(() => toast.success('QR value copied'))}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: palette.textSubtle, fontSize: '0.8rem', flexShrink: 0 }}
+          >
+            📋
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Status history timeline (spec §5.4) ──────────────────────────────────── */
 const STATUS_LABELS_TIMELINE: Record<VenueStatus, { bg: string; en: string }> = {
   ACTIVE:    { bg: 'Активна',  en: 'Active' },
@@ -515,7 +577,11 @@ export default function AdminPartnerLocationsPage() {
       // up immediately if the drawer is reopened.
       queryClient.invalidateQueries({ queryKey: ['venue-status-history', vars.id] });
     },
-    onError: () => toast.error(t('common.error')),
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? t('common.error');
+      toast.error(msg);
+    },
   });
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -608,14 +674,18 @@ export default function AdminPartnerLocationsPage() {
       render: (row) => {
         const count = row._count?.stickers ?? 0;
         const cfg = row.stickerConfig;
-        const isActiveNoQr = (row.venueStatus as VenueStatus) === 'ACTIVE' && count === 0;
+        // Warn when an ACTIVE venue has no active sticker config — this is the
+        // same condition the backend gate enforces on PATCH /:id/status → ACTIVE.
+        const isActiveNoQr = (row.venueStatus as VenueStatus) === 'ACTIVE' && !cfg?.isActive;
         return (
           <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
             <span style={{ fontSize: '0.8125rem', color: isActiveNoQr ? palette.warning : palette.textMuted, fontWeight: isActiveNoQr ? 600 : 400 }}>
               {count > 0 ? (
-                <>{count} QR {language === 'bg' ? 'кода' : 'codes'}</>
+                <span title={isActiveNoQr ? (language === 'bg' ? 'Активна локация без активна QR конфигурация!' : 'Active location has no active QR config!') : undefined}>
+                  {isActiveNoQr ? '⚠ ' : ''}{count} QR {language === 'bg' ? 'кода' : 'codes'}
+                </span>
               ) : (
-                <span title={isActiveNoQr ? (language === 'bg' ? 'Активна локация без QR код!' : 'Active location has no QR code!') : undefined}>
+                <span title={isActiveNoQr ? (language === 'bg' ? 'Активна локация без QR конфигурация!' : 'Active location has no QR config!') : undefined}>
                   {isActiveNoQr ? '⚠ ' : ''}{language === 'bg' ? 'Без QR' : 'No QR'}
                 </span>
               )}
@@ -905,10 +975,11 @@ export default function AdminPartnerLocationsPage() {
             </DrawerHeader>
 
             <DrawerBody>
-              {/* No-QR warning */}
-              {(drawerVenue.venueStatus as VenueStatus) === 'ACTIVE' && (drawerVenue._count?.stickers ?? 0) === 0 && (
+              {/* No-QR warning — mirrors the backend gate: ACTIVE without an
+                  active stickerConfig means scanning is broken for this venue. */}
+              {(drawerVenue.venueStatus as VenueStatus) === 'ACTIVE' && !drawerVenue.stickerConfig?.isActive && (
                 <NoQrWarning>
-                  ⚠ {language === 'bg' ? 'Активна локация без QR код — генерирайте QR от страницата на партньора.' : 'Active location has no QR code — generate one from the partner page.'}
+                  ⚠ {language === 'bg' ? 'Активна локация без активна QR конфигурация — настройте QR / стикер конфигурацията.' : 'Active location has no active QR config — set up the sticker configuration.'}
                 </NoQrWarning>
               )}
 
@@ -917,7 +988,13 @@ export default function AdminPartnerLocationsPage() {
                 <DrawerSectionTitle>{language === 'bg' ? 'Детайли' : 'Details'}</DrawerSectionTitle>
                 <DrawerRow>
                   <DrawerLabel>ID</DrawerLabel>
-                  <DrawerValue style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{drawerVenue.id.slice(0, 16)}…</DrawerValue>
+                  <DrawerValue
+                    style={{ fontFamily: 'monospace', fontSize: '0.72rem', cursor: 'pointer', wordBreak: 'break-all' }}
+                    title={language === 'bg' ? 'Щракнете за копиране' : 'Click to copy'}
+                    onClick={() => navigator.clipboard.writeText(drawerVenue.id).then(() => toast.success('ID copied'))}
+                  >
+                    {drawerVenue.id} 📋
+                  </DrawerValue>
                 </DrawerRow>
                 {drawerVenue.phone && (
                   <DrawerRow>
@@ -1008,6 +1085,16 @@ export default function AdminPartnerLocationsPage() {
                       </DrawerValue>
                     </DrawerRow>
                   </>
+                )}
+                {drawerVenue.stickers && drawerVenue.stickers.length > 0 && (
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: palette.textSubtle, marginBottom: '0.5rem' }}>
+                      {language === 'bg' ? 'QR кодове' : 'QR Codes'}
+                    </div>
+                    {drawerVenue.stickers.map((s, i) => (
+                      <QrCodeCard key={i} qrValue={s.qrCode} language={language} />
+                    ))}
+                  </div>
                 )}
               </DrawerSection>
 

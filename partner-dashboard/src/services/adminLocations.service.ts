@@ -32,7 +32,7 @@ export interface AdminVenue {
     maxScansPerDay: number;
   } | null;
   _count: { stickers: number; statusHistory: number };
-  stickers?: Array<{ createdAt: string; status: string; stickerId: string }>;
+  stickers?: Array<{ createdAt: string; status: string; stickerId: string; qrCode: string }>;
 }
 
 export interface VenueStatusHistoryEntry {

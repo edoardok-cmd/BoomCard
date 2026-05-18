@@ -25,6 +25,7 @@ import HomePage from './pages/HomePage';
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const RegisterPartnerPage = lazy(() => import('./pages/RegisterPartnerPage'));
+const PartnerActivatePage = lazy(() => import('./pages/PartnerActivatePage'));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
@@ -41,6 +42,7 @@ const MyOffersPage = lazy(() => import('./pages/MyOffersPage'));
 const CreateOfferPage = lazy(() => import('./pages/CreateOfferPage'));
 const EditOfferPage = lazy(() => import('./pages/EditOfferPage'));
 const PartnerMenusPage = lazy(() => import('./pages/PartnerMenusPage'));
+const PartnerStickersPage = lazy(() => import('./pages/PartnerStickersPage'));
 const NearbyOffersPage = lazy(() => import('./pages/NearbyOffersPage'));
 const RewardsPage = lazy(() => import('./pages/RewardsPage'));
 const PromotionsPage = lazy(() => import('./pages/PromotionsPage'));
@@ -189,9 +191,18 @@ const SubscriptionCancelPage = lazy(() => import('./pages/SubscriptionCancelPage
 const CheckoutPage = lazy(() => import('./pages/CheckoutPage'));
 
 function HelpIndexRedirect() {
-  const { user } = useAuth();
-  if (!user) return null;
+  const { user, isLoading } = useAuth();
+  if (isLoading) return null;
+  if (!user) return <Navigate to="/login" replace />;
   return <Navigate to={user.rawRole === 'SUPER_ADMIN' ? 'all' : 'mine'} replace />;
+}
+
+function SuperAdminHelpAll() {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return null;
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.rawRole !== 'SUPER_ADMIN') return <Navigate to="/admin/help/mine" replace />;
+  return <AdminHelpAllPage />;
 }
 
 const queryClient = new QueryClient({
@@ -327,6 +338,15 @@ function App() {
                       element={
                         <ProtectedRoute>
                           <PartnerMenusPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    {/* Spec §5.4 v1.1 — partner-side read-only QR view */}
+                    <Route
+                      path="partners/stickers"
+                      element={
+                        <ProtectedRoute>
+                          <PartnerStickersPage />
                         </ProtectedRoute>
                       }
                     />
@@ -598,7 +618,7 @@ function App() {
                       <Route path=":id" element={<AdminAdminDetailPage />} />
                     </Route>
 
-                    {/* /admin/help — placeholder */}
+                    {/* /admin/help */}
                     <Route
                       path="admin/help"
                       element={
@@ -610,7 +630,7 @@ function App() {
                       <Route index element={<HelpIndexRedirect />} />
                       <Route path="new" element={<AdminHelpNewPage />} />
                       <Route path="mine" element={<AdminHelpMinePage />} />
-                      <Route path="all" element={<AdminHelpAllPage />} />
+                      <Route path="all" element={<SuperAdminHelpAll />} />
                     </Route>
 
                     {/* /admin/profile */}
@@ -618,7 +638,7 @@ function App() {
                       path="admin/profile"
                       element={
                         <ProtectedRoute requiredRole="admin">
-                          <CategoryShell category={ADMIN_NAV[9]} />
+                          <CategoryShell category={ADMIN_NAV.find(c => c.key === 'profile')!} />
                         </ProtectedRoute>
                       }
                     >
@@ -685,6 +705,15 @@ function App() {
                     element={
                       <ProtectedRoute requireAuth={false}>
                         <RegisterPartnerPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  {/* Spec §5.2 v1.1 — activation landing page; public, no auth required */}
+                  <Route
+                    path="/partner/activate"
+                    element={
+                      <ProtectedRoute requireAuth={false}>
+                        <PartnerActivatePage />
                       </ProtectedRoute>
                     }
                   />

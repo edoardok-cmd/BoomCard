@@ -322,7 +322,7 @@ const Input = styled.input`
 `;
 
 export const ReceiptReviewDashboard: React.FC = () => {
-  const { language } = useLanguage();
+  const { language, t: tr } = useLanguage();
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [filter, setFilter] = useState<ReceiptStatus | 'ALL'>(ReceiptStatus.MANUAL_REVIEW);
   const [selectedReceipts, setSelectedReceipts] = useState<Set<string>>(new Set());
@@ -443,7 +443,7 @@ export const ReceiptReviewDashboard: React.FC = () => {
       setStats(newStats);
     } catch (error) {
       console.error('Error loading receipts:', error);
-      toast.error('Failed to load receipts');
+      toast.error(tr('admin.receiptsFailedToLoad'));
     } finally {
       setLoading(false);
     }
@@ -459,14 +459,14 @@ export const ReceiptReviewDashboard: React.FC = () => {
       };
 
       await receiptService.reviewReceipt(request);
-      toast.success(`Receipt ${action.toLowerCase()}d successfully`);
+      toast.success(action === 'APPROVE' ? tr('admin.receiptApprovedSuccess') : tr('admin.receiptRejectedSuccess'));
       setSelectedReceipt(null);
       setReviewNotes('');
       setVerifiedAmount('');
       loadReceipts();
     } catch (error) {
       console.error('Error reviewing receipt:', error);
-      toast.error('Failed to review receipt');
+      toast.error(tr('admin.receiptFailedToReview'));
     }
   };
 
@@ -474,13 +474,13 @@ export const ReceiptReviewDashboard: React.FC = () => {
     if (selectedReceipts.size === 0) return;
 
     try {
-      const result = await receiptService.bulkApprove(Array.from(selectedReceipts));
-      toast.success(`Approved ${result.approved} receipts`);
+      await receiptService.bulkApprove(Array.from(selectedReceipts));
+      toast.success(tr('admin.receiptsBulkApproveSuccess'));
       setSelectedReceipts(new Set());
       loadReceipts();
     } catch (error) {
       console.error('Error bulk approving:', error);
-      toast.error('Failed to bulk approve');
+      toast.error(tr('admin.receiptsFailedToBulkApprove'));
     }
   };
 
@@ -491,13 +491,13 @@ export const ReceiptReviewDashboard: React.FC = () => {
     if (!reason) return;
 
     try {
-      const result = await receiptService.bulkReject(Array.from(selectedReceipts), reason);
-      toast.success(`Rejected ${result.rejected} receipts`);
+      await receiptService.bulkReject(Array.from(selectedReceipts), reason);
+      toast.success(tr('admin.receiptsBulkRejectSuccess'));
       setSelectedReceipts(new Set());
       loadReceipts();
     } catch (error) {
       console.error('Error bulk rejecting:', error);
-      toast.error('Failed to bulk reject');
+      toast.error(tr('admin.receiptsFailedToBulkReject'));
     }
   };
 

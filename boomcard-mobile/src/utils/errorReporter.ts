@@ -9,6 +9,7 @@
 
 import { Platform } from 'react-native';
 import * as Application from 'expo-application';
+import Constants from 'expo-constants';
 import { API_CONFIG } from '../constants/config';
 
 export type ErrorType = 'crash' | 'api_error' | 'render_error' | 'network_error' | 'unknown';
@@ -40,7 +41,9 @@ function buildPayload(error: unknown, type: ErrorType): ReportPayload {
       ? error.stack.slice(0, 5000)
       : undefined;
 
-  const appVersion = Application.nativeApplicationVersion ?? null;
+  // nativeApplicationVersion is null on web. Fall back to the Expo config version
+  // (set in app.json / app.config.js), which tracks actual release versions.
+  const appVersion = Application.nativeApplicationVersion ?? (Platform.OS === 'web' ? (Constants.expoConfig?.version ?? null) : null);
 
   // Expo Web runs in a browser — Platform.OS is 'web'
   const platform = Platform.OS === 'ios' ? 'ios' : Platform.OS === 'android' ? 'android' : 'web';

@@ -128,7 +128,35 @@ const ActionBtn = styled.button<{ $variant: 'approve' | 'reject' | 'dispute' }>`
 
 const PAGE_SIZE = 25;
 
-type ActionDraft = { id: string; type: 'approve' | 'reject'; text: string; verifiedAmount: string };
+// Spec §7.1: rejection reason = structured category + optional free text. Keep
+// codes stable — the backend stores the composed string and the audit log keys
+// off these prefixes when summarising rejection causes.
+const REJECT_REASON_CODES = [
+  'DUPLICATE_RECEIPT',
+  'AMOUNT_MISMATCH',
+  'LOCATION_MISMATCH',
+  'SUSPICIOUS_BEHAVIOUR',
+  'INVALID_RECEIPT',
+  'OTHER',
+] as const;
+type RejectReasonCode = typeof REJECT_REASON_CODES[number];
+
+const REJECT_REASON_LABEL: Record<RejectReasonCode, { bg: string; en: string }> = {
+  DUPLICATE_RECEIPT:    { bg: 'Дублирана бележка',         en: 'Duplicate receipt' },
+  AMOUNT_MISMATCH:      { bg: 'Несъответствие на сума',    en: 'Amount mismatch' },
+  LOCATION_MISMATCH:    { bg: 'GPS/локация несъответствие', en: 'Location mismatch' },
+  SUSPICIOUS_BEHAVIOUR: { bg: 'Подозрително поведение',    en: 'Suspicious behaviour' },
+  INVALID_RECEIPT:      { bg: 'Невалидна бележка',         en: 'Invalid receipt' },
+  OTHER:                { bg: 'Друго',                     en: 'Other' },
+};
+
+type ActionDraft = {
+  id: string;
+  type: 'approve' | 'reject';
+  text: string;
+  verifiedAmount: string;
+  rejectCode?: RejectReasonCode;
+};
 type DisputeDraft = { scanId: string; userId: string; merchantName: string | null };
 
 const Overlay = styled.div`
@@ -225,7 +253,9 @@ const T = {
   riskMed:         { en: 'Medium',                                              bg: 'Среден' },
   riskLow:         { en: 'Low',                                                 bg: 'Нисък' },
   globalNote:      { en: 'Global totals for fraudScore ≥31; categories can overlap (one receipt may trigger multiple)', bg: 'Глобални броячи за fraudScore ≥31; категориите могат да се припокриват (една бележка може да попадне в няколко)' },
-  reasonLabel:     { en: 'Reason for rejection (optional)',                    bg: 'Причина за отказ (незадължително)' },
+  reasonLabel:     { en: 'Additional notes (optional)',                        bg: 'Допълнителни бележки (незадължително)' },
+  reasonCodeLabel: { en: 'Reason category',                                    bg: 'Категория причина' },
+  reasonCodeRequired: { en: 'Pick a reason before rejecting',                  bg: 'Изберете причина преди отказ' },
   notesLabel:      { en: 'Notes (optional)',                                    bg: 'Бележки (незадължително)' },
   verifiedAmountLabel: { en: 'Override amount (BGN, optional)',                bg: 'Коригирана сума (лв., незадължително)' },
   verifiedAmountHint:  { en: 'If set, recalculates cashback and fraud score — shows a warning if score exceeds threshold', bg: 'Ако е зададено, преизчислява кешбек и fraud score — показва предупреждение ако score надвишава прага' },
@@ -707,11 +737,35 @@ export default function AdminControlSecurityPage() {
                 </div>
               </>
             )}
+            {actionDraft.type === 'reject' && (
+              <>
+                <div style={{ fontSize: '0.75rem', color: palette.textSubtle, marginBottom: '0.25rem' }}>
+                  {t('reasonCodeLabel')}
+                </div>
+                <select
+                  value={actionDraft.rejectCode ?? ''}
+                  onChange={(e) => setActionDraft({ ...actionDraft, rejectCode: (e.target.value || undefined) as RejectReasonCode | undefined })}
+                  style={{
+                    width: '100%', boxSizing: 'border-box', marginBottom: '0.5rem',
+                    padding: '0.4rem 0.6rem', border: `1px solid ${palette.border}`,
+                    borderRadius: '0.5rem', fontSize: '0.875rem', background: palette.bg,
+                    color: palette.text,
+                  }}
+                  autoFocus
+                >
+                  <option value="">— {t('reasonCodeLabel')} —</option>
+                  {REJECT_REASON_CODES.map((code) => (
+                    <option key={code} value={code}>
+                      {REJECT_REASON_LABEL[code][language as 'en' | 'bg']}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
             <DialogTextarea
               placeholder={actionDraft.type === 'reject' ? t('reasonLabel') : t('notesLabel')}
               value={actionDraft.text}
               onChange={(e) => setActionDraft({ ...actionDraft, text: e.target.value })}
-              autoFocus={actionDraft.type === 'reject'}
             />
             <DialogFooter>
               <CancelBtn disabled={isAnyMutating} onClick={() => setActionDraft(null)}>
@@ -719,20 +773,28 @@ export default function AdminControlSecurityPage() {
               </CancelBtn>
               <ConfirmBtn
                 $variant={actionDraft.type}
-                disabled={isAnyMutating}
+                disabled={isAnyMutating || (actionDraft.type === 'reject' && !actionDraft.rejectCode)}
                 onClick={() => {
-                  const txt = actionDraft.text.trim() || undefined;
+                  const txt = actionDraft.text.trim();
                   if (actionDraft.type === 'approve') {
                     const amount = parseFloat(actionDraft.verifiedAmount);
                     approveMutation.mutate({
                       id: actionDraft.id,
                       opts: {
-                        notes: txt,
+                        notes: txt || undefined,
                         verifiedAmount: !isNaN(amount) && amount > 0 ? amount : undefined,
                       },
                     });
                   } else {
-                    rejectMutation.mutate({ id: actionDraft.id, reason: txt });
+                    if (!actionDraft.rejectCode) {
+                      toast.error(t('reasonCodeRequired'));
+                      return;
+                    }
+                    const codeLabel = REJECT_REASON_LABEL[actionDraft.rejectCode].bg;
+                    const composed = txt
+                      ? `[${actionDraft.rejectCode}] ${codeLabel} — ${txt}`
+                      : `[${actionDraft.rejectCode}] ${codeLabel}`;
+                    rejectMutation.mutate({ id: actionDraft.id, reason: composed });
                   }
                 }}
               >

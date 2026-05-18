@@ -58,6 +58,7 @@ const content = {
       notSupported: 'Push notifications are not supported',
       permissionDenied: 'Notification permission was denied',
       subscribeFailed: 'Failed to enable notifications',
+      testFailed: 'Failed to send test notification',
     },
   },
   bg: {
@@ -108,6 +109,7 @@ const content = {
       notSupported: 'Push известията не се поддържат',
       permissionDenied: 'Разрешението за известия беше отказано',
       subscribeFailed: 'Неуспешно разрешаване на известия',
+      testFailed: 'Неуспешно изпращане на тестово известие',
     },
   },
 };
@@ -204,7 +206,7 @@ const NotificationPreferences: React.FC = () => {
       toast.success(t.success.testSent);
     } catch (error) {
       console.error('Failed to send test notification:', error);
-      toast.error('Failed to send test notification');
+      toast.error(t.errors.testFailed);
     }
   };
 

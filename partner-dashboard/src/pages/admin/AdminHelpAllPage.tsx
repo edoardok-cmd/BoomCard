@@ -176,12 +176,13 @@ export default function AdminHelpAllPage() {
       toast.success('Заявката е назначена на вас');
       queryClient.invalidateQueries({ queryKey: ['admin-help-all'] });
       queryClient.invalidateQueries({ queryKey: ['admin-help-mine'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-help-new-count'] });
     },
     onError: () => toast.error('Грешка при назначаване'),
   });
 
   const fmt = (iso: string) =>
-    new Date(iso).toLocaleDateString('bg-BG', { day: '2-digit', month: 'short', year: 'numeric' });
+    new Date(iso).toLocaleString('bg-BG', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
   const columns: ColumnDef<HelpTicket>[] = [
     {

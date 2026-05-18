@@ -11,6 +11,7 @@ import {
   PayoutStatus,
   PayoutsSummary,
   PayoutsFilteredSummary,
+  isSubscriptionPayoutEligible,
 } from '../../services/adminPayouts.service';
 import { adminFinanceService } from '../../services/adminFinance.service';
 
@@ -310,6 +311,20 @@ const SlaTag = styled.span<{ $overdue: boolean }>`
   color: ${p => p.$overdue ? palette.danger : palette.warning};
 `;
 
+const SubGateBadge = styled.span`
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 0.25rem;
+  padding: 0.075rem 0.375rem;
+  margin-left: 0.375rem;
+  vertical-align: middle;
+  background: ${palette.dangerSoft};
+  color: ${palette.danger};
+`;
+
 const PlanBadge = styled.span<{ $plan: string }>`
   display: inline-block;
   font-size: 0.65rem;
@@ -354,7 +369,6 @@ const StatusBadge = styled.span<{ $status: PayoutStatus }>`
       case 'RISK_HOLD':
         return `background: ${palette.purpleSoft}; color: ${palette.purple};`;
       case 'ANNULLED':
-      case 'TRIAL_PENDING':
       default:
         return `background: #f3f4f6; color: #6b7280;`;
     }
@@ -436,9 +450,12 @@ const Btn = styled.button<{ $variant?: 'danger' | 'ghost' | 'warning' }>`
 `;
 
 /* ─── Helpers ──────────────────────────────────────────────────────────────── */
+// WITHDRAWAL rows never enter TRIAL_PENDING (that status is reserved for
+// CASHBACK_CREDIT held during the 24h trial refund window — see
+// backend wallet.service.ts). It is therefore intentionally absent here.
 const ALLOWED_STATUSES: PayoutStatus[] = [
   'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED',
-  'TRIAL_PENDING', 'ANNULLED', 'RISK_HOLD',
+  'ANNULLED', 'RISK_HOLD',
 ];
 
 const STATUS_OPTIONS: Array<{ value: PayoutStatus | ''; label: string }> = [
@@ -450,9 +467,11 @@ const STATUS_OPTIONS: Array<{ value: PayoutStatus | ''; label: string }> = [
   { value: 'FAILED',        label: 'Неуспешно' },
   { value: 'CANCELLED',     label: 'Отменено' },
   { value: 'ANNULLED',      label: 'Анулирано' },
-  { value: 'TRIAL_PENDING', label: 'Изчакване (пробен)' },
 ];
 
+// TRIAL_PENDING kept in the type signature only — WITHDRAWAL rows never have
+// that status, but the shared PayoutStatus union does. The fallback at the
+// call site (`STATUS_LABELS[row.status] ?? row.status`) handles it defensively.
 const STATUS_LABELS: Record<PayoutStatus, string> = {
   PENDING:       'Чака',
   RISK_HOLD:     'Задържано (риск)',
@@ -467,9 +486,20 @@ const STATUS_LABELS: Record<PayoutStatus, string> = {
 const SLA_WORKING_DAYS = 5;
 
 const PLAN_LABELS: Record<string, string> = {
-  LIGHT:   'Light',
+  LIGHT:   'Premium Weekly',
   BASIC:   'Basic',
   PREMIUM: 'Premium',
+};
+
+// §6.1 v1.1 — human labels for subscription statuses that block payout
+const SUB_STATUS_LABELS: Record<string, string> = {
+  PAST_DUE:           'Неуспешно плащане',
+  UNPAID:             'Неплатен',
+  CANCELLED:          'Отказан',
+  EXPIRED:            'Изтекъл',
+  PAUSED:             'На пауза',
+  INCOMPLETE:         'Незавършен',
+  INCOMPLETE_EXPIRED: 'Незавършен/изтекъл',
 };
 
 // Bug 2 fix: subtitle is context-aware based on the active status filter
@@ -482,7 +512,6 @@ function subtitleForStatus(status: PayoutStatus | ''): string {
     case 'CANCELLED':     return 'Отменени заявки';
     case 'ANNULLED':      return 'Анулирани заявки';
     case 'RISK_HOLD':     return 'Задържани заявки за риск-проверка';
-    case 'TRIAL_PENDING': return 'Заявки в изчакване (пробен период)';
     default:              return 'Всички заявки за изтегляне на средства';
   }
 }
@@ -509,13 +538,23 @@ function workingDaysSince(metadataJson?: string | null): number | null {
   }
 }
 
+function completedAtFromMeta(metadataJson?: string | null): string | null {
+  if (!metadataJson) return null;
+  try {
+    const meta = JSON.parse(metadataJson) as Record<string, unknown>;
+    return typeof meta.completedAt === 'string' ? meta.completedAt : null;
+  } catch {
+    return null;
+  }
+}
+
 function displayName(row: AdminPayout): string {
   const { firstName, lastName } = row.wallet.user;
   return [firstName, lastName].filter(Boolean).join(' ') || '—';
 }
 
 /* ─── Component ───────────────────────────────────────────────────────────── */
-type ModalMode = 'reject' | 'hold' | 'fail' | 'bulkApprove' | 'trialReject';
+type ModalMode = 'reject' | 'hold' | 'fail' | 'bulkApprove';
 
 interface ModalState {
   mode: ModalMode;
@@ -635,6 +674,12 @@ export default function AdminPayoutsPage() {
     onError: (err: unknown) => toast.error((err as any)?.response?.data?.message || 'Грешка'),
   });
 
+  const resetStuckMutation = useMutation({
+    mutationFn: (id: string) => adminPayoutsService.resetStuck(id),
+    onSuccess: () => { toast.success('Плащането е върнато в опашката за одобрение'); queryClient.invalidateQueries({ queryKey: ['admin-payouts'] }); },
+    onError: (err: unknown) => toast.error((err as any)?.response?.data?.message || 'Грешка при възстановяване'),
+  });
+
   /* ── bulk approve (system-wide — all pages) ── */
   const handleBulkApprove = async () => {
     // Show confirmation using the global pending count, not just the current page
@@ -645,7 +690,11 @@ export default function AdminPayoutsPage() {
     closeModal();
     try {
       const result = await adminPayoutsService.bulkApprove();
-      toast.success(`${result.approved} от ${result.total} плащания одобрени`);
+      const extras: string[] = [];
+      if (result.alreadyProcessed > 0) extras.push(`${result.alreadyProcessed} вече обработени`);
+      if (result.failed > 0)           extras.push(`${result.failed} неуспешни`);
+      const suffix = extras.length ? ` (${extras.join(', ')})` : '';
+      toast.success(`${result.approved} от ${result.total} плащания одобрени${suffix}`);
     } catch {
       toast.error('Грешка при масово одобрение');
     }
@@ -685,16 +734,15 @@ export default function AdminPayoutsPage() {
   const handleModalConfirm = () => {
     if (!modal) return;
     const { mode, row, reason } = modal;
-    if (mode === 'reject'      && row) rejectMutation.mutate({ id: row.id, reason });
-    if (mode === 'trialReject' && row) rejectMutation.mutate({ id: row.id, reason });
-    if (mode === 'hold'        && row) holdMutation.mutate({ id: row.id, reason });
-    if (mode === 'fail'        && row) failMutation.mutate({ id: row.id, reason });
+    if (mode === 'reject' && row) rejectMutation.mutate({ id: row.id, reason });
+    if (mode === 'hold'   && row) holdMutation.mutate({ id: row.id, reason });
+    if (mode === 'fail'   && row) failMutation.mutate({ id: row.id, reason });
     if (mode === 'bulkApprove') executeBulkApprove();
   };
 
   const isMutating = rejectMutation.isPending || holdMutation.isPending || failMutation.isPending;
-  const isReasonModal = (mode: ModalMode): mode is 'reject' | 'hold' | 'fail' | 'trialReject' =>
-    mode === 'reject' || mode === 'hold' || mode === 'fail' || mode === 'trialReject';
+  const isReasonModal = (mode: ModalMode): mode is 'reject' | 'hold' | 'fail' =>
+    mode === 'reject' || mode === 'hold' || mode === 'fail';
 
   /* ── formatters ── */
   const fmt = (iso: string) =>
@@ -733,15 +781,23 @@ export default function AdminPayoutsPage() {
       key: 'user',
       header: 'Абонат',
       render: (row) => {
-        const activeSub = row.wallet.user.subscriptions?.[0];
-        const threshold = activeSub ? thresholds[activeSub.plan] : undefined;
+        const latestSub = row.wallet.user.subscriptions?.[0];
+        const eligible  = isSubscriptionPayoutEligible(latestSub);
+        const threshold = eligible && latestSub ? thresholds[latestSub.plan] : undefined;
         return (
           <UserCell>
             {displayName(row)}
-            {activeSub && (
-              <PlanBadge $plan={activeSub.plan}>
-                {PLAN_LABELS[activeSub.plan] ?? activeSub.plan}
+            {eligible && latestSub && (
+              <PlanBadge $plan={latestSub.plan}>
+                {PLAN_LABELS[latestSub.plan] ?? latestSub.plan}
               </PlanBadge>
+            )}
+            {!eligible && (
+              <SubGateBadge title="Payout се задържа до възстановяване на абонамента (§6.1)">
+                {latestSub
+                  ? `Абонамент: ${SUB_STATUS_LABELS[latestSub.status] ?? latestSub.status}`
+                  : 'Няма абонамент'}
+              </SubGateBadge>
             )}
             <MetaLine>{row.wallet.user.email}</MetaLine>
             {row.wallet.user.phone && <MetaLine>{row.wallet.user.phone}</MetaLine>}
@@ -825,6 +881,18 @@ export default function AdminPayoutsPage() {
         </span>
       ),
     },
+    {
+      key: 'completedAt',
+      header: 'Платено на',
+      render: (row) => {
+        const completedAt = completedAtFromMeta(row.metadata);
+        return (
+          <span style={{ color: completedAt ? palette.success : palette.textSubtle, fontSize: '0.8125rem' }}>
+            {completedAt ? fmt(completedAt) : '—'}
+          </span>
+        );
+      },
+    },
   ];
 
   /* ── row actions ── */
@@ -832,8 +900,13 @@ export default function AdminPayoutsPage() {
     {
       label: 'Одобри',
       hidden: (row) => row.status !== 'PENDING',
-      disabled: (row) => !row.wallet.payoutIban,
-      disabledTitle: 'Абонатът няма регистриран IBAN',
+      disabled: (row) =>
+        !row.wallet.payoutIban ||
+        !isSubscriptionPayoutEligible(row.wallet.user.subscriptions?.[0]),
+      disabledTitle: (row) =>
+        !row.wallet.payoutIban
+          ? 'Абонатът няма регистриран IBAN'
+          : 'Абонаментът не е активен — payout се задържа до възстановяване (§6.1)',
       onClick: (row) => approveMutation.mutate(row.id),
     },
     {
@@ -858,21 +931,41 @@ export default function AdminPayoutsPage() {
       onClick: (row) => setModal({ mode: 'fail', row, reason: '' }),
     },
     {
+      // Crash-recovery — visible only when PROCESSING with no Paysera transfer
+      // ever initiated (rare; happens if the API process crashed between the
+      // PENDING→PROCESSING transition and Paysera createTransfer).
+      label: 'Възстанови (без превод)',
+      hidden: (row) => {
+        if (row.status !== 'PROCESSING') return true;
+        try {
+          const meta = row.metadata ? JSON.parse(row.metadata) : {};
+          // Hide when a Paysera transfer was created (use /fail to reverse)
+          // or when the row is parked by the no-Paysera-configured path
+          // (use /complete or /fail).
+          if (Boolean(meta.payseraTransferId) || meta.manualHold === true) return true;
+          // Mirror backend WITHIN_GRACE_PERIOD guard: hide within the 2-minute
+          // window where an in-flight executePayoutTransfer may still be running.
+          if (meta.processingStartedAt) {
+            const startedAt = new Date(meta.processingStartedAt).getTime();
+            if (Number.isFinite(startedAt) && Date.now() - startedAt < 2 * 60 * 1000) return true;
+          }
+          return false;
+        } catch {
+          return false;
+        }
+      },
+      onClick: (row) => resetStuckMutation.mutate(row.id),
+    },
+    {
       label: 'Отхвърли',
       danger: true,
       hidden: (row) => row.status !== 'PENDING' && row.status !== 'RISK_HOLD',
       onClick: (row) => setModal({ mode: 'reject', row, reason: '' }),
     },
-    {
-      label: 'Отхвърли (пробен)',
-      danger: true,
-      hidden: (row) => row.status !== 'TRIAL_PENDING',
-      onClick: (row) => setModal({ mode: 'trialReject', row, reason: '' }),
-    },
   ];
 
   /* ── modal copy ── */
-  const modalCopy: Record<'reject' | 'hold' | 'fail' | 'trialReject', { title: string; subtitle: (row: AdminPayout) => string; confirm: string; confirmVariant: 'danger' | 'warning' }> = {
+  const modalCopy: Record<'reject' | 'hold' | 'fail', { title: string; subtitle: (row: AdminPayout) => string; confirm: string; confirmVariant: 'danger' | 'warning' }> = {
     reject: {
       title: 'Отхвърляне на плащане',
       subtitle: (row) => `${Math.abs(row.amount).toFixed(2)} ${row.currency} за ${displayName(row)} — балансът ще бъде възстановен.`,
@@ -889,12 +982,6 @@ export default function AdminPayoutsPage() {
       title: 'Маркиране като неуспешно',
       subtitle: (row) => `Банковият превод от ${Math.abs(row.amount).toFixed(2)} ${row.currency} за ${displayName(row)} не е успял. Балансът ще бъде възстановен.`,
       confirm: 'Маркирай неуспешно',
-      confirmVariant: 'danger',
-    },
-    trialReject: {
-      title: 'Отхвърляне на заявка (пробен период)',
-      subtitle: (row) => `Заявката за ${Math.abs(row.amount).toFixed(2)} ${row.currency} от ${displayName(row)} е в изчакване поради пробен период. Отхвърлянето ще възстанови баланса.`,
-      confirm: 'Отхвърли и възстанови',
       confirmVariant: 'danger',
     },
   };
@@ -942,29 +1029,23 @@ export default function AdminPayoutsPage() {
           <SummaryMeta>{fmtBgn(displaySummary.processingTotal)} общо</SummaryMeta>
         </SummaryCard>
 
-        {displaySummary.riskHoldCount > 0 && (
-          <SummaryCard style={{ background: palette.purpleSoft, border: `1px solid #c4b5fd` }}>
-            <SummaryLabel style={{ color: palette.purple }}>Задържани (риск)</SummaryLabel>
-            <SummaryValue style={{ color: palette.purple }}>{displaySummary.riskHoldCount}</SummaryValue>
-            <SummaryMeta>изискват преглед</SummaryMeta>
-          </SummaryCard>
-        )}
+        <SummaryCard style={{ background: palette.purpleSoft, border: `1px solid #c4b5fd` }}>
+          <SummaryLabel style={{ color: palette.purple }}>Задържани (риск)</SummaryLabel>
+          <SummaryValue style={{ color: palette.purple }}>{displaySummary.riskHoldCount}</SummaryValue>
+          <SummaryMeta>изискват преглед</SummaryMeta>
+        </SummaryCard>
 
-        {displaySummary.completedCount > 0 && (
-          <SummaryCard $variant="neutral">
-            <SummaryLabel style={{ color: palette.success }}>Платено</SummaryLabel>
-            <SummaryValue style={{ color: palette.success }}>{displaySummary.completedCount}</SummaryValue>
-            <SummaryMeta>{fmtBgn(displaySummary.completedTotal)} изплатено</SummaryMeta>
-          </SummaryCard>
-        )}
+        <SummaryCard $variant="neutral">
+          <SummaryLabel style={{ color: palette.success }}>Платено</SummaryLabel>
+          <SummaryValue style={{ color: palette.success }}>{displaySummary.completedCount}</SummaryValue>
+          <SummaryMeta>{fmtBgn(displaySummary.completedTotal)} изплатено</SummaryMeta>
+        </SummaryCard>
 
-        {displaySummary.failedCount > 0 && (
-          <SummaryCard $variant="danger">
-            <SummaryLabel style={{ color: palette.danger }}>Неуспешни</SummaryLabel>
-            <SummaryValue style={{ color: palette.danger }}>{displaySummary.failedCount}</SummaryValue>
-            <SummaryMeta>{fmtBgn(displaySummary.failedTotal)} общо</SummaryMeta>
-          </SummaryCard>
-        )}
+        <SummaryCard $variant="danger">
+          <SummaryLabel style={{ color: palette.danger }}>Неуспешни</SummaryLabel>
+          <SummaryValue style={{ color: palette.danger }}>{displaySummary.failedCount}</SummaryValue>
+          <SummaryMeta>{fmtBgn(displaySummary.failedTotal)} общо</SummaryMeta>
+        </SummaryCard>
 
         <SummaryCard>
           <SummaryLabel>Всички</SummaryLabel>
@@ -1046,7 +1127,7 @@ export default function AdminPayoutsPage() {
         />
       </Card>
 
-      {/* Reason modal — used for reject, hold, fail, trialReject */}
+      {/* Reason modal — used for reject, hold, fail */}
       {modal && isReasonModal(modal.mode) && modal.row && (
         <Overlay onClick={closeModal}>
           <Modal onClick={(e) => e.stopPropagation()}>

@@ -17,8 +17,8 @@ const I18N = {
   // Page header
   eyebrow:          { en: 'Subscribers',      bg: 'Абонати' },
   pageTitle:        { en: 'Cashback',          bg: 'Кешбек' },
-  pageSubtitle:     { en: 'Spec §4.4 entry-based cashback. Tiles: Accrued (sum) + 5 lifecycle states + Expiring (subset of Cleared due in ≤14 days).',
-                      bg: 'Спец. §4.4 — записи по статус. Карти: Начислен (общо) + 5 статуса + Изтичащ (подмножество на Одобрен ≤14 дни).' },
+  pageSubtitle:     { en: 'Cashback entries by lifecycle status. Expiring entries are Cleared cashback due within 14 days.',
+                      bg: 'Записи по статус. Изтичащите са одобрен кешбек с падеж до 14 дни.' },
   // Stat card labels
   statAccrued:      { en: 'Accrued',           bg: 'Начислен' },
   statCleared:      { en: 'Cleared',           bg: 'Одобрен' },
@@ -51,6 +51,8 @@ const I18N = {
   sLocked:          { en: 'Locked',            bg: 'Заключен' },
   sPaid:            { en: 'Paid',              bg: 'Платен' },
   sExpired:         { en: 'Expired',           bg: 'Изтекъл' },
+  sVoided:          { en: 'Voided',            bg: 'Анулиран' },
+  statVoided:       { en: 'Voided',            bg: 'Анулиран' },
   // Currency / unit
   bgn:              { en: 'BGN',               bg: 'лв.' },
   days:             { en: 'days',              bg: 'дни' },
@@ -61,6 +63,12 @@ const I18N = {
   actionLock:       { en: 'Lock',              bg: 'Заключи' },
   actionMarkPaid:   { en: 'Mark as paid',      bg: 'Маркирай платен' },
   actionExpire:     { en: 'Expire',            bg: 'Изтечи' },
+  actionVoid:       { en: 'Void…',             bg: 'Анулирай…' },
+  promptVoidReason: { en: 'Reason for voiding (visible to user):',
+                      bg: 'Причина за анулиране (видима за абоната):' },
+  confirmVoid:      { en: 'Void cashback for {email}?\nAmount: {amount} BGN\nReason: {reason}\nThe user will see this entry as "Voided" with the reason.',
+                      bg: 'Анулирай кешбек за {email}?\nСума: {amount} лв.\nПричина: {reason}\nАбонатът ще види записа като „Анулиран" с причината.' },
+  voidedReasonLabel:{ en: 'Voided:',            bg: 'Анулиран:' },
   // Confirm dialogs
   confirmApprove:   { en: 'Approve cashback entry for {email}?\nAmount: {amount} BGN',
                       bg: 'Одобри кешбек записа за {email}?\nСума: {amount} лв.' },
@@ -81,6 +89,8 @@ const I18N = {
   toastPayErr:      { en: 'Error marking entry as paid', bg: 'Грешка при маркиране като платен' },
   toastExpired:     { en: 'Entry expired',     bg: 'Записът е изтекъл' },
   toastExpireErr:   { en: 'Error expiring entry', bg: 'Грешка при изтичане' },
+  toastVoided:      { en: 'Entry voided',       bg: 'Записът е анулиран' },
+  toastVoidErr:     { en: 'Error voiding entry', bg: 'Грешка при анулиране' },
   toastExportWarn:  { en: 'Warning: exported {n} of {total} entries. Narrow the filter for a complete file.',
                       bg: 'Внимание: експортирани са {n} от {total} записа. Приложи по-тесен филтър за пълен извлечен файл.' },
   toastExportErr:   { en: 'Export failed',     bg: 'Грешка при експорт' },
@@ -308,6 +318,7 @@ const EntryStatusBadge = styled.span<{ $status: CashbackEntryStatus }>`
       case 'Paid':    return `background: ${palette.infoSoft}; color: ${palette.info};`;
       case 'Pending': return `background: ${palette.warningSoft}; color: ${palette.warning};`;
       case 'Locked':  return `background: ${palette.amberSoft}; color: ${palette.amber};`;
+      case 'Voided':  return `background: ${palette.dangerSoft}; color: ${palette.danger}; text-decoration: line-through;`;
       case 'Expired':
       default:        return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
     }
@@ -420,6 +431,17 @@ export default function AdminCashbackPage() {
     onError: () => toast.error(T('toastExpireErr')),
   });
 
+  const voidMutation = useMutation({
+    mutationFn: (payload: { entryId: string; reason: string }) =>
+      adminCashbackService.voidEntry(payload.entryId, payload.reason),
+    onSuccess: () => {
+      toast.success(T('toastVoided'));
+      queryClient.invalidateQueries({ queryKey: ['admin-cashback-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-cashback-stats'] });
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.error ?? T('toastVoidErr')),
+  });
+
   const handleExport = async () => {
     setExporting(true);
     try {
@@ -443,7 +465,7 @@ export default function AdminCashbackPage() {
   };
 
   const statusLabels: Record<CashbackEntryStatus, I18NKey> = {
-    Pending: 'sPending', Cleared: 'sCleared', Locked: 'sLocked', Paid: 'sPaid', Expired: 'sExpired',
+    Pending: 'sPending', Cleared: 'sCleared', Locked: 'sLocked', Paid: 'sPaid', Expired: 'sExpired', Voided: 'sVoided',
   };
 
   const entryColumns: ColumnDef<CashbackEntry>[] = [
@@ -473,7 +495,14 @@ export default function AdminCashbackPage() {
       key: 'state',
       header: T('colStatus'),
       render: (row) => (
-        <EntryStatusBadge $status={row.status}>{T(statusLabels[row.status])}</EntryStatusBadge>
+        <div>
+          <EntryStatusBadge $status={row.status}>{T(statusLabels[row.status])}</EntryStatusBadge>
+          {row.status === 'Voided' && row.voidedReason && (
+            <MetaLine title={row.voidedReason} style={{ maxWidth: '14rem' }}>
+              {T('voidedReasonLabel')} {row.voidedReason}
+            </MetaLine>
+          )}
+        </div>
       ),
     },
     {
@@ -521,7 +550,7 @@ export default function AdminCashbackPage() {
 
   const isMutating =
     approveMutation.isPending || lockMutation.isPending ||
-    payMutation.isPending || expireMutation.isPending;
+    payMutation.isPending || expireMutation.isPending || voidMutation.isPending;
 
   // Build threshold hint from backend data; fall back to ellipsis if not yet loaded
   const thresholdHint = thresholds
@@ -588,6 +617,12 @@ export default function AdminCashbackPage() {
             {stats ? `${fmt(stats.totalExpired)} ${bgn}` : '—'}
           </StatValue>
         </StatCard>
+        <StatCard>
+          <StatLabel>{T('statVoided')}</StatLabel>
+          <StatValue $color={stats && stats.totalVoided > 0 ? palette.danger : palette.text}>
+            {stats ? `${fmt(stats.totalVoided)} ${bgn}` : '—'}
+          </StatValue>
+        </StatCard>
       </StatsRow>
 
       {/* Payout threshold reference — fetched from backend (spec §9 Настройки) */}
@@ -607,6 +642,7 @@ export default function AdminCashbackPage() {
             <option value="Locked">{T('sLocked')}</option>
             <option value="Paid">{T('sPaid')}</option>
             <option value="Expired">{T('sExpired')}</option>
+            <option value="Voided">{T('sVoided')}</option>
           </Select>
           <SearchInput
             type="text"
@@ -668,11 +704,23 @@ export default function AdminCashbackPage() {
             },
             {
               label: T('actionExpire'),
-              hidden: (row) => ['Paid', 'Expired'].includes(row.status) || ['ANNULLED', 'FAILED'].includes(row.rawStatus),
+              hidden: (row) => ['Paid', 'Expired', 'Voided'].includes(row.status) || ['ANNULLED', 'FAILED'].includes(row.rawStatus),
               onClick: (row) => {
                 const warning = row.status === 'Locked' ? T('lockedWarning') : '';
                 if (!window.confirm(T('confirmExpire', { email: row.user.email, amount: fmt(row.amount), warning }))) return;
                 expireMutation.mutate(row.id);
+              },
+            },
+            // Spec §4.4 v1.1 — Void requires a visible reason (audit + user-facing).
+            // Allowed from Pending, Cleared, or Locked. Paid/Expired/Voided are terminal.
+            {
+              label: T('actionVoid'),
+              hidden: (row) => !['Pending', 'Cleared', 'Locked'].includes(row.status),
+              onClick: (row) => {
+                const reason = window.prompt(T('promptVoidReason'));
+                if (!reason || !reason.trim()) return;
+                if (!window.confirm(T('confirmVoid', { email: row.user.email, amount: fmt(row.amount), reason: reason.trim() }))) return;
+                voidMutation.mutate({ entryId: row.id, reason: reason.trim() });
               },
             },
           ]}

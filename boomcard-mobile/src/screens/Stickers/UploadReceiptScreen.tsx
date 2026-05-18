@@ -266,7 +266,26 @@ export default function UploadReceiptScreen() {
 
       setStage('success');
     } catch (error: any) {
-      crossPlatformAlert(t('common.error'), error.message || t('stickers.processFailed', 'Submission failed. Please try again.'));
+      const rawErr: string = error?.message || '';
+      // Spec §4.2 v1.1 — surface renewal CTA on SUBSCRIPTION_* markers.
+      if (rawErr.includes('SUBSCRIPTION_FAILED_PAYMENT') || rawErr.includes('SUBSCRIPTION_PAST_DUE')) {
+        crossPlatformAlert(
+          t('common.info', 'Информация'),
+          t(
+            'stickers.subscriptionFailedPayment',
+            'Абонаментът Ви е в статус „неуспешно плащане". Възобновете го от менюто „Абонамент и плащания", за да продължите да сканирате бележки.'
+          ),
+          [
+            { text: t('common.cancel', 'Откажи'), style: 'cancel' },
+            {
+              text: t('stickers.renewSubscription', 'Възобнови абонамент'),
+              onPress: () => (navigation as any).navigate('SubscriptionManagement'),
+            },
+          ]
+        );
+      } else {
+        crossPlatformAlert(t('common.error'), rawErr || t('stickers.processFailed', 'Submission failed. Please try again.'));
+      }
       setStage('confirm');
     }
   };

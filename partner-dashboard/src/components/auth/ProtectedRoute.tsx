@@ -72,14 +72,23 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   // Role-based access control
   if (requiredRole && user) {
-    // Admin can access everything
-    if (user.role === 'admin') {
-      return <>{children}</>;
+    if (user.role !== requiredRole && user.role !== 'admin') {
+      return <Navigate to="/dashboard" replace />;
     }
 
-    // Check if user has the required role
-    if (user.role !== requiredRole) {
-      return <Navigate to="/dashboard" replace />;
+    // For admin users: enforce password change and 2FA setup before allowing
+    // access to any page other than the security settings page.
+    if (user.role === 'admin') {
+      const onSecurityPage = location.pathname.startsWith('/admin/profile/security');
+      const onLogoutPage   = location.pathname.startsWith('/admin/profile/logout');
+      const bypass = onSecurityPage || onLogoutPage;
+
+      if (!bypass && user.mustChangePassword) {
+        return <Navigate to="/admin/profile/security" state={{ reason: 'mustChangePassword' }} replace />;
+      }
+      if (!bypass && user.twoFactorEnabled === false && import.meta.env.PROD) {
+        return <Navigate to="/admin/profile/security" state={{ reason: 'setup2FA' }} replace />;
+      }
     }
   }
 

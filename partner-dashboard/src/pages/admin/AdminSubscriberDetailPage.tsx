@@ -151,6 +151,9 @@ const I18N = {
   statusLocked:     { en: 'Locked',                      bg: 'Заключен' },
   statusPaid:       { en: 'Paid',                        bg: 'Платен' },
   statusExpired:    { en: 'Expired',                     bg: 'Изтекъл' },
+  statusVoided:     { en: 'Voided',                      bg: 'Анулиран' },
+  colVoidReason:    { en: 'Reason',                      bg: 'Причина' },
+  voidedEntriesTitle: { en: 'Voided cashback entries',   bg: 'Анулирани кешбек записи' },
   // Payout queue link
   payoutQueueTitle: { en: 'Payout queue',                bg: 'Опашка за изплащане' },
   payoutQueueView:  { en: 'View in payout queue →',      bg: 'Виж в опашка за изплащане →' },
@@ -593,7 +596,7 @@ const REFUND_REASONS: Array<{ value: RefundReason; key: I18NKey }> = [
 
 const PLAN_CHOICES: SubscriptionPlan[] = ['LIGHT', 'BASIC', 'PREMIUM'];
 
-const CASHBACK_STATUSES = ['Pending', 'Cleared', 'Locked', 'Paid', 'Expired'] as const;
+const CASHBACK_STATUSES = ['Pending', 'Cleared', 'Locked', 'Paid', 'Expired', 'Voided'] as const;
 type CashbackStatus = typeof CASHBACK_STATUSES[number];
 
 /* ─── Component ───────────────────────────────────────────────────────────── */
@@ -789,13 +792,25 @@ export default function AdminSubscriberDetailPage() {
     Locked:  { count: 0, amount: 0 },
     Paid:    { count: 0, amount: 0 },
     Expired: { count: 0, amount: 0 },
+    Voided:  { count: 0, amount: 0 },
   };
+  // Spec §4.4 v1.1 — surface Voided entries with their reason for transparency/audit.
+  const voidedEntries: Array<{ id: string; amount: number; voidedReason: string | null; voidedAt: string | null; createdAt: string }> = [];
   if (cashbackEntries?.data) {
     for (const e of cashbackEntries.data) {
       const s = e.status as CashbackStatus;
       if (cashbackByStatus[s]) {
         cashbackByStatus[s].count++;
         cashbackByStatus[s].amount += e.amount;
+      }
+      if (s === 'Voided') {
+        voidedEntries.push({
+          id: (e as any).id,
+          amount: e.amount,
+          voidedReason: (e as any).voidedReason ?? null,
+          voidedAt: (e as any).voidedAt ?? null,
+          createdAt: (e as any).createdAt ?? null,
+        });
       }
     }
   }
@@ -1283,8 +1298,9 @@ export default function AdminSubscriberDetailPage() {
                           letterSpacing: '0.05em',
                           borderRadius: '0.375rem',
                           padding: '0.15rem 0.45rem',
-                          background: s === 'Cleared' ? palette.successSoft : s === 'Pending' ? palette.infoSoft : s === 'Locked' ? palette.warningSoft : s === 'Paid' ? palette.tealSoft : '#f3f4f6',
-                          color: s === 'Cleared' ? palette.success : s === 'Pending' ? palette.info : s === 'Locked' ? palette.warning : s === 'Paid' ? palette.teal : '#6b7280',
+                          background: s === 'Cleared' ? palette.successSoft : s === 'Pending' ? palette.infoSoft : s === 'Locked' ? palette.warningSoft : s === 'Paid' ? palette.tealSoft : s === 'Voided' ? '#fee2e2' : '#f3f4f6',
+                          color: s === 'Cleared' ? palette.success : s === 'Pending' ? palette.info : s === 'Locked' ? palette.warning : s === 'Paid' ? palette.teal : s === 'Voided' ? '#b91c1c' : '#6b7280',
+                          textDecoration: s === 'Voided' ? 'line-through' : 'none',
                         }}>
                           {T(('status' + s) as I18NKey)}
                         </span>
@@ -1301,6 +1317,39 @@ export default function AdminSubscriberDetailPage() {
                 Showing first 100 of {cashbackEntries.total} entries.
               </p>
             )}
+
+            {/* Spec §4.4 v1.1 — voided entries get an explicit, transparent
+                listing with the reason. Audit trail (decider, timestamp) lives
+                in AuditLog; this view is the user-visible summary. */}
+            {voidedEntries.length > 0 && (
+              <div style={{ marginTop: '1.25rem' }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: palette.text, marginBottom: '0.5rem' }}>
+                  {T('voidedEntriesTitle')}
+                </div>
+                <SubTable>
+                  <thead>
+                    <tr>
+                      <Th>{T('colAmount')}</Th>
+                      <Th>{T('colVoidReason')}</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {voidedEntries.slice(0, 10).map((v) => (
+                      <tr key={v.id}>
+                        <Td style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{v.amount.toFixed(2)} BGN</Td>
+                        <Td style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>{v.voidedReason ?? '—'}</Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </SubTable>
+                {voidedEntries.length > 10 && (
+                  <p style={{ fontSize: '0.8125rem', color: palette.textSubtle, marginTop: '0.5rem', marginBottom: 0 }}>
+                    +{voidedEntries.length - 10}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div style={{ marginTop: '1rem' }}>
               <Link
                 to={`/admin/subscribers/cashback?search=${encodeURIComponent(data.email)}`}

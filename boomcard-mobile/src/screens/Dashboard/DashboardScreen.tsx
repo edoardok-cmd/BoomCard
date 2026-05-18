@@ -413,7 +413,11 @@ const DashboardScreen = ({ navigation }: any) => {
       {/* Stats Card */}
       <FadeInView delay={200}>
       <View style={s.statsCard}>
-        <View style={s.statItem}>
+        <TouchableOpacity
+          style={s.statItem}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('CashbackHistory')}
+        >
           <View style={[s.statIconCircle, { backgroundColor: isDarkMode ? 'rgba(212,168,67,0.15)' : 'rgba(212,168,67,0.1)' }]}>
             <Ionicons name="wallet-outline" size={18} color="#D4A843" />
           </View>
@@ -423,7 +427,7 @@ const DashboardScreen = ({ navigation }: any) => {
             style={s.statValueGold}
           />
           <Text style={s.statLabel}>{t('dashboard.totalCashback')}</Text>
-        </View>
+        </TouchableOpacity>
 
         <View style={s.statDivider} />
 

@@ -118,6 +118,10 @@ export interface User {
   permissions?: string[];
   createdAt: number;
   emailVerified: boolean;
+  // Admin-only: set on accounts created by another admin; cleared on first password change.
+  mustChangePassword?: boolean;
+  // Admin-only: whether TOTP 2FA has been configured.
+  twoFactorEnabled?: boolean;
 }
 
 // Backend emits roles in uppercase (USER|PARTNER|ADMIN|SUPER_ADMIN); this
@@ -163,6 +167,8 @@ export interface RegisterData {
     website?: string;
     city?: string;
     address?: string;
+    /** Spec §5.1 v1.1 — venue count bucket */
+    requestObjectCount?: string;
   };
 }
 
@@ -209,6 +215,8 @@ export interface AuthContextType extends AuthState {
   switchAccount: (targetAccountId: string) => Promise<void>;
   impersonate: (targetPartnerUserId: string) => Promise<void>;
   stopImpersonating: () => Promise<void>;
+  // Re-fetch /auth/me and refresh user state in-place (used after 2FA setup, password change, etc.)
+  reloadUser: () => Promise<void>;
 }
 
 interface AuthResponse {
@@ -410,6 +418,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               createdAt: meData.createdAt ? new Date(meData.createdAt).getTime() : Date.now(),
               emailVerified: meData.emailVerified ?? true,
               avatar: meData.avatar,
+              mustChangePassword: (meData as any).mustChangePassword ?? false,
+              twoFactorEnabled: (meData as any).twoFactorEnabled ?? false,
             };
             setUser(verifiedUser);
 
@@ -549,6 +559,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
           emailVerified: userPayload.emailVerified ?? true,
           avatar: userPayload.avatar,
+          mustChangePassword: (userPayload as any).mustChangePassword ?? false,
+          twoFactorEnabled: (userPayload as any).twoFactorEnabled ?? false,
         };
         setUser(user);
         authStorage.setItem(STORAGE_KEY, JSON.stringify(user), persistent);
@@ -603,7 +615,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // PENDING and the dashboard has no useful state for them yet. Show the
       // pending toast and let the caller navigate to /login.
       if (pendingVerification || data.accountType === 'partner') {
-        toast.success(`Thanks ${userPayload?.firstName || ''}! Your partner application is under review — you'll be able to sign in once approved.`);
+        // Spec §5.1 v1.1 — external promise to applicant is "до 2 работни дни"
+        // (also delivered via the application-ack email — see auth.service).
+        toast.success(
+          `Thanks ${userPayload?.firstName || ''}! Your partner application has been received. Our team will contact you within 2 business days.`,
+          { duration: 8000 },
+        );
         return;
       }
 
@@ -637,7 +654,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
       setUser(normalizedUser);
 
-      toast.success('Account created successfully! Welcome to BoomCard!');
+      toast.success(t('auth.accountCreated'));
     } catch (error) {
       const message = humanizeError(error, t, 'errors.registrationFailed');
       toast.error(message);
@@ -705,7 +722,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Clear API service token
     apiService.clearAuthToken();
 
-    toast.success('Logged out successfully');
+    toast.success(t('auth.loggedOut'));
   };
 
   const switchAccount = async (targetAccountId: string): Promise<void> => {
@@ -759,6 +776,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
         emailVerified: userPayload.emailVerified ?? true,
         avatar: userPayload.avatar,
+        mustChangePassword: (userPayload as any).mustChangePassword ?? false,
+        twoFactorEnabled: (userPayload as any).twoFactorEnabled ?? false,
       };
       setUser(nextUser);
       authStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser), inheritPersistent);
@@ -881,13 +900,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
         emailVerified: userPayload.emailVerified ?? true,
         avatar: userPayload.avatar,
+        mustChangePassword: (userPayload as any).mustChangePassword ?? false,
+        twoFactorEnabled: (userPayload as any).twoFactorEnabled ?? false,
       };
       setUser(adminUser);
       authStorage.setItem(STORAGE_KEY, JSON.stringify(adminUser), inheritPersistent);
       setSwitchableAccounts(Array.isArray(switchable) ? switchable : []);
       setImpersonation(null);
 
-      toast.success('Stopped impersonating');
+      toast.success(t('auth.stoppedImpersonating'));
     } catch (error) {
       const message = extractErrorMessage(error, 'Failed to stop impersonation');
       toast.error(message);
@@ -913,7 +934,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: payload.createdAt ? new Date(payload.createdAt).getTime() : user.createdAt,
       });
 
-      toast.success('Profile updated successfully');
+      toast.success(t('profile.savedSuccessfully'));
     } catch (error) {
       const message = extractErrorMessage(error, 'Update failed');
       toast.error(message);
@@ -957,7 +978,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         newPassword
       });
 
-      toast.success('Password changed successfully');
+      // Clear the mustChangePassword gate in local state so admin panel
+      // routes unlock immediately without requiring a page reload.
+      setUser(prev => prev ? { ...prev, mustChangePassword: false } : prev);
+
+      toast.success(t('profile.passwordChangedSuccess'));
     } catch (error) {
       const message = extractErrorMessage(error, 'Password change failed');
       toast.error(message);
@@ -990,7 +1015,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         city: updated.city ?? prev.city,
         country: updated.country ?? prev.country,
       } : prev);
-      toast.success('Email updated successfully');
+      toast.success(t('auth.emailUpdated'));
     } catch (error) {
       const message = extractErrorMessage(error, 'Failed to verify email change');
       toast.error(message);
@@ -1115,13 +1140,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updatedUser = response?.data || response;
       setUser(prev => prev ? { ...prev, avatar: updatedUser.avatar } : prev);
 
-      toast.success('Profile photo updated');
+      toast.success(t('profile.avatarUpdated'));
     } catch (error) {
       const message = extractErrorMessage(error, 'Upload failed');
       toast.error(message);
       throw error;
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const reloadUser = async (): Promise<void> => {
+    try {
+      const meResponse = await apiService.get<Envelope<MePayload>>('/auth/me');
+      const meData: MePayload = meResponse?.data || meResponse;
+      setUser(prev => prev ? {
+        ...prev,
+        firstName: meData.firstName || prev.firstName,
+        lastName: meData.lastName || prev.lastName,
+        phone: meData.phone ?? prev.phone,
+        city: meData.city ?? prev.city,
+        country: meData.country ?? prev.country,
+        permissions: meData.permissions ?? prev.permissions,
+        mustChangePassword: (meData as any).mustChangePassword ?? prev.mustChangePassword,
+        twoFactorEnabled: (meData as any).twoFactorEnabled ?? prev.twoFactorEnabled,
+      } : prev);
+    } catch {
+      // Non-fatal — stale state is fine if the reload fails
     }
   };
 
@@ -1132,7 +1177,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await apiService.delete('/auth/avatar');
       setUser(prev => prev ? { ...prev, avatar: undefined } : prev);
-      toast.success('Profile photo removed');
+      toast.success(t('profile.avatarRemoved'));
     } catch (error) {
       const message = extractErrorMessage(error, 'Remove failed');
       toast.error(message);
@@ -1164,6 +1209,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     switchAccount,
     impersonate,
     stopImpersonating,
+    reloadUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

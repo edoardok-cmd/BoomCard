@@ -17,7 +17,7 @@ export interface RowAction<T> {
   danger?: boolean;
   hidden?: (row: T) => boolean;
   disabled?: (row: T) => boolean;
-  disabledTitle?: string;
+  disabledTitle?: string | ((row: T) => string);
 }
 
 interface DataTableProps<T> {
@@ -162,7 +162,13 @@ export function DataTable<T>({
                                       key={action.label}
                                       $danger={!!action.danger}
                                       disabled={isDisabled}
-                                      title={isDisabled ? action.disabledTitle : undefined}
+                                      title={
+                                        isDisabled
+                                          ? typeof action.disabledTitle === 'function'
+                                            ? action.disabledTitle(row)
+                                            : action.disabledTitle
+                                          : undefined
+                                      }
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         if (isDisabled) return;

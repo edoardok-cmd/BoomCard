@@ -198,14 +198,26 @@ export class ApiClient {
         typeof data?.error === 'string' ? data.error :
         typeof data?.error?.message === 'string' ? data.error.message :
         'Server error occurred';
+      // Subscription-state prefixes must reach the screen-level handlers that
+      // show the renewal CTA. Check these BEFORE the generic tier-block rewrite
+      // so a future 403 on a subscription-blocked scan still fires the CTA
+      // rather than collapsing to the generic "higher plan required" copy.
+      const isSubscriptionStateError =
+        rawMessage.startsWith('SUBSCRIPTION_FAILED_PAYMENT') ||
+        rawMessage.startsWith('SUBSCRIPTION_PAST_DUE') ||
+        rawMessage.startsWith('SUBSCRIPTION_INACTIVE');
+
       const isTierBlock =
-        statusCode === 403 ||
-        (statusCode === 404 && rawMessage.toLowerCase().includes('subscription'));
+        !isSubscriptionStateError &&
+        (statusCode === 403 ||
+        (statusCode === 404 && rawMessage.toLowerCase().includes('subscription')));
       const isUpgradeRequired =
         rawMessage.toLowerCase().includes('upgrade') ||
         rawMessage.toLowerCase().includes('subscription does not include');
 
-      const message = isUpgradeRequired
+      const message = isSubscriptionStateError
+        ? rawMessage // preserve prefix so scanner/upload CTA handlers can match it
+        : isUpgradeRequired
         ? rawMessage // pass the server's upgrade prompt through unchanged
         : isTierBlock
           ? 'This content requires a higher subscription plan.'

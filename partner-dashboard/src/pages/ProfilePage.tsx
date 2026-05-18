@@ -677,7 +677,10 @@ const ProfilePage: React.FC = () => {
 
   const getUserInitials = () => {
     if (!user) return '';
-    return `${user.firstName[0]}${user.lastName[0]}`;
+    const first = user.firstName?.[0] || '';
+    const last = user.lastName?.[0] || '';
+    if (first || last) return `${first}${last}`.toUpperCase();
+    return user.email?.[0]?.toUpperCase() || '?';
   };
 
   const formatDate = (timestamp: number) => {
@@ -743,7 +746,7 @@ const ProfilePage: React.FC = () => {
             )}
           </AvatarWrapper>
           <ProfileInfo>
-            <UserName>{`${user.firstName} ${user.lastName}`}</UserName>
+            <UserName>{`${user.firstName} ${user.lastName}`.trim() || user.email}</UserName>
             <UserEmail>{user.email}</UserEmail>
             <UserMeta>
               <Badge $variant={user.emailVerified ? 'success' : 'warning'}>

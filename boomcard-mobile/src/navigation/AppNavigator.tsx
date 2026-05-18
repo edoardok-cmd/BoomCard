@@ -49,6 +49,7 @@ import HelpScreen from '../screens/Profile/HelpScreen';
 import WalletScreen from '../screens/Payments/WalletScreen';
 import TopUpScreen from '../screens/Payments/TopUpScreen';
 import TransactionHistoryScreen from '../screens/Payments/TransactionHistoryScreen';
+import CashbackHistoryScreen from '../screens/Payments/CashbackHistoryScreen';
 
 // Subscription Screens
 import ProcessPaymentScreen from '../screens/Subscription/ProcessPaymentScreen';
@@ -238,6 +239,14 @@ const MainNavigator = ({ initialRouteName = 'MainTabs', initialParams }: { initi
         options={{
           headerShown: true,
           title: 'Transactions'
+        }}
+      />
+      <Stack.Screen
+        name="CashbackHistory"
+        component={CashbackHistoryScreen}
+        options={{
+          headerShown: true,
+          title: t('cashback.title', 'Кешбек'),
         }}
       />
 

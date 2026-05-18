@@ -168,6 +168,7 @@ class ApiService {
    */
   private logout() {
     clearSession();
+    localStorage.setItem('boomcard_logout_reason', 'session_expired');
     window.location.href = '/login';
   }
 

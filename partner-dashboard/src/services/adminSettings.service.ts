@@ -58,6 +58,17 @@ export interface SystemSettingMeta {
   updatedByName: string | null;
 }
 
+export interface SystemSettingHistoryRow {
+  id: string;
+  key: string;
+  oldValue: string | null;
+  newValue: string;
+  changedBy: string | null;
+  changedByName: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
 export interface MobileAppSettings {
   'mobile_app.min_ios_version': string | null;
   'mobile_app.min_android_version': string | null;
@@ -86,16 +97,24 @@ export const adminSettingsService = {
     return apiService.get('/admin/settings/system');
   },
 
-  saveSystemSettings(settings: SystemSettings): Promise<void> {
-    return apiService.put('/admin/settings/system', { settings });
+  saveSystemSettings(settings: SystemSettings, notes?: string): Promise<void> {
+    return apiService.put('/admin/settings/system', { settings, notes: notes?.trim() || undefined });
+  },
+
+  getSystemSettingsHistory(keys?: string[]): Promise<{ success: boolean; data: SystemSettingHistoryRow[] }> {
+    return apiService.get('/admin/settings/system/history', keys?.length ? { keys: keys.join(',') } : undefined);
   },
 
   getMobileAppSettings(): Promise<{ success: boolean; data: MobileAppSettings }> {
     return apiService.get('/admin/settings/mobile-app');
   },
 
-  saveMobileAppSettings(settings: Partial<Record<keyof MobileAppSettings, string>>): Promise<void> {
-    return apiService.put('/admin/settings/mobile-app', { settings });
+  saveMobileAppSettings(settings: Partial<Record<keyof MobileAppSettings, string>>, notes?: string): Promise<void> {
+    return apiService.put('/admin/settings/mobile-app', { settings, notes: notes?.trim() || undefined });
+  },
+
+  getMobileAppSettingsHistory(): Promise<{ success: boolean; data: SystemSettingHistoryRow[] }> {
+    return apiService.get('/admin/settings/mobile-app/history');
   },
 
   getMobileErrorLogs(): Promise<{ success: boolean; data: MobileErrorLogEntry[] }> {

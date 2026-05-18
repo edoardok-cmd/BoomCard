@@ -356,9 +356,15 @@ interface FormErrors {
   businessCategory?: string;
   city?: string;
   address?: string;
+  // Spec §5.1 v1.1 — Брой обекти dropdown is required at submit time.
+  requestObjectCount?: string;
   acceptTerms?: string;
   confirmBusiness?: string;
 }
+
+// Spec §5.1 v1.1 — declared venue count buckets. Must stay in sync with the
+// backend whitelist in auth.service.ts.
+const ALLOWED_OBJECT_COUNTS = ['1', '2-5', '6-10', '11+'] as const;
 
 const RegisterPartnerPage: React.FC = () => {
   const navigate = useNavigate();
@@ -387,6 +393,8 @@ const RegisterPartnerPage: React.FC = () => {
     website: '',
     city: '',
     address: '',
+    // Spec §5.1 v1.1 — Брой обекти dropdown
+    requestObjectCount: '',
     acceptTerms: false,
     confirmBusiness: false,
   });
@@ -463,6 +471,15 @@ const RegisterPartnerPage: React.FC = () => {
         if (!value) return t('partnerRegistration.addressRequired');
         return undefined;
 
+      case 'requestObjectCount':
+        if (!value) {
+          return language === 'bg' ? 'Изберете брой обекти' : 'Please select the number of venues';
+        }
+        if (!(ALLOWED_OBJECT_COUNTS as readonly string[]).includes(strVal)) {
+          return language === 'bg' ? 'Невалидна стойност' : 'Invalid value';
+        }
+        return undefined;
+
       case 'acceptTerms':
         if (!value) return t('partnerRegistration.acceptTermsRequired');
         return undefined;
@@ -520,6 +537,7 @@ const RegisterPartnerPage: React.FC = () => {
       'firstName', 'lastName', 'email', 'phone',
       'password', 'confirmPassword', 'businessName',
       'businessCategory', 'city', 'address',
+      'requestObjectCount',
       'acceptTerms', 'confirmBusiness'
     ];
 
@@ -559,6 +577,7 @@ const RegisterPartnerPage: React.FC = () => {
           website: formData.website || undefined,
           city: formData.city.trim() || undefined,
           address: formData.address.trim() || undefined,
+          requestObjectCount: formData.requestObjectCount || undefined,
         },
       });
 
@@ -898,6 +917,38 @@ const RegisterPartnerPage: React.FC = () => {
                 )}
               </FormGroup>
             </FormRow>
+
+            {/* Spec §5.1 v1.1 — Брой обекти / Number of venues */}
+            <FormGroup>
+              <Label htmlFor="requestObjectCount">
+                {language === 'bg' ? 'Брой обекти' : 'Number of venues'} *
+              </Label>
+              <Select
+                id="requestObjectCount"
+                name="requestObjectCount"
+                value={formData.requestObjectCount}
+                onChange={handleChange}
+                onBlur={() => handleBlur('requestObjectCount')}
+                $hasError={touched.requestObjectCount && !!errors.requestObjectCount}
+                disabled={isLoading}
+              >
+                <option value="">
+                  {language === 'bg' ? '— Изберете —' : '— Select —'}
+                </option>
+                <option value="1">1</option>
+                <option value="2-5">2-5</option>
+                <option value="6-10">6-10</option>
+                <option value="11+">11+</option>
+              </Select>
+              {touched.requestObjectCount && errors.requestObjectCount && (
+                <ErrorMessage
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  {errors.requestObjectCount}
+                </ErrorMessage>
+              )}
+            </FormGroup>
           </Section>
 
           {/* Security */}

@@ -3,10 +3,10 @@ import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigate } from 'react-router-dom';
 import { receiptsApiService } from '../services/receipts-api.service';
+import { apiService } from '../services/api.service';
 import { Receipt, ReceiptStatus, ReceiptFilters } from '../types/receipt.types';
 import { ReceiptCard } from '../components/feature/ReceiptCard';
-import { FileText, Filter, Plus, Search, X, Download, BarChart3 } from 'lucide-react';
-import { exportReceiptsToCSV } from '../utils/receiptExport';
+import { FileText, Filter, Plus, X } from 'lucide-react';
 
 const PageContainer = styled.div`
   max-width: 1400px;
@@ -38,6 +38,66 @@ const Subtitle = styled.p`
   margin: 0;
 `;
 
+// §5.2 cashback summary
+const CashbackSummary = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 2rem;
+
+  @media (max-width: 480px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const CashbackCard = styled.div<{ $type: 'available' | 'pending' }>`
+  background: ${({ $type }) => ($type === 'available' ? '#000000' : '#f9fafb')};
+  color: ${({ $type }) => ($type === 'available' ? 'white' : '#111827')};
+  border: 2px solid ${({ $type }) => ($type === 'available' ? '#000000' : '#e5e7eb')};
+  border-radius: 1rem;
+  padding: 1.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+`;
+
+const CashbackLabel = styled.div`
+  font-size: 0.875rem;
+  font-weight: 600;
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+`;
+
+const CashbackAmount = styled.div`
+  font-size: 2rem;
+  font-weight: 800;
+`;
+
+// §5.2 period chips
+const PeriodChips = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+`;
+
+const PeriodChip = styled.button<{ $active: boolean }>`
+  padding: 0.5rem 1.25rem;
+  border-radius: 9999px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 2px solid ${({ $active }) => ($active ? '#000000' : '#e5e7eb')};
+  background: ${({ $active }) => ($active ? '#000000' : 'white')};
+  color: ${({ $active }) => ($active ? 'white' : '#374151')};
+  transition: all 0.15s;
+
+  &:hover {
+    border-color: #000000;
+  }
+`;
+
 const ActionsBar = styled.div`
   display: flex;
   gap: 1rem;
@@ -45,35 +105,6 @@ const ActionsBar = styled.div`
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-`;
-
-const SearchBar = styled.div`
-  display: flex;
-  align-items: center;
-  background: white;
-  border: 2px solid #e5e7eb;
-  border-radius: 0.75rem;
-  padding: 0.75rem 1rem;
-  flex: 1;
-  min-width: 250px;
-  max-width: 400px;
-
-  svg {
-    color: #9ca3af;
-    margin-right: 0.75rem;
-  }
-
-  input {
-    flex: 1;
-    border: none;
-    outline: none;
-    font-size: 0.9375rem;
-    color: #111827;
-
-    &::placeholder {
-      color: #9ca3af;
-    }
-  }
 `;
 
 const FilterButton = styled.button<{ $active?: boolean }>`
@@ -269,13 +300,21 @@ const LoadingSpinner = styled.div`
   color: #6b7280;
 `;
 
+type Period = '7' | '30' | 'all';
+
+interface CashbackSummaryData {
+  availableBalance: number;
+  pendingBalance: number;
+}
+
 export const ReceiptsPage: React.FC = () => {
   const { language } = useLanguage();
   const navigate = useNavigate();
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [period, setPeriod] = useState<Period>('all');
+  const [cashback, setCashback] = useState<CashbackSummaryData | null>(null);
   const [filters, setFilters] = useState<ReceiptFilters>({
     page: 1,
     limit: 12,
@@ -291,81 +330,78 @@ export const ReceiptsPage: React.FC = () => {
 
   const t = {
     en: {
-      title: 'My Receipts',
-      subtitle: 'View and manage all your scanned receipts',
-      search: 'Search by merchant...',
+      title: 'Cashback & Transactions',
+      subtitle: 'View your cashback balance and transaction history',
       filters: 'Filters',
-      addNew: 'Scan Receipt',
-      exportCSV: 'Export CSV',
-      viewAnalytics: 'View Analytics',
+      addNew: 'Upload Receipt',
       status: 'Status',
-      sortBy: 'Sort By',
-      dateRange: 'Date Range',
-      allStatuses: 'All Statuses',
+      allStatuses: 'All',
       pending: 'Pending',
-      validated: 'Validated',
+      approved: 'Approved',
       rejected: 'Rejected',
-      cashbackApplied: 'Cashback Applied',
-      sortNewest: 'Newest First',
-      sortOldest: 'Oldest First',
-      sortAmountHigh: 'Highest Amount',
-      sortAmountLow: 'Lowest Amount',
-      emptyTitle: 'No Receipts Yet',
-      emptyDescription: 'Start scanning receipts to earn cashback!',
-      loading: 'Loading receipts...',
+      emptyTitle: 'No Transactions Yet',
+      emptyDescription: 'Upload a receipt via the mobile app to earn cashback!',
+      loading: 'Loading...',
       page: 'Page',
       of: 'of',
       previous: 'Previous',
       next: 'Next',
       activeFilters: 'Active Filters:',
-      clearFilter: 'Clear',
+      availableCashback: 'Available Cashback',
+      pendingCashback: 'Pending Cashback',
+      period7: 'Last 7 days',
+      period30: 'Last 30 days',
+      periodAll: 'All',
     },
     bg: {
-      title: 'Моите бележки',
-      subtitle: 'Преглед и управление на всички сканирани бележки',
-      search: 'Търси по търговец...',
+      title: 'Кешбек и транзакции',
+      subtitle: 'Преглед на наличен кешбек и история на транзакциите',
       filters: 'Филтри',
-      addNew: 'Сканирай бележка',
-      exportCSV: 'Експорт CSV',
-      viewAnalytics: 'Виж анализ',
+      addNew: 'Качи бележка',
       status: 'Статус',
-      sortBy: 'Сортиране',
-      dateRange: 'Период',
-      allStatuses: 'Всички статуси',
-      pending: 'Очакващи',
-      validated: 'Валидирани',
+      allStatuses: 'Всички',
+      pending: 'Чакащи',
+      approved: 'Одобрени',
       rejected: 'Отхвърлени',
-      cashbackApplied: 'С кешбек',
-      sortNewest: 'Най-нови първо',
-      sortOldest: 'Най-стари първо',
-      sortAmountHigh: 'Най-висока сума',
-      sortAmountLow: 'Най-ниска сума',
-      emptyTitle: 'Все още няма бележки',
-      emptyDescription: 'Започнете да сканирате бележки за да спечелите кешбек!',
-      loading: 'Зареждане на бележки...',
+      emptyTitle: 'Все още няма транзакции',
+      emptyDescription: 'Качете бележка от мобилното приложение, за да спечелите кешбек!',
+      loading: 'Зареждане...',
       page: 'Страница',
       of: 'от',
       previous: 'Предишна',
       next: 'Следваща',
       activeFilters: 'Активни филтри:',
-      clearFilter: 'Изчисти',
+      availableCashback: 'Наличен кешбек',
+      pendingCashback: 'Чакащ кешбек',
+      period7: 'Последни 7 дни',
+      period30: 'Последни 30 дни',
+      periodAll: 'Всички',
     },
   };
 
   const content = language === 'bg' ? t.bg : t.en;
 
   useEffect(() => {
+    fetchCashbackSummary();
+  }, []);
+
+  useEffect(() => {
     fetchReceipts();
   }, [filters]);
+
+  const fetchCashbackSummary = async () => {
+    try {
+      const data = await apiService.get<CashbackSummaryData>('/wallet/statistics');
+      setCashback(data);
+    } catch {
+      setCashback({ availableBalance: 0, pendingBalance: 0 });
+    }
+  };
 
   const fetchReceipts = async () => {
     setLoading(true);
     try {
-      const response = await receiptsApiService.getReceipts({
-        ...filters,
-        merchantName: searchTerm || undefined,
-      });
-
+      const response = await receiptsApiService.getReceipts(filters);
       if (response.success) {
         setReceipts(response.data);
         setPagination(response.pagination);
@@ -377,17 +413,21 @@ export const ReceiptsPage: React.FC = () => {
     }
   };
 
-  const handleSearch = () => {
-    setFilters({ ...filters, page: 1 });
-    fetchReceipts();
+  const getPeriodDates = (p: Period): { startDate?: string; endDate?: string } => {
+    if (p === 'all') return { startDate: undefined, endDate: undefined };
+    const days = p === '7' ? 7 : 30;
+    const start = new Date();
+    start.setDate(start.getDate() - days);
+    return { startDate: start.toISOString(), endDate: new Date().toISOString() };
+  };
+
+  const handlePeriodChange = (p: Period) => {
+    setPeriod(p);
+    setFilters(prev => ({ ...prev, ...getPeriodDates(p), page: 1 }));
   };
 
   const handleStatusFilter = (status?: ReceiptStatus) => {
-    setFilters({ ...filters, status, page: 1 });
-  };
-
-  const handleSortChange = (sortBy: 'createdAt' | 'totalAmount', sortOrder: 'asc' | 'desc') => {
-    setFilters({ ...filters, sortBy, sortOrder, page: 1 });
+    setFilters(prev => ({ ...prev, status, page: 1 }));
   };
 
   const handleDelete = async (id: string) => {
@@ -401,31 +441,34 @@ export const ReceiptsPage: React.FC = () => {
   };
 
   const handlePageChange = (newPage: number) => {
-    setFilters({ ...filters, page: newPage });
+    setFilters(prev => ({ ...prev, page: newPage }));
   };
 
   const getActiveFilters = () => {
     const active: Array<{ key: string; label: string }> = [];
     if (filters.status) {
-      active.push({
-        key: 'status',
-        label: `${content.status}: ${content[filters.status.toLowerCase() as keyof typeof content] || filters.status}`,
-      });
-    }
-    if (searchTerm) {
-      active.push({ key: 'search', label: `${content.search.replace('...', '')}: ${searchTerm}` });
+      const label =
+        filters.status === ReceiptStatus.PENDING
+          ? content.pending
+          : filters.status === ReceiptStatus.APPROVED
+          ? content.approved
+          : content.rejected;
+      active.push({ key: 'status', label: `${content.status}: ${label}` });
     }
     return active;
   };
 
   const clearFilter = (key: string) => {
     if (key === 'status') {
-      setFilters({ ...filters, status: undefined, page: 1 });
-    } else if (key === 'search') {
-      setSearchTerm('');
-      setFilters({ ...filters, page: 1 });
+      setFilters(prev => ({ ...prev, status: undefined, page: 1 }));
     }
   };
+
+  const formatCashback = (amount: number) =>
+    amount.toLocaleString(language === 'bg' ? 'bg-BG' : 'en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }) + ' лв';
 
   return (
     <PageContainer>
@@ -437,35 +480,39 @@ export const ReceiptsPage: React.FC = () => {
         <Subtitle>{content.subtitle}</Subtitle>
       </PageHeader>
 
+      {/* §5.2 — наличен + чакащ кешбек */}
+      {cashback !== null && (
+        <CashbackSummary>
+          <CashbackCard $type="available">
+            <CashbackLabel>{content.availableCashback}</CashbackLabel>
+            <CashbackAmount>{formatCashback(cashback.availableBalance)}</CashbackAmount>
+          </CashbackCard>
+          <CashbackCard $type="pending">
+            <CashbackLabel>{content.pendingCashback}</CashbackLabel>
+            <CashbackAmount>{formatCashback(cashback.pendingBalance)}</CashbackAmount>
+          </CashbackCard>
+        </CashbackSummary>
+      )}
+
+      {/* §5.2 — period filters: last 7 days / last 30 days / all */}
+      <PeriodChips>
+        {(['7', '30', 'all'] as Period[]).map((p) => (
+          <PeriodChip key={p} $active={period === p} onClick={() => handlePeriodChange(p)}>
+            {p === '7' ? content.period7 : p === '30' ? content.period30 : content.periodAll}
+          </PeriodChip>
+        ))}
+      </PeriodChips>
+
       <ActionsBar>
-        <SearchBar>
-          <Search size={20} />
-          <input
-            type="text"
-            placeholder={content.search}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-          />
-        </SearchBar>
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-          <FilterButton $active={showFilters} onClick={() => setShowFilters(!showFilters)}>
-            <Filter />
-            {content.filters}
-          </FilterButton>
-          <FilterButton onClick={() => navigate('/receipts/analytics')}>
-            <BarChart3 />
-            {content.viewAnalytics}
-          </FilterButton>
-          <FilterButton onClick={() => exportReceiptsToCSV(receipts, 'my-receipts.csv')}>
-            <Download />
-            {content.exportCSV}
-          </FilterButton>
-          <AddButton onClick={() => navigate('/receipt-scanner')}>
-            <Plus />
-            {content.addNew}
-          </AddButton>
-        </div>
+        <FilterButton $active={showFilters} onClick={() => setShowFilters(!showFilters)}>
+          <Filter />
+          {content.filters}
+        </FilterButton>
+        {/* §5.3 — button links to informational upload page, not live scanner */}
+        <AddButton onClick={() => navigate('/upload-receipt')}>
+          <Plus />
+          {content.addNew}
+        </AddButton>
       </ActionsBar>
 
       {getActiveFilters().length > 0 && (
@@ -484,34 +531,20 @@ export const ReceiptsPage: React.FC = () => {
         </ActiveFilters>
       )}
 
+      {/* §5.2 — status filter: Всички / Чакащи / Одобрени / Отхвърлени */}
       <FiltersPanel $isOpen={showFilters}>
         <FilterGroup>
           <FilterLabel>{content.status}</FilterLabel>
           <FilterSelect
             value={filters.status || ''}
-            onChange={(e) => handleStatusFilter(e.target.value as ReceiptStatus || undefined)}
+            onChange={(e) =>
+              handleStatusFilter((e.target.value as ReceiptStatus) || undefined)
+            }
           >
             <option value="">{content.allStatuses}</option>
             <option value={ReceiptStatus.PENDING}>{content.pending}</option>
-            <option value={ReceiptStatus.VALIDATED}>{content.validated}</option>
+            <option value={ReceiptStatus.APPROVED}>{content.approved}</option>
             <option value={ReceiptStatus.REJECTED}>{content.rejected}</option>
-            <option value={ReceiptStatus.CASHBACK_APPLIED}>{content.cashbackApplied}</option>
-          </FilterSelect>
-        </FilterGroup>
-
-        <FilterGroup>
-          <FilterLabel>{content.sortBy}</FilterLabel>
-          <FilterSelect
-            value={`${filters.sortBy}-${filters.sortOrder}`}
-            onChange={(e) => {
-              const [sortBy, sortOrder] = e.target.value.split('-') as ['createdAt' | 'totalAmount', 'asc' | 'desc'];
-              handleSortChange(sortBy, sortOrder);
-            }}
-          >
-            <option value="createdAt-desc">{content.sortNewest}</option>
-            <option value="createdAt-asc">{content.sortOldest}</option>
-            <option value="totalAmount-desc">{content.sortAmountHigh}</option>
-            <option value="totalAmount-asc">{content.sortAmountLow}</option>
           </FilterSelect>
         </FilterGroup>
       </FiltersPanel>
@@ -523,7 +556,7 @@ export const ReceiptsPage: React.FC = () => {
           <FileText />
           <h3>{content.emptyTitle}</h3>
           <p>{content.emptyDescription}</p>
-          <AddButton onClick={() => navigate('/receipt-scanner')}>
+          <AddButton onClick={() => navigate('/upload-receipt')}>
             <Plus />
             {content.addNew}
           </AddButton>

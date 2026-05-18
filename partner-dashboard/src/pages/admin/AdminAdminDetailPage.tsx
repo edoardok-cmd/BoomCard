@@ -551,7 +551,7 @@ export default function AdminAdminDetailPage() {
             </AddRoleBtn>
           )}
 
-          <AuditLink to="/admin/admins/audit">
+          <AuditLink to={`/admin/admins/audit?actorId=${data.id}`}>
             Виж одит лог →
           </AuditLink>
         </Card>
@@ -573,6 +573,12 @@ export default function AdminAdminDetailPage() {
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
             </OverlaySelect>
+            <p style={{ fontSize: '0.75rem', color: palette.textSubtle, margin: '0 0 1.25rem' }}>
+              За роля <strong>Супер администратор</strong> използвайте{' '}
+              <Link to="/admin/admins/create" style={{ color: palette.accent }} onClick={() => setShowAddRole(false)}>
+                Създай администратор
+              </Link>{' '}— изисква двойно одобрение.
+            </p>
             <OverlayActions>
               <PrimaryBtn2
                 $loading={addRoleMutation.isPending}

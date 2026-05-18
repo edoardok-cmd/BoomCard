@@ -93,7 +93,7 @@ const TEMPLATE_CATEGORIES = [
   { value: 'threshold',       label: 'Достигнат праг' },
   { value: 'cashback',        label: 'Кешбек' },
   { value: 'partner_request', label: 'Заявка от партньор' },
-  { value: 'onboarding',      label: 'Въвеждане' },
+  { value: 'onboarding',      label: 'Онбординг' },
   { value: 'support',         label: 'Поддръжка' },
 ];
 
@@ -295,7 +295,7 @@ export default function AdminMarketingTemplatesPage() {
         <TitleBlock>
           <Eyebrow>Маркетинг</Eyebrow>
           <PageTitle>
-            Имейл шаблони
+            Шаблони
             {total > 0 && <TotalBadge>{total}</TotalBadge>}
           </PageTitle>
           <PageSubtitle>Шаблони за кампании и автоматизации (имейл, push и SMS)</PageSubtitle>
@@ -315,7 +315,7 @@ export default function AdminMarketingTemplatesPage() {
             <option value="">Всички типове</option>
             <option value="EMAIL">Имейл</option>
             <option value="PUSH">Push</option>
-            <option value="SMS">SMS</option>
+            <option value="SMS">SMS (скоро)</option>
           </Select>
           <Select value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}>
             <option value="">Всички категории</option>
@@ -369,7 +369,7 @@ export default function AdminMarketingTemplatesPage() {
                 >
                   <option value="EMAIL">Имейл</option>
                   <option value="PUSH">Push известие</option>
-                  <option value="SMS">SMS</option>
+                  <option value="SMS" disabled>SMS (скоро)</option>
                 </ModalSelect>
                 {form.type === 'SMS' && (
                   <WarnBanner>SMS доставката не е активирана. Шаблони с този канал могат да се създават, но кампаниите, използващи ги, няма да изпращат съобщения.</WarnBanner>
@@ -445,7 +445,7 @@ export default function AdminMarketingTemplatesPage() {
               )}
             </ModalBody>
             <ModalFooter>
-              <GhostBtn onClick={closeModal} disabled={saving}>Откажи</GhostBtn>
+              <GhostBtn onClick={closeModal} disabled={saving}>Отказ</GhostBtn>
               <PrimaryBtn onClick={handleSave} disabled={saving || bodyLoading || !form.name.trim()}>
                 {saving ? 'Запазва…' : bodyLoading ? 'Зарежда…' : modal === 'create' ? 'Създай шаблон' : 'Запази промените'}
               </PrimaryBtn>
@@ -562,7 +562,7 @@ export default function AdminMarketingTemplatesPage() {
               </ConfirmSub>
             </ModalBody>
             <ModalFooter>
-              <GhostBtn onClick={closeModal} disabled={saving}>Откажи</GhostBtn>
+              <GhostBtn onClick={closeModal} disabled={saving}>Отказ</GhostBtn>
               <DangerBtn onClick={handleDelete} disabled={saving}>
                 {saving ? 'Изтрива се…' : 'Изтрий шаблон'}
               </DangerBtn>

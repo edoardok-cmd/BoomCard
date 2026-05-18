@@ -759,7 +759,7 @@ const DashboardPage: React.FC = () => {
     <PageContainer>
       <PageHeader>
         <Title>
-          {t('dashboard.greeting')}, {user?.firstName}!
+          {t('dashboard.greeting')}, {user?.firstName || user?.email?.split('@')[0]}!
         </Title>
         <Subtitle>
           {isPartner ? t('dashboard.partnerSubtitle') : t('dashboard.subtitle')}

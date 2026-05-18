@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
   partnersService,
@@ -20,6 +20,8 @@ import { venuesService } from '../services/venues.service';
 import axios from 'axios';
 import { placesCategories, experiencesCategories, getCategoryName } from '../types/categories.types';
 import { adminPartnerRequestsService, AuditEntry } from '../services/adminPartnerRequests.service';
+import { useAuth } from '../contexts/AuthContext';
+import PartnerRequestDrawer from '../components/admin/PartnerRequestDrawer';
 
 // ─── Styled Components ────────────────────────────────────────────────────────
 
@@ -103,7 +105,7 @@ const Table = styled.div`
 
 const TableHeader = styled.div`
   display: grid;
-  grid-template-columns: 3fr 1.5fr 1fr 1fr 1fr 1fr auto;
+  grid-template-columns: 3fr 1.5fr 1fr 1fr 1fr 1fr 1fr auto;
   gap: 1rem;
   padding: 1.25rem 1.5rem;
   background: var(--color-background-secondary);
@@ -117,7 +119,7 @@ const TableHeader = styled.div`
 
 const TableRow = styled(motion.div)`
   display: grid;
-  grid-template-columns: 3fr 1.5fr 1fr 1fr 1fr 1fr auto;
+  grid-template-columns: 3fr 1.5fr 1fr 1fr 1fr 1fr 1fr auto;
   gap: 1rem;
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid var(--color-border);
@@ -772,7 +774,7 @@ const PARTNER_CATEGORIES = [
 // ─── Partner status labels ────────────────────────────────────────────────────
 const PARTNER_STATUS_LABELS: Record<string, { en: string; bg: string }> = {
   ACTIVE:    { en: 'Active',    bg: 'Активен' },
-  PAUSED:    { en: 'Paused',    bg: 'На пауза' },
+  PAUSED:    { en: 'Paused',    bg: 'Пауза' },
   SUSPENDED: { en: 'Suspended', bg: 'Спрян' },
   ARCHIVED:  { en: 'Archived',  bg: 'Архивиран' },
   REJECTED:  { en: 'Rejected',  bg: 'Отхвърлен' },
@@ -1192,6 +1194,7 @@ const LocationManager: React.FC<LocationManagerProps> = ({ locations, onChange, 
   );
 };
 
+
 // ─── Create Form ──────────────────────────────────────────────────────────────
 
 const emptyCreate: Omit<OnboardPartnerPayload, 'category' | 'categories' | 'discountRate' | 'locations'> & { discountRate: string } = {
@@ -1232,8 +1235,11 @@ interface EditForm {
 
 const AdminPartnersPage: React.FC = () => {
   const { language } = useLanguage();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const canWrite = user?.rawRole === 'SUPER_ADMIN' || (user?.permissions ?? []).includes('partners.write');
 
   // URL-param hydration from alert deep-links (spec §3.2 informational alerts).
   // verifiedAfter    → activated_partners alert
@@ -1281,6 +1287,9 @@ const AdminPartnersPage: React.FC = () => {
   // Pending changes review modal
   const [reviewPartner, setReviewPartner] = useState<Partner | null>(null);
 
+  // Notes & audit drawer (spec §5.3)
+  const [detailPartner, setDetailPartner] = useState<Partner | null>(null);
+
   // Venue creation modal
   const [venuePartner, setVenuePartner] = useState<Partner | null>(null);
   const [venueForm, setVenueForm] = useState({ name: '', nameBg: '', address: '', city: '', region: '', phone: '', email: '', description: '', descriptionBg: '', latitude: undefined as number | undefined, longitude: undefined as number | undefined });
@@ -1308,7 +1317,7 @@ const AdminPartnersPage: React.FC = () => {
     queryKey: ['admin-partners', search, statusFilter, verifiedAfter, onboardingCompletedAfter],
     queryFn: () => partnersService.getPartners({
       search: search || undefined,
-      status: (statusFilter as 'new' | 'vip' | 'exclusive' | 'regular') || undefined,
+      status: (statusFilter as PartnerStatus) || undefined,
       limit: 100,
       verifiedAfter: verifiedAfter || undefined,
       onboardingCompletedAfter: onboardingCompletedAfter || undefined,
@@ -1747,11 +1756,6 @@ const AdminPartnersPage: React.FC = () => {
 
   const partners = (partnersData?.data ?? []).filter(p => {
     if (typeFilter && p.partnerTypeId !== typeFilter) return false;
-    // Status filter is applied client-side: the public /partners API understands
-    // tier-based status values ('new'|'vip'|'exclusive'|'regular'), not internal
-    // PartnerStatus enum values. The page fetches limit:100 so all records are in memory.
-    if (statusFilter && String(p.status).toUpperCase() !== statusFilter) return false;
-    // verifiedAfter / onboardingCompletedAfter are now DB-level filters passed to the API.
     return true;
   });
 
@@ -1811,6 +1815,7 @@ const AdminPartnersPage: React.FC = () => {
         <TableHeader>
           <span>{language === 'bg' ? 'Партньор' : 'Partner'}</span>
           <span>{language === 'bg' ? 'Категория' : 'Category'}</span>
+          <span>{language === 'bg' ? 'Локации' : 'Locations'}</span>
           <span>{language === 'bg' ? 'Ниво' : 'Tier'}</span>
           <span>{language === 'bg' ? 'Отстъпка' : 'Discount'}</span>
           <span>{language === 'bg' ? 'Статус' : 'Status'}</span>
@@ -1845,7 +1850,7 @@ const AdminPartnersPage: React.FC = () => {
                       marginLeft: '6px',
                       verticalAlign: 'middle',
                     }}>
-                      ПРОМЕНИ
+                      {language === 'bg' ? 'ПРОМЕНИ' : 'CHANGES'}
                     </span>
                   )}
                 </PartnerName>
@@ -1853,8 +1858,12 @@ const AdminPartnersPage: React.FC = () => {
                   <PartnerMeta>{partner.businessNameBg || partner.nameBg}</PartnerMeta>
                 )}
                 {partner.city && <PartnerMeta>{partner.city}</PartnerMeta>}
-                <PartnerMeta style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: 'var(--color-text-tertiary, #9ca3af)' }}>
-                  ID: {partner.id.slice(0, 8)}…
+                <PartnerMeta
+                  title={partner.id}
+                  style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: 'var(--color-text-tertiary, #9ca3af)', cursor: 'pointer' }}
+                  onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(partner.id).then(() => toast.success('ID copied')); }}
+                >
+                  ID: {partner.id.slice(0, 12)}… 📋
                 </PartnerMeta>
                 {(() => {
                   const notes = (partner.features as Record<string, unknown> | undefined)?.internalNotes as string | undefined;
@@ -1865,10 +1874,20 @@ const AdminPartnersPage: React.FC = () => {
                   ) : null;
                 })()}
               </div>
-              <span>{(() => {
-                const catId = partner.categories?.length ? partner.categories[0] : partner.category;
-                return catId ? getCategoryName(migrateCategoryId(catId), language) : '—';
-              })()}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
+                {(() => {
+                  const cats = partner.categories?.length ? partner.categories : (partner.category ? [partner.category] : []);
+                  if (!cats.length) return <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>;
+                  return cats.map((catId, idx) => (
+                    <span key={idx} style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
+                      {getCategoryName(migrateCategoryId(catId), language)}
+                    </span>
+                  ));
+                })()}
+              </div>
+              <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem' }}>
+                {partner.venueCount ?? partner.venues?.length ?? 0}
+              </span>
               <span>
                 {partner.partnerType ? (
                   <TypeBadge $color={partner.partnerType.color}>
@@ -1926,12 +1945,26 @@ const AdminPartnersPage: React.FC = () => {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    Преглед
+                    {language === 'bg' ? 'Преглед' : 'Review'}
                   </button>
                 )}
                 <EditButton onClick={() => openEdit(partner)}>
                   {language === 'bg' ? 'Редактирай' : 'Edit'}
                 </EditButton>
+                <VenueButton
+                  type="button"
+                  onClick={() => navigate(`/admin/partners/receipt-profiles?partnerId=${partner.id}`)}
+                  title={language === 'bg' ? 'Касови бележки' : 'Receipt profiles'}
+                >
+                  {language === 'bg' ? 'Касови' : 'Receipts'}
+                </VenueButton>
+                <QrButton
+                  type="button"
+                  onClick={() => setDetailPartner(partner)}
+                  title={language === 'bg' ? 'Бележки и история' : 'Notes & history'}
+                >
+                  📋
+                </QrButton>
               </ActionCell>
             </TableRow>
           ))
@@ -2902,6 +2935,13 @@ const AdminPartnersPage: React.FC = () => {
           </Overlay>
         )}
       </AnimatePresence>
+      {/* ── Notes & Audit Drawer — spec §5.3 (reuses PartnerRequestDrawer) ── */}
+      <PartnerRequestDrawer
+        partnerId={detailPartner?.id ?? null}
+        onClose={() => setDetailPartner(null)}
+        canWrite={canWrite}
+        initialTab="notes"
+      />
     </PageContainer>
   );
 };

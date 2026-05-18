@@ -10,9 +10,27 @@ export type PayoutStatus =
   | 'ANNULLED'
   | 'RISK_HOLD';
 
+export type PayoutSubscriptionStatus =
+  | 'ACTIVE'
+  | 'TRIALING'
+  | 'PAST_DUE'
+  | 'UNPAID'
+  | 'CANCELLED'
+  | 'EXPIRED'
+  | 'PAUSED'
+  | 'INCOMPLETE'
+  | 'INCOMPLETE_EXPIRED';
+
 export interface PayoutSubscription {
   plan: string;
-  status: string;
+  status: PayoutSubscriptionStatus;
+}
+
+// §6.1 v1.1 — payout is gated on these subscription statuses
+export const PAYOUT_ELIGIBLE_SUB_STATUSES: PayoutSubscriptionStatus[] = ['ACTIVE', 'TRIALING'];
+
+export function isSubscriptionPayoutEligible(sub: PayoutSubscription | undefined): boolean {
+  return !!sub && PAYOUT_ELIGIBLE_SUB_STATUSES.includes(sub.status);
 }
 
 export interface PayoutUser {
@@ -104,7 +122,15 @@ export const adminPayoutsService = {
     return apiService.patch(`/admin/payouts/${id}/approve`, {});
   },
 
-  bulkApprove(): Promise<{ approved: number; skipped: number; total: number }> {
+  bulkApprove(): Promise<{
+    approved: number;
+    alreadyProcessed: number;
+    failed: number;
+    skippedNoIban: number;
+    skippedNoSub: number;
+    skipped: number;
+    total: number;
+  }> {
     return apiService.patch('/admin/payouts/bulk-approve', {});
   },
 
@@ -126,6 +152,12 @@ export const adminPayoutsService = {
 
   fail(id: string, reason?: string): Promise<void> {
     return apiService.patch(`/admin/payouts/${id}/fail`, { reason });
+  },
+
+  // Crash-recovery: demotes a stuck PROCESSING row (one that never had a
+  // Paysera transfer initiated) back to PENDING so /approve can retry.
+  resetStuck(id: string): Promise<AdminPayout> {
+    return apiService.patch<AdminPayout>(`/admin/payouts/${id}/reset-stuck`, {});
   },
 
   async exportPayouts(params: { dateFrom?: string; dateTo?: string; status?: string; format?: 'csv' | 'xlsx' }): Promise<void> {

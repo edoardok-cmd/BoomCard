@@ -36,7 +36,9 @@ export type SubscriptionStatus =
   | 'EXPIRED'
   | 'INCOMPLETE'
   | 'INCOMPLETE_EXPIRED'
-  | 'PAUSED';
+  | 'PAUSED'
+  // Spec §4.2 v1.1 — no-grace failed-payment state written by Paysera renewal job.
+  | 'FAILED_PAYMENT';
 
 export type UserAccountStatusLabel = 'ACTIVE' | 'SUSPENDED' | 'DELETED' | 'PENDING_VERIFICATION' | 'PENDING_PAYMENT' | 'INACTIVE';
 
@@ -70,6 +72,7 @@ export const SUB_STATUS_LABELS: Record<SubscriptionStatus, Record<Lang, string>>
   INCOMPLETE:         { en: 'Incomplete',         bg: 'Незавършен' },
   INCOMPLETE_EXPIRED: { en: 'Incomplete expired', bg: 'Незавършен (изтекъл)' },
   PAUSED:             { en: 'Paused',             bg: 'На пауза' },
+  FAILED_PAYMENT:     { en: 'Failed payment',     bg: 'Неуспешно плащане' },
 };
 
 export function subStatusLabel(status: SubscriptionStatus | string, lang: Lang): string {

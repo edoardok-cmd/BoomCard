@@ -147,7 +147,7 @@ export interface PartnerFilters {
   category?: string;
   city?: string;
   region?: string;
-  status?: 'new' | 'vip' | 'exclusive' | 'regular';
+  status?: PartnerStatus | 'new' | 'vip' | 'exclusive' | 'regular';
   search?: string;
   page?: number;
   limit?: number;

@@ -301,11 +301,27 @@ export default function AdminMarketingAutomationsPage() {
     {
       key: 'template',
       header: 'Шаблон',
-      render: (row) => (
-        <span style={{ fontSize: '0.875rem', color: row.template ? palette.textMuted : palette.danger }}>
-          {row.template?.name ?? <em>Без шаблон — не може да се активира</em>}
-        </span>
-      ),
+      render: (row) => {
+        if (!row.template) {
+          return <span style={{ fontSize: '0.875rem', color: palette.danger, fontStyle: 'italic' }}>Без шаблон — не може да се активира</span>;
+        }
+        const typeColors: Record<string, { bg: string; fg: string }> = {
+          EMAIL: { bg: palette.infoSoft,    fg: palette.info },
+          PUSH:  { bg: palette.accentSoft,  fg: palette.accent },
+          SMS:   { bg: palette.successSoft, fg: palette.success },
+        };
+        const tc = typeColors[row.template.type] ?? { bg: palette.border, fg: palette.textMuted };
+        return (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
+            <span style={{ fontSize: '0.875rem', color: palette.textMuted }}>{row.template.name}</span>
+            <span style={{
+              fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
+              borderRadius: '0.25rem', padding: '0.1rem 0.35rem',
+              background: tc.bg, color: tc.fg,
+            }}>{row.template.type}</span>
+          </span>
+        );
+      },
     },
     {
       key: 'status',

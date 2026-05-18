@@ -440,11 +440,11 @@ const DeleteAccountDesc = styled.p`
   [data-theme="dark"] & { color: #9ca3af; }
 `;
 
-function formatDate(iso: string | null | undefined): string {
+function formatDate(iso: string | null | undefined, locale?: string): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+  return d.toLocaleDateString(locale ?? 'bg-BG', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 export default function SubscriptionPage() {
@@ -662,7 +662,7 @@ export default function SubscriptionPage() {
                 <Row>
                   <Label>{t('subscriptionPage.billingPeriod')}</Label>
                   <Value>
-                    {formatDate(subscription.currentPeriodStart)} {t('subscriptionPage.to')} {formatDate(subscription.currentPeriodEnd)}
+                    {formatDate(subscription.currentPeriodStart, language === 'bg' ? 'bg-BG' : 'en-US')} {t('subscriptionPage.to')} {formatDate(subscription.currentPeriodEnd, language === 'bg' ? 'bg-BG' : 'en-US')}
                   </Value>
                 </Row>
                 {!isCancelled && (
@@ -670,7 +670,7 @@ export default function SubscriptionPage() {
                     <Divider />
                     <Row>
                       <Label>{t('subscriptionPage.nextBilling')}</Label>
-                      <Value>{formatDate(subscription.currentPeriodEnd)}</Value>
+                      <Value>{formatDate(subscription.currentPeriodEnd, language === 'bg' ? 'bg-BG' : 'en-US')}</Value>
                     </Row>
                   </>
                 )}
@@ -704,7 +704,7 @@ export default function SubscriptionPage() {
                     {subscription.autoRenewal
                       ? t('subscriptionPage.autoRenewalOn')
                       : subscription.currentPeriodEnd
-                        ? t('subscriptionPage.autoRenewalOff').replace('{date}', formatDate(subscription.currentPeriodEnd))
+                        ? t('subscriptionPage.autoRenewalOff').replace('{date}', formatDate(subscription.currentPeriodEnd, language === 'bg' ? 'bg-BG' : 'en-US'))
                         : t('subscriptionPage.autoRenewalOffShort')}
                   </ToggleLabel>
                   <ToggleDesc>{t('subscriptionPage.autoRenewalDesc')}</ToggleDesc>
@@ -849,7 +849,7 @@ export default function SubscriptionPage() {
                       {i > 0 && <Divider />}
                       <HistoryItem>
                         <HistoryLeft>
-                          <HistoryDate>{formatDate(item.date)}</HistoryDate>
+                          <HistoryDate>{formatDate(item.date, language === 'bg' ? 'bg-BG' : 'en-US')}</HistoryDate>
                           <HistoryStatus $tone={paymentStatusTone(item.status)}>{customerPaymentStatusLabel(item.status, language)}</HistoryStatus>
                         </HistoryLeft>
                         <HistoryRight>
@@ -933,7 +933,7 @@ export default function SubscriptionPage() {
                         ? t('subscriptionPage.trialRefundConfirm')
                         : t('subscriptionPage.cancelConfirm').replace(
                             '{date}',
-                            formatDate(subscription.currentPeriodEnd)
+                            formatDate(subscription.currentPeriodEnd, language === 'bg' ? 'bg-BG' : 'en-US')
                           )}
                     </ConfirmText>
                     <ConfirmActions>

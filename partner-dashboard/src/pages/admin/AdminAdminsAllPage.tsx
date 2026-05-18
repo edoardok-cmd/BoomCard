@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { RequirePermission } from '../../components/auth/RequirePermission';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import {
   adminAdminsService,
@@ -98,6 +99,21 @@ const TwoFaBanner = styled.div`
     font-weight: 600;
     text-decoration: underline;
   }
+`;
+
+const CreateAdminBtn = styled(Link)`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5625rem 1.125rem;
+  background: ${palette.accent};
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 700;
+  border-radius: 0.5rem;
+  text-decoration: none;
+  white-space: nowrap;
+  &:hover { opacity: 0.88; }
 `;
 
 const TotalBadge = styled.span`
@@ -490,6 +506,9 @@ export default function AdminAdminsAllPage() {
           </PageTitle>
           <PageSubtitle>Всички администраторски акаунти с назначените им роли</PageSubtitle>
         </TitleBlock>
+        <RequirePermission permissionKey="admins.write">
+          <CreateAdminBtn to="/admin/admins/create">+ Нов администратор</CreateAdminBtn>
+        </RequirePermission>
       </PageHeader>
 
       {/* Warn when the currently logged-in admin has not enabled 2FA.
@@ -602,6 +621,12 @@ export default function AdminAdminsAllPage() {
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
             </OverlaySelect>
+            <p style={{ fontSize: '0.75rem', color: palette.textSubtle, margin: '0 0 1.25rem' }}>
+              За роля <strong>Супер администратор</strong> използвайте{' '}
+              <Link to="/admin/admins/create" style={{ color: palette.accent }} onClick={() => setAddRoleTarget(null)}>
+                Създай администратор
+              </Link>{' '}— изисква двойно одобрение.
+            </p>
             <OverlayActions>
               <PrimaryBtn
                 $loading={addRoleMutation.isPending}

@@ -57,6 +57,8 @@ export const bg: TranslationKey = {
     bgnSymbol: 'лв.',
     eurSymbol: '€',
     dualCurrency: 'лв. / EUR',
+    linkCopied: 'Връзката е копирана!',
+    failedToCopyLink: 'Неуспешно копиране на връзка',
   },
 
   // Header & Navigation
@@ -222,6 +224,11 @@ export const bg: TranslationKey = {
     verificationEmailSentAgain: 'Имейлът за потвърждение е изпратен отново!',
     errorSendingEmail: 'Грешка при изпращане на имейл',
     errorOccurred: 'Възникна грешка. Моля, опитайте отново.',
+    sessionExpired: 'Сесията ви изтече. Моля, влезте отново.',
+    accountCreated: 'Акаунтът е създаден успешно! Добре дошли в BoomCard!',
+    loggedOut: 'Успешно излизане',
+    stoppedImpersonating: 'Спряхте да се представяте',
+    emailUpdated: 'Имейлът е обновен успешно',
   },
 
   // Partner Registration
@@ -737,6 +744,8 @@ export const bg: TranslationKey = {
     sortPriceHighToLow: 'Цена: Висока към ниска',
     addedToFavorites: 'Добавено към любими',
     removedFromFavorites: 'Премахнато от любими',
+    alreadyInFavorites: 'Вече е в любими',
+    cleared: 'Всички любими са изчистени',
   },
 
   // Search
@@ -2290,5 +2299,55 @@ export const bg: TranslationKey = {
 
     noPermission: 'Нямате права да преглеждате тази секция.',
 
+    // Partner request drawer
+    drawerRequestRejected: 'Заявката е отхвърлена',
+    drawerErrorApproving: 'Грешка при одобряване',
+    drawerErrorRejecting: 'Грешка при отхвърляне',
+    drawerStatusAdvanced: 'Статусът е обновен',
+    drawerErrorUpdatingStatus: 'Грешка при обновяване',
+    drawerAssigned: 'Назначено',
+    drawerErrorAssigning: 'Грешка при назначаване',
+    drawerNoteAdded: 'Бележката е добавена',
+    drawerErrorAddingNote: 'Грешка при добавяне',
+
+    // Receipts
+    receiptsFailedToLoad: 'Неуспешно зареждане на разписки',
+    receiptApprovedSuccess: 'Разписката е одобрена успешно',
+    receiptRejectedSuccess: 'Разписката е отказана успешно',
+    receiptFailedToReview: 'Неуспешен преглед на разписка',
+    receiptsBulkApproveSuccess: 'Масовото одобрение е завършено',
+    receiptsBulkRejectSuccess: 'Масовият отказ е завършен',
+    receiptsFailedToBulkApprove: 'Неуспешно масово одобрение',
+    receiptsFailedToBulkReject: 'Неуспешен масов отказ',
+
+  },
+
+  // Bookings
+  bookings: {
+    created: 'Резервацията е създадена успешно!',
+    failedToCreate: 'Неуспешно създаване на резервация',
+    updated: 'Резервацията е обновена успешно!',
+    failedToUpdate: 'Неуспешно обновяване на резервация',
+    confirmed: 'Резервацията е потвърдена!',
+    failedToConfirm: 'Неуспешно потвърждаване на резервация',
+    cancelled: 'Резервацията е отказана',
+    failedToCancel: 'Неуспешен отказ на резервация',
+    completed: 'Резервацията е завършена!',
+    failedToComplete: 'Неуспешно завършване на резервация',
+    markedAsNoShow: 'Отбелязано като неявяване',
+    failedToMarkAsNoShow: 'Неуспешно отбелязване като неявяване',
+    rescheduled: 'Резервацията е пренасрочена!',
+    failedToReschedule: 'Неуспешно пренасрочване',
+    specialRequestsAdded: 'Специалните заявки са добавени!',
+    failedToAddSpecialRequests: 'Неуспешно добавяне на специални заявки',
+    promoCodeApplied: 'Промо кодът е приложен!',
+    invalidPromoCode: 'Невалиден промо код',
+    verified: 'Резервацията е верифицирана!',
+    invalidQRCode: 'Невалиден QR код',
+    confirmationEmailSent: 'Имейлът за потвърждение е изпратен!',
+    failedToSendEmail: 'Неуспешно изпращане на имейл',
+    reminderSent: 'Напомнянето е изпратено!',
+    failedToSendReminder: 'Неуспешно изпращане на напомняне',
+    failedToCalculatePrice: 'Неуспешно изчисляване на цена',
   },
 };

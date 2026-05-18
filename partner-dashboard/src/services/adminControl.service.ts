@@ -220,6 +220,20 @@ export const adminControlService = {
     return apiService.post(`/admin/control/risk-queue/${id}/reject`, reason ? { reason } : {});
   },
 
+  /**
+   * Audit-pass [7.2]: Spec §7.1 bulk-reject. Backend caps batches at 25 IDs
+   * per request; callers should chunk client-side for larger sets.
+   */
+  bulkRejectRiskSignals(scanIds: string[], reason?: string): Promise<{
+    success: boolean;
+    data: { successCount: number; errorCount: number; errors: Array<{ scanId: string; error: string }> };
+  }> {
+    return apiService.post('/admin/control/risk-queue/bulk-reject', {
+      scanIds,
+      ...(reason ? { reason } : {}),
+    });
+  },
+
   // Security audit log (§10 Administrators > Audit History)
   getSecurityLogs(params: {
     page?: number;

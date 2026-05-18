@@ -52,8 +52,10 @@ const I18N = {
   pendingPayment:      { en: 'Pending payment',       bg: 'Изчаква плащане' },
   inactive:            { en: 'Inactive',              bg: 'Неактивен' },
   trialing:       { en: 'Trialing',        bg: 'Пробен' },
-  pastDue:        { en: 'Failed payment',  bg: 'Неуспешно плащане' },
+  pastDue:        { en: 'Past due',        bg: 'Просрочен' },
   unpaid:         { en: 'Unpaid',          bg: 'Неплатен' },
+  // Spec §4.2 v1.1 — distinct enum value written by the Paysera renewal job.
+  failedPayment:  { en: 'Failed payment',  bg: 'Неуспешно плащане' },
   paused:         { en: 'Paused',          bg: 'На пауза' },
   // CANCELLED uses 'Отказан' (not spec's "спрян") to disambiguate from user
   // account status 'Спрян' (§4.1) which appears in the same table.
@@ -168,10 +170,17 @@ const I18N = {
   drawerNoSubs:   { en: 'No subscriptions yet', bg: 'Няма абонаменти' },
   // Spec §3.1 + §4.1 dashboard signal tiles
   statActive:        { en: 'Active subscribers',         bg: 'Активни абонати' },
-  statNew:           { en: 'New (last 30 days)',         bg: 'Нови (30 дни)' },
-  statExpired:       { en: 'Expired / cancelled',        bg: 'Изтекли / спрени' },
+  statNew:           { en: 'New registrations (30 days)', bg: 'Нови регистрации (30 дни)' },
+  // "Изтекли / отказани" — filters CANCELLED+EXPIRED+INCOMPLETE_EXPIRED.
+  // Previously "Изтекли / спрени" but "спрени" (спрян) is spec §4.2 terminology
+  // for PAUSED, which is counted separately in the "На пауза" tile. "отказани"
+  // (cancelled) accurately names the CANCELLED state included here.
+  statExpired:       { en: 'Expired / cancelled',        bg: 'Изтекли / отказани' },
   statPaused:        { en: 'Paused',                     bg: 'На пауза' },
   statFailedPayment: { en: 'Failed payment',             bg: 'Неуспешно плащане' },
+  // Active-tile filter banner
+  activeStatFilter:  { en: 'Active filter:', bg: 'Активен филтър:' },
+  clearStatFilter:   { en: '✕ Clear', bg: '✕ Изчисти' },
   // Spec §4.1 — three category presets for "the list must include all three
   // visibility cases" requirement
   catLabel:          { en: 'Category:',                  bg: 'Категория:' },
@@ -289,14 +298,14 @@ const StatsRow = styled.div`
   margin-bottom: 1.5rem;
 `;
 
-const StatCard = styled.button`
-  background: ${palette.surface};
-  border: 1px solid ${palette.border};
+const StatCard = styled.button<{ $active?: boolean }>`
+  background: ${({ $active }) => ($active ? palette.accentSoft : palette.surface)};
+  border: 1px solid ${({ $active }) => ($active ? palette.accent : palette.border)};
   border-radius: 0.75rem;
   padding: 1.25rem 1.5rem;
   text-align: left;
   cursor: pointer;
-  transition: border-color 100ms;
+  transition: border-color 100ms, background 100ms;
   font: inherit;
   &:hover { border-color: ${palette.accent}; }
 `;
@@ -834,8 +843,8 @@ function downloadCSV(rows: AdminSubscriber[], locale: string) {
         // CSV stays canonical.
         r.phone ?? '',
         r.deletedAt ? 'DELETED' : r.status,
-        r.subscription?.plan ?? '',
-        r.subscription?.status ?? '',
+        r.subscription ? planLabel(r.subscription.plan, 'en') : '',
+        r.subscription ? sharedSubStatusLabel(r.subscription.status, 'en') : '',
         r.wallet?.availableBalance.toFixed(2) ?? '',
         r.wallet?.pendingBalance.toFixed(2) ?? '',
         r.subscription?.currentPeriodEnd ? fmt(r.subscription.currentPeriodEnd) : '',
@@ -875,6 +884,8 @@ const STATUS_OPTIONS: Array<{ value: SubscriptionStatus | ''; key: I18NKey }> = 
   { value: 'EXPIRED', key: 'expired' },
   { value: 'PAUSED', key: 'paused' },
   { value: 'PAST_DUE', key: 'pastDue' },
+  // Spec §4.2 v1.1 — no-grace failed-payment state (distinct from PAST_DUE).
+  { value: 'FAILED_PAYMENT', key: 'failedPayment' },
   // Operational (Stripe/Paysera lifecycle, not in spec but real)
   { value: 'TRIALING', key: 'trialing' },
   { value: 'UNPAID', key: 'unpaid' },
@@ -882,6 +893,23 @@ const STATUS_OPTIONS: Array<{ value: SubscriptionStatus | ''; key: I18NKey }> = 
   { value: 'INCOMPLETE', key: 'incomplete' },
   { value: 'INCOMPLETE_EXPIRED', key: 'incompleteExpired' },
 ];
+
+// Valid SubscriptionStatus tokens for URL hydration. Sourced from STATUS_OPTIONS
+// so adding a new status only needs the one edit. Used to reject malformed
+// `?status=foo` URL params instead of forwarding garbage to the backend.
+const VALID_SUB_STATUSES = new Set<SubscriptionStatus>(
+  STATUS_OPTIONS.map((o) => o.value).filter((v): v is SubscriptionStatus => v !== ''),
+);
+const sanitiseStatusParam = (raw: string): string => {
+  // Status param can be a single value ("ACTIVE") or a comma-separated preset
+  // ("CANCELLED,EXPIRED,INCOMPLETE_EXPIRED") set by a StatCard click. Either
+  // way every token must be a known enum value — otherwise drop the whole
+  // param so the list opens unfiltered rather than scoped to gibberish.
+  const tokens = raw.split(',').map((t) => t.trim()).filter(Boolean);
+  if (tokens.length === 0) return '';
+  if (!tokens.every((t) => VALID_SUB_STATUSES.has(t as SubscriptionStatus))) return '';
+  return tokens.join(',');
+};
 
 // Spec §4.1 lists 3 canonical account statuses (Активен / Спрян / Изтрит).
 // PENDING_VERIFICATION / PENDING_PAYMENT / INACTIVE are real pre-activation
@@ -954,9 +982,10 @@ export default function AdminSubscribersAllPage() {
   const [search, setSearch] = useState('');
   const [plan, setPlan] = useState<SubscriptionPlan | ''>('');
   // Single status value OR comma-separated list when a multi-status StatCard
-  // preset is applied (e.g. "Изтекли+спрени" → "EXPIRED,CANCELLED,INCOMPLETE_EXPIRED").
+  // preset is applied (e.g. "Изтекли/отказани" → "CANCELLED,EXPIRED,INCOMPLETE_EXPIRED").
   // The dropdown only matches single values; multi-status presets show the
-  // dropdown as "All statuses" which is correct UX feedback.
+  // dropdown as "All statuses" — the activeStat highlight + banner compensate
+  // for the invisible filter state in those cases.
   const [status, setStatus] = useState<string>('');
   const [accountStatus, setAccountStatus] = useState<AccountStatusFilter | ''>('');
   const [riskLevel, setRiskLevel] = useState<RiskLevelFilter | ''>('');
@@ -965,6 +994,9 @@ export default function AdminSubscribersAllPage() {
   const [ibanChangedAfter, setIbanChangedAfter] = useState('');
   const [sortKey, setSortKey] = useState<string>('createdAt');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  // Tracks which StatCard tile is currently driving the filter so the tile can
+  // be highlighted and a clearable banner shown (Inaccuracy 4 fix).
+  const [activeStat, setActiveStat] = useState<'active' | 'new' | 'expired' | 'paused' | 'failed' | null>(null);
 
   // Reset every list-shaping filter to defaults. StatCard click handlers call
   // this before pinning their own filter so a previously-set IBAN banner,
@@ -979,17 +1011,63 @@ export default function AdminSubscribersAllPage() {
     setDateFrom('');
     setDateTo('');
     setIbanChangedAfter('');
+    setActiveStat(null);
     setPage(1);
   };
 
   // Hydrate filters from alert deep-link URL params (spec §3.2).
   // dateFrom        → new_registrations alert (filters by account createdAt)
   // ibanChangedAfter → suspicious_iban_changes alert (filters by ibanLastChangedAt)
+  // status / accountStatus → dashboard tile "Subscribers — active" (spec §3.1)
+  // activeStat     → chip highlight + banner restoration on page load
   useEffect(() => {
     const df = searchParams.get('dateFrom');
     if (df) { const d = new Date(df); if (!isNaN(d.getTime())) setDateFrom(d.toISOString().split('T')[0]); }
     const iba = searchParams.get('ibanChangedAfter');
     if (iba) { const d = new Date(iba); if (!isNaN(d.getTime())) setIbanChangedAfter(iba); }
+    const stRaw = searchParams.get('status');
+    // Validate every token against SubscriptionStatus. Malformed tokens (or a
+    // mix of valid + invalid) drop the param entirely — better an unfiltered
+    // list than a phantom-scoped one.
+    const st = stRaw ? sanitiseStatusParam(stRaw) : '';
+    if (st) setStatus(st);
+    const acct = searchParams.get('accountStatus');
+    if (acct === 'ACTIVE' || acct === 'DELETED') setAccountStatus(acct);
+    const stat = searchParams.get('activeStat');
+    // activeStat is the source of truth: when the dashboard tile deep-link is
+    // hand-edited and arrives without one of its companion params (or with
+    // ones that don't match the preset), normalise to the canonical preset so
+    // the highlight + banner + filter scope are consistent.
+    if (stat === 'active' || stat === 'new' || stat === 'expired' || stat === 'paused' || stat === 'failed') {
+      setActiveStat(stat);
+      switch (stat) {
+        case 'active':
+          setStatus('ACTIVE');
+          setAccountStatus('ACTIVE');
+          break;
+        case 'new': {
+          // Mirror the StatCard click handler: window = last 30 days.
+          const d = new Date();
+          d.setDate(d.getDate() - 30);
+          setDateFrom(d.toISOString().split('T')[0]);
+          setStatus('');
+          setAccountStatus('');
+          break;
+        }
+        case 'expired':
+          setStatus('CANCELLED,EXPIRED,INCOMPLETE_EXPIRED');
+          setAccountStatus('');
+          break;
+        case 'paused':
+          setStatus('PAUSED');
+          setAccountStatus('');
+          break;
+        case 'failed':
+          setStatus('PAST_DUE,UNPAID,FAILED_PAYMENT');
+          setAccountStatus('');
+          break;
+      }
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1195,7 +1273,7 @@ export default function AdminSubscribersAllPage() {
 
   /* ── Handlers ── */
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') { setSearch(searchInput); setPage(1); }
+    if (e.key === 'Enter') { setSearch(searchInput); setActiveStat(null); setPage(1); }
   };
 
   const fmt = (iso: string | null) =>
@@ -1803,18 +1881,22 @@ export default function AdminSubscribersAllPage() {
         </HeaderActions>
       </PageHeader>
 
-      {/* Spec §3.1 + §4.1 — Активни / Нови / Изтекли+Спрени / На пауза / Неуспешно плащане.
+      {/* Spec §3.1 + §4.1 — Активни / Нови / Изтекли+Отказани / На пауза / Неуспешно плащане.
           Each tile RESETS all other filters before pinning its own, so a stale
           IBAN banner / date range / plan / search doesn't silently scope the
           drill-in. The status filter sent on click matches the EXACT status set
-          counted by the dashboard endpoint (see adminDashboard.routes.ts:60-97):
-          - "Изтекли+спрени" → CANCELLED, EXPIRED, INCOMPLETE_EXPIRED
+          counted by the dashboard endpoint (using latest-subscription logic):
+          - "Изтекли/отказани" → CANCELLED, EXPIRED, INCOMPLETE_EXPIRED
           - "Неуспешно плащане" → PAST_DUE, UNPAID
-          so the visible row count matches the tile count. */}
+          so the visible row count matches the tile count.
+          activeStat highlights the active tile and drives the clearable banner
+          below, which compensates for multi-value presets not reflecting in the
+          status dropdown (the dropdown only matches single-value options). */}
       <StatsRow>
         <StatCard
           type="button"
-          onClick={() => { resetFilters(); setStatus('ACTIVE'); }}
+          $active={activeStat === 'active'}
+          onClick={() => { resetFilters(); setStatus('ACTIVE'); setAccountStatus('ACTIVE'); setActiveStat('active'); }}
         >
           <StatLabel>{T('statActive')}</StatLabel>
           <StatValue $color={palette.success}>
@@ -1823,11 +1905,13 @@ export default function AdminSubscribersAllPage() {
         </StatCard>
         <StatCard
           type="button"
+          $active={activeStat === 'new'}
           onClick={() => {
             resetFilters();
             const d = new Date();
             d.setDate(d.getDate() - 30);
             setDateFrom(d.toISOString().split('T')[0]);
+            setActiveStat('new');
           }}
         >
           <StatLabel>{T('statNew')}</StatLabel>
@@ -1837,9 +1921,11 @@ export default function AdminSubscribersAllPage() {
         </StatCard>
         <StatCard
           type="button"
+          $active={activeStat === 'expired'}
           onClick={() => {
             resetFilters();
             setStatus('CANCELLED,EXPIRED,INCOMPLETE_EXPIRED');
+            setActiveStat('expired');
           }}
         >
           <StatLabel>{T('statExpired')}</StatLabel>
@@ -1849,7 +1935,8 @@ export default function AdminSubscribersAllPage() {
         </StatCard>
         <StatCard
           type="button"
-          onClick={() => { resetFilters(); setStatus('PAUSED'); }}
+          $active={activeStat === 'paused'}
+          onClick={() => { resetFilters(); setStatus('PAUSED'); setActiveStat('paused'); }}
         >
           <StatLabel>{T('statPaused')}</StatLabel>
           <StatValue $color={dashboardStats && dashboardStats.subscribers.paused > 0 ? palette.warning : palette.text}>
@@ -1858,7 +1945,8 @@ export default function AdminSubscribersAllPage() {
         </StatCard>
         <StatCard
           type="button"
-          onClick={() => { resetFilters(); setStatus('PAST_DUE,UNPAID'); }}
+          $active={activeStat === 'failed'}
+          onClick={() => { resetFilters(); setStatus('PAST_DUE,UNPAID,FAILED_PAYMENT'); setActiveStat('failed'); }}
         >
           <StatLabel>{T('statFailedPayment')}</StatLabel>
           <StatValue $color={dashboardStats && dashboardStats.subscribers.failedPayment > 0 ? palette.danger : palette.text}>
@@ -1866,6 +1954,41 @@ export default function AdminSubscribersAllPage() {
           </StatValue>
         </StatCard>
       </StatsRow>
+
+      {/* Active-stat banner: shown when a StatCard tile set the current filter.
+          Compensates for multi-value status presets not showing in the dropdown. */}
+      {activeStat && (
+        <div style={{
+          marginBottom: '1rem',
+          padding: '0.625rem 1rem',
+          background: palette.accentSoft,
+          border: `1px solid ${palette.accent}`,
+          borderRadius: '0.625rem',
+          fontSize: '0.8125rem',
+          color: palette.accent,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '0.5rem',
+        }}>
+          <span>
+            {T('activeStatFilter')}{' '}
+            <strong>
+              {activeStat === 'active'  && T('statActive')}
+              {activeStat === 'new'     && T('statNew')}
+              {activeStat === 'expired' && T('statExpired')}
+              {activeStat === 'paused'  && T('statPaused')}
+              {activeStat === 'failed'  && T('statFailedPayment')}
+            </strong>
+          </span>
+          <button
+            onClick={resetFilters}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: palette.accent, fontWeight: 700, fontSize: '0.8125rem', padding: 0 }}
+          >
+            {T('clearStatFilter')}
+          </button>
+        </div>
+      )}
 
       {ibanChangedAfter && (() => {
         const d = new Date(ibanChangedAfter);
@@ -1889,12 +2012,12 @@ export default function AdminSubscribersAllPage() {
           <span>{T('catLabel')}</span>
           <CategoryChip
             type="button"
-            $active={!status && !accountStatus}
+            $active={!status && !accountStatus && !activeStat}
             onClick={() => { resetFilters(); }}
           >{T('catAll')}</CategoryChip>
           <CategoryChip
             type="button"
-            $active={accountStatus === 'ACTIVE' && status === 'ACTIVE'}
+            $active={accountStatus === 'ACTIVE' && status === 'ACTIVE' && !activeStat}
             onClick={() => { resetFilters(); setAccountStatus('ACTIVE'); setStatus('ACTIVE'); }}
           >{T('catActiveActive')}</CategoryChip>
           <CategoryChip
@@ -1913,26 +2036,26 @@ export default function AdminSubscribersAllPage() {
             type="text"
             placeholder={T('searchPh')}
             value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
+            onChange={(e) => { setSearchInput(e.target.value); setActiveStat(null); }}
             onKeyDown={handleSearchKeyDown}
           />
-          <Select value={accountStatus} onChange={(e) => { setAccountStatus(e.target.value as AccountStatusFilter | ''); setPage(1); }}>
+          <Select value={accountStatus} onChange={(e) => { setAccountStatus(e.target.value as AccountStatusFilter | ''); setActiveStat(null); setPage(1); }}>
             {ACCOUNT_STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{T(o.key)}</option>
             ))}
           </Select>
-          <Select value={plan} onChange={(e) => { setPlan(e.target.value as SubscriptionPlan | ''); setPage(1); }}>
+          <Select value={plan} onChange={(e) => { setPlan(e.target.value as SubscriptionPlan | ''); setActiveStat(null); setPage(1); }}>
             <option value="">{T('allPlans')}</option>
             {PLAN_CHOICES.map((p) => (
               <option key={p} value={p}>{planLabel(p, lang)}</option>
             ))}
           </Select>
-          <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
+          <Select value={status} onChange={(e) => { setStatus(e.target.value); setActiveStat(null); setPage(1); }}>
             {STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{T(o.key)}</option>
             ))}
           </Select>
-          <Select value={riskLevel} onChange={(e) => { setRiskLevel(e.target.value as RiskLevelFilter | ''); setPage(1); }}>
+          <Select value={riskLevel} onChange={(e) => { setRiskLevel(e.target.value as RiskLevelFilter | ''); setActiveStat(null); setPage(1); }}>
             {RISK_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{T(o.key)}</option>
             ))}
@@ -1942,7 +2065,7 @@ export default function AdminSubscribersAllPage() {
             <DateInput
               type="date"
               value={dateFrom}
-              onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+              onChange={(e) => { setDateFrom(e.target.value); setActiveStat(null); setPage(1); }}
             />
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8125rem', color: palette.textSubtle, whiteSpace: 'nowrap' }}>
@@ -1950,7 +2073,7 @@ export default function AdminSubscribersAllPage() {
             <DateInput
               type="date"
               value={dateTo}
-              onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+              onChange={(e) => { setDateTo(e.target.value); setActiveStat(null); setPage(1); }}
             />
           </label>
         </FilterRow>

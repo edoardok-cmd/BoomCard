@@ -258,7 +258,7 @@ const ContactCell = styled.div`
 /* ─── Component ───────────────────────────────────────────────────────────── */
 const PAGE_SIZE = 20;
 
-// Human-readable labels for PartnerRequestStatus values (§5.1–5.2 — all 6 pipeline statuses)
+// Human-readable labels for PartnerRequestStatus values shown in the status cell.
 const REQUEST_STATUS_LABELS: Record<string, { bg: string; en: string }> = {
   NOVA:         { bg: 'Нова',        en: 'New' },
   KOMUNIKACIYA: { bg: 'Комуникация', en: 'Communication' },
@@ -267,6 +267,16 @@ const REQUEST_STATUS_LABELS: Record<string, { bg: string; en: string }> = {
   ODOBRENA:     { bg: 'Одобрена',   en: 'Approved' },
   OTKAZANA:     { bg: 'Отказана',   en: 'Rejected' },
 };
+
+// Spec §5.1 — filter options. All pipeline stages including Договаряне.
+const REQUEST_STATUS_FILTER_OPTIONS: Array<[string, { bg: string; en: string }]> = [
+  ['NOVA',         { bg: 'Нова',         en: 'New' }],
+  ['KOMUNIKACIYA', { bg: 'Комуникация',  en: 'Communication' }],
+  ['DOGOVARYANE',  { bg: 'Договаряне',  en: 'Negotiation' }],
+  ['ONBOARDING',   { bg: 'Онбординг',   en: 'Onboarding' }],
+  ['ODOBRENA',     { bg: 'Одобрена',    en: 'Approved' }],
+  ['OTKAZANA',     { bg: 'Отказана',    en: 'Rejected' }],
+];
 
 // Next pipeline step for each current status
 const NEXT_PIPELINE_STEP: Record<string, string> = {
@@ -287,6 +297,8 @@ export default function AdminPartnerRequestsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [requestStatusFilter, setRequestStatusFilter] = useState('');
+  // Spec §5.1 v1.1 — filter by declared "Брой обекти" bucket.
+  const [objectCountFilter, setObjectCountFilter] = useState('');
   const [rejectTarget, setRejectTarget] = useState<PendingPartner | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [drawerPartnerId, setDrawerPartnerId] = useState<string | null>(null);
@@ -300,12 +312,13 @@ export default function AdminPartnerRequestsPage() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-partner-requests', page, search, requestStatusFilter],
+    queryKey: ['admin-partner-requests', page, search, requestStatusFilter, objectCountFilter],
     queryFn: () => adminPartnerRequestsService.list({
       page,
       limit: PAGE_SIZE,
       search: search || undefined,
       requestStatus: requestStatusFilter || undefined,
+      objectCount: objectCountFilter || undefined,
     }),
   });
 
@@ -429,6 +442,15 @@ export default function AdminPartnerRequestsPage() {
         ),
     },
     {
+      key: 'requestObjectCount',
+      header: language === 'bg' ? 'Обекти' : 'Venues',
+      render: (row) => (
+        <span style={{ color: palette.textMuted, fontSize: '0.8125rem', fontWeight: 600 }}>
+          {row.requestObjectCount ?? <span style={{ color: palette.textSubtle, fontWeight: 400 }}>—</span>}
+        </span>
+      ),
+    },
+    {
       key: 'joinedAt',
       header: t('admin.requestColJoined'),
       sortable: true,
@@ -442,6 +464,37 @@ export default function AdminPartnerRequestsPage() {
         </span>
       ),
     },
+    {
+      key: 'sla',
+      header: 'SLA',
+      render: (row) => {
+        const sla = row.sla;
+        if (!sla || sla.isClosed) {
+          return <span style={{ color: palette.textSubtle, fontSize: '0.75rem' }}>—</span>;
+        }
+        const { state, hoursElapsed, hoursRemaining } = sla;
+        const bg = state === 'overdue' ? palette.dangerSoft
+                 : state === 'warning' ? palette.warningSoft
+                 : palette.successSoft;
+        const fg = state === 'overdue' ? palette.danger
+                 : state === 'warning' ? palette.warning
+                 : palette.success;
+        const label = state === 'overdue'
+          ? (language === 'bg' ? `+${Math.round(hoursElapsed - 24)}ч просрочена` : `+${Math.round(hoursElapsed - 24)}h overdue`)
+          : (language === 'bg' ? `${Math.round(hoursRemaining)}ч остават` : `${Math.round(hoursRemaining)}h left`);
+        return (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center',
+            padding: '0.15rem 0.5rem', borderRadius: '9999px',
+            background: bg, color: fg,
+            fontSize: '0.6875rem', fontWeight: 700,
+            letterSpacing: '0.03em', whiteSpace: 'nowrap',
+          }}>
+            {label}
+          </span>
+        );
+      },
+    },
   ];
 
   const rowActions: RowAction<PendingPartner>[] = [
@@ -449,6 +502,9 @@ export default function AdminPartnerRequestsPage() {
       {
         label: t('admin.requestApprove'),
         onClick: (row: PendingPartner) => approveMutation.mutate(row.id),
+        // Spec §5.2 — approval only valid after completing the full pipeline.
+        // Direct approve from NOVA/KOMUNIKACIYA/DOGOVARYANE bypasses onboarding.
+        hidden: (row: PendingPartner) => row.requestStatus !== 'ONBOARDING',
       },
       {
         label: t('admin.requestReject'),
@@ -457,6 +513,8 @@ export default function AdminPartnerRequestsPage() {
           setRejectTarget(row);
           setRejectReason('');
         },
+        hidden: (row: PendingPartner) =>
+          row.requestStatus === 'ODOBRENA' || row.requestStatus === 'OTKAZANA',
       },
       {
         label: language === 'bg' ? 'Напред в процеса' : 'Advance stage',
@@ -515,9 +573,21 @@ export default function AdminPartnerRequestsPage() {
             onChange={(e) => { setRequestStatusFilter(e.target.value); setPage(1); }}
           >
             <option value="">{language === 'bg' ? 'Всички статуси' : 'All statuses'}</option>
-            {Object.entries(REQUEST_STATUS_LABELS).map(([key, lbl]) => (
+            {REQUEST_STATUS_FILTER_OPTIONS.map(([key, lbl]) => (
               <option key={key} value={key}>{language === 'bg' ? lbl.bg : lbl.en}</option>
             ))}
+          </FilterSelect>
+          {/* Spec §5.1 v1.1 — "Брой обекти" filter */}
+          <FilterSelect
+            value={objectCountFilter}
+            onChange={(e) => { setObjectCountFilter(e.target.value); setPage(1); }}
+            aria-label={language === 'bg' ? 'Брой обекти' : 'Number of venues'}
+          >
+            <option value="">{language === 'bg' ? 'Всички обекти' : 'All venue counts'}</option>
+            <option value="1">1</option>
+            <option value="2-5">2-5</option>
+            <option value="6-10">6-10</option>
+            <option value="11+">11+</option>
           </FilterSelect>
         </SearchRow>
 

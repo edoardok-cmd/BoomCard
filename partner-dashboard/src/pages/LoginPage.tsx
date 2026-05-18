@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
@@ -10,6 +10,7 @@ import GoogleLoginButton from '../components/auth/GoogleLoginButton';
 import FacebookLoginButton from '../components/auth/FacebookLoginButton';
 import Header from '../components/layout/Header/Header';
 import Footer from '../components/layout/Footer/Footer';
+import { toast } from 'react-hot-toast';
 
 const PageWrapper = styled.div`
   min-height: 100vh;
@@ -254,6 +255,18 @@ const LoginPage: React.FC = () => {
     email: false,
     password: false,
   });
+
+  // Keep a ref so the mount effect can call the latest t() without stale closure.
+  const tRef = React.useRef(t);
+  tRef.current = t;
+
+  useEffect(() => {
+    const reason = localStorage.getItem('boomcard_logout_reason');
+    if (reason === 'session_expired') {
+      localStorage.removeItem('boomcard_logout_reason');
+      toast(tRef.current('auth.sessionExpired'), { icon: '⚠️', duration: 5000 });
+    }
+  }, []);
 
   const validateEmail = (email: string): string | undefined => {
     if (!email) {

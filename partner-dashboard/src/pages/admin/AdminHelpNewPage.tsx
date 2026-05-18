@@ -109,6 +109,7 @@ export default function AdminHelpNewPage() {
       toast.success('Заявката е изпратена успешно');
       qc.invalidateQueries({ queryKey: ['admin-help-mine'] });
       qc.invalidateQueries({ queryKey: ['admin-help-all'] });
+      qc.invalidateQueries({ queryKey: ['admin-help-new-count'] });
       navigate('/admin/help/mine');
     },
     onError: () => toast.error('Грешка при изпращане на заявката'),
@@ -119,7 +120,7 @@ export default function AdminHelpNewPage() {
       <PageHeader>
         <Eyebrow>Помощ</Eyebrow>
         <PageTitle>Нова заявка</PageTitle>
-        <PageSubtitle>Подайте вътрешна заявка към office@boomcard.bg</PageSubtitle>
+        <PageSubtitle>Подайте вътрешна заявка към support@boomcard.bg</PageSubtitle>
       </PageHeader>
 
       <Card>

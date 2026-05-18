@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -96,6 +96,30 @@ const AdminProfileMyDataPage: React.FC = () => {
     },
   });
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const avatarUploadMutation = useMutation({
+    mutationFn: (file: File) => adminProfileService.uploadAvatar(file),
+    onSuccess: () => {
+      toast.success('Профилната снимка е обновена');
+      queryClient.invalidateQueries({ queryKey: ['admin-profile-me'] });
+    },
+    onError: (err: { response?: { data?: { error?: string } } }) => {
+      toast.error(err?.response?.data?.error ?? 'Грешка при качване на снимка');
+    },
+  });
+
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Снимката трябва да е под 2 MB');
+      return;
+    }
+    avatarUploadMutation.mutate(file);
+    e.target.value = '';
+  };
+
   const isSuperAdmin = data?.role === 'SUPER_ADMIN';
 
   // For SUPER_ADMIN: never show panel roles — they bypass all permission checks,
@@ -112,6 +136,27 @@ const AdminProfileMyDataPage: React.FC = () => {
     <Wrapper>
       <Card>
         <SectionTitle>Моите данни</SectionTitle>
+        <AvatarRow>
+          <AvatarWrapper
+            onClick={() => !avatarUploadMutation.isPending && fileInputRef.current?.click()}
+            title="Натиснете за смяна на снимка"
+            $loading={avatarUploadMutation.isPending}
+          >
+            {data.avatar
+              ? <AvatarImg src={data.avatar} alt="Профилна снимка" />
+              : <AvatarInitials>{(data.firstName?.[0] ?? data.email[0]).toUpperCase()}</AvatarInitials>
+            }
+            <AvatarOverlay>{avatarUploadMutation.isPending ? '…' : '✎'}</AvatarOverlay>
+          </AvatarWrapper>
+          <AvatarHint>JPEG/PNG/WebP, макс. 2 MB</AvatarHint>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            style={{ display: 'none' }}
+            onChange={handleAvatarFileChange}
+          />
+        </AvatarRow>
         <Row>
           <Field>
             <Label>Име</Label>
@@ -134,7 +179,7 @@ const AdminProfileMyDataPage: React.FC = () => {
               )}
             </EmailRow>
             {!isSuperAdmin && (
-              <Hint>Промяната на имейл изисква верификация — свържете се с Супер администратор.</Hint>
+              <Hint>Имейлът може да се промени само от Супер администратор (изисква двустъпкова верификация).</Hint>
             )}
           </Field>
           <Field>
@@ -237,6 +282,43 @@ const AdminProfileMyDataPage: React.FC = () => {
 };
 
 const Wrapper = styled.div`padding: 0;`;
+const AvatarRow = styled.div`
+  display: flex; align-items: center; gap: 0.875rem;
+  margin-bottom: 1.25rem;
+`;
+const AvatarWrapper = styled.div<{ $loading: boolean }>`
+  position: relative;
+  width: 4rem; height: 4rem;
+  border-radius: 50%;
+  cursor: ${({ $loading }) => $loading ? 'wait' : 'pointer'};
+  flex-shrink: 0;
+  &:hover > span:last-child { opacity: 1; }
+`;
+const AvatarImg = styled.img`
+  width: 4rem; height: 4rem;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid ${palette.border};
+  display: block;
+`;
+const AvatarInitials = styled.div`
+  width: 4rem; height: 4rem;
+  border-radius: 50%;
+  background: ${palette.accentSoft};
+  border: 2px solid ${palette.border};
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.375rem; font-weight: 700; color: ${palette.accent};
+`;
+const AvatarOverlay = styled.span`
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.4);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 1rem;
+  opacity: 0;
+  transition: opacity 150ms;
+`;
+const AvatarHint = styled.p`font-size: 0.75rem; color: ${palette.textSubtle}; margin: 0;`;
 const Loading = styled.div`padding: 4rem 2rem; text-align: center; color: ${palette.textMuted};`;
 const Card = styled.div`
   background: ${palette.surface};

@@ -541,6 +541,11 @@ function PartnersImportTab() {
             <li>If no suffix or unknown tier, partners are created without a type.</li>
             <li>Images per partner: <code>{'{'}business-name-slug{'}'}_1.jpg</code> (e.g. <code>example-restaurant_1.jpg</code>).</li>
             <li>If partner email already exists the partner is <strong>updated</strong>, not duplicated.</li>
+            <li>
+              <code>capacity</code>, <code>tables</code>, <code>cash_desks</code> auto-create a primary venue with
+              one <code>TABLE</code> sticker location per table and one <code>COUNTER</code> per cash desk.
+              Requires <code>address</code> + <code>city</code>; ignored if the partner already has any venues.
+            </li>
           </ol>
         </HowTo>
       </Card>
@@ -606,8 +611,11 @@ function PartnersImportTab() {
           </ResultTitle>
           <StatRow>
             <StatBox><StatValue>{result.partnersCreated}</StatValue><StatLabel>Partners Created</StatLabel></StatBox>
+            <StatBox><StatValue>{result.partnersUpdated}</StatValue><StatLabel>Partners Updated</StatLabel></StatBox>
             <StatBox><StatValue>{result.partnersSkipped}</StatValue><StatLabel>Skipped / Errors</StatLabel></StatBox>
             <StatBox><StatValue>{result.imagesUploaded}</StatValue><StatLabel>Logos Uploaded</StatLabel></StatBox>
+            <StatBox><StatValue>{result.venuesCreated}</StatValue><StatLabel>Venues Created</StatLabel></StatBox>
+            <StatBox><StatValue>{result.stickerLocationsCreated}</StatValue><StatLabel>Sticker Locations</StatLabel></StatBox>
             <StatBox>
               <StatValue style={{ fontSize: '1rem' }}>{result.tierApplied ?? '—'}</StatValue>
               <StatLabel>Tier Applied</StatLabel>

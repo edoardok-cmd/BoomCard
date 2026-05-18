@@ -2,7 +2,7 @@ import React from 'react';
 import styled from 'styled-components';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { Receipt, ReceiptStatus } from '../../../types/receipt.types';
-import { CheckCircle, XCircle, Clock, Store, Calendar, Eye, Edit2, Trash2 } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Store, Calendar, Eye, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface ReceiptCardProps {
@@ -71,6 +71,7 @@ const StatusBadge = styled.div<{ $status: ReceiptStatus }>`
   font-weight: 600;
   background: ${props => {
     switch (props.$status) {
+      case ReceiptStatus.APPROVED:
       case ReceiptStatus.VALIDATED:
       case ReceiptStatus.CASHBACK_APPLIED:
         return '#d1fae5';
@@ -83,6 +84,7 @@ const StatusBadge = styled.div<{ $status: ReceiptStatus }>`
   }};
   color: ${props => {
     switch (props.$status) {
+      case ReceiptStatus.APPROVED:
       case ReceiptStatus.VALIDATED:
       case ReceiptStatus.CASHBACK_APPLIED:
         return '#065f46';
@@ -132,32 +134,6 @@ const AmountValue = styled(InfoValue)`
   color: #059669;
 `;
 
-const ConfidenceBar = styled.div`
-  margin-top: 1rem;
-`;
-
-const ConfidenceLabel = styled.div`
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.75rem;
-  color: #6b7280;
-  margin-bottom: 0.5rem;
-`;
-
-const ProgressBar = styled.div`
-  width: 100%;
-  height: 6px;
-  background: #e5e7eb;
-  border-radius: 3px;
-  overflow: hidden;
-`;
-
-const ProgressFill = styled.div<{ $confidence: number }>`
-  width: ${props => props.$confidence}%;
-  height: 100%;
-  background: ${props => props.$confidence >= 70 ? '#10b981' : props.$confidence >= 50 ? '#f59e0b' : '#ef4444'};
-  transition: width 0.3s ease;
-`;
 
 const CardActions = styled.div`
   display: flex;
@@ -217,44 +193,42 @@ export const ReceiptCard: React.FC<ReceiptCardProps> = ({
 
   const t = {
     en: {
-      totalAmount: 'Total Amount',
-      confidence: 'OCR Confidence',
+      totalAmount: 'Purchase Amount',
+      cashbackAmount: 'Cashback',
       status: {
-        [ReceiptStatus.PENDING]: 'Pending Review',
+        [ReceiptStatus.PENDING]: 'Pending',
         [ReceiptStatus.PROCESSING]: 'Processing',
         [ReceiptStatus.VALIDATING]: 'Validating',
-        [ReceiptStatus.VALIDATED]: 'Validated',
+        [ReceiptStatus.VALIDATED]: 'Approved',
         [ReceiptStatus.APPROVED]: 'Approved',
         [ReceiptStatus.REJECTED]: 'Rejected',
-        [ReceiptStatus.MANUAL_REVIEW]: 'Manual Review',
+        [ReceiptStatus.MANUAL_REVIEW]: 'Under Review',
         [ReceiptStatus.CASHBACK_APPLIED]: 'Cashback Applied',
         [ReceiptStatus.EXPIRED]: 'Expired',
       },
       unknownMerchant: 'Unknown Merchant',
       view: 'View',
-      edit: 'Edit',
       delete: 'Delete',
-      createdOn: 'Uploaded',
+      createdOn: 'Date',
     },
     bg: {
-      totalAmount: 'Обща сума',
-      confidence: 'Точност на OCR',
+      totalAmount: 'Сума на покупката',
+      cashbackAmount: 'Кешбек',
       status: {
-        [ReceiptStatus.PENDING]: 'Очаква преглед',
+        [ReceiptStatus.PENDING]: 'Чакащ',
         [ReceiptStatus.PROCESSING]: 'Обработва се',
         [ReceiptStatus.VALIDATING]: 'Валидира се',
-        [ReceiptStatus.VALIDATED]: 'Валидиран',
+        [ReceiptStatus.VALIDATED]: 'Одобрен',
         [ReceiptStatus.APPROVED]: 'Одобрен',
         [ReceiptStatus.REJECTED]: 'Отхвърлен',
         [ReceiptStatus.MANUAL_REVIEW]: 'Ръчна проверка',
         [ReceiptStatus.CASHBACK_APPLIED]: 'Кешбек приложен',
         [ReceiptStatus.EXPIRED]: 'Изтекъл',
       },
-      unknownMerchant: 'Неизвестен търговец',
+      unknownMerchant: 'Неизвестен обект',
       view: 'Преглед',
-      edit: 'Редактиране',
       delete: 'Изтриване',
-      createdOn: 'Качен',
+      createdOn: 'Дата',
     },
   };
 
@@ -263,6 +237,7 @@ export const ReceiptCard: React.FC<ReceiptCardProps> = ({
   const getStatusIcon = () => {
     switch (receipt.status) {
       case ReceiptStatus.VALIDATED:
+      case ReceiptStatus.APPROVED:
       case ReceiptStatus.CASHBACK_APPLIED:
         return <CheckCircle />;
       case ReceiptStatus.REJECTED:
@@ -286,11 +261,6 @@ export const ReceiptCard: React.FC<ReceiptCardProps> = ({
   const handleView = (e: React.MouseEvent) => {
     e.stopPropagation();
     navigate(`/receipts/${receipt.id}`);
-  };
-
-  const handleEdit = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigate(`/receipts/${receipt.id}/edit`);
   };
 
   const handleDelete = (e: React.MouseEvent) => {
@@ -327,21 +297,21 @@ export const ReceiptCard: React.FC<ReceiptCardProps> = ({
           </InfoItem>
         )}
 
+        {/* §5.2 — сума кешбек per transaction */}
+        <InfoItem>
+          <InfoLabel>{content.cashbackAmount}</InfoLabel>
+          <AmountValue style={{ color: receipt.cashbackAmount > 0 ? '#059669' : '#6b7280' }}>
+            {receipt.cashbackAmount > 0 ? `+${receipt.cashbackAmount.toFixed(2)} лв` : '—'}
+          </AmountValue>
+        </InfoItem>
+
         <InfoItem>
           <InfoLabel>{content.createdOn}</InfoLabel>
-          <InfoValue style={{ fontSize: '0.875rem' }}>{formatDate(receipt.createdAt)}</InfoValue>
+          <InfoValue style={{ fontSize: '0.875rem' }}>
+            {receipt.date ? formatDate(receipt.date) : formatDate(receipt.createdAt)}
+          </InfoValue>
         </InfoItem>
       </CardBody>
-
-      <ConfidenceBar>
-        <ConfidenceLabel>
-          <span>{content.confidence}</span>
-          <span>{(receipt.confidence ?? receipt.ocrConfidence).toFixed(0)}%</span>
-        </ConfidenceLabel>
-        <ProgressBar>
-          <ProgressFill $confidence={receipt.confidence ?? receipt.ocrConfidence} />
-        </ProgressBar>
-      </ConfidenceBar>
 
       {showActions && (
         <CardActions>
@@ -349,12 +319,6 @@ export const ReceiptCard: React.FC<ReceiptCardProps> = ({
             <Eye />
             {content.view}
           </ActionButton>
-          {receipt.status === ReceiptStatus.PENDING && (
-            <ActionButton $variant="secondary" onClick={handleEdit}>
-              <Edit2 />
-              {content.edit}
-            </ActionButton>
-          )}
           {(receipt.status === ReceiptStatus.PENDING || receipt.status === ReceiptStatus.REJECTED) && (
             <ActionButton $variant="danger" onClick={handleDelete}>
               <Trash2 />

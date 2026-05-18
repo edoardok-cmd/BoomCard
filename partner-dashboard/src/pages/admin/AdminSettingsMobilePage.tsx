@@ -7,6 +7,7 @@ import {
   adminSettingsService,
   MobileAppSettings,
   MobileErrorLogEntry,
+  SystemSettingHistoryRow,
 } from '../../services/adminSettings.service';
 import { describeApiError } from '../../utils/systemSettingsAudit';
 
@@ -278,6 +279,66 @@ const CloseBtn = styled.button`
   &:hover { background: #ddd; }
 `;
 
+// ── History panel styles ─────────────────────────────────────────────────────
+const HistoryList = styled.div`display: flex; flex-direction: column; gap: 0.5rem; max-height: 22rem; overflow-y: auto;`;
+const HistoryItem = styled.div`
+  display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 0.5rem;
+  padding: 0.625rem 0.75rem; border: 1px solid ${palette.border}; border-radius: 0.5rem;
+  background: ${palette.bg}; font-size: 0.8125rem;
+`;
+const KeyBadge = styled.span`
+  display: inline-block; padding: 0.1rem 0.45rem; border-radius: 0.25rem;
+  font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  background: ${palette.infoSoft}; color: ${palette.info};
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 14rem;
+`;
+const HistoryDate = styled.span`font-size: 0.72rem; color: ${palette.textSubtle}; white-space: nowrap;`;
+
+const MOBILE_KEY_LABELS: Record<string, string> = {
+  'mobile_app.min_ios_version':            'iOS мин. версия',
+  'mobile_app.min_android_version':        'Android мин. версия',
+  'mobile_app.ios_status':                 'iOS статус',
+  'mobile_app.android_status':             'Android статус',
+  'mobile_app.feature_receipt_scan':       'Сканиране на бон',
+  'mobile_app.feature_sticker_scan':       'Сканиране на стикер',
+  'mobile_app.feature_partner_map':        'Карта на партньори',
+  'mobile_app.push_notifications_enabled': 'Push известия',
+  'mobile_app.push_vapid_topic':           'VAPID тема',
+  'mobile_app.error_log_url':              'URL за грешки',
+};
+
+const SEMVER_RE = /^\d+\.\d+(\.\d+)?$/;
+
+const ClearConfirmPanel = styled.div`
+  border: 2px solid ${palette.danger};
+  border-radius: 0.75rem;
+  padding: 0.875rem 1.25rem;
+  background: ${palette.dangerSoft};
+  margin-bottom: 0.75rem;
+`;
+const ClearConfirmTitle = styled.p`
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: ${palette.danger};
+  margin: 0 0 0.5rem;
+`;
+const ClearConfirmActions = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.625rem;
+`;
+const CancelClearBtn = styled.button`
+  padding: 0.4rem 0.875rem;
+  background: transparent;
+  color: ${palette.textMuted};
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  &:hover { background: ${palette.bg}; }
+`;
+
 type MobileState = {
   minIos: string;
   minAndroid: string;
@@ -393,6 +454,7 @@ function ErrorRow({ e }: { e: MobileErrorLogEntry }) {
 export default function AdminSettingsMobilePage() {
   const queryClient = useQueryClient();
   const [state, setState] = useState<MobileState>(DEFAULT_STATE);
+  const [clearConfirmVisible, setClearConfirmVisible] = useState(false);
 
   const {
     data,
@@ -419,6 +481,11 @@ export default function AdminSettingsMobilePage() {
     refetchInterval: 60_000,
   });
 
+  const { data: historyData, isLoading: historyLoading } = useQuery({
+    queryKey: ['admin-mobile-app-history'],
+    queryFn: () => adminSettingsService.getMobileAppSettingsHistory(),
+  });
+
   // Seed local form state from the server on first successful load only.
   // Subsequent refetches (post-save invalidate, retry-after-error) MUST NOT
   // clobber the user's in-flight edits.
@@ -437,6 +504,7 @@ export default function AdminSettingsMobilePage() {
     onSuccess: () => {
       toast.success('Настройките на мобилното приложение са запазени');
       queryClient.invalidateQueries({ queryKey: ['admin-mobile-app-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-mobile-app-history'] });
     },
     onError: (err: unknown) => {
       toast.error(describeApiError(err).message);
@@ -456,6 +524,31 @@ export default function AdminSettingsMobilePage() {
     state.iosStatus !== 'active' || state.androidStatus !== 'active';
 
   const errors: MobileErrorLogEntry[] = errorsData?.data ?? [];
+  const historyRows: SystemSettingHistoryRow[] = historyData?.data ?? [];
+
+  const handleSave = () => {
+    if (state.minIos && !SEMVER_RE.test(state.minIos)) {
+      toast.error('Минималната iOS версия трябва да е във формат X.Y или X.Y.Z (напр. 2.1.0)');
+      return;
+    }
+    if (state.minAndroid && !SEMVER_RE.test(state.minAndroid)) {
+      toast.error('Минималната Android версия трябва да е във формат X.Y или X.Y.Z (напр. 2.1.0)');
+      return;
+    }
+    if (state.errorLogUrl) {
+      try {
+        const parsed = new URL(state.errorLogUrl);
+        if (!['https:', 'http:'].includes(parsed.protocol)) {
+          toast.error('URL за лог на грешки трябва да използва https или http');
+          return;
+        }
+      } catch {
+        toast.error('Невалиден URL за лог на грешки');
+        return;
+      }
+    }
+    saveMutation.mutate();
+  };
 
   return (
     <PageShell>
@@ -666,15 +759,7 @@ export default function AdminSettingsMobilePage() {
       {!settingsIsError && (
         <div style={{ marginTop: '1.5rem', maxWidth: '60rem' }}>
           <SaveBtn
-            onClick={() => {
-              if (state.errorLogUrl) {
-                try { new URL(state.errorLogUrl); } catch {
-                  toast.error('Невалиден URL за лог на грешки');
-                  return;
-                }
-              }
-              saveMutation.mutate();
-            }}
+            onClick={handleSave}
             disabled={saveMutation.isPending || isLoading}
           >
             {saveMutation.isPending ? 'Запазване…' : 'Запази всички'}
@@ -695,20 +780,34 @@ export default function AdminSettingsMobilePage() {
                 Последните 50 грешки, докладвани директно от мобилното приложение. Обновява се автоматично на всяка минута.
               </CardSubtitle>
             </div>
-            {errors.length > 0 && (
+            {errors.length > 0 && !clearConfirmVisible && (
               <DangerBtn
-                onClick={() => {
-                  if (confirm('Изчисти всички регистрирани грешки? Действието е необратимо.')) {
-                    clearErrorsMutation.mutate();
-                  }
-                }}
+                onClick={() => setClearConfirmVisible(true)}
                 disabled={clearErrorsMutation.isPending}
                 style={{ flexShrink: 0, marginLeft: '1rem' }}
               >
-                {clearErrorsMutation.isPending ? 'Изчистване…' : 'Изчисти всички'}
+                Изчисти всички
               </DangerBtn>
             )}
           </div>
+          {clearConfirmVisible && (
+            <ClearConfirmPanel>
+              <ClearConfirmTitle>Изчисти всички регистрирани грешки? Действието е необратимо.</ClearConfirmTitle>
+              <ClearConfirmActions>
+                <DangerBtn
+                  onClick={() => {
+                    setClearConfirmVisible(false);
+                    clearErrorsMutation.mutate();
+                  }}
+                  disabled={clearErrorsMutation.isPending}
+                  style={{ padding: '0.4rem 0.875rem', fontSize: '0.8rem' }}
+                >
+                  {clearErrorsMutation.isPending ? 'Изчистване…' : 'Да, изчисти'}
+                </DangerBtn>
+                <CancelClearBtn onClick={() => setClearConfirmVisible(false)}>Отказ</CancelClearBtn>
+              </ClearConfirmActions>
+            </ClearConfirmPanel>
+          )}
           {errorsLoading ? (
             <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Зареждане…</p>
           ) : errorsIsError ? (
@@ -750,6 +849,48 @@ export default function AdminSettingsMobilePage() {
               </ErrorTable>
             </div>
           )}
+        </Card>
+      </div>
+
+      {/* Settings change history */}
+      <div style={{ marginTop: '1.5rem', maxWidth: '60rem' }}>
+        <Card>
+          <CardTitle style={{ marginBottom: '0.25rem' }}>История на настройките</CardTitle>
+          <CardSubtitle style={{ marginBottom: '0.75rem' }}>
+            Последните 30 промени по настройките на мобилното приложение, от най-новото.
+          </CardSubtitle>
+          <HistoryList>
+            {historyLoading && (
+              <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Зареждане…</p>
+            )}
+            {!historyLoading && historyRows.length === 0 && (
+              <p style={{ color: palette.textSubtle, fontSize: '0.875rem' }}>Няма история.</p>
+            )}
+            {historyRows.map((row) => (
+              <HistoryItem key={row.id}>
+                <div>
+                  <KeyBadge title={row.key}>{MOBILE_KEY_LABELS[row.key] ?? row.key}</KeyBadge>
+                  <div style={{ marginTop: '0.3rem', color: palette.text, fontSize: '0.8125rem' }}>
+                    {row.oldValue !== null && row.oldValue !== ''
+                      ? <><span style={{ color: palette.textSubtle }}>{row.oldValue}</span>{' → '}<strong>{row.newValue || '(изчистено)'}</strong></>
+                      : <strong>{row.newValue || '(изчистено)'}</strong>
+                    }
+                  </div>
+                  {row.changedByName && (
+                    <div style={{ fontSize: '0.72rem', color: palette.textSubtle, marginTop: '0.1rem' }}>
+                      от {row.changedByName}
+                    </div>
+                  )}
+                  {row.notes && (
+                    <div style={{ fontSize: '0.72rem', color: palette.textMuted, marginTop: '0.2rem', fontStyle: 'italic' }}>
+                      „{row.notes}"
+                    </div>
+                  )}
+                </div>
+                <HistoryDate>{formatDate(row.createdAt)}</HistoryDate>
+              </HistoryItem>
+            ))}
+          </HistoryList>
         </Card>
       </div>
     </PageShell>

@@ -3,6 +3,7 @@ import { toast } from 'react-hot-toast';
 import type { Entity } from '../types/entity.types';
 import { apiService } from '../services/api.service';
 import { useAuth } from './AuthContext';
+import { useLanguage } from './LanguageContext';
 
 type EntityKind = 'partner' | 'offer' | 'venue';
 
@@ -60,6 +61,7 @@ interface FavoritesProviderProps {
 
 export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }) => {
   const { isAuthenticated } = useAuth();
+  const { t } = useLanguage();
   const [favorites, setFavorites] = useState<FavoriteItem[]>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -124,8 +126,49 @@ export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }
             .map(r => `${r.entityKind || 'partner'}:${r.entityId}`)
         );
 
-        setFavorites(prev =>
-          prev
+        // Hydrate server-only favorites (e.g. added on mobile) that are not in
+        // local state. Fetch entity details for each missing server entry and
+        // add them so the Favorites page shows them cross-device.
+        const localIds = new Set(favorites.map(f => `${f.entityKind ?? 'partner'}:${f.id}`));
+        const missingFromLocal = serverList.filter(
+          r => !!r.entityId && !localIds.has(`${r.entityKind || 'partner'}:${r.entityId}`)
+        );
+        const hydratedItems = (
+          await Promise.all(
+            missingFromLocal.map(async r => {
+              const kind = r.entityKind || 'partner';
+              const id = r.entityId!;
+              try {
+                const endpoint = kind === 'venue' ? `/venues/${id}` : `/partners/${id}`;
+                const res = await apiService.get<any>(endpoint);
+                const data = (res as any)?.data ?? res;
+                if (!data) return null;
+                const item: FavoriteItem = {
+                  id,
+                  entityKind: kind,
+                  title: data.businessName ?? data.name ?? '',
+                  titleBg: data.businessNameBg ?? data.nameBg ?? data.businessName ?? data.name ?? '',
+                  category: data.category ?? '',
+                  categoryBg: data.categoryBg ?? data.category ?? '',
+                  location: [data.city, data.address].filter(Boolean).join(', '),
+                  discount: 0,
+                  originalPrice: 0,
+                  discountedPrice: 0,
+                  imageUrl: data.coverImage ?? data.logo ?? data.imageUrl ?? '',
+                  path: kind === 'venue' ? `/venues/${id}` : `/partners/${id}`,
+                  addedAt: Date.now(),
+                  synced: true,
+                };
+                return item;
+              } catch {
+                return null;
+              }
+            })
+          )
+        ).filter((x): x is FavoriteItem => x !== null);
+
+        setFavorites(prev => {
+          const updated = prev
             .map(f => {
               const key = `${f.entityKind ?? 'partner'}:${f.id}`;
               // Mark any item the server confirms (existing OR just-pushed) as synced.
@@ -141,8 +184,12 @@ export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }
               const key = `${f.entityKind ?? 'partner'}:${f.id}`;
               if (!f.synced) return true;
               return serverKeys.has(key);
-            })
-        );
+            });
+          // Append server-only items, avoiding duplicates from any concurrent add.
+          const existingIds = new Set(updated.map(f => f.id));
+          const newItems = hydratedItems.filter(h => !existingIds.has(h.id));
+          return newItems.length > 0 ? [...updated, ...newItems] : updated;
+        });
       } catch (err) {
         console.error('Failed to sync favorites with server:', err);
       }
@@ -152,7 +199,7 @@ export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }
 
   const addToFavorites = (item: Omit<FavoriteItem, 'addedAt'>) => {
     if (favorites.some(fav => fav.id === item.id)) {
-      toast.error('Already in favorites');
+      toast.error(t('favorites.alreadyInFavorites'));
       return;
     }
 
@@ -163,7 +210,7 @@ export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }
     };
 
     setFavorites(prev => [...prev, newItem]);
-    toast.success('Added to favorites');
+    toast.success(t('favorites.addedToFavorites'));
 
     if (isAuthenticated) {
       apiService
@@ -202,7 +249,7 @@ export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }
   const removeFromFavorites = (id: string) => {
     const removed = favorites.find(fav => fav.id === id);
     setFavorites(prev => prev.filter(fav => fav.id !== id));
-    if (removed) toast.success('Removed from favorites');
+    if (removed) toast.success(t('favorites.removedFromFavorites'));
 
     if (isAuthenticated && removed) {
       apiService.delete('/favorites', {
@@ -220,7 +267,7 @@ export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }
 
   const clearFavorites = () => {
     setFavorites([]);
-    toast.success('All favorites cleared');
+    toast.success(t('favorites.cleared'));
     if (isAuthenticated) {
       apiService.delete('/favorites/all').catch(err => console.error('Failed to clear favorites:', err));
     }

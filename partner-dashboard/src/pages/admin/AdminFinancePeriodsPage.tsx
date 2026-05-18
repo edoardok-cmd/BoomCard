@@ -171,6 +171,22 @@ const ModalConfirm = styled.button<{ $danger?: boolean }>`
   &:hover { opacity: 0.88; }
   &:disabled { opacity: 0.5; cursor: default; }
 `;
+const NotesTextarea = styled.textarea`
+  width: 100%; box-sizing: border-box; padding: 0.625rem 0.875rem;
+  border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem;
+  background: ${palette.bg}; color: ${palette.text}; resize: vertical; min-height: 5rem;
+  font-family: inherit; outline: none; margin-top: 0.75rem;
+  &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
+`;
+const EditNotesBtn = styled.button`
+  background: none; border: none; padding: 0; font-size: 0.7rem; font-weight: 600;
+  color: ${palette.textSubtle}; cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+  &:hover { color: ${palette.accent}; }
+`;
+const PeriodNotesText = styled.div`
+  font-size: 0.75rem; color: ${palette.textMuted}; font-style: italic;
+  margin-top: 0.375rem; max-width: 22ch; word-break: break-word;
+`;
 
 /* ── Constants ──────────────────────────────────────────────────────────────── */
 const CURRENT_YEAR = new Date().getFullYear();
@@ -236,6 +252,8 @@ export default function AdminFinancePeriodsPage() {
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
   const [deleteMonth, setDeleteMonth] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [notesModal, setNotesModal] = useState<{ month: string; current: string } | null>(null);
+  const [notesValue, setNotesValue] = useState('');
 
   const { data: periodsData, isLoading: periodsLoading } = useQuery({
     queryKey: ['admin-finance-periods', year],
@@ -291,6 +309,20 @@ export default function AdminFinancePeriodsPage() {
       const msg = (err as any)?.response?.data?.error ?? 'Грешка при изтриване';
       toast.error(msg);
       setDeleteMonth(null);
+    },
+  });
+
+  const notesMutation = useMutation({
+    mutationFn: ({ month, notes }: { month: string; notes: string }) =>
+      adminFinanceService.updatePeriodNotes(month, notes),
+    onSuccess: () => {
+      toast.success('Бележките са запазени');
+      setNotesModal(null);
+      invalidate();
+    },
+    onError: (err: unknown) => {
+      const msg = (err as any)?.response?.data?.error ?? 'Грешка при запазване';
+      toast.error(msg);
     },
   });
 
@@ -569,6 +601,17 @@ export default function AdminFinancePeriodsPage() {
                                 ⚠ Непълен одит ({missingSteps.join(', ')})
                               </AuditWarning>
                             )}
+                            {rp.notes && (
+                              <PeriodNotesText title={rp.notes}>📝 {rp.notes}</PeriodNotesText>
+                            )}
+                            <EditNotesBtn
+                              onClick={() => {
+                                setNotesValue(rp.notes ?? '');
+                                setNotesModal({ month: rp.month, current: rp.notes ?? '' });
+                              }}
+                            >
+                              {rp.notes ? 'редактирай бележка' : '+ добави бележка'}
+                            </EditNotesBtn>
                           </>
                         );
                       })() : (
@@ -679,6 +722,33 @@ export default function AdminFinancePeriodsPage() {
                 }
               >
                 {advanceMutation.isPending ? 'Запазване…' : 'Потвърди'}
+              </ModalConfirm>
+            </ModalActions>
+          </Modal>
+        </Overlay>
+      )}
+
+      {/* Period notes modal */}
+      {notesModal && (
+        <Overlay onClick={() => !notesMutation.isPending && setNotesModal(null)}>
+          <Modal onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>Бележки към период</ModalTitle>
+            <ModalBody>{monthLabel(notesModal.month)}</ModalBody>
+            <NotesTextarea
+              value={notesValue}
+              onChange={(e) => setNotesValue(e.target.value)}
+              placeholder="Вътрешни бележки за периода…"
+              autoFocus
+            />
+            <ModalActions>
+              <ModalCancel onClick={() => setNotesModal(null)} disabled={notesMutation.isPending}>
+                Отказ
+              </ModalCancel>
+              <ModalConfirm
+                disabled={notesMutation.isPending}
+                onClick={() => notesMutation.mutate({ month: notesModal.month, notes: notesValue })}
+              >
+                {notesMutation.isPending ? 'Запазване…' : 'Запази'}
               </ModalConfirm>
             </ModalActions>
           </Modal>

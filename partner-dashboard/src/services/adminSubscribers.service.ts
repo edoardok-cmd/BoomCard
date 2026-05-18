@@ -10,7 +10,9 @@ export type SubscriptionStatus =
   | 'INCOMPLETE_EXPIRED'
   | 'TRIALING'
   | 'UNPAID'
-  | 'PAUSED';
+  | 'PAUSED'
+  // Spec §4.2 v1.1 — no-grace failed-payment state (Paysera renewal cron).
+  | 'FAILED_PAYMENT';
 
 export type UserAccountStatus = 'ACTIVE' | 'SUSPENDED' | 'DELETED' | 'PENDING_VERIFICATION' | 'PENDING_PAYMENT' | 'INACTIVE';
 export type RiskBucket = 'LOW_0_30' | 'REVIEW_31_60' | 'HIGH_61_PLUS';

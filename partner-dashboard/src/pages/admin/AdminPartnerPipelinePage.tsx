@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -250,6 +249,13 @@ interface PipelineStage {
 
 const STAGES: PipelineStage[] = [
   {
+    key: 'NOVA',
+    label: { bg: 'Нова заявка', en: 'New Request' },
+    hint: { bg: 'Без действие', en: 'Awaiting action' },
+    color: palette.textSubtle,
+    next: 'KOMUNIKACIYA',
+  },
+  {
     key: 'KOMUNIKACIYA',
     label: { bg: 'Комуникация', en: 'Communication' },
     hint: { bg: 'Контакт осъществен', en: 'Contact made' },
@@ -302,20 +308,17 @@ export default function AdminPartnerPipelinePage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const navigate = useNavigate();
-
   const stagesToShow = activeStage
     ? STAGES.filter(s => s.key === activeStage)
     : STAGES;
 
-  // Fetch new requests count for summary card
+  // Fetch NOVA stage (spec §5.2 — "Нова заявка – Без действие")
   const novaQuery = useQuery({
-    queryKey: ['pipeline', 'NOVA'],
-    queryFn: () => adminPartnerRequestsService.list({ requestStatus: 'NOVA', limit: 1 }),
+    queryKey: ['pipeline', 'NOVA', search],
+    queryFn: () => adminPartnerRequestsService.list({ requestStatus: 'NOVA', search: search || undefined, limit: 100 }),
+    staleTime: 5 * 60 * 1000,
   });
-  const novaCount = novaQuery.data?.total ?? 0;
-
-  // Fetch all 3 pipeline stages simultaneously
+  // Fetch all pipeline stages simultaneously
   const komunikaciyaQuery = useQuery({
     queryKey: ['pipeline', 'KOMUNIKACIYA', search],
     queryFn: () => adminPartnerRequestsService.list({ requestStatus: 'KOMUNIKACIYA', search: search || undefined, limit: 100 }),
@@ -334,18 +337,20 @@ export default function AdminPartnerPipelinePage() {
   });
 
   const stageData: Record<string, PendingPartner[]> = {
+    NOVA:         novaQuery.data?.partners ?? [],
     KOMUNIKACIYA: komunikaciyaQuery.data?.partners ?? [],
     DOGOVARYANE:  dogovaryaneQuery.data?.partners ?? [],
     ONBOARDING:   onboardingQuery.data?.partners ?? [],
     ODOBRENA:     odobrenQuery.data?.partners ?? [],
   };
   const stageCounts: Record<string, number> = {
+    NOVA:         novaQuery.data?.total ?? 0,
     KOMUNIKACIYA: komunikaciyaQuery.data?.total ?? 0,
     DOGOVARYANE:  dogovaryaneQuery.data?.total ?? 0,
     ONBOARDING:   onboardingQuery.data?.total ?? 0,
     ODOBRENA:     odobrenQuery.data?.total ?? 0,
   };
-  const isLoading = komunikaciyaQuery.isLoading || dogovaryaneQuery.isLoading || onboardingQuery.isLoading || odobrenQuery.isLoading;
+  const isLoading = novaQuery.isLoading || komunikaciyaQuery.isLoading || dogovaryaneQuery.isLoading || onboardingQuery.isLoading || odobrenQuery.isLoading;
 
   const advanceMutation = useMutation({
     mutationFn: ({ id, requestStatus }: { id: string; requestStatus: string }) =>
@@ -406,6 +411,12 @@ export default function AdminPartnerPipelinePage() {
         <BusinessCell>
           {row.businessName}
           <MetaLine>{getCategoryName(migrateCategoryId(row.category), language as 'en' | 'bg')}</MetaLine>
+          {/* Inline note count indicator per spec §5.2 */}
+          {(row._count?.requestNotes ?? 0) > 0 && (
+            <MetaLine style={{ color: palette.teal }}>
+              💬 {row._count!.requestNotes} {language === 'bg' ? 'бележки' : 'notes'}
+            </MetaLine>
+          )}
         </BusinessCell>
       ),
     },
@@ -464,6 +475,21 @@ export default function AdminPartnerPipelinePage() {
     },
   ];
 
+  // Spec §5.2 — DOGOVARYANE stage shows negotiated % alongside base columns
+  const dogovaryaneColumns: ColumnDef<PendingPartner>[] = [
+    ...baseColumns.slice(0, -1),
+    {
+      key: 'discountRate',
+      header: language === 'bg' ? 'Договаряне %' : 'Negotiating %',
+      render: (row: PendingPartner) => (
+        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: row.discountRate != null ? palette.accent : palette.textSubtle }}>
+          {row.discountRate != null ? `${row.discountRate}%` : '—'}
+        </span>
+      ),
+    },
+    baseColumns[baseColumns.length - 1],
+  ];
+
   const buildRowActions = (nextStage: string | null): RowAction<PendingPartner>[] => [
     ...(canWrite ? [
       {
@@ -518,19 +544,6 @@ export default function AdminPartnerPipelinePage() {
 
       {/* Pipeline summary cards */}
       <PipelineSummary>
-        <StageCard
-          key="NOVA"
-          $active={false}
-          $color={palette.textSubtle}
-          onClick={() => navigate('/admin/partners/requests')}
-          title={language === 'bg' ? 'Виж нови заявки' : 'View new requests'}
-        >
-          <StageLabel $color={palette.textSubtle}>
-            {language === 'bg' ? 'Нова заявка' : 'New Requests'}
-          </StageLabel>
-          <StageCount>{novaQuery.isLoading ? '…' : novaCount}</StageCount>
-          <StageHint>{language === 'bg' ? '→ Заявки' : '→ Requests tab'}</StageHint>
-        </StageCard>
         {STAGES.map(stage => (
           <StageCard
             key={stage.key}
@@ -562,11 +575,12 @@ export default function AdminPartnerPipelinePage() {
       {stagesToShow.map(stage => {
         const rows = stageData[stage.key];
         const isStageLoading =
+          stage.key === 'NOVA'         ? novaQuery.isLoading         :
           stage.key === 'KOMUNIKACIYA' ? komunikaciyaQuery.isLoading :
           stage.key === 'DOGOVARYANE'  ? dogovaryaneQuery.isLoading  :
           stage.key === 'ONBOARDING'   ? onboardingQuery.isLoading   :
           odobrenQuery.isLoading;
-        // Spec §5.2 — onboarding stage shows readiness for the 3 required artifacts
+        // Spec §5.2 — DOGOVARYANE shows discount %, ONBOARDING/ODOBRENA shows readiness
         const stageColumns: ColumnDef<PendingPartner>[] =
           stage.key === 'ONBOARDING' || stage.key === 'ODOBRENA'
             ? [
@@ -580,7 +594,9 @@ export default function AdminPartnerPipelinePage() {
                 },
                 baseColumns[baseColumns.length - 1],
               ]
-            : baseColumns;
+            : stage.key === 'DOGOVARYANE'
+              ? dogovaryaneColumns
+              : baseColumns;
         return (
           <Card key={stage.key}>
             <SectionTitle $color={stage.color}>

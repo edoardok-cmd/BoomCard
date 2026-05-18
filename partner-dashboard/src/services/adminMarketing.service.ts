@@ -88,7 +88,7 @@ export interface MarketingAutomation {
   lastRunAt: string | null;
   templateId: string | null;
   createdAt: string;
-  template: { id: string; name: string } | null;
+  template: { id: string; name: string; type: MarketingChannel } | null;
 }
 
 interface PagedResult<T> {
@@ -187,6 +187,10 @@ export const adminMarketingService = {
     if (params.search) clean.search = params.search;
     if (params.type)   clean.type   = params.type;
     return apiService.get('/admin/marketing/lists', clean);
+  },
+
+  getList(id: string): Promise<MarketingList> {
+    return apiService.get(`/admin/marketing/lists/${id}`);
   },
 
   createList(data: {

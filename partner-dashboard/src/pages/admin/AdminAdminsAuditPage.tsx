@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import styled from 'styled-components';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
@@ -424,6 +425,7 @@ const PAGE_SIZE = 20;
 
 export default function AdminAdminsAuditPage() {
   const { language } = useLanguage();
+  const [searchParams] = useSearchParams();
 
   // Committed filter state (drives the query)
   const [page, setPage]               = useState(1);
@@ -432,12 +434,12 @@ export default function AdminAdminsAuditPage() {
   const [actionCat, setActionCat]     = useState('');
   const [dateFrom, setDateFrom]       = useState('');
   const [dateTo, setDateTo]           = useState('');
-  const [actorId, setActorId]         = useState('');
+  const [actorId, setActorId]         = useState(() => searchParams.get('actorId') ?? '');
 
   // Pending input state for the search box (committed on button click or Enter)
   const [searchDraft, setSearchDraft] = useState('');
   // Draft for actor ID — debounced to avoid one query per keystroke when typing a UUID
-  const [actorIdDraft, setActorIdDraft] = useState('');
+  const [actorIdDraft, setActorIdDraft] = useState(() => searchParams.get('actorId') ?? '');
 
   useEffect(() => {
     const t = setTimeout(() => { setActorId(actorIdDraft); setPage(1); }, 500);

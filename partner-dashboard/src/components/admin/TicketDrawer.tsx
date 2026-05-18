@@ -11,6 +11,7 @@ import {
   TicketCategory,
   TicketUser,
 } from '../../services/adminHelp.service';
+import { adminAdminsService } from '../../services/adminAdmins.service';
 
 const palette = {
   bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
@@ -39,7 +40,8 @@ const copy = {
     sending: 'Sending…',
     replied: 'Reply sent',
     replyError: 'Failed to send reply',
-    assignedOk: 'Ticket assigned to you',
+    assignedOk: 'Ticket assigned',
+    unassignedOk: 'Ticket unassigned',
     assignError: 'Failed to assign ticket',
     statusUpdated: 'Status updated',
     statusError: 'Failed to update status',
@@ -75,7 +77,8 @@ const copy = {
     sending: 'Изпращане…',
     replied: 'Отговорът е изпратен',
     replyError: 'Грешка при изпращане',
-    assignedOk: 'Заявката е назначена на вас',
+    assignedOk: 'Заявката е назначена',
+    unassignedOk: 'Назначаването е премахнато',
     assignError: 'Грешка при назначаване',
     statusUpdated: 'Статусът е обновен',
     statusError: 'Грешка при обновяване на статуса',
@@ -158,6 +161,7 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
     qc.invalidateQueries({ queryKey: ['admin-help-replies', ticketId] });
     qc.invalidateQueries({ queryKey: ['admin-help-all'] });
     qc.invalidateQueries({ queryKey: ['admin-help-mine'] });
+    qc.invalidateQueries({ queryKey: ['admin-help-new-count'] });
   };
 
   const replyMutation = useMutation({
@@ -183,9 +187,26 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
   });
 
   const assignMutation = useMutation({
-    mutationFn: () => adminHelpService.assign(ticketId!),
-    onSuccess: () => { toast.success(t.assignedOk); invalidateAll(); },
+    // undefined  → self-assign (no body, backend defaults to caller)
+    // null       → unassign   (sends { assigneeId: null })
+    // "uuid"     → assign to that admin (SUPER_ADMIN only)
+    mutationFn: (assigneeId: string | null | undefined) =>
+      adminHelpService.assign(
+        ticketId!,
+        assigneeId !== undefined ? { assigneeId } : undefined,
+      ),
+    onSuccess: (_, assigneeId) => {
+      toast.success(assigneeId === null ? t.unassignedOk : t.assignedOk);
+      invalidateAll();
+    },
     onError: (err) => toast.error(extractApiError(err, t.assignError)),
+  });
+
+  const { data: adminsData } = useQuery({
+    queryKey: ['admin-users-for-assignment'],
+    queryFn: () => adminAdminsService.list({ limit: 500 }),
+    enabled: currentUser?.rawRole === 'SUPER_ADMIN' && !!ticketId,
+    staleTime: 5 * 60_000,
   });
 
   const ticket = ticketData?.ticket;
@@ -241,16 +262,49 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
                 <MetaItem>
                   <MetaLabel>{t.assignedTo}</MetaLabel>
                   <MetaValue>
-                    {ticket.assignee ? displayName(ticket.assignee) : (
-                      <span style={{ color: palette.danger }}>{t.unassigned}</span>
-                    )}
-                    {!ticket.assignee && !isCreator && (
-                      <AssignBtn
-                        onClick={() => assignMutation.mutate()}
-                        disabled={assignMutation.isPending}
+                    {isSuperAdmin ? (
+                      <AssignSelect
+                        value={ticket.assignee?.id ?? ''}
+                        onChange={(e) => {
+                          // Empty string → unassign (null); UUID → assign to that admin.
+                          assignMutation.mutate(e.target.value === '' ? null : e.target.value);
+                        }}
+                        // Keep disabled while the admins list is still loading to avoid a
+                        // value-without-matching-option visual glitch and accidental selection.
+                        disabled={assignMutation.isPending || !adminsData}
+                        title={language === 'bg' ? 'Изберете отговорник' : 'Select assignee'}
                       >
-                        {t.assignToMe}
-                      </AssignBtn>
+                        <option value="">— {t.unassigned} —</option>
+                        {!adminsData ? (
+                          // While loading: keep a stable option for the current assignee so the
+                          // select value always has a matching option and doesn't visually reset.
+                          ticket.assignee && (
+                            <option value={ticket.assignee.id}>{displayName(ticket.assignee)}</option>
+                          )
+                        ) : (
+                          adminsData.admins
+                            .filter((a) => a.id !== ticket.user.id)
+                            .map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {`${a.firstName ?? ''} ${a.lastName ?? ''}`.trim() || a.email}
+                              </option>
+                            ))
+                        )}
+                      </AssignSelect>
+                    ) : (
+                      <>
+                        {ticket.assignee ? displayName(ticket.assignee) : (
+                          <span style={{ color: palette.danger }}>{t.unassigned}</span>
+                        )}
+                        {!ticket.assignee && !isCreator && (
+                          <AssignBtn
+                            onClick={() => assignMutation.mutate(undefined)}
+                            disabled={assignMutation.isPending}
+                          >
+                            {t.assignToMe}
+                          </AssignBtn>
+                        )}
+                      </>
                     )}
                   </MetaValue>
                 </MetaItem>
@@ -272,7 +326,7 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
                   <ControlSelect
                     value={ticket.status}
                     onChange={(e) => statusMutation.mutate(e.target.value as TicketStatus)}
-                    disabled={statusMutation.isPending || isClosed}
+                    disabled={statusMutation.isPending || (isClosed && !isSuperAdmin)}
                   >
                     {((['NEW', 'OPEN', 'WAITING', 'RESOLVED', 'CLOSED'] as TicketStatus[])
                       .filter((s) => !isCreatorOnly || s === ticket.status || s === 'RESOLVED')
@@ -289,7 +343,7 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
                   <ControlSelect
                     value={ticket.priority}
                     onChange={(e) => priorityMutation.mutate(e.target.value as TicketPriority)}
-                    disabled={priorityMutation.isPending || isCreatorOnly || isClosed}
+                    disabled={priorityMutation.isPending || isCreatorOnly || (isClosed && !isSuperAdmin)}
                     title={isCreatorOnly ? (language === 'bg' ? 'Само отговорникът може да променя приоритета' : 'Only the assignee can change the priority') : undefined}
                   >
                     {(['URGENT', 'HIGH', 'MEDIUM', 'LOW'] as TicketPriority[]).map((p) => (
@@ -336,7 +390,16 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
         {/* Reply input — hidden only on load error; allow pre-typing during initial fetch */}
         <ReplyArea>
           {ticketError ? null : isClosed ? (
-            <ClosedNote>{t.ticketClosed}</ClosedNote>
+            <ClosedNote>
+              {t.ticketClosed}
+              {isSuperAdmin && (
+                <ReopenHint>
+                  {language === 'bg'
+                    ? ' Сменете статуса по-горе, за да отговорите отново.'
+                    : ' Change the status above to re-enable replies.'}
+                </ReopenHint>
+              )}
+            </ClosedNote>
           ) : (
             <>
               <ReplyTextarea
@@ -473,6 +536,14 @@ const AssignBtn = styled.button`
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
+const AssignSelect = styled.select`
+  padding: 0.25rem 0.5rem; border: 1px solid ${palette.border}; border-radius: 0.375rem;
+  font-size: 0.8125rem; background: ${palette.bg}; color: ${palette.text};
+  cursor: pointer; outline: none; max-width: 14rem;
+  &:focus { border-color: ${palette.accent}; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
+
 const ControlsRow = styled.div`display: flex; gap: 0.75rem; flex-wrap: wrap;`;
 const ControlGroup = styled.div`display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;`;
 const ControlLabel = styled.label`font-size: 0.75rem; font-weight: 600; color: ${palette.textSubtle};`;
@@ -541,4 +612,8 @@ const ClosedNote = styled.p`
   text-align: center; font-size: 0.8125rem; color: ${palette.textMuted};
   margin: 0; padding: 0.5rem;
   background: ${palette.border}; border-radius: 0.5rem;
+`;
+
+const ReopenHint = styled.span`
+  font-style: italic;
 `;

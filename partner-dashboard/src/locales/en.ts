@@ -55,6 +55,8 @@ export const en = {
     bgnSymbol: 'лв.',
     eurSymbol: '€',
     dualCurrency: 'BGN / EUR',
+    linkCopied: 'Link copied to clipboard!',
+    failedToCopyLink: 'Failed to copy link',
   },
 
   // Header & Navigation
@@ -220,6 +222,11 @@ export const en = {
     verificationEmailSentAgain: 'Verification email sent again!',
     errorSendingEmail: 'Error sending email',
     errorOccurred: 'An error occurred. Please try again.',
+    sessionExpired: 'Your session has expired. Please sign in again.',
+    accountCreated: 'Account created successfully! Welcome to BoomCard!',
+    loggedOut: 'Logged out successfully',
+    stoppedImpersonating: 'Stopped impersonating',
+    emailUpdated: 'Email updated successfully',
   },
 
   // Partner Registration
@@ -735,6 +742,8 @@ export const en = {
     sortPriceHighToLow: 'Price: High to Low',
     addedToFavorites: 'Added to favorites',
     removedFromFavorites: 'Removed from favorites',
+    alreadyInFavorites: 'Already in favorites',
+    cleared: 'All favorites cleared',
   },
 
   // Search
@@ -2293,6 +2302,56 @@ export const en = {
     // RBAC
     noPermission: 'You do not have permission to view this section.',
 
+    // Partner request drawer
+    drawerRequestRejected: 'Request rejected',
+    drawerErrorApproving: 'Error approving partner',
+    drawerErrorRejecting: 'Error rejecting request',
+    drawerStatusAdvanced: 'Status advanced',
+    drawerErrorUpdatingStatus: 'Error updating status',
+    drawerAssigned: 'Assigned',
+    drawerErrorAssigning: 'Error assigning',
+    drawerNoteAdded: 'Note added',
+    drawerErrorAddingNote: 'Error adding note',
+
+    // Receipts
+    receiptsFailedToLoad: 'Failed to load receipts',
+    receiptApprovedSuccess: 'Receipt approved successfully',
+    receiptRejectedSuccess: 'Receipt rejected successfully',
+    receiptFailedToReview: 'Failed to review receipt',
+    receiptsBulkApproveSuccess: 'Bulk approval complete',
+    receiptsBulkRejectSuccess: 'Bulk rejection complete',
+    receiptsFailedToBulkApprove: 'Failed to bulk approve',
+    receiptsFailedToBulkReject: 'Failed to bulk reject',
+
+  },
+
+  // Bookings
+  bookings: {
+    created: 'Booking created successfully!',
+    failedToCreate: 'Failed to create booking',
+    updated: 'Booking updated successfully!',
+    failedToUpdate: 'Failed to update booking',
+    confirmed: 'Booking confirmed!',
+    failedToConfirm: 'Failed to confirm booking',
+    cancelled: 'Booking cancelled',
+    failedToCancel: 'Failed to cancel booking',
+    completed: 'Booking completed!',
+    failedToComplete: 'Failed to complete booking',
+    markedAsNoShow: 'Marked as no-show',
+    failedToMarkAsNoShow: 'Failed to mark as no-show',
+    rescheduled: 'Booking rescheduled!',
+    failedToReschedule: 'Failed to reschedule booking',
+    specialRequestsAdded: 'Special requests added!',
+    failedToAddSpecialRequests: 'Failed to add special requests',
+    promoCodeApplied: 'Promo code applied!',
+    invalidPromoCode: 'Invalid promo code',
+    verified: 'Booking verified!',
+    invalidQRCode: 'Invalid QR code',
+    confirmationEmailSent: 'Confirmation email sent!',
+    failedToSendEmail: 'Failed to send email',
+    reminderSent: 'Reminder sent!',
+    failedToSendReminder: 'Failed to send reminder',
+    failedToCalculatePrice: 'Failed to calculate price',
   },
 };
 

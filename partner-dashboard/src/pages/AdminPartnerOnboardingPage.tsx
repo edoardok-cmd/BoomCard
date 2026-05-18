@@ -47,6 +47,9 @@ interface VenueEntry {
   googleMapsLink: string;
   latitude: string;
   longitude: string;
+  capacity: string;
+  tables: string;
+  cashDesks: string;
 }
 
 interface FormData {
@@ -64,6 +67,9 @@ interface FormData {
   longitude: string;
   totalVenues: string;
   boomVenues: string;
+  primaryCapacity: string;
+  primaryTables: string;
+  primaryCashDesks: string;
   description: string;
   highlights: string;
   additionalVenues: VenueEntry[];
@@ -111,6 +117,9 @@ const INITIAL_FORM: FormData = {
   longitude: '',
   totalVenues: '',
   boomVenues: '',
+  primaryCapacity: '',
+  primaryTables: '',
+  primaryCashDesks: '',
   description: '',
   highlights: '',
   additionalVenues: [],
@@ -515,7 +524,7 @@ const AdminPartnerOnboardingPage: React.FC = () => {
   const addVenue = () => {
     setForm(prev => ({
       ...prev,
-      additionalVenues: [...prev.additionalVenues, { name: '', address: '', city: '', region: '', phone: '', googleMapsLink: '', latitude: '', longitude: '' }],
+      additionalVenues: [...prev.additionalVenues, { name: '', address: '', city: '', region: '', phone: '', googleMapsLink: '', latitude: '', longitude: '', capacity: '', tables: '', cashDesks: '' }],
     }));
   };
 
@@ -540,6 +549,22 @@ const AdminPartnerOnboardingPage: React.FC = () => {
       if (!form.businessName.trim()) e.businessName = 'Задължително поле';
       if (!form.city) e.city = 'Изберете град';
       if (!form.address.trim()) e.address = 'Задължително поле';
+      // Capacity / tables / cash desks must be non-negative integers.
+      // Empty is allowed (treated as not provided server-side); decimals or
+      // negatives are rejected so the admin sees the typo before submit.
+      const isNonNegInt = (v: string): boolean => {
+        if (v === '') return true;
+        if (!/^\d+$/.test(v.trim())) return false;
+        return Number(v) >= 0;
+      };
+      if (!isNonNegInt(form.primaryCapacity)) e.primaryCapacity = 'Цяло положително число';
+      if (!isNonNegInt(form.primaryTables)) e.primaryTables = 'Цяло положително число';
+      if (!isNonNegInt(form.primaryCashDesks)) e.primaryCashDesks = 'Цяло положително число';
+      form.additionalVenues.forEach((v, i) => {
+        if (!isNonNegInt(v.capacity)) e[`venue_${i}_capacity`] = 'Цяло положително число';
+        if (!isNonNegInt(v.tables)) e[`venue_${i}_tables`] = 'Цяло положително число';
+        if (!isNonNegInt(v.cashDesks)) e[`venue_${i}_cashDesks`] = 'Цяло положително число';
+      });
     }
     if (currentStep === 1) {
       const hasCat = form.categoryEntries.some(c => c.category);
@@ -597,6 +622,9 @@ const AdminPartnerOnboardingPage: React.FC = () => {
             googleMapsLink: form.googleMapsLink || null,
             latitude: form.latitude ? parseFloat(form.latitude) : null,
             longitude: form.longitude ? parseFloat(form.longitude) : null,
+            capacity: form.primaryCapacity ? parseInt(form.primaryCapacity, 10) : null,
+            tables: form.primaryTables ? parseInt(form.primaryTables, 10) : null,
+            cashDesks: form.primaryCashDesks ? parseInt(form.primaryCashDesks, 10) : null,
           },
           ...form.additionalVenues
             .filter(v => v.name && v.address && v.city)
@@ -609,6 +637,9 @@ const AdminPartnerOnboardingPage: React.FC = () => {
               googleMapsLink: v.googleMapsLink || null,
               latitude: v.latitude ? parseFloat(v.latitude) : null,
               longitude: v.longitude ? parseFloat(v.longitude) : null,
+              capacity: v.capacity ? parseInt(v.capacity, 10) : null,
+              tables: v.tables ? parseInt(v.tables, 10) : null,
+              cashDesks: v.cashDesks ? parseInt(v.cashDesks, 10) : null,
             })),
         ],
         category: primaryCat?.category || 'restaurants',
@@ -639,8 +670,19 @@ const AdminPartnerOnboardingPage: React.FC = () => {
         internalNotes: form.internalNotes || undefined,
       };
 
-      await apiService.post('/partners/onboard', payload);
-      toast.success(`Партньорът "${form.businessName}" беше създаден успешно!`);
+      const resp = await apiService.post<{
+        success: boolean;
+        data?: { venueErrors?: Array<{ name: string; error: string }>; venuesCreated?: number };
+      }>('/partners/onboard', payload);
+      // Partner is always created on success; venue creation is best-effort
+      // per-venue. Surface any per-venue failures rather than silently logging.
+      const venueErrors = resp?.data?.venueErrors ?? [];
+      if (venueErrors.length > 0) {
+        const names = venueErrors.map(v => `"${v.name}"`).join(', ');
+        toast.error(`Партньорът беше създаден, но ${venueErrors.length} обект(а) не успяха да се създадат: ${names}. Моля, добавете ги ръчно.`);
+      } else {
+        toast.success(`Партньорът "${form.businessName}" беше създаден успешно!`);
+      }
       navigate(`/admin/partners/active`);
     } catch (err) {
       const axiosErr = err as { response?: { data?: { error?: string | { message?: string } } }; message?: string };
@@ -812,6 +854,45 @@ const AdminPartnerOnboardingPage: React.FC = () => {
             />
           </FormGroup>
         </FormGrid>
+
+        <FormGrid cols={3} style={{ marginTop: '1rem' }}>
+          <FormGroup>
+            <Label>Капацитет (места)</Label>
+            <Input
+              type="number"
+              min="0"
+              step="1"
+              value={form.primaryCapacity}
+              onChange={e => set('primaryCapacity', e.target.value)}
+              placeholder="напр. 80"
+            />
+            {errors.primaryCapacity && <span style={{ color: 'var(--color-error)', fontSize: '0.8rem' }}>{errors.primaryCapacity}</span>}
+          </FormGroup>
+          <FormGroup>
+            <Label>Брой маси</Label>
+            <Input
+              type="number"
+              min="0"
+              step="1"
+              value={form.primaryTables}
+              onChange={e => set('primaryTables', e.target.value)}
+              placeholder="напр. 12"
+            />
+            {errors.primaryTables && <span style={{ color: 'var(--color-error)', fontSize: '0.8rem' }}>{errors.primaryTables}</span>}
+          </FormGroup>
+          <FormGroup>
+            <Label>Брой каси</Label>
+            <Input
+              type="number"
+              min="0"
+              step="1"
+              value={form.primaryCashDesks}
+              onChange={e => set('primaryCashDesks', e.target.value)}
+              placeholder="напр. 2"
+            />
+            {errors.primaryCashDesks && <span style={{ color: 'var(--color-error)', fontSize: '0.8rem' }}>{errors.primaryCashDesks}</span>}
+          </FormGroup>
+        </FormGrid>
       </SubSection>
 
       <SubSection>
@@ -889,6 +970,23 @@ const AdminPartnerOnboardingPage: React.FC = () => {
                 <FormGroup>
                   <Label>Longitude</Label>
                   <Input type="number" step="any" value={venue.longitude} onChange={e => setVenueField(i, 'longitude', e.target.value)} placeholder="напр. 23.3219" />
+                </FormGroup>
+              </FormGrid>
+              <FormGrid cols={3}>
+                <FormGroup>
+                  <Label>Капацитет (места)</Label>
+                  <Input type="number" min="0" step="1" value={venue.capacity} onChange={e => setVenueField(i, 'capacity', e.target.value)} placeholder="напр. 80" />
+                  {errors[`venue_${i}_capacity`] && <span style={{ color: 'var(--color-error)', fontSize: '0.8rem' }}>{errors[`venue_${i}_capacity`]}</span>}
+                </FormGroup>
+                <FormGroup>
+                  <Label>Брой маси</Label>
+                  <Input type="number" min="0" step="1" value={venue.tables} onChange={e => setVenueField(i, 'tables', e.target.value)} placeholder="напр. 12" />
+                  {errors[`venue_${i}_tables`] && <span style={{ color: 'var(--color-error)', fontSize: '0.8rem' }}>{errors[`venue_${i}_tables`]}</span>}
+                </FormGroup>
+                <FormGroup>
+                  <Label>Брой каси</Label>
+                  <Input type="number" min="0" step="1" value={venue.cashDesks} onChange={e => setVenueField(i, 'cashDesks', e.target.value)} placeholder="напр. 2" />
+                  {errors[`venue_${i}_cashDesks`] && <span style={{ color: 'var(--color-error)', fontSize: '0.8rem' }}>{errors[`venue_${i}_cashDesks`]}</span>}
                 </FormGroup>
               </FormGrid>
             </div>

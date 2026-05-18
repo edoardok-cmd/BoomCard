@@ -541,7 +541,7 @@ export default function AdminMarketingCampaignsPage() {
             <option value="">Всички канали</option>
             <option value="EMAIL">Email</option>
             <option value="PUSH">Push</option>
-            <option value="SMS">SMS</option>
+            <option value="SMS">SMS (скоро)</option>
           </Select>
           <FilterLabel>Планирана от</FilterLabel>
           <DateInput
@@ -610,7 +610,7 @@ export default function AdminMarketingCampaignsPage() {
                 >
                   <option value="EMAIL">Email</option>
                   <option value="PUSH">Push известие</option>
-                  <option value="SMS">SMS</option>
+                  <option value="SMS" disabled>SMS (скоро)</option>
                 </ModalSelect>
               </FormGroup>
               <FormGroup>

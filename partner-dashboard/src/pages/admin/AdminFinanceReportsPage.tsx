@@ -102,6 +102,24 @@ const WarningText = styled.div`font-size: 0.875rem; color: ${palette.text};`;
 const WarningTitle = styled.p`font-weight: 700; margin: 0 0 0.25rem;`;
 const WarningDesc = styled.p`margin: 0; color: ${palette.textMuted};`;
 
+const PlanFilterCallout = styled.div`
+  display: flex; align-items: flex-start; gap: 0.75rem;
+  padding: 1rem 1.25rem; margin-bottom: 1.5rem;
+  background: ${palette.infoSoft}; border: 1px solid #bfdbfe;
+  border-left: 3px solid ${palette.info}; border-radius: 0.75rem;
+`;
+const PlanFilterTitle = styled.p`font-size: 0.875rem; font-weight: 700; color: ${palette.info}; margin: 0 0 0.25rem;`;
+const PlanFilterBody = styled.p`font-size: 0.8125rem; color: ${palette.textMuted}; margin: 0;`;
+
+const SectionHeaderRow = styled.div`display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;`;
+const SectionExportBtn = styled.button`
+  padding: 0.3rem 0.7rem; border: 1px solid ${palette.border}; border-radius: 0.375rem;
+  font-size: 0.75rem; font-weight: 600; color: ${palette.textMuted}; background: ${palette.bg};
+  cursor: pointer; white-space: nowrap;
+  &:hover { border-color: ${palette.accent}; color: ${palette.accent}; }
+  &:disabled { opacity: 0.5; cursor: default; }
+`;
+
 /* ─── Alert focus configs (spec §3.2) ───────────────────────────────────────── */
 interface FocusCopy {
   eyebrow: string;
@@ -195,7 +213,7 @@ const PERIOD_STATUS_LABELS: Record<string, string> = {
 
 /* ─── Subscription plan labels ───────────────────────────────────────────────── */
 const PLAN_LABELS: Record<string, string> = {
-  LIGHT:   'Light',
+  LIGHT:   'Premium Weekly',
   BASIC:   'Basic',
   PREMIUM: 'Premium',
   UNKNOWN: 'Без абонамент',
@@ -247,6 +265,7 @@ export default function AdminFinanceReportsPage() {
   const [queryPayoutStatus, setQueryPayoutStatus] = useState('');
   const [exporting, setExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv'>('xlsx');
+  const [sectionExporting, setSectionExporting] = useState<string | null>(null);
   const runCount = useRef(0);
   const [searchParams] = useSearchParams();
   const { language } = useLanguage();
@@ -324,6 +343,37 @@ export default function AdminFinanceReportsPage() {
       toast.error('Грешка при експорт на отчет');
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleSectionExport = async (section: 'invoices' | 'payouts') => {
+    setSectionExporting(section);
+    try {
+      if (section === 'invoices') {
+        // Pass the full from/to range so multi-month queries are scoped correctly (#3).
+        // Also pass partnerId so the partner filter is respected (#4).
+        await adminFinanceService.exportInvoices({
+          status: queryInvoiceStatus || undefined,
+          from: queryFrom,
+          to: queryTo,
+          partnerId: queryPartnerId || undefined,
+          format: exportFormat,
+        });
+      } else {
+        // Export individual WITHDRAWAL transaction rows (type=payouts), not the
+        // aggregate multi-section report (#5). Mirrors the payout breakdown table.
+        await adminFinanceService.exportPayouts({
+          from: queryFrom,
+          to: queryTo,
+          payoutStatus: queryPayoutStatus || undefined,
+          plan: queryPlan || undefined,
+          format: exportFormat,
+        });
+      }
+    } catch {
+      toast.error('Грешка при експорт');
+    } finally {
+      setSectionExporting(null);
     }
   };
 
@@ -444,7 +494,7 @@ export default function AdminFinanceReportsPage() {
         </div>
         <FilterSelect value={plan} onChange={(e) => setPlan(e.target.value)}>
           <option value="">Всички планове</option>
-          <option value="LIGHT">Light</option>
+          <option value="LIGHT">Premium Weekly</option>
           <option value="BASIC">Basic</option>
           <option value="PREMIUM">Premium</option>
           <option value="UNKNOWN">Без абонамент</option>
@@ -467,6 +517,21 @@ export default function AdminFinanceReportsPage() {
           {isLoading ? 'Зареждане…' : 'Приложи филтри'}
         </RunBtn>
       </FilterRow>
+
+      {/* Plan filter callout — explains scope clearly when plan filter is active */}
+      {queryPlan && (
+        <PlanFilterCallout>
+          <span style={{ fontSize: '1.1rem', color: palette.info }}>ℹ</span>
+          <div>
+            <PlanFilterTitle>Активен филтър по план: {PLAN_LABELS[queryPlan] ?? queryPlan}</PlanFilterTitle>
+            <PlanFilterBody>
+              <strong>Засегнати:</strong> Разбивка по сканирания и плащания към абонати (портфейлни транзакции).{' '}
+              <strong>Незасегнати:</strong> Оборот, кешбек и марджин по партньори — те идват от фактури, които не са тагнати по план в момента на създаване.
+              За пълен партньорски отчет по план, използвайте Разбивка по партньор + Разбивка по абонатен план заедно.
+            </PlanFilterBody>
+          </div>
+        </PlanFilterCallout>
+      )}
 
       {report && (
         <>
@@ -577,14 +642,22 @@ export default function AdminFinanceReportsPage() {
 
           {/* Per-partner breakdown (spec §6.4: partner dimension) */}
           <Card>
-            <SectionTitle>
-              Разбивка по партньор
-              {queryPlan && (
-                <span style={{ fontWeight: 400, fontSize: '0.8rem', color: palette.textSubtle, marginLeft: '0.5rem', fontStyle: 'italic' }}>
-                  (фактурите по партньор не са филтрирани по план)
-                </span>
-              )}
-            </SectionTitle>
+            <SectionHeaderRow>
+              <SectionTitle style={{ margin: 0 }}>
+                Разбивка по партньор
+                {queryPlan && (
+                  <span style={{ fontWeight: 400, fontSize: '0.8rem', color: palette.textSubtle, marginLeft: '0.5rem', fontStyle: 'italic' }}>
+                    (фактурите по партньор не са филтрирани по план)
+                  </span>
+                )}
+              </SectionTitle>
+              <SectionExportBtn
+                disabled={sectionExporting === 'invoices' || report.partnerBreakdown.length === 0}
+                onClick={() => handleSectionExport('invoices')}
+              >
+                {sectionExporting === 'invoices' ? 'Експортиране…' : '↓ Фактури'}
+              </SectionExportBtn>
+            </SectionHeaderRow>
             {report.partnerBreakdown.length === 0 ? (
               <p style={{ fontSize: '0.875rem', color: palette.textSubtle, margin: 0 }}>
                 {queryPartnerId
@@ -749,7 +822,8 @@ export default function AdminFinanceReportsPage() {
             ];
             return (
               <Card>
-                <SectionTitle>
+                <SectionHeaderRow>
+                  <SectionTitle style={{ margin: 0 }}>
                   Плащания към абонати по статус
                   {isFiltered && (
                     <span style={{ fontWeight: 400, fontSize: '0.8rem', color: palette.textSubtle, marginLeft: '0.5rem', fontStyle: 'italic' }}>
@@ -761,7 +835,14 @@ export default function AdminFinanceReportsPage() {
                       (филтрирано по план: {PLAN_LABELS[queryPlan] ?? queryPlan})
                     </span>
                   )}
-                </SectionTitle>
+                  </SectionTitle>
+                  <SectionExportBtn
+                    disabled={sectionExporting === 'payouts' || report.payoutBreakdown.count === 0}
+                    onClick={() => handleSectionExport('payouts')}
+                  >
+                    {sectionExporting === 'payouts' ? 'Експортиране…' : '↓ Плащания'}
+                  </SectionExportBtn>
+                </SectionHeaderRow>
                 <Table>
                   <thead>
                     <tr>

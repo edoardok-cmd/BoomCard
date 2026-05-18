@@ -1,4 +1,6 @@
 .playwright-mcp/
+api-gateway/
+analytics-service/
 backend-api/
 boomcard-mobile/
 node_modules/
@@ -9,13 +11,27 @@ tasks/
 *.png
 *.jpg
 *.jpeg
+*.webp
 *.mp4
 *.zip
 *.pdf
 *.patch
+# Allow partner-dashboard source public assets through (needed for vite build)
+!partner-dashboard/public/*.png
+!partner-dashboard/public/*.jpg
+!partner-dashboard/public/*.jpeg
+!partner-dashboard/public/*.webp
+!partner-dashboard/public/*.mp4
 screenshots/
 test-results/
 test-results/**/*.svg
 docs/
 docs/**/*.svg
 *.md
+tests/
+scheduler-service/
+auth-service/
+user-service/
+notification-service/
+command-service/
+.playwright-mcp/

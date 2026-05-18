@@ -27,6 +27,7 @@ export interface CashbackDashboardStats {
   totalLocked: number;    // заключен — locked by admin (CANCELLED + ANNULLED/FAILED, not yet paid)
   totalPaid: number;      // платен — explicitly marked paid by admin via Locked→Paid action
   totalExpired: number;   // изтекъл — past 60-day rolling expiry, never paid out
+  totalVoided: number;    // анулиран — risk review rejected or admin voided (spec §4.4 v1.1)
 }
 
 export interface CashbackRateRow {
@@ -53,8 +54,8 @@ export interface CurrentCashbackRate {
   source: 'db' | 'default';
 }
 
-// Spec §4.4 — entry-based cashback with 5 states
-export type CashbackEntryStatus = 'Pending' | 'Cleared' | 'Locked' | 'Paid' | 'Expired';
+// Spec §4.4 v1.1 — entry-based cashback with 6 states (Voided added)
+export type CashbackEntryStatus = 'Pending' | 'Cleared' | 'Locked' | 'Paid' | 'Expired' | 'Voided';
 
 export interface CashbackEntry {
   id: string;
@@ -65,6 +66,9 @@ export interface CashbackEntry {
   daysUntilExpiry: number | null;
   description: string | null;
   createdAt: string;
+  // Spec §4.4 v1.1 — visible to user when status === 'Voided'
+  voidedAt: string | null;
+  voidedReason: string | null;
   receipt: { id: string; totalAmount: number | null; merchantName: string | null } | null;
   partner: { id: string; businessName: string } | null;
   user: { id: string; email: string; firstName: string | null; lastName: string | null };
@@ -141,6 +145,12 @@ class AdminCashbackService {
 
   async payEntry(entryId: string): Promise<void> {
     await apiService.post(`${this.base}/entries/${entryId}/pay`, {});
+  }
+
+  // Spec §4.4 v1.1 — admin voids a cashback entry with a visible reason.
+  // The row stays visible to the user as "Анулиран" with the reason.
+  async voidEntry(entryId: string, reason: string): Promise<void> {
+    await apiService.post(`${this.base}/entries/${entryId}/void`, { reason });
   }
 
   async backfillExpiry(): Promise<{ message: string }> {

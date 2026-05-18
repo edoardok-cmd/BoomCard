@@ -30,10 +30,22 @@ interface AdminDashboardResponse {
   generatedAt: string;
 }
 
+export interface AdminDashboardStatsEnvelope {
+  data: AdminDashboardStats;
+  generatedAt: string;
+}
+
 export const adminDashboardService = {
   getStats(): Promise<AdminDashboardStats> {
     return apiService
       .get<AdminDashboardResponse>('/admin/dashboard')
       .then(res => res.data);
+  },
+  // Returns the stats envelope including `generatedAt` so the dashboard can
+  // render a "last updated" indicator and detect refresh staleness.
+  getStatsWithMeta(): Promise<AdminDashboardStatsEnvelope> {
+    return apiService
+      .get<AdminDashboardResponse>('/admin/dashboard')
+      .then(res => ({ data: res.data, generatedAt: res.generatedAt }));
   },
 };

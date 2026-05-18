@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { bookingsService, BookingFilters, CreateBookingData, BookingStatus } from '../services/bookings.service';
 import toast from 'react-hot-toast';
+import { useLanguage } from '../contexts/LanguageContext';
 
 /**
  * Hook to fetch bookings with filters
@@ -204,16 +205,17 @@ export function useRecommendedTimes(
  */
 export function useCreateBooking() {
   const queryClient = useQueryClient();
+  const { t } = useLanguage();
 
   return useMutation({
     mutationFn: (data: CreateBookingData) => bookingsService.createBooking(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['availability'] });
-      toast.success('Booking created successfully!');
+      toast.success(t('bookings.created'));
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to create booking');
+      toast.error(error.message || t('bookings.failedToCreate'));
     },
   });
 }
@@ -223,6 +225,7 @@ export function useCreateBooking() {
  */
 export function useUpdateBooking() {
   const queryClient = useQueryClient();
+  const { t } = useLanguage();
 
   return useMutation({
     mutationFn: ({ id, updates }: { id: string; updates: Partial<CreateBookingData> }) =>
@@ -230,10 +233,10 @@ export function useUpdateBooking() {
     onSuccess: (booking) => {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
-      toast.success('Booking updated successfully!');
+      toast.success(t('bookings.updated'));
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to update booking');
+      toast.error(error.message || t('bookings.failedToUpdate'));
     },
   });
 }
@@ -243,6 +246,7 @@ export function useUpdateBooking() {
  */
 export function useConfirmBooking() {
   const queryClient = useQueryClient();
+  const { t } = useLanguage();
 
   return useMutation({
     mutationFn: ({ id, code }: { id: string; code?: string }) =>
@@ -250,10 +254,10 @@ export function useConfirmBooking() {
     onSuccess: (booking) => {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
-      toast.success('Booking confirmed!');
+      toast.success(t('bookings.confirmed'));
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to confirm booking');
+      toast.error(error.message || t('bookings.failedToConfirm'));
     },
   });
 }
@@ -263,6 +267,7 @@ export function useConfirmBooking() {
  */
 export function useCancelBooking() {
   const queryClient = useQueryClient();
+  const { t } = useLanguage();
 
   return useMutation({
     mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
@@ -271,10 +276,10 @@ export function useCancelBooking() {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
       queryClient.invalidateQueries({ queryKey: ['availability'] });
-      toast.success('Booking cancelled');
+      toast.success(t('bookings.cancelled'));
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to cancel booking');
+      toast.error(error.message || t('bookings.failedToCancel'));
     },
   });
 }
@@ -284,6 +289,7 @@ export function useCancelBooking() {
  */
 export function useCompleteBooking() {
   const queryClient = useQueryClient();
+  const { t } = useLanguage();
 
   return useMutation({
     mutationFn: ({ id, rating, review }: { id: string; rating?: number; review?: string }) =>
@@ -291,10 +297,10 @@ export function useCompleteBooking() {
     onSuccess: (booking) => {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
-      toast.success('Booking completed!');
+      toast.success(t('bookings.completed'));
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to complete booking');
+      toast.error(error.message || t('bookings.failedToComplete'));
     },
   });
 }
@@ -304,16 +310,17 @@ export function useCompleteBooking() {
  */
 export function useMarkNoShow() {
   const queryClient = useQueryClient();
+  const { t } = useLanguage();
 
   return useMutation({
     mutationFn: (id: string) => bookingsService.markNoShow(id),
     onSuccess: (booking) => {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
-      toast.success('Marked as no-show');
+      toast.success(t('bookings.markedAsNoShow'));
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to mark as no-show');
+      toast.error(error.message || t('bookings.failedToMarkAsNoShow'));
     },
   });
 }
@@ -323,6 +330,7 @@ export function useMarkNoShow() {
  */
 export function useRescheduleBooking() {
   const queryClient = useQueryClient();
+  const { t } = useLanguage();
 
   return useMutation({
     mutationFn: ({ id, date, time }: { id: string; date: string; time: string }) =>
@@ -331,10 +339,10 @@ export function useRescheduleBooking() {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
       queryClient.invalidateQueries({ queryKey: ['availability'] });
-      toast.success('Booking rescheduled!');
+      toast.success(t('bookings.rescheduled'));
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to reschedule booking');
+      toast.error(error.message || t('bookings.failedToReschedule'));
     },
   });
 }
@@ -344,16 +352,17 @@ export function useRescheduleBooking() {
  */
 export function useAddSpecialRequests() {
   const queryClient = useQueryClient();
+  const { t } = useLanguage();
 
   return useMutation({
     mutationFn: ({ id, requests }: { id: string; requests: string }) =>
       bookingsService.addSpecialRequests(id, requests),
     onSuccess: (booking) => {
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
-      toast.success('Special requests added!');
+      toast.success(t('bookings.specialRequestsAdded'));
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to add special requests');
+      toast.error(error.message || t('bookings.failedToAddSpecialRequests'));
     },
   });
 }
@@ -363,16 +372,17 @@ export function useAddSpecialRequests() {
  */
 export function useApplyPromoCode() {
   const queryClient = useQueryClient();
+  const { t } = useLanguage();
 
   return useMutation({
     mutationFn: ({ id, code }: { id: string; code: string }) =>
       bookingsService.applyPromoCode(id, code),
     onSuccess: (booking) => {
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
-      toast.success('Promo code applied!');
+      toast.success(t('bookings.promoCodeApplied'));
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Invalid promo code');
+      toast.error(error.message || t('bookings.invalidPromoCode'));
     },
   });
 }
@@ -382,15 +392,16 @@ export function useApplyPromoCode() {
  */
 export function useVerifyBookingQR() {
   const queryClient = useQueryClient();
+  const { t } = useLanguage();
 
   return useMutation({
     mutationFn: (qrCode: string) => bookingsService.verifyBookingQR(qrCode),
     onSuccess: (booking) => {
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
-      toast.success('Booking verified!');
+      toast.success(t('bookings.verified'));
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Invalid QR code');
+      toast.error(error.message || t('bookings.invalidQRCode'));
     },
   });
 }
@@ -399,13 +410,15 @@ export function useVerifyBookingQR() {
  * Hook to send confirmation email
  */
 export function useSendConfirmationEmail() {
+  const { t } = useLanguage();
+
   return useMutation({
     mutationFn: (id: string) => bookingsService.sendConfirmationEmail(id),
     onSuccess: () => {
-      toast.success('Confirmation email sent!');
+      toast.success(t('bookings.confirmationEmailSent'));
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to send email');
+      toast.error(error.message || t('bookings.failedToSendEmail'));
     },
   });
 }
@@ -414,13 +427,15 @@ export function useSendConfirmationEmail() {
  * Hook to send reminder
  */
 export function useSendReminder() {
+  const { t } = useLanguage();
+
   return useMutation({
     mutationFn: (id: string) => bookingsService.sendReminder(id),
     onSuccess: () => {
-      toast.success('Reminder sent!');
+      toast.success(t('bookings.reminderSent'));
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to send reminder');
+      toast.error(error.message || t('bookings.failedToSendReminder'));
     },
   });
 }
@@ -429,10 +444,12 @@ export function useSendReminder() {
  * Hook to calculate booking price
  */
 export function useCalculatePrice() {
+  const { t } = useLanguage();
+
   return useMutation({
     mutationFn: (data: CreateBookingData) => bookingsService.calculatePrice(data),
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to calculate price');
+      toast.error(error.message || t('bookings.failedToCalculatePrice'));
     },
   });
 }

@@ -122,6 +122,7 @@ export default function AdminMarketingListsPage() {
   const [selected, setSelected] = useState<MarketingList | null>(null);
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [removeMemberError, setRemoveMemberError] = useState('');
 
   // Member management state
@@ -224,6 +225,7 @@ export default function AdminMarketingListsPage() {
     setModal(null);
     setSelected(null);
     setSaveError('');
+    setDeleteError('');
     setRemoveMemberError('');
     setMemberSearchQuery('');
     setMemberSearchResults([]);
@@ -263,8 +265,7 @@ export default function AdminMarketingListsPage() {
       closeModal();
       load();
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? (err as { message?: string })?.message ?? 'Неуспешно изтриване.';
-      alert(msg);
+      setDeleteError((err as any)?.response?.data?.error ?? (err as { message?: string })?.message ?? 'Неуспешно изтриване. Опитайте отново.');
     } finally {
       setSaving(false);
     }
@@ -442,7 +443,7 @@ export default function AdminMarketingListsPage() {
           <SecondaryBtn
             onClick={handleInitializeDefaults}
             disabled={initializingDefaults}
-            title="Създава 7-те задължителни сегмента по спецификация (§8): Premium, Basic, всички активни абонати, неактивни 90+ дни, имейл съгласие, активни и потенциални партньори. Преизчислява броя на членовете веднага."
+            title="Създава или обновява 7 системни сегмента: Premium абонати, Basic абонати, всички активни абонати, неактивни 90+ дни, имейл съгласие, активни партньори и потенциални партньори. Преизчислява броя на членовете веднага."
           >
             {initializingDefaults ? 'Инициализира се…' : 'Инициализирай задължителните сегменти'}
           </SecondaryBtn>
@@ -501,7 +502,7 @@ export default function AdminMarketingListsPage() {
         <Overlay onClick={closeModal}>
           <ModalBox onClick={(e) => e.stopPropagation()}>
             <ModalHeader>
-              <ModalTitle>{modal === 'create' ? 'Нов аудитория списък' : 'Редактирай списък'}</ModalTitle>
+              <ModalTitle>{modal === 'create' ? 'Нов списък' : 'Редактирай списък'}</ModalTitle>
               <CloseBtn onClick={closeModal}>×</CloseBtn>
             </ModalHeader>
             <ModalBody>
@@ -573,6 +574,7 @@ export default function AdminMarketingListsPage() {
               <CloseBtn onClick={closeModal}>×</CloseBtn>
             </ModalHeader>
             <ModalBody>
+              {deleteError && <ErrorBanner>{deleteError}</ErrorBanner>}
               <ConfirmText>Ще изтриете <strong>{selected.name}</strong>.</ConfirmText>
               <ConfirmSub>Всички членове ще бъдат премахнати. Списъкът не може да се изтрие, ако се използва в активна кампания. Действието е необратимо.</ConfirmSub>
             </ModalBody>

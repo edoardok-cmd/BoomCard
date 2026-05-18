@@ -43,6 +43,11 @@ export interface TicketReply {
 }
 
 export const adminHelpService = {
+  /** Returns count of NEW tickets — own for regular admins, all for SUPER_ADMIN. */
+  getNewCount(): Promise<{ count: number }> {
+    return apiService.get('/admin/help/count');
+  },
+
   create(data: {
     subject: string;
     body: string;
@@ -73,10 +78,14 @@ export const adminHelpService = {
     limit?: number;
     search?: string;
     status?: TicketStatus | '';
+    priority?: TicketPriority | '';
+    category?: TicketCategory | '';
   }): Promise<TicketListResult<HelpTicket>> {
     const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
     if (params.search) clean.search = params.search;
     if (params.status) clean.status = params.status;
+    if (params.priority) clean.priority = params.priority;
+    if (params.category) clean.category = params.category;
     return apiService.get('/admin/help/mine', clean);
   },
 
@@ -92,8 +101,8 @@ export const adminHelpService = {
     return apiService.post(`/admin/help/${id}/reply`, { body });
   },
 
-  assign(id: string): Promise<{ ok: boolean }> {
-    return apiService.post(`/admin/help/${id}/assign`, {});
+  assign(id: string, opts?: { assigneeId: string | null }): Promise<{ ok: boolean }> {
+    return apiService.post(`/admin/help/${id}/assign`, opts ?? {});
   },
 
   update(id: string, data: { status?: TicketStatus; priority?: TicketPriority }): Promise<{ ok: boolean }> {

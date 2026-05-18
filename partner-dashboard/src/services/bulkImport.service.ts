@@ -14,9 +14,12 @@ export interface BulkImportResult {
 
 export interface PartnerImportResult {
   partnersCreated: number;
+  partnersUpdated: number;
   partnersSkipped: number;
   imagesUploaded: number;
   tierApplied: string | null;
+  venuesCreated: number;
+  stickerLocationsCreated: number;
   errors: string[];
   warnings: string[];
   partners: Array<{ id: string; businessName: string; created: boolean }>;

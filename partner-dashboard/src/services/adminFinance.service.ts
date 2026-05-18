@@ -15,6 +15,7 @@ export interface AdminInvoice {
   paidAt: string | null;
   paidBy: string | null;
   notes: string | null;
+  invoiceNumber: string | null;
   createdAt: string;
   updatedAt: string;
   /** Lifecycle status of the billing period this invoice belongs to. Null if no period record exists yet. */
@@ -128,7 +129,10 @@ export const adminFinanceService = {
     return apiService.get('/admin/finance/invoices', clean);
   },
 
-  generateInvoices(month: string): Promise<{ data: { created: number; updated: number; total: number }; message: string }> {
+  generateInvoices(month: string): Promise<{
+    data: { created: number; updated: number; skippedPaid?: number; total: number };
+    message: string;
+  }> {
     return apiService.post('/admin/finance/invoices/generate', { month });
   },
 
@@ -170,6 +174,10 @@ export const adminFinanceService = {
 
   deleteReportingPeriod(month: string): Promise<void> {
     return apiService.delete(`/admin/finance/reporting-periods/${month}`);
+  },
+
+  updatePeriodNotes(month: string, notes: string): Promise<{ data: ReportingPeriodRow }> {
+    return apiService.patch(`/admin/finance/reporting-periods/${month}/notes`, { notes });
   },
 
   getReports(params?: {
@@ -227,11 +235,42 @@ export const adminFinanceService = {
     return apiService.get('/admin/finance/payout-thresholds', {});
   },
 
-  async exportInvoices(params: { status?: string; month?: string; search?: string; format?: 'csv' | 'xlsx' }): Promise<void> {
+  async exportInvoices(params: { status?: string; month?: string; from?: string; to?: string; partnerId?: string; search?: string; format?: 'csv' | 'xlsx' }): Promise<void> {
     const q: Record<string, unknown> = { type: 'invoices', format: params.format ?? 'xlsx' };
     if (params.status) q.status = params.status;
     if (params.month) q.month = params.month;
+    if (params.from) q.from = params.from;
+    if (params.to) q.to = params.to;
+    if (params.partnerId) q.partnerId = params.partnerId;
     if (params.search) q.search = params.search;
+    const { data, filename } = await apiService.getBlob('/admin/finance/export', q);
+    const url = URL.createObjectURL(data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  async exportPayouts(params: { from?: string; to?: string; payoutStatus?: string; plan?: string; format?: 'csv' | 'xlsx' }): Promise<void> {
+    const q: Record<string, unknown> = { type: 'payouts', format: params.format ?? 'xlsx' };
+    if (params.from) q.from = params.from;
+    if (params.to) q.to = params.to;
+    if (params.payoutStatus) q.status = params.payoutStatus;
+    if (params.plan) q.plan = params.plan;
+    const { data, filename } = await apiService.getBlob('/admin/finance/export', q);
+    const url = URL.createObjectURL(data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  async exportCashbackSummary(params: { month?: string; status?: string; format?: 'csv' | 'xlsx' }): Promise<void> {
+    const q: Record<string, unknown> = { type: 'cashback-summary', format: params.format ?? 'xlsx' };
+    if (params.month) q.month = params.month;
+    if (params.status) q.status = params.status;
     const { data, filename } = await apiService.getBlob('/admin/finance/export', q);
     const url = URL.createObjectURL(data);
     const a = document.createElement('a');

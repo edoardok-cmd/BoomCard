@@ -504,7 +504,7 @@ export default function AdminAdminsPendingPage() {
         <SectionSubtitle>Акаунти с администраторски достъп, на които предстои назначаване на панелна роля</SectionSubtitle>
 
         <InfoBanner>
-          Тези потребители имат системна роля <strong>Администратор</strong> или <strong>Супер администратор</strong>, но все още нямат назначена панелна роля. Назначи роля на ADMIN потребителите, за да получат достъп до таблото.
+          Тези потребители имат системна роля <strong>Администратор</strong>, но все още нямат назначена панелна роля. Назначи роля, за да получат достъп до таблото.
         </InfoBanner>
 
         <FilterRow>
@@ -532,8 +532,7 @@ export default function AdminAdminsPendingPage() {
           rowActions={[
             {
               label: 'Назначи роля',
-              hidden: (row: PendingAdmin) => row.role === 'SUPER_ADMIN',
-              onClick: (row) => {
+              onClick: (row: PendingAdmin) => {
                 setModal({ type: 'role', admin: row });
                 setSelectedRole('ADMIN');
               },

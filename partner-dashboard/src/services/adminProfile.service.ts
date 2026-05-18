@@ -25,6 +25,7 @@ export interface AdminSession {
   userAgent: string | null;
   createdAt: string;
   expiresAt: string;
+  isCurrent?: boolean;
 }
 
 export interface AdminLoginEvent {
@@ -96,5 +97,16 @@ export const adminProfileService = {
 
   confirmEmailChange(code: string, currentPassword: string): Promise<{ id: string; email: string }> {
     return apiService.post<{ id: string; email: string }>('/admin/me/email-change/confirm', { code, currentPassword });
+  },
+
+  uploadAvatar(file: File): Promise<{ avatar: string }> {
+    const form = new FormData();
+    form.append('image', file);
+    // Do NOT set Content-Type — the browser XHR layer must set it so the
+    // multipart boundary is included automatically. An explicit header here
+    // overrides the auto-generated boundary and breaks multer parsing.
+    return apiService.post<{ avatar: string }>('/admin/me/avatar', form, {
+      headers: { 'Content-Type': undefined },
+    });
   },
 };

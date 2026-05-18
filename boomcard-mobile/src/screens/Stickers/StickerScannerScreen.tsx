@@ -154,7 +154,39 @@ export default function StickerScannerScreen() {
       } as any);
 
       if (!sessionRes.success || !sessionRes.data?.sessionId) {
-        crossPlatformAlert(t('common.error'), sessionRes.error || t('stickers.scanFailed', 'Failed to scan sticker'));
+        // Spec §5.3: when the partner is in Inactive/Suspended/Archived state,
+        // the server raises a PARTNER_NOT_ACCEPTING marker so we can surface the
+        // exact Bulgarian copy the spec mandates instead of the generic error.
+        // Spec §4.2 v1.1: SUBSCRIPTION_FAILED_PAYMENT / SUBSCRIPTION_PAST_DUE
+        // markers surface the renewal CTA so the user knows scanning is blocked
+        // until they restore the subscription.
+        const rawErr = sessionRes.error || '';
+        if (rawErr.includes('PARTNER_NOT_ACCEPTING')) {
+          crossPlatformAlert(
+            t('common.info', 'Информация'),
+            t(
+              'stickers.partnerNotAccepting',
+              'Този обект временно не приема BoomCard транзакции. Опитайте отново по-късно или вижте близки активни обекти.'
+            )
+          );
+        } else if (rawErr.includes('SUBSCRIPTION_FAILED_PAYMENT') || rawErr.includes('SUBSCRIPTION_PAST_DUE')) {
+          crossPlatformAlert(
+            t('common.info', 'Информация'),
+            t(
+              'stickers.subscriptionFailedPayment',
+              'Абонаментът Ви е в статус „неуспешно плащане". Възобновете го от менюто „Абонамент и плащания", за да продължите да сканирате бележки.'
+            ),
+            [
+              { text: t('common.cancel', 'Откажи'), style: 'cancel' },
+              {
+                text: t('stickers.renewSubscription', 'Възобнови абонамент'),
+                onPress: () => (navigation as any).navigate('SubscriptionManagement'),
+              },
+            ]
+          );
+        } else {
+          crossPlatformAlert(t('common.error'), rawErr || t('stickers.scanFailed', 'Failed to scan sticker'));
+        }
         setScanned(false);
         return;
       }
