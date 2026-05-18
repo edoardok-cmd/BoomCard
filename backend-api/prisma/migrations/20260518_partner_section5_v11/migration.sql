@@ -83,7 +83,7 @@ END$$;
 
 ALTER TABLE "ActivationLink"
   ADD COLUMN IF NOT EXISTS "reason"      "ActivationLinkReason" NOT NULL DEFAULT 'INITIAL',
-  ADD COLUMN IF NOT EXISTS "emailSentAt" TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS "emailSentAt" TIMESTAMP(3),
   ADD COLUMN IF NOT EXISTS "emailError"  TEXT;
 
 -- 4. Backfill rows that pre-date the reason column. Idempotent: only updates

@@ -102,7 +102,7 @@ describe('Authentication Flow (F01)', () => {
           accountType: 'partner',
           businessInfo: {
             businessName: 'Test Bistro',
-            businessCategory: 'RESTAURANT',
+            businessCategory: 'restaurants',
           },
         });
 
@@ -144,7 +144,7 @@ describe('Authentication Flow (F01)', () => {
           businessInfo: {
             businessName: 'Boom Cafe',
             businessNameBg: 'Бум Кафе',
-            businessCategory: 'CAFE',
+            businessCategory: 'cafes',
             website: 'https://boom.example',
           },
         });
@@ -164,8 +164,8 @@ describe('Authentication Flow (F01)', () => {
       expect(partner).toBeTruthy();
       expect(partner?.status).toBe('PENDING');
       expect(partner?.businessName).toBe('Boom Cafe');
-      expect(partner?.category).toBe('CAFE');
-      expect(partner?.categories).toContain('CAFE');
+      expect(partner?.category).toBe('cafes');
+      expect(partner?.categories).toContain('cafes');
     });
 
     it('should reject registration without email', async () => {
