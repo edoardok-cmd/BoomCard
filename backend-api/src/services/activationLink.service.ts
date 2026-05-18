@@ -239,7 +239,7 @@ export class ActivationLinkService {
       //       the findUnique above reads from a snapshot and cannot see the
       //       concurrent invalidate; SSI detects the read-write conflict and
       //       raises P2034 on the loser, whose retry then hits the
-      //       `if (link.invalidatedAt)` guard at line 210.
+      //       `if (link.invalidatedAt)` guard at line 211.
       const claim = await tx.activationLink.updateMany({
         where: { id: link.id, consumedAt: null, invalidatedAt: null },
         data: { consumedAt: new Date() },

@@ -77,8 +77,11 @@ async function seedLink(partnerId: string, adminId: string) {
 }
 
 async function teardown(partnerIds: string[], userIds: string[]) {
-  // Delete in FK-safe order.
+  // Delete in FK-safe order. linkResendLog.subjectId is an untyped string (no
+  // FK constraint) but must be cleared to avoid orphaned rows bleeding into
+  // future tests that query the table without partner-scoped filters.
   await prisma.activationLink.deleteMany({ where: { partnerId: { in: partnerIds } } });
+  await prisma.linkResendLog.deleteMany({ where: { subjectId: { in: partnerIds } } });
   await prisma.partner.deleteMany({ where: { id: { in: partnerIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
 }

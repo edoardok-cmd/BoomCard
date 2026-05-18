@@ -556,11 +556,14 @@ router.get(
 
 /**
  * POST /api/admin/control/dispute-cases
- * Body: { subjectType?, receiptId?, subjectId?, userId?, notes? }
+ * Body: { subjectType?, receiptId?, subjectId?, userId?, notes?, ticketId? }
  *
  * subjectType defaults to RECEIPT. When RECEIPT, receiptId is required and userId
  * is resolved from the receipt. For CASHBACK / PAYOUT / INVOICE, both subjectId
  * and userId are required (no DB FK validation — those models may not exist yet).
+ *
+ * ticketId (optional, §11.6): links this dispute to a DISPUTE-type HelpTicket.
+ * The ticket must exist and have requestType=DISPUTE; rejected otherwise.
  */
 router.post(
   '/dispute-cases',
@@ -572,13 +575,29 @@ router.post(
       subjectId,
       userId: bodyUserId,
       notes,
+      ticketId,
     } = req.body as {
       subjectType?: string;
       receiptId?: string;
       subjectId?: string;
       userId?: string;
       notes?: string;
+      ticketId?: string;
     };
+
+    // §11.6 — validate the linked ticket if provided
+    if (ticketId?.trim()) {
+      const linkedTicket = await prisma.helpTicket.findUnique({
+        where: { id: ticketId.trim() },
+        select: { id: true, requestType: true },
+      });
+      if (!linkedTicket) {
+        return res.status(404).json({ success: false, error: 'Linked help ticket not found' });
+      }
+      if (linkedTicket.requestType !== 'DISPUTE') {
+        return res.status(400).json({ success: false, error: 'Linked ticket must have requestType=DISPUTE' });
+      }
+    }
 
     const subjectType: DisputeSubjectType =
       rawSubjectType && Object.values(DisputeSubjectType).includes(rawSubjectType as DisputeSubjectType)
@@ -649,10 +668,12 @@ router.post(
           userId: resolvedUserId,
           assignedTo: req.user!.id,
           status: 'OPEN',
+          ticketId: ticketId?.trim() || null,
         },
         include: {
           user: { select: { id: true, email: true, firstName: true, lastName: true } },
           receipt: { select: { id: true, merchantName: true, totalAmount: true, fraudScore: true, status: true } },
+          ticket: { select: { id: true, subject: true, requestType: true } },
         },
       });
 
@@ -738,9 +759,22 @@ router.patch(
       if (newIdx !== currentIdx + 1) {
         return res.status(400).json({ success: false, error: `Status must advance one step at a time: ${disputeCase.status} → ${DISPUTE_STATUS_ORDER[currentIdx + 1] ?? '(none)'}` });
       }
+      // Spec §7.3: a decision must be recorded before a case can be resolved.
+      // Accept the decision either from this request body OR from a prior PATCH.
+      if (status === 'RESOLVED') {
+        const effectiveDecision = decision !== undefined ? decision : disputeCase.decision;
+        if (!effectiveDecision?.trim()) {
+          return res.status(400).json({
+            success: false,
+            error: 'A non-empty decision is required to resolve a dispute case',
+          });
+        }
+        data.resolvedAt = new Date();
+        req.auditAction = 'dispute.resolve';
+      }
+      if (status === 'IN_REVIEW') { req.auditAction = 'dispute.in-review'; }
+      if (status === 'CLOSED')    { data.closedAt = new Date(); req.auditAction = 'dispute.close'; }
       data.status = status as DisputeStatus;
-      if (status === 'RESOLVED') { data.resolvedAt = new Date(); req.auditAction = 'dispute.resolve'; }
-      if (status === 'CLOSED')   { data.closedAt   = new Date(); req.auditAction = 'dispute.close';   }
     }
 
     if (assignedTo !== undefined) data.assignedTo = assignedTo || null;

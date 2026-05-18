@@ -833,8 +833,12 @@ model Dispute {
   updatedAt   DateTime           @updatedAt
   subjectId   String?
   subjectType DisputeSubjectType @default(RECEIPT)
+  // Spec §11.6 — link to the HelpTicket that initiated this dispute (optional;
+  // set when dispute-case is created from a DISPUTE-type help ticket).
+  ticketId    String?
   assignee    User?              @relation("DisputeAssignee", fields: [assignedTo], references: [id])
   receipt     Receipt?           @relation(fields: [receiptId], references: [id])
+  ticket      HelpTicket?        @relation("DisputeTicket", fields: [ticketId], references: [id])
   user        User               @relation("DisputeUser", fields: [userId], references: [id])
   notes       DisputeNote[]
 
@@ -842,6 +846,7 @@ model Dispute {
   @@index([userId])
   @@index([status])
   @@index([subjectType])
+  @@index([ticketId])
 }
 
 model DisputeNote {
@@ -1405,6 +1410,7 @@ model HelpTicket {
   user           User           @relation("TicketUser", fields: [userId], references: [id])
   linkedTicket   HelpTicket?    @relation("TicketLink", fields: [linkedTicketId], references: [id])
   linkingTickets HelpTicket[]   @relation("TicketLink")
+  disputes       Dispute[]      @relation("DisputeTicket")
   replies        TicketReply[]
 
   @@index([userId])

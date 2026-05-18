@@ -373,7 +373,7 @@ describe('Account Switching (web)', () => {
         .send({ targetAccountId: targetId });
 
       expect(switchRes.status).toBe(401);
-      expect(String(switchRes.body?.message || switchRes.body?.error?.message || ''))
+      expect(String(switchRes.body?.error || switchRes.body?.message || ''))
         .toMatch(/target account credentials have changed/i);
     }, 15000);
 
@@ -404,7 +404,7 @@ describe('Account Switching (web)', () => {
         .send({ targetAccountId: targetId });
 
       expect(switchRes.status).toBe(401);
-      expect(String(switchRes.body?.message || switchRes.body?.error?.message || ''))
+      expect(String(switchRes.body?.error || switchRes.body?.message || ''))
         .toMatch(/your credentials have changed/i);
     }, 15000);
   });
@@ -450,7 +450,7 @@ describe('Account Switching (web)', () => {
         .send({ targetAccountId: noOrigAdmin.id });
 
       expect(res.status).toBe(403);
-      expect(String(res.body?.message || res.body?.error?.message || ''))
+      expect(String(res.body?.error || res.body?.message || ''))
         .toMatch(/cannot switch.*mobile/i);
     });
   });

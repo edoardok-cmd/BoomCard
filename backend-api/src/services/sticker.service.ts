@@ -1195,14 +1195,29 @@ class StickerService {
     if (bestScore >= MERCHANT_MATCH_THRESHOLD) return;
 
     const newReason = `MERCHANT_MISMATCH: receipt="${ocrMerchant}" vs venue="${venueName}"`;
-    // Idempotency guard: read to check whether MERCHANT_MISMATCH is already recorded
+    // Idempotency guard: read status + fraudReasons together.
     // (BullMQ retry, detached re-fire). Concurrent admin edits between this read and
     // the push below are safe — both writes use server-side atomic operators.
     const current = await prisma.stickerScan.findUnique({
       where: { id: scanId },
-      select: { fraudReasons: true },
+      select: { fraudReasons: true, status: true },
     });
     if (!current) return;
+    // Do not retroactively annotate scans that have already been settled. An
+    // APPROVED scan already has its cashback credited — appending MERCHANT_MISMATCH
+    // would corrupt the fraud history without reversing anything. REJECTED/EXPIRED
+    // scans are similarly terminal: there is nothing actionable left to do.
+    if (
+      current.status === ScanStatus.APPROVED ||
+      current.status === ScanStatus.REJECTED ||
+      current.status === ScanStatus.EXPIRED
+    ) {
+      logger.warn(
+        `[verifyAndAnnotateScan] scan ${scanId} is already ${current.status} — ` +
+        `skipping MERCHANT_MISMATCH annotation (OCR: "${ocrMerchant}")`,
+      );
+      return;
+    }
     if (current.fraudReasons.some((r) => r.startsWith('MERCHANT_MISMATCH'))) return;
     await prisma.stickerScan.update({
       where: { id: scanId },
@@ -1667,24 +1682,30 @@ class StickerService {
    * fraudDetectionService.calculateCashback — managed in Admin › Cashback Rates
    * and Admin › Partners.
    *
-   * autoApproveThreshold is NOT here: every scan is routed through manual review
-   * or auto-approved by explicit flow, not by a fraud-score threshold on this row.
+   * gpsVerificationEnabled is intentionally NOT writable: proximity verification
+   * is mandatory per product decision and the flag is ignored at runtime.
+   * ocrVerificationEnabled / maxCashbackPerScan are NOT writable either: the
+   * sticker flow has no OCR step, and cashback caps are driven by
+   * VenueFraudConfig.maxCashbackPerScan through fraudDetectionService.calculateCashback.
    */
   async updateVenueConfig(venueId: string, raw: Record<string, unknown>): Promise<VenueStickerConfig> {
     const data: Record<string, unknown> = {};
-    // gpsVerificationEnabled is intentionally NOT writable: proximity verification
-    // is mandatory per product decision and the flag is ignored at runtime.
-    // ocrVerificationEnabled / maxCashbackPerScan are NOT writable either: the
-    // sticker flow has no OCR step, and cashback caps are driven by
-    // VenueFraudConfig.maxCashbackPerScan through fraudDetectionService.calculateCashback.
     const ALLOWED = [
       'minBillAmount',
       'maxScansPerDay', 'maxScansPerMonth',
       'gpsRadiusMeters',
+      'autoApproveThreshold',
       'isActive', 'metadata',
     ] as const;
     for (const key of ALLOWED) {
       if (key in raw) data[key] = raw[key];
+    }
+    // Spec §7.1: autoApproveThreshold must be in the 0–100 range (fraudScore is 0–100).
+    if ('autoApproveThreshold' in data) {
+      const t = data.autoApproveThreshold;
+      if (typeof t !== 'number' || !isFinite(t) || t < 0 || t > 100) {
+        throw new Error('autoApproveThreshold must be a number between 0 and 100');
+      }
     }
     return prisma.venueStickerConfig.upsert({
       where: { venueId },

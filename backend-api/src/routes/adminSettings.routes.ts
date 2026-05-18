@@ -655,9 +655,11 @@ router.get(
 /**
  * POST /api/admin/settings/fraud-rules
  * Body: { tier, targetId?, dailyScanLimit?, minTransactionValue?, maxTransactionValue?, autoApproveThreshold?, notes? }
+ * Spec §7.4: SUPER_ADMIN only.
  */
 router.post(
   '/fraud-rules',
+  authorize('SUPER_ADMIN'),
   requirePermission('settings.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { tier, targetId, dailyScanLimit, minTransactionValue, maxTransactionValue, autoApproveThreshold, notes } =
@@ -697,9 +699,11 @@ router.post(
 
 /**
  * PATCH /api/admin/settings/fraud-rules/:id
+ * Spec §7.4: SUPER_ADMIN only.
  */
 router.patch(
   '/fraud-rules/:id',
+  authorize('SUPER_ADMIN'),
   requirePermission('settings.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { dailyScanLimit, minTransactionValue, maxTransactionValue, autoApproveThreshold, notes, isActive } =
@@ -734,9 +738,11 @@ router.patch(
 /**
  * DELETE /api/admin/settings/fraud-rules/:id
  * Soft-deactivates the rule (does not hard-delete to preserve audit trail).
+ * Spec §7.4: SUPER_ADMIN only.
  */
 router.delete(
   '/fraud-rules/:id',
+  authorize('SUPER_ADMIN'),
   requirePermission('settings.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const rule = await prisma.fraudRule.findUnique({ where: { id: req.params.id } });
@@ -769,9 +775,11 @@ router.get(
 /**
  * POST /api/admin/settings/fraud-rules/:id/overrides
  * Body: { targetType: "user"|"partner", targetId, override: {...}, reason?, expiresAt? }
+ * Spec §7.4: SUPER_ADMIN only.
  */
 router.post(
   '/fraud-rules/:id/overrides',
+  authorize('SUPER_ADMIN'),
   requirePermission('settings.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { targetType, targetId, override, reason, expiresAt } = req.body as {
@@ -811,9 +819,11 @@ router.post(
 
 /**
  * DELETE /api/admin/settings/fraud-rules/:id/overrides/:overId
+ * Spec §7.4: SUPER_ADMIN only.
  */
 router.delete(
   '/fraud-rules/:id/overrides/:overId',
+  authorize('SUPER_ADMIN'),
   requirePermission('settings.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const ov = await prisma.fraudRuleOverride.findFirst({

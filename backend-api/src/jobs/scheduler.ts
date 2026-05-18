@@ -24,6 +24,7 @@
  *   user-risk-sweep                  — 0 4 * * *    (4:00 AM daily)
  *   marketing-list-sync              — 30 2 * * *   (2:30 AM daily — after cashback-expiry)
  *   inactive-user-nudge              — 30 4 * * *   (4:30 AM daily — 30-day inactivity automations)
+ *   activation-link-expiry-reminder  — 30 10 * * *  (10:30 AM daily — §8.3 email + admin alert 24h before expiry)
  */
 
 import cron from 'node-cron';
@@ -1085,6 +1086,84 @@ async function notifyInactiveUsers(): Promise<void> {
   logger.info(`[inactive-user-nudge] Done — fired automation for ${fired} user(s)`);
 }
 
+// ── Activation link expiry reminder (§8.3) ────────────────────────────────────
+// Daily scan: find unconsumed, non-invalidated activation links that will expire
+// within the next 24 hours. For each, email the partner and post an admin alert.
+// Spec: "Изтичащ activation link | 24ч преди изтичане | Email към партньора + админ alert"
+
+async function remindExpiringActivationLinks(): Promise<void> {
+  const now = new Date();
+  const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+  logger.info(`[activation-link-expiry-reminder] Checking for links expiring before ${in24h.toISOString()}`);
+
+  const links = await prisma.activationLink.findMany({
+    where: {
+      consumedAt: null,
+      invalidatedAt: null,
+      expiresAt: { gte: now, lte: in24h },
+    },
+    include: {
+      partner: {
+        include: { user: { select: { email: true, firstName: true } } },
+      },
+    },
+  });
+
+  if (links.length === 0) {
+    logger.info('[activation-link-expiry-reminder] No expiring links found');
+    return;
+  }
+
+  logger.info(`[activation-link-expiry-reminder] ${links.length} link(s) expiring within 24h`);
+
+  const dashboardBase = process.env.PARTNER_DASHBOARD_URL || 'https://boomcard.bg';
+  let reminded = 0;
+
+  for (const link of links) {
+    const email = link.partner.user?.email;
+    const firstName = link.partner.user?.firstName || link.partner.businessName;
+    const activationUrl = `${dashboardBase}/partner/activate?token=${link.token}`;
+    const expiresAtStr = link.expiresAt.toLocaleString('bg-BG', { timeZone: 'Europe/Sofia' });
+
+    try {
+      if (email) {
+        await emailService.sendEmail({
+          to: email,
+          subject: 'Вашият активационен линк изтича скоро — BoomCard',
+          html: `
+            <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff;">
+              <h2 style="color:#1a1a1a;margin-bottom:8px;">Активационен линк изтича</h2>
+              <p style="color:#555;margin-bottom:16px;">Здравейте, ${firstName}!</p>
+              <p style="color:#555;margin-bottom:16px;">Вашият активационен линк за партньорски акаунт <strong>${link.partner.businessName}</strong> ще изтече на <strong>${expiresAtStr}</strong>.</p>
+              <p style="margin-bottom:24px;">
+                <a href="${activationUrl}" style="display:inline-block;background:#0052cc;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Активирай акаунта</a>
+              </p>
+              <p style="color:#999;font-size:13px;">Ако вече сте активирали акаунта си, игнорирайте този имейл. Ако имате нужда от нов линк, свържете се с нас на office@boomcard.bg.</p>
+            </div>`,
+        });
+      }
+
+      await notificationService.notifyAdminOps({
+        opsType: `activation-link-expiring-${link.id}`,
+        title: 'Activation link expiring soon',
+        message: `Partner "${link.partner.businessName}" has an unused activation link expiring at ${expiresAtStr}.`,
+        severity: 'warning',
+        actionUrl: `/admin/partners?id=${link.partnerId}`,
+        relatedEntityType: 'Partner',
+        relatedEntityId: link.partnerId,
+        cooldownHours: 20,
+      });
+
+      reminded++;
+    } catch (err) {
+      logger.error(`[activation-link-expiry-reminder] Failed for link ${link.id} / partner ${link.partnerId}:`, err);
+    }
+  }
+
+  logger.info(`[activation-link-expiry-reminder] Done — reminded ${reminded}/${links.length} partner(s)`);
+}
+
 export function registerScheduledJobs(): void {
   // Never register cron jobs in test mode — they keep the process alive and
   // can corrupt test fixtures with async DB mutations.
@@ -1233,4 +1312,12 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: inactive-user-nudge (30 4 * * *)');
+
+  // 10:30 AM every day — remind partners with activation links expiring in next 24h
+  // Spec §8.3: email to partner + admin alert, fires once per day at mid-morning
+  cron.schedule('30 10 * * *', () => {
+    remindExpiringActivationLinks().catch((err) => alertSchedulerFailure('activation-link-expiry-reminder', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: activation-link-expiry-reminder (30 10 * * *)');
 }

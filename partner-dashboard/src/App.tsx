@@ -472,7 +472,14 @@ function App() {
                     <Route path="security" element={<SecurityPage />} />
 
                     {/* Admin routes - Role-protected */}
-                    <Route path="admin-preview" element={<AdminDashboardPage />} />
+                    <Route
+                      path="admin-preview"
+                      element={
+                        <ProtectedRoute requiredRole="admin">
+                          <AdminDashboardPage />
+                        </ProtectedRoute>
+                      }
+                    />
                     {/* /admin/receipts kept as a real route (not yet mapped to new IA category) */}
                     <Route
                       path="admin/receipts"
@@ -558,8 +565,11 @@ function App() {
                       }
                     >
                       <Route index element={<Navigate to="risk" replace />} />
+                      {/* Both tabs share one component; AdminControlSecurityPage branches on
+                          location.pathname ('/risk' = review queue, '/risk-signals' = stats-only view). */}
                       <Route path="risk" element={<AdminControlSecurityPage />} />
                       <Route path="risk-signals" element={<AdminControlSecurityPage />} />
+                      {/* Audit log lives under /admin/admins/audit — redirect keeps old bookmarks working. */}
                       <Route path="audit" element={<Navigate to="/admin/admins/audit" replace />} />
                       <Route path="security" element={<Navigate to="/admin/control/risk-signals" replace />} />
                       <Route path="disputes" element={<AdminControlDisputesPage />} />
