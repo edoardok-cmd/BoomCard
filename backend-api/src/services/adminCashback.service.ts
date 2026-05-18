@@ -15,6 +15,9 @@ import { logger } from '../utils/logger';
 import { AppError } from '../middleware/error.middleware';
 import { emailService } from './email.service';
 import { CASHBACK_MATRIX, CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
+import { cashbackLifecycleService } from './cashbackLifecycle.service';
+import { writeAudit } from '../middleware/audit.middleware';
+import { getSystemSettingInt } from '../utils/systemSettings';
 
 export interface CashbackSummaryEntry {
   partnerId: string;
@@ -271,52 +274,58 @@ class AdminCashbackService {
     totalLocked: number;
     totalPaid: number;
     totalExpired: number;
+    totalVoided: number;
   }> {
     const now = new Date();
     const soonThreshold = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
 
     // Use buildStateWhere for each lifecycle state so the per-tile sums are
     // mutually exclusive and exactly partition CASHBACK_CREDIT entries — same
-    // assignment that deriveCashbackEntryStatus would make per-row. Previously
-    // the queries were written ad-hoc, which double-counted ANNULLED/FAILED
-    // expired rows in both Locked AND Expired (they belong only in Locked).
+    // assignment that deriveCashbackEntryStatus would make per-row.
     const [
       pendingWhere,
       clearedWhere,
       lockedWhere,
       paidWhere,
       expiredWhere,
+      voidedWhere,
     ] = await Promise.all([
       buildStateWhere('Pending', now),
       buildStateWhere('Cleared', now),
       buildStateWhere('Locked', now),
       buildStateWhere('Paid', now),
       buildStateWhere('Expired', now),
+      buildStateWhere('Voided', now),
     ]);
 
     const baseCashbackWhere = { type: 'CASHBACK_CREDIT' as const };
     const wrapAnd = (extra: WTWhere): WTWhere => ({ AND: [baseCashbackWhere, extra] });
 
-    const [accruedAgg, pendingAgg, clearedAgg, expiringAgg, lockedAgg, paidAgg, expiredAgg] = await Promise.all([
-      // начислен — all-time sum of cashback credited. Equals the union of the
-      // five lifecycle states (Pending+Cleared+Locked+Paid+Expired). Useful as
-      // a sanity check and for top-of-page context.
+    // Split into two Promise.all batches: TypeScript's tuple inference for
+    // Promise.all can lose the named-tuple shape beyond ~7 elements when each
+    // element resolves to a Prisma aggregate (deeply generic), so we group
+    // them to keep each batch within the inferable window.
+    const [accruedAgg, pendingAgg, clearedAgg, expiringAgg] = await Promise.all([
+      // "Начислен" (total accrued) reflects what was actually credited to users.
+      // Ghost VOIDED rows (status=ANNULLED, cashbackStatus=VOIDED, balanceBefore==balanceAfter)
+      // never reached a wallet balance, so including them would overstate accrued cashback.
       prisma.walletTransaction.aggregate({
         _sum: { amount: true },
-        where: baseCashbackWhere,
+        where: {
+          AND: [
+            baseCashbackWhere,
+            { OR: [{ cashbackStatus: null }, { cashbackStatus: { not: 'VOIDED' } }] },
+          ],
+        },
       }),
-      // изчакващ — Pending bucket (PENDING|TRIAL_PENDING|PROCESSING|RISK_HOLD)
       prisma.walletTransaction.aggregate({
         _sum: { amount: true },
         where: wrapAnd(pendingWhere),
       }),
-      // одобрен — Cleared bucket (COMPLETED, not yet expired, not paid out)
       prisma.walletTransaction.aggregate({
         _sum: { amount: true },
         where: wrapAnd(clearedWhere),
       }),
-      // изтичащ — subset of Cleared with expiry within 14 days. Computed by
-      // intersecting the Cleared-state filter with the 14-day window.
       prisma.walletTransaction.aggregate({
         _sum: { amount: true },
         where: {
@@ -327,20 +336,23 @@ class AdminCashbackService {
           ],
         },
       }),
-      // заключен — Locked bucket (CANCELLED-not-yet-expired + ANNULLED/FAILED)
+    ]);
+    const [lockedAgg, paidAgg, expiredAgg, voidedAgg] = await Promise.all([
       prisma.walletTransaction.aggregate({
         _sum: { amount: true },
         where: wrapAnd(lockedWhere),
       }),
-      // платен — Paid bucket (cashbackPaidAt OR predates last wallet withdrawal)
       prisma.walletTransaction.aggregate({
         _sum: { amount: true },
         where: wrapAnd(paidWhere),
       }),
-      // изтекъл — Expired bucket (past 60-day rolling expiry, not Pending/Locked/Paid)
       prisma.walletTransaction.aggregate({
         _sum: { amount: true },
         where: wrapAnd(expiredWhere),
+      }),
+      prisma.walletTransaction.aggregate({
+        _sum: { amount: true },
+        where: wrapAnd(voidedWhere),
       }),
     ]);
 
@@ -352,6 +364,7 @@ class AdminCashbackService {
       totalLocked: Math.round((lockedAgg._sum.amount ?? 0) * 100) / 100,
       totalPaid: Math.round((paidAgg._sum.amount ?? 0) * 100) / 100,
       totalExpired: Math.round((expiredAgg._sum.amount ?? 0) * 100) / 100,
+      totalVoided: Math.round((voidedAgg._sum.amount ?? 0) * 100) / 100,
     };
   }
 
@@ -601,17 +614,37 @@ export const adminCashbackService = new AdminCashbackService();
 
 // ─── Subscriber cashback entries (spec §4.4) ─────────────────────────────────
 
-export type CashbackEntryStatus = 'Pending' | 'Cleared' | 'Locked' | 'Paid' | 'Expired';
+export type CashbackEntryStatus = 'Pending' | 'Cleared' | 'Locked' | 'Paid' | 'Expired' | 'Voided';
 
-// Spec §4.4 — derived 5-state lifecycle. Single source of truth: any consumer
+// Spec §4.4 — derived 6-state lifecycle. Single source of truth: any consumer
 // rendering a cashback entry's lifecycle state must call this helper. Inlining
 // the rules elsewhere will silently drift the moment a status mapping changes.
+//
+// `cashbackStatus` (Prisma enum column) is the authoritative new-world signal,
+// written by cashbackLifecycleService. Fall back to the raw-status derivation
+// for legacy rows that predate the lifecycle service.
 export function deriveCashbackEntryStatus(
-  entry: { status: string; cashbackExpiresAt: Date | null; createdAt: Date; cashbackPaidAt?: Date | null },
+  entry: {
+    status: string;
+    cashbackExpiresAt: Date | null;
+    createdAt: Date;
+    cashbackPaidAt?: Date | null;
+    cashbackStatus?: string | null;
+  },
   latestWithdrawalAt: Date | null,
   now: Date,
 ): CashbackEntryStatus {
-  // Explicitly marked as paid by admin (individual entry Locked→Paid action)
+  // Authoritative: lifecycle service has written an explicit status.
+  if (entry.cashbackStatus) {
+    const cs = entry.cashbackStatus;
+    if (cs === 'VOIDED') return 'Voided';
+    if (cs === 'PAID') return 'Paid';
+    if (cs === 'EXPIRED') return 'Expired';
+    if (cs === 'LOCKED') return 'Locked';
+    if (cs === 'CLEARED') return 'Cleared';
+    if (cs === 'PENDING') return 'Pending';
+  }
+  // Legacy fallback for rows without cashbackStatus set.
   if (entry.cashbackPaidAt) return 'Paid';
   if (entry.status === 'PENDING' || entry.status === 'TRIAL_PENDING' || entry.status === 'PROCESSING' || entry.status === 'RISK_HOLD') {
     return 'Pending';
@@ -635,6 +668,8 @@ export interface SubscriberCashbackEntry {
   daysUntilExpiry: number | null;
   description: string | null;
   createdAt: Date;
+  voidedReason: string | null;
+  voidedAt: Date | null;
   receipt: { id: string; totalAmount: number | null; merchantName: string | null } | null;
   partner: { id: string; businessName: string } | null;
 }
@@ -671,6 +706,9 @@ export async function getSubscriberCashbackEntries(
         status: true,
         cashbackExpiresAt: true,
         cashbackPaidAt: true,
+        cashbackStatus: true,
+        voidedAt: true,
+        voidedReason: true,
         description: true,
         createdAt: true,
         receipt: {
@@ -715,6 +753,8 @@ export async function getSubscriberCashbackEntries(
       daysUntilExpiry,
       description: e.description,
       createdAt: e.createdAt,
+      voidedReason: e.voidedReason ?? null,
+      voidedAt: e.voidedAt ?? null,
       receipt: e.receipt
         ? { id: e.receipt.id, totalAmount: e.receipt.totalAmount, merchantName: e.receipt.merchantName }
         : null,
@@ -754,20 +794,36 @@ async function buildStateWhere(
   };
   const expired: WTWhere = { cashbackExpiresAt: { lte: now } };
 
-  switch (state) {
-    case 'Pending':
-      // Defensively AND in cashbackPaidAt: null so a row with PENDING + cashbackPaidAt
-      // (impossible per current write paths in payEntry, but possible via DB drift /
-      // manual update) cannot match BOTH Pending and Paid simultaneously and double-count
-      // in the dashboard partition. deriveCashbackEntryStatus checks cashbackPaidAt first
-      // and returns 'Paid' for those rows; this mirrors that ordering at the DB level.
-      return { AND: [{ cashbackPaidAt: null }, { status: { in: [...PENDING_RAW] } }] };
+  // Voided is the only state that ONLY exists via the new lifecycle column.
+  // No legacy fallback — pre-lifecycle rows can never be Voided.
+  if (state === 'Voided') {
+    return { cashbackStatus: 'VOIDED' as const };
+  }
 
-    case 'Locked':
-      // CANCELLED + not-yet-expired, OR ANNULLED/FAILED (regardless of expiry).
-      // Exclude cashbackPaidAt-marked entries — deriveCashbackEntryStatus returns 'Paid' for those first.
-      return {
+  // For the other 5 states, prefer cashbackStatus when set and fall back to
+  // the legacy raw-status derivation so old rows still partition correctly.
+  // Two sources of truth per state:
+  //   (a) NEW: lifecycle column `cashbackStatus` is set (post-v1.1 writes)
+  //   (b) LEGACY: cashbackStatus is null — fall back to raw-status derivation
+  // OR the two so old rows continue to partition correctly during migration.
+  // Legacy branches require cashbackStatus IS NULL so a row that was later
+  // voided via the lifecycle service doesn't double-count under its legacy bucket.
+  const legacyOnly: WTWhere = { cashbackStatus: null };
+  const newWorldStateUpper = state.toUpperCase() as 'PENDING' | 'CLEARED' | 'LOCKED' | 'PAID' | 'EXPIRED';
+  const newWorld: WTWhere = { cashbackStatus: newWorldStateUpper };
+
+  switch (state) {
+    case 'Pending': {
+      const legacy: WTWhere = {
+        AND: [legacyOnly, { cashbackPaidAt: null }, { status: { in: [...PENDING_RAW] } }],
+      };
+      return { OR: [newWorld, legacy] };
+    }
+
+    case 'Locked': {
+      const legacy: WTWhere = {
         AND: [
+          legacyOnly,
           { cashbackPaidAt: null },
           {
             OR: [
@@ -777,22 +833,23 @@ async function buildStateWhere(
           },
         ],
       };
+      return { OR: [newWorld, legacy] };
+    }
 
-    case 'Expired':
-      // Anything expired, except statuses that map elsewhere (Pending/Locked-by-status).
-      // Exclude cashbackPaidAt-marked entries — deriveCashbackEntryStatus returns 'Paid' for those first.
-      return {
+    case 'Expired': {
+      const legacy: WTWhere = {
         AND: [
+          legacyOnly,
           { cashbackPaidAt: null },
           expired,
           { status: { notIn: [...PENDING_RAW, 'ANNULLED', 'FAILED'] } },
         ],
       };
+      return { OR: [newWorld, legacy] };
+    }
 
     case 'Paid':
     case 'Cleared': {
-      // Paid/Cleared depend on the per-wallet latest completed WITHDRAWAL,
-      // OR on the explicit cashbackPaidAt admin mark (spec §4.4 Locked→Paid).
       const lastPayouts = await prisma.walletTransaction.findMany({
         where: { type: 'WITHDRAWAL', status: 'COMPLETED' },
         orderBy: { createdAt: 'desc' },
@@ -801,12 +858,11 @@ async function buildStateWhere(
       });
 
       if (state === 'Paid') {
-        // Entry is Paid if explicitly marked (cashbackPaidAt != null)
-        // OR if its wallet had a completed withdrawal and entry predates it.
-        const payoutOr: WTWhere[] = [{ cashbackPaidAt: { not: null } }];
+        const payoutOr: WTWhere[] = [{ AND: [legacyOnly, { cashbackPaidAt: { not: null } }] }];
         if (lastPayouts.length > 0) {
           payoutOr.push({
             AND: [
+              legacyOnly,
               { status: { notIn: [...NEVER_PAID_RAW, 'CANCELLED'] } },
               notExpired,
               {
@@ -818,19 +874,20 @@ async function buildStateWhere(
             ],
           });
         }
-        return { OR: payoutOr };
+        return { OR: [newWorld, ...payoutOr] };
       }
 
-      // Cleared — not explicitly paid and not covered by a wallet withdrawal
+      // Cleared (legacy): not explicitly paid and not covered by a wallet withdrawal
       const baseCleared: WTWhere = {
         AND: [
+          legacyOnly,
           { cashbackPaidAt: null },
           { status: { notIn: [...NEVER_PAID_RAW, 'CANCELLED'] } },
           notExpired,
         ],
       };
-      if (lastPayouts.length === 0) return baseCleared;
-      return {
+      if (lastPayouts.length === 0) return { OR: [newWorld, baseCleared] };
+      const legacyCleared: WTWhere = {
         AND: [
           baseCleared,
           {
@@ -844,6 +901,7 @@ async function buildStateWhere(
           },
         ],
       };
+      return { OR: [newWorld, legacyCleared] };
     }
   }
 }
@@ -903,8 +961,11 @@ export async function getAllCashbackEntries(
         id: true,
         amount: true,
         status: true,
+        cashbackStatus: true,
         cashbackExpiresAt: true,
         cashbackPaidAt: true,
+        voidedAt: true,
+        voidedReason: true,
         description: true,
         createdAt: true,
         wallet: {
@@ -981,6 +1042,8 @@ export async function getAllCashbackEntries(
       daysUntilExpiry,
       description: e.description,
       createdAt: e.createdAt,
+      voidedReason: (e as any).voidedReason ?? null,
+      voidedAt: (e as any).voidedAt ?? null,
       receipt: e.receipt
         ? { id: e.receipt.id, totalAmount: e.receipt.totalAmount, merchantName: e.receipt.merchantName }
         : null,
@@ -995,30 +1058,104 @@ export async function getAllCashbackEntries(
 // ─── Entry-level admin actions (spec §4.4) ────────────────────────────────────
 
 /**
- * Approve a Pending cashback entry → Cleared (PENDING/TRIAL_PENDING → COMPLETED).
+ * Approve a Pending cashback entry → Cleared. Spec §4.4 v1.1:
+ * the 60-day rolling validity starts from the Cleared date (not from the
+ * original transaction date), so an entry that sat in risk review for weeks
+ * gets a fresh 60-day window. Delegates to cashbackLifecycleService.markCleared
+ * which writes cashbackStatus=CLEARED, clearedAt=now, cashbackExpiresAt=now+60d
+ * and an AuditLog row (spec §10.4).
  */
 export async function approveEntry(entryId: string, adminUserId: string): Promise<void> {
   const entry = await prisma.walletTransaction.findUnique({
     where: { id: entryId },
-    select: { id: true, type: true, status: true, cashbackExpiresAt: true, createdAt: true },
+    select: { id: true, type: true, status: true, cashbackStatus: true },
   });
   if (!entry) throw new AppError('Entry not found', 404);
   if (entry.type !== 'CASHBACK_CREDIT') throw new AppError('Not a cashback entry', 400);
-  if (!['PENDING', 'TRIAL_PENDING', 'PROCESSING', 'RISK_HOLD'].includes(entry.status)) {
-    throw new AppError(`Cannot approve entry with status ${entry.status}`, 400);
+
+  // Pending = lifecycle-tagged PENDING, OR legacy raw-status in pending bucket.
+  // Idempotency: ALSO accept "already-COMPLETED but missing cashbackStatus" so a
+  // retry after a previous failed markCleared can recover the entry. Without this,
+  // a partial-completion (status=COMPLETED, cashbackStatus=null) would leave the
+  // entry stuck — neither pending nor cleared.
+  const isPending = entry.cashbackStatus === 'PENDING'
+    || (entry.cashbackStatus == null && ['PENDING', 'TRIAL_PENDING', 'PROCESSING', 'RISK_HOLD'].includes(entry.status));
+  const isMidApproval = entry.cashbackStatus == null && entry.status === 'COMPLETED';
+  if (!isPending && !isMidApproval) {
+    throw new AppError(`Cannot approve entry — not in Pending state`, 400);
   }
-  const now = new Date();
-  // Use existing expiry only if it's still in the future; otherwise grant 60 days from now.
-  // Computing from createdAt would produce a past expiry for entries that have been PENDING >60 days,
-  // causing the row to immediately resolve as Expired after approval.
-  const cashbackExpiresAt = entry.cashbackExpiresAt && entry.cashbackExpiresAt > now
-    ? entry.cashbackExpiresAt
-    : new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
-  await prisma.walletTransaction.update({
-    where: { id: entryId },
-    data: { status: 'COMPLETED', cashbackExpiresAt },
+
+  // Atomicity: flipping raw status to COMPLETED and writing the lifecycle
+  // transition must happen as one unit. If markCleared fails after the status
+  // update is committed, the row would be stuck with status=COMPLETED but
+  // cashbackStatus=null. markCleared has its own internal $transaction; nested
+  // calls flatten under Prisma, so this is safe.
+  await prisma.$transaction(async (tx) => {
+    if (entry.status !== 'COMPLETED') {
+      await tx.walletTransaction.update({
+        where: { id: entryId },
+        data: { status: 'COMPLETED' },
+      });
+    }
+    // Run the lifecycle transition inside the same tx via direct field update
+    // (rather than calling markCleared) so an audit-write failure outside the
+    // tx cannot leave a half-applied state. We replicate markCleared's behaviour
+    // with the idempotency guarantee.
+    const validityDays = await getSystemSettingInt('cashback_expiry_days', 60);
+    const clearedAt = new Date();
+    const expiresAt = new Date(clearedAt.getTime() + validityDays * 24 * 60 * 60 * 1000);
+    // Precondition: only transition if still in an approvable state.
+    // A concurrent admin click could have already CLEARED the entry between the
+    // outer findUnique read and this tx — without this guard the second call
+    // would re-write clearedAt / cashbackExpiresAt, silently extending the window.
+    const updateResult = await tx.walletTransaction.updateMany({
+      where: { id: entryId, cashbackStatus: { not: 'CLEARED' } },
+      data: {
+        cashbackStatus: 'CLEARED',
+        clearedAt,
+        cashbackExpiresAt: expiresAt,
+      },
+    });
+    if (updateResult.count === 0) {
+      logger.info(`[approveEntry] entry ${entryId} already CLEARED — skipping duplicate transition`);
+    }
   });
-  logger.info(`Admin ${adminUserId} approved cashback entry ${entryId}`);
+
+  // Audit outside the tx — non-fatal, won't undo the transition.
+  await writeAudit({
+    actorUserId: adminUserId,
+    action: 'CASHBACK_CLEARED',
+    objectType: 'WalletTransaction',
+    objectId: entryId,
+    before: { cashbackStatus: entry.cashbackStatus },
+    after: { cashbackStatus: 'CLEARED', reason: 'Admin approved cashback entry' },
+  }).catch((err) => logger.error('[adminCashback.approveEntry] audit write failed:', err));
+
+  logger.info(`Admin ${adminUserId} approved cashback entry ${entryId} (Pending → Cleared, 60d window from now)`);
+}
+
+/**
+ * Void a cashback entry with a visible reason (spec §4.4 v1.1).
+ * Used when a risk review rejects the originating transaction OR when an
+ * admin manually voids a Pending/Cleared/Locked entry. The row stays visible
+ * to the user as "Анулиран" with the reason. See cashbackLifecycleService.markVoided.
+ */
+export async function voidEntry(entryId: string, adminUserId: string, reason: string): Promise<void> {
+  if (!reason || reason.trim().length === 0) {
+    throw new AppError('Void reason is required', 400);
+  }
+  const entry = await prisma.walletTransaction.findUnique({
+    where: { id: entryId },
+    select: { id: true, type: true },
+  });
+  if (!entry) throw new AppError('Entry not found', 404);
+  if (entry.type !== 'CASHBACK_CREDIT') throw new AppError('Not a cashback entry', 400);
+  await cashbackLifecycleService.markVoided({
+    walletTransactionId: entryId,
+    actorUserId: adminUserId,
+    reason: reason.trim(),
+  });
+  logger.info(`Admin ${adminUserId} voided cashback entry ${entryId}: ${reason}`);
 }
 
 /**

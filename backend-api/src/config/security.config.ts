@@ -190,9 +190,14 @@ export const SECURITY_CONFIG = {
   SECURITY: {
     MAX_LOGIN_ATTEMPTS: 5,
     LOCKOUT_DURATION: 15 * 60 * 1000, // 15 minutes
-    OTP_EXPIRY_MS: 15 * 60 * 1000, // 15 minutes
-    PASSWORD_RESET_EXPIRY: 1 * 60 * 60 * 1000, // 1 hour
+    OTP_EXPIRY_MS: 15 * 60 * 1000, // 15 minutes (legacy generic OTP)
+    // Spec §9.5 v1.1 — per-audience password reset link / OTP validity.
+    PASSWORD_RESET_EXPIRY_USER_MS:    24 * 60 * 60 * 1000, // 24h — customer
+    PASSWORD_RESET_EXPIRY_PARTNER_MS: 24 * 60 * 60 * 1000, // 24h — partner
+    PASSWORD_RESET_EXPIRY_ADMIN_MS:    1 * 60 * 60 * 1000, //  1h — admin (tightened)
     EMAIL_VERIFICATION_EXPIRY: 24 * 60 * 60 * 1000, // 24 hours
+    // Spec §9.5 — partner activation link (admin-issued, one-time).
+    PARTNER_ACTIVATION_EXPIRY_MS: 72 * 60 * 60 * 1000, // 72 hours
   },
 
   // Fraud Detection

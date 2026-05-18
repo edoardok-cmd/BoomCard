@@ -6,6 +6,7 @@ import { fraudDetectionService } from './fraudDetection.service';
 import { receiptAnalyticsService } from './receiptAnalytics.service';
 import { notificationService } from './notification.service';
 import { walletService } from './wallet.service';
+import { cashbackLifecycleService } from './cashbackLifecycle.service';
 import { cardService } from './card.service';
 import { prisma } from '../lib/prisma';
 import { emailService } from './email.service';
@@ -600,6 +601,10 @@ class ReceiptService {
     deviceFingerprintRaw?: string;
   }) {
     try {
+      // Spec §4.2 v1.1 PAST_DUE/FAILED_PAYMENT gates live on stickerService.uploadReceipt,
+      // the only entry point that reaches this code path in production. Duplicating the
+      // gate here would just be dead defence-in-depth.
+
       // Get user
       const user = await prisma.user.findUnique({
         where: { id: request.userId },
@@ -1041,6 +1046,41 @@ class ReceiptService {
             logger.error(`CRITICAL: Failed to roll back receipt review for ${params.receiptId}. Manual intervention required.`, rollbackError);
           }
           throw new AppError('Failed to credit cashback to wallet. Receipt approval has been rolled back — please retry.', 500);
+        }
+      }
+
+      // Spec §4.4 / §7.1 v1.1 — on REJECT, record a Voided cashback ghost so
+      // the user sees "Анулиран" with the reason rather than silence. Non-fatal.
+      // The pre-reject cashback amount is computed here (not earlier — earlier
+      // only ran in the APPROVE branch) so the ghost row reflects what the
+      // user "would have earned" if not rejected.
+      if (newStatus === 'REJECTED') {
+        try {
+          const amount = receipt.totalAmount || 0;
+          let voidedCashback = 0;
+          if (amount > 0) {
+            const cardTier = await this.resolveCashbackTier(receipt.userId);
+            const calc = await fraudDetectionService.calculateCashback({
+              venueId: receipt.venueId ?? undefined,
+              amount,
+              cardTier,
+              userId: receipt.userId,
+            });
+            voidedCashback = calc.cashbackAmount;
+          }
+          if (voidedCashback > 0) {
+            await cashbackLifecycleService.recordRejectedAsVoided({
+              userId: receipt.userId,
+              amount: voidedCashback,
+              reason: params.rejectionReason || 'Касовата бележка не премина проверката',
+              actorUserId: params.reviewedBy,
+              description: `Кешбек анулиран — ${receipt.merchantName || 'търговец'}`,
+              receiptId: receipt.id,
+              metadata: { source: 'RECEIPT_REVIEW_REJECT', merchantName: receipt.merchantName },
+            });
+          }
+        } catch (voidedErr) {
+          logger.error(`[receipt.reviewReceipt] failed to record voided ghost for ${params.receiptId}:`, voidedErr);
         }
       }
 

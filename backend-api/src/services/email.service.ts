@@ -21,6 +21,9 @@ export interface EmailOptions {
   cc?: string[];
   bcc?: string[];
   replyTo?: string;
+  // Spec §11.2 — ticket threading via custom + standard RFC 5322 headers.
+  // Includes X-BoomCard-Ticket-ID, Message-ID, In-Reply-To, References.
+  headers?: Record<string, string>;
 }
 
 export interface PaymentConfirmationData {
@@ -343,6 +346,7 @@ export class EmailService {
         cc: options.cc,
         bcc: options.bcc,
         replyTo: options.replyTo || (dbReplyTo || undefined),
+        ...(options.headers ? { headers: options.headers } : {}),
       });
 
       if (error) {
@@ -1956,6 +1960,58 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
     });
   }
 
+  /**
+   * Audit-pass [4.2]: plain-user email verification template. Used for any
+   * User whose role !== 'PARTNER'. The partner template was previously sent
+   * to USERs too with businessName='', rendering "BOOM Card partner network
+   * with <strong></strong>" and copy about an application review — confusing
+   * for a normal user just confirming their address.
+   */
+  async sendUserEmailVerification(
+    email: string,
+    data: { firstName: string; verificationUrl: string }
+  ): Promise<{ success: boolean }> {
+    const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <tr><td style="background:linear-gradient(135deg,#f5a623,#e8890c);padding:40px;text-align:center;border-radius:8px 8px 0 0;">
+          <div style="font-size:48px;margin-bottom:8px;">✉️</div>
+          <h1 style="margin:0;color:#fff;font-size:28px;">Потвърдете имейла си</h1>
+        </td></tr>
+        <tr><td style="padding:40px;">
+          <p style="margin:0 0 20px;color:#333;font-size:16px;">Здравейте ${data.firstName},</p>
+          <p style="margin:0 0 20px;color:#666;font-size:16px;line-height:1.6;">
+            Благодарим, че се регистрирахте в <strong>BoomCard</strong>. Моля, потвърдете имейл адреса си, за да активирате акаунта си.
+          </p>
+          <p style="margin:0 0 30px;color:#666;font-size:16px;line-height:1.6;">
+            Натиснете бутона по-долу. Линкът изтича след <strong>24 часа</strong>.
+          </p>
+          <div style="text-align:center;margin-bottom:30px;">
+            <a href="${data.verificationUrl}" style="display:inline-block;background:#f5a623;color:#fff;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:16px;font-weight:bold;">Потвърждаване</a>
+          </div>
+          <p style="color:#999;font-size:12px;margin:0;">Ако не сте се регистрирали в BoomCard, можете да игнорирате този имейл.<br>Въпроси? <a href="mailto:office@boomcard.bg" style="color:#f5a623;">office@boomcard.bg</a></p>
+        </td></tr>
+        <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
+          <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. Всички права запазени.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+    const text = `Здравейте ${data.firstName},\n\nБлагодарим, че се регистрирахте в BoomCard. Моля, потвърдете имейл адреса си:\n${data.verificationUrl}\n\nЛинкът изтича след 24 часа.\n\nАко не сте се регистрирали, игнорирайте този имейл.\n\nВъпроси? office@boomcard.bg`;
+    return this.sendEmail({
+      to: email,
+      subject: 'Потвърдете имейла си – BoomCard',
+      html,
+      text,
+    });
+  }
+
   async sendPartnerEmailVerification(
     email: string,
     data: { firstName: string; businessName: string; verificationUrl: string }
@@ -1999,6 +2055,58 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
     return this.sendEmail({
       to: email,
       subject: 'Verify your email – BOOM Card partner application',
+      html,
+      text,
+    });
+  }
+
+  /**
+   * Spec §5.1 v1.1 — external acknowledgement email sent right after the
+   * partner form is submitted. The body MUST contain the "до 2 работни дни"
+   * promise (changelog row 2). This is independent of the email-verification
+   * link (which the partner clicks to confirm ownership of the address); we
+   * deliberately send both so the partner has the promised SLA copy as a
+   * standalone message even if they ignore the verification link.
+   */
+  async sendPartnerApplicationAck(
+    email: string,
+    data: { firstName: string; businessName: string },
+  ): Promise<{ success: boolean }> {
+    const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <tr><td style="background:#0f766e;padding:40px;text-align:center;border-radius:8px 8px 0 0;">
+          <div style="font-size:48px;margin-bottom:8px;">📬</div>
+          <h1 style="margin:0;color:#fff;font-size:26px;">Получихме Вашата заявка</h1>
+        </td></tr>
+        <tr><td style="padding:40px;color:#333;font-size:15px;line-height:1.6;">
+          <p style="margin:0 0 16px;">Здравейте ${data.firstName},</p>
+          <p style="margin:0 0 16px;">
+            Благодарим Ви за заявката за партньорство с <strong>${data.businessName}</strong>.
+          </p>
+          <p style="margin:0 0 16px;">
+            Нашият екип ще се свърже с Вас <strong>до 2 работни дни</strong> на този имейл.
+            Ако имате допълнителни въпроси междувременно, пишете ни на
+            <a href="mailto:office@boomcard.bg" style="color:#0f766e;">office@boomcard.bg</a>.
+          </p>
+          <p style="margin:0;color:#666;font-size:13px;">— Екипът на BoomCard</p>
+        </td></tr>
+        <tr><td style="background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 8px 8px;">
+          <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. Всички права запазени.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+    const text = `Здравейте ${data.firstName},\n\nБлагодарим Ви за заявката за партньорство с ${data.businessName}.\n\nНашият екип ще се свърже с Вас до 2 работни дни на този имейл.\n\nЗа допълнителни въпроси: office@boomcard.bg\n\n— Екипът на BoomCard`;
+    return this.sendEmail({
+      to: email,
+      subject: `BoomCard – получихме Вашата заявка (${data.businessName})`,
       html,
       text,
     });
@@ -2064,6 +2172,106 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
       html,
       text,
     });
+  }
+
+  /**
+   * Spec §8.2 v1.1 — partner status-change notification.
+   * Sent automatically when an admin moves a partner between Active /
+   * Inactive / Suspended / Archived. The body explains the operational
+   * impact of the new status so the partner knows what (if anything) they
+   * need to do.
+   */
+  async sendPartnerStatusChangeEmail(
+    email: string,
+    data: {
+      firstName: string;
+      businessName: string;
+      fromStatus: string;
+      toStatus: string;
+      reason?: string | null;
+    }
+  ): Promise<{ success: boolean }> {
+    const labelBg: Record<string, string> = {
+      ACTIVE: 'Активен', INACTIVE: 'Неактивен', SUSPENDED: 'Спрян',
+      ARCHIVED: 'Архивиран', PAUSED: 'Спрян', PENDING: 'Изчакващ',
+    };
+    const explanationBg: Record<string, string> = {
+      ACTIVE:
+        'Вашият акаунт работи в пълен оперативен режим — QR кодовете на вашите обекти приемат сканирания и новите транзакции се одобряват.',
+      INACTIVE:
+        'Вашият акаунт е в режим само за четене. Достъпът до партньорския панел остава, но QR кодовете не приемат нови транзакции и обектите ви не са видими публично.',
+      SUSPENDED:
+        'Вашият акаунт е временно спрян. Достъпът до партньорския панел може да е ограничен. За да обсъдите случая, свържете се с office@boomcard.bg.',
+      PAUSED:
+        'Вашият акаунт е временно спрян. Достъпът до партньорския панел може да е ограничен. За да обсъдите случая, свържете се с office@boomcard.bg.',
+      ARCHIVED:
+        'Вашият акаунт е архивиран и достъпът до партньорския панел е прекратен. За въпроси относно архивирането, пишете на office@boomcard.bg.',
+    };
+
+    const fromLabel = labelBg[data.fromStatus] ?? data.fromStatus;
+    const toLabel = labelBg[data.toStatus] ?? data.toStatus;
+    const explanation = explanationBg[data.toStatus] ?? '';
+
+    // Spec §5.3 — when restored to ACTIVE from a state where QR was disabled
+    // (Inactive/Suspended/Archived/Paused), call out the automatic QR
+    // re-activation so the partner knows scans will resume without manual
+    // intervention on their end.
+    //
+    // Audit-pass [8.1]: keep the QR note as its own paragraph so it doesn't
+    // run on with the status explanation as a wall of text.
+    const QR_DEACTIVATING_STATES = new Set(['INACTIVE', 'SUSPENDED', 'PAUSED', 'ARCHIVED']);
+    const qrReactivationNote =
+      data.toStatus === 'ACTIVE' && QR_DEACTIVATING_STATES.has(data.fromStatus)
+        ? 'Всички QR кодове на вашите обекти бяха реактивирани автоматично — не е нужно да генерирате нови или да предприемате действия.'
+        : '';
+    const qrReactivationHtml = qrReactivationNote
+      ? `<p style="margin:0 0 24px;color:#1f2937;font-size:14px;line-height:1.6;background:#ecfdf5;border-left:3px solid #10b981;padding:12px 16px;border-radius:4px;">${qrReactivationNote}</p>`
+      : '';
+
+    const reasonBlock = data.reason?.trim()
+      ? `<p style="margin:0 0 16px;color:#555;"><strong>Причина:</strong> ${data.reason.trim()}</p>`
+      : '';
+
+    const subject = `Промяна на статуса на партньорския акаунт — ${data.businessName}`;
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:40px 20px;">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+      <tr><td style="background:#1f2937;padding:32px;text-align:center;border-radius:8px 8px 0 0;">
+        <h1 style="margin:0;color:#fff;font-size:22px;">Промяна на статуса</h1>
+      </td></tr>
+      <tr><td style="padding:32px;">
+        <p style="margin:0 0 16px;color:#111;font-size:16px;">Здравейте, ${data.firstName},</p>
+        <p style="margin:0 0 16px;color:#444;font-size:15px;line-height:1.6;">
+          Статусът на партньорския ви акаунт за <strong>${data.businessName}</strong> беше променен.
+        </p>
+        <table cellpadding="6" style="margin:0 0 16px;font-size:14px;color:#333;">
+          <tr><td><strong>Предишен статус:</strong></td><td>${fromLabel}</td></tr>
+          <tr><td><strong>Нов статус:</strong></td><td><strong>${toLabel}</strong></td></tr>
+        </table>
+        ${reasonBlock}
+        <p style="margin:0 0 24px;color:#555;font-size:14px;line-height:1.6;">${explanation}</p>
+        ${qrReactivationHtml}
+        <p style="color:#999;font-size:13px;margin:0;">Въпроси? Пишете на <a href="mailto:office@boomcard.bg" style="color:#1f2937;">office@boomcard.bg</a></p>
+      </td></tr>
+      <tr><td style="background:#f8f9fa;padding:18px;text-align:center;border-radius:0 0 8px 8px;">
+        <p style="margin:0;color:#999;font-size:12px;">&copy; ${new Date().getFullYear()} BoomCard. All rights reserved.</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+    const text =
+      `Здравейте, ${data.firstName},\n\n` +
+      `Статусът на партньорския ви акаунт за ${data.businessName} беше променен.\n\n` +
+      `Предишен статус: ${fromLabel}\n` +
+      `Нов статус: ${toLabel}\n` +
+      (data.reason?.trim() ? `Причина: ${data.reason.trim()}\n` : '') +
+      `\n${explanation}\n` +
+      (qrReactivationNote ? `\n${qrReactivationNote}\n` : '') +
+      `\nВъпроси? office@boomcard.bg`;
+
+    return this.sendEmail({ to: email, subject, html, text });
   }
 
   async sendPartnerApprovalEmail(

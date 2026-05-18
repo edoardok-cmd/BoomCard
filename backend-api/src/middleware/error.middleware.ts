@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import multer from 'multer';
 import { logger } from '../utils/logger';
 import { trackError } from '../config/monitoring.config';
 
@@ -31,6 +32,18 @@ export const errorHandler = (
     statusCode = err.statusCode;
     message = err.message;
     isOperational = err.isOperational;
+  } else if (err instanceof multer.MulterError) {
+    // Multer validation errors are client mistakes, not server faults
+    statusCode = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+    message = err.code === 'LIMIT_FILE_SIZE'
+      ? 'File too large'
+      : `Upload error: ${err.message}`;
+    isOperational = true;
+  } else if (err.message?.includes('Boundary not found') || err.message?.includes('Multipart')) {
+    // Malformed multipart request (e.g. Content-Type without boundary)
+    statusCode = 400;
+    message = 'Malformed multipart request';
+    isOperational = true;
   }
 
   // Log error

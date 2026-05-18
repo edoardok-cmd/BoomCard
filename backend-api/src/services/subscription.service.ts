@@ -1,10 +1,64 @@
-import { ScanStatus, SubscriptionPlan, WalletTransactionType } from '@prisma/client';
+import { ScanStatus, SubscriptionPlan, SubscriptionStatus, WalletTransactionType } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { stripeService } from './stripe.service';
 import { logger } from '../utils/logger';
 import { cardService } from './card.service';
 import { walletService } from './wallet.service';
 import { emailService } from './email.service';
+import { writeAudit } from '../middleware/audit.middleware';
+
+/**
+ * Spec §4.2 v1.1 — when a user gains a new ACTIVE/TRIALING subscription, any
+ * lingering FAILED_PAYMENT subs are no longer load-bearing for the gates and
+ * must be transitioned to EXPIRED so the read-side guards stop firing on them.
+ *
+ * `excludeSubId` is the sub that just became ACTIVE (don't EXPIRE it if it
+ * was previously FAILED_PAYMENT itself — that's the recovery case).
+ * `actorUserId` is null when called from a webhook (system), set when an admin
+ * forces the recovery.
+ */
+export async function clearFailedPaymentSubsForUser(
+  userId: string,
+  excludeSubId: string | null,
+  actorUserId: string | null,
+): Promise<number> {
+  const failed = await prisma.subscription.findMany({
+    where: {
+      userId,
+      status: SubscriptionStatus.FAILED_PAYMENT,
+      ...(excludeSubId ? { id: { not: excludeSubId } } : {}),
+    },
+    select: { id: true },
+  });
+  if (failed.length === 0) return 0;
+
+  const now = new Date();
+  // Include status: FAILED_PAYMENT in the WHERE clause so that a concurrent
+  // Stripe webhook retry that already cleared these rows gets count=0 and
+  // skips the audit writes, preventing duplicate audit rows.
+  const result = await prisma.subscription.updateMany({
+    where: { id: { in: failed.map(f => f.id) }, status: SubscriptionStatus.FAILED_PAYMENT },
+    data: { status: SubscriptionStatus.EXPIRED, failedPaymentClearedAt: now },
+  });
+
+  if (result.count === 0) {
+    logger.info(`[clearFailedPaymentSubsForUser] user ${userId}: subs already cleared by concurrent request — skipping audits`);
+    return 0;
+  }
+
+  for (const f of failed) {
+    writeAudit({
+      actorUserId,
+      action: 'SUBSCRIPTION_FAILED_PAYMENT_CLEARED',
+      objectType: 'Subscription',
+      objectId: f.id,
+      before: { status: 'FAILED_PAYMENT' },
+      after: { status: 'EXPIRED', failedPaymentClearedAt: now.toISOString() },
+    }).catch((err) => logger.error(`[clearFailedPaymentSubsForUser] audit write failed for sub ${f.id}:`, err));
+  }
+  logger.info(`[clearFailedPaymentSubsForUser] user ${userId}: cleared ${result.count} FAILED_PAYMENT sub(s)`);
+  return result.count;
+}
 import {
   EUR_TO_BGN_RATE,
   UPGRADE_CREDIT_WEEKLY_TO_MONTHLY,
@@ -268,6 +322,8 @@ export class SubscriptionService {
           currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           // New period → eligible for a fresh pre-expiry reminder.
           lastRenewalReminderSentAt: null,
+          // Spec §8.3 v1.1 — clear auto-renew-OFF reminder bitmask on new period.
+          renewalRemindersSent: 0,
         },
       });
     }
@@ -287,6 +343,8 @@ export class SubscriptionService {
           currentPeriodEnd: newPeriodEnd,
           // New period → eligible for a fresh pre-expiry reminder.
           lastRenewalReminderSentAt: null,
+          // Spec §8.3 v1.1 — clear auto-renew-OFF reminder bitmask on new period.
+          renewalRemindersSent: 0,
         },
       });
     }
@@ -602,11 +660,18 @@ export class SubscriptionService {
         // Sum all CASHBACK_CREDIT entries for these receipts, split by status.
         // TRIAL_PENDING credits only hit balance (not availableBalance), so they
         // must be reversed via voidTrialPendingCashback rather than debit().
+        //
+        // Exclude ghost VOIDED rows (status=ANNULLED, cashbackStatus=VOIDED):
+        // these were never credited to the wallet (recordRejectedAsVoided writes
+        // balanceBefore == balanceAfter), so debiting them here would steal funds
+        // the user actually earned via other transactions.
         const credits = await prisma.walletTransaction.findMany({
           where: {
             receiptId: { in: receiptIds },
             type: WalletTransactionType.CASHBACK_CREDIT,
             amount: { gt: 0 },
+            status: { not: 'ANNULLED' },
+            cashbackStatus: { not: 'VOIDED' },
           },
           select: { id: true, amount: true, status: true },
         });
@@ -680,11 +745,14 @@ export class SubscriptionService {
       if (approvedScans.length > 0) {
         const scanIds = approvedScans.map(s => s.id);
 
+        // Same exclusion for sticker-scan credits: ghost VOIDED rows must not be debited.
         const stickerCredits = await prisma.walletTransaction.findMany({
           where: {
             stickerScanId: { in: scanIds },
             type: WalletTransactionType.CASHBACK_CREDIT,
             amount: { gt: 0 },
+            status: { not: 'ANNULLED' },
+            cashbackStatus: { not: 'VOIDED' },
           },
           select: { id: true, amount: true, status: true },
         });

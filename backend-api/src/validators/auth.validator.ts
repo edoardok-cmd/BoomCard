@@ -126,6 +126,23 @@ export const registerValidation = [
     .trim()
     .isLength({ max: 255 })
     .withMessage('businessInfo.website must be at most 255 characters'),
+
+  // Spec §5.1 v1.1 — venue-count dropdown bucket, optional on submit so the
+  // form can roll out without a legacy data migration.
+  body('businessInfo.city')
+    .optional({ values: 'falsy' })
+    .isString().trim().isLength({ max: 80 })
+    .withMessage('businessInfo.city must be at most 80 characters'),
+
+  body('businessInfo.address')
+    .optional({ values: 'falsy' })
+    .isString().trim().isLength({ max: 200 })
+    .withMessage('businessInfo.address must be at most 200 characters'),
+
+  body('businessInfo.requestObjectCount')
+    .optional({ values: 'falsy' })
+    .isIn(['1', '2-5', '6-10', '11+'])
+    .withMessage('businessInfo.requestObjectCount must be one of: 1, 2-5, 6-10, 11+'),
 ];
 
 export const loginValidation = [

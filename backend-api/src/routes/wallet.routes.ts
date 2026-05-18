@@ -123,12 +123,14 @@ router.post('/payout', paymentRateLimiter, asyncHandler(async (req: AuthRequest,
   const { iban, beneficiaryName } = parseResult.data;
   const result = await walletService.requestPayout(userId, { iban, beneficiaryName });
 
+  // §6.1 v1.1 — the request now enters an admin review queue; the bank transfer
+  // fires only after approval, so the response no longer carries a transferId.
   res.json({
     success: true,
-    message: 'Payout initiated. Funds will arrive within 3–5 business days.',
+    message: 'Заявката за изплащане е приета и очаква одобрение. Средствата ще постъпят по сметката ви в рамките на 3–5 работни дни след одобрение от администратор.',
     amount: result.amount,
     currency: result.currency,
-    ...(result.transferId ? { transferId: result.transferId } : {}),
+    status: result.status,
   });
 }));
 

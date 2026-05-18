@@ -6,6 +6,7 @@
 import { Venue } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { logger } from '../utils/logger';
+import { publicPartnerJoinFilter } from './publicPartnerFilter';
 
 // Calculate distance between two coordinates (Haversine formula)
 function calculateDistance(
@@ -37,6 +38,11 @@ export interface VenueFilters {
   radius?: number; // in km
   limit?: number;
   offset?: number;
+  // Spec §5.3 v1.1 — when omitted/false, only venues owned by a publicly-visible
+  // partner (status=ACTIVE + verifiedAt + isVisible) are returned. Admin/ops
+  // callers that legitimately need to see all venues (e.g., menu review) opt in
+  // by passing `includeHidden: true`.
+  includeHidden?: boolean;
 }
 
 export interface VenueWithDistance extends Venue {
@@ -76,6 +82,7 @@ export const venueService = {
       radius = 10,
       limit = 20,
       offset = 0,
+      includeHidden = false,
     } = filters;
 
     // Build where clause
@@ -100,6 +107,11 @@ export const venueService = {
         { address: { contains: search, mode: 'insensitive' } },
         { description: { contains: search, mode: 'insensitive' } },
       ];
+    }
+
+    // Spec §5.3 — public listings gate on partner visibility matrix.
+    if (!includeHidden) {
+      where.partner = { ...publicPartnerJoinFilter };
     }
 
     // Get venues
@@ -153,13 +165,17 @@ export const venueService = {
     latitude: number,
     longitude: number,
     radius: number = 5,
-    limit: number = 20
+    limit: number = 20,
+    options: { includeHidden?: boolean } = {},
   ): Promise<VenueWithDistance[]> {
     logger.info(`Searching for venues near (${latitude}, ${longitude}) within ${radius}km`);
 
     // Get all venues (we'll filter by distance)
     // In production, you might want to use PostGIS for efficient geo queries
+    // Spec §5.3 — public callers (default) only see venues owned by a
+    // publicly-visible partner.
     const venues = await prisma.venue.findMany({
+      where: options.includeHidden ? undefined : { partner: { ...publicPartnerJoinFilter } },
       include: {
         partner: {
           select: {
@@ -190,7 +206,7 @@ export const venueService = {
   /**
    * Get single venue by ID
    */
-  async getVenueById(id: string): Promise<Venue | null> {
+  async getVenueById(id: string, options: { includeHidden?: boolean } = {}): Promise<Venue | null> {
     const venue = await prisma.venue.findUnique({
       where: { id },
       include: {
@@ -201,6 +217,10 @@ export const venueService = {
             logo: true,
             email: true,
             phone: true,
+            // Needed for the §5.3 public matrix check below.
+            status: true,
+            verifiedAt: true,
+            isVisible: true,
           },
         },
         stickerConfig: true,
@@ -212,6 +232,17 @@ export const venueService = {
       return null;
     }
 
+    // Spec §5.3 — public callers (default) get 404 if the owning partner is
+    // suspended / not-yet-activated / hidden. Internal callers that need to
+    // operate on the venue regardless (admin ops, partner self-service menu
+    // upload) opt in via `includeHidden: true`.
+    if (!options.includeHidden) {
+      const p = venue.partner as { status: string; verifiedAt: Date | null; isVisible: boolean } | null;
+      if (!p || p.status !== 'ACTIVE' || !p.verifiedAt || !p.isVisible) {
+        return null;
+      }
+    }
+
     logger.info(`Retrieved venue: ${venue.name}`, { venueId: id });
     return stripAdminVenueFields(venue);
   },
@@ -219,10 +250,12 @@ export const venueService = {
   /**
    * Get venues by city
    */
-  async getVenuesByCity(city: string): Promise<Venue[]> {
+  async getVenuesByCity(city: string, options: { includeHidden?: boolean } = {}): Promise<Venue[]> {
     const venues = await prisma.venue.findMany({
       where: {
         city: { contains: city, mode: 'insensitive' },
+        // Spec §5.3 — public default gates on partner visibility matrix.
+        ...(options.includeHidden ? {} : { partner: { ...publicPartnerJoinFilter } }),
       },
       include: {
         partner: {
@@ -243,9 +276,13 @@ export const venueService = {
   /**
    * Get all cities with venues
    */
-  async getCities(): Promise<{ city: string; count: number }[]> {
+  async getCities(options: { includeHidden?: boolean } = {}): Promise<{ city: string; count: number }[]> {
+    // Spec §5.3 — only count cities that have at least one publicly-visible
+    // venue when the caller doesn't opt in. Otherwise the cities dropdown
+    // shows entries for suspended/hidden partners.
     const venues = await prisma.venue.groupBy({
       by: ['city'],
+      where: options.includeHidden ? undefined : { partner: { ...publicPartnerJoinFilter } },
       _count: {
         id: true,
       },
@@ -383,7 +420,7 @@ export const venueService = {
   /**
    * Search venues with full-text search
    */
-  async searchVenues(query: string, limit: number = 20): Promise<Venue[]> {
+  async searchVenues(query: string, limit: number = 20, options: { includeHidden?: boolean } = {}): Promise<Venue[]> {
     const venues = await prisma.venue.findMany({
       where: {
         OR: [
@@ -394,6 +431,8 @@ export const venueService = {
           { description: { contains: query, mode: 'insensitive' } },
           { descriptionBg: { contains: query, mode: 'insensitive' } },
         ],
+        // Spec §5.3 — public default gates on partner visibility matrix.
+        ...(options.includeHidden ? {} : { partner: { ...publicPartnerJoinFilter } }),
       },
       take: limit,
       include: {

@@ -145,6 +145,7 @@ export async function createTestVenue(userId: string) {
       businessName: `Test Venue ${testId()}`,
       category: 'Restaurant',
       status: 'ACTIVE',
+      verifiedAt: new Date(), // required by sticker-scan and auth gates (sticker.service:512, auth.service:663)
       discountRate: 5, // 5% partner discount — both basic and premium tiers yield 5% cashback
     },
   });

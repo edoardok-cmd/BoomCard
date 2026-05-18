@@ -1,15 +1,68 @@
 import { Router } from 'express';
-import { WalletTransactionStatus } from '@prisma/client';
-import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
+import { WalletTransactionStatus, SubscriptionStatus } from '@prisma/client';
+import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { emailService } from '../services/email.service';
+import { walletService } from '../services/wallet.service';
+import { logger } from '../utils/logger';
+import { runWithConcurrency } from '../utils/concurrency';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
 router.use(auditMiddleware);
 
+// v1.1 §6.1 subscription gate — payout requires an ACTIVE or TRIALING subscription
+// at the moment of approval. Subscribers in PAST_DUE / UNPAID ("failed payment")
+// are held until the subscription is restored.
+const PAYOUT_ELIGIBLE_SUB_STATUSES: SubscriptionStatus[] = ['ACTIVE', 'TRIALING'];
+
+type SubGateResult =
+  | { eligible: true }
+  | { eligible: false; reason: 'NO_SUBSCRIPTION' | 'INELIGIBLE_STATUS'; status?: SubscriptionStatus };
+
+async function checkSubscriptionGate(userId: string): Promise<SubGateResult> {
+  // Look at the most recent subscription regardless of status so we can tell
+  // "user never subscribed" apart from "subscription lapsed / failed payment".
+  const sub = await prisma.subscription.findFirst({
+    where: { userId },
+    orderBy: { createdAt: 'desc' },
+    select: { status: true },
+  });
+  if (!sub) return { eligible: false, reason: 'NO_SUBSCRIPTION' };
+  if (PAYOUT_ELIGIBLE_SUB_STATUSES.includes(sub.status)) return { eligible: true };
+  return { eligible: false, reason: 'INELIGIBLE_STATUS', status: sub.status };
+}
+
+const SUB_STATUS_BG: Record<string, string> = {
+  PAST_DUE:           'неуспешно плащане',
+  UNPAID:             'неплатен',
+  CANCELLED:          'отказан',
+  EXPIRED:            'изтекъл',
+  PAUSED:             'на пауза',
+  INCOMPLETE:         'незавършен',
+  INCOMPLETE_EXPIRED: 'незавършен/изтекъл',
+};
+
+function subGateMessage(gate: SubGateResult): string {
+  if (gate.eligible === true) return ''; // unreachable: caller gates on !gate.eligible
+  // After the eligible===true short-circuit `gate` is the rejected variant.
+  const rejected = gate as Extract<SubGateResult, { eligible: false }>;
+  if (rejected.reason === 'NO_SUBSCRIPTION') {
+    return 'Не може да се одобри: абонатът няма регистриран абонамент. Изплащане е възможно само при активен абонамент (§6.1).';
+  }
+  const label = rejected.status ? (SUB_STATUS_BG[rejected.status] ?? rejected.status) : 'неактивен';
+  return `Не може да се одобри: абонаментът е „${label}". Payout се задържа до възстановяване на абонамента (§6.1).`;
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+// Concurrency cap for /bulk-approve: limits in-flight Paysera Transfer API calls
+// so a large batch does not (a) exhaust the Prisma connection pool, (b) trip
+// Paysera rate limits, or (c) blow past the Fly.io edge proxy's ~60s idle-write
+// timeout. With ~1s per Paysera call and a 60s response budget, 5-way
+// concurrency tolerates batches up to ~300 payouts before the proxy intervenes.
+const BULK_APPROVE_CONCURRENCY = 5;
 
 async function notifySubscriber(
   payoutId: string,
@@ -138,7 +191,8 @@ router.get(
                   select: {
                     id: true, firstName: true, lastName: true, email: true, phone: true,
                     subscriptions: {
-                      where: { status: { in: ['ACTIVE', 'TRIALING'] } },
+                      // Latest subscription regardless of status — the UI gates
+                      // approval on whether status ∈ {ACTIVE, TRIALING} (§6.1 v1.1).
                       select: { plan: true, status: true },
                       take: 1,
                       orderBy: { createdAt: 'desc' },
@@ -217,32 +271,67 @@ router.patch(
     try {
       const pending = await prisma.walletTransaction.findMany({
         where: { type: 'WITHDRAWAL', status: 'PENDING' },
-        include: { wallet: true },
+        include: { wallet: { include: { user: { select: { id: true } } } } },
       });
 
+      const skippedNoIban = pending.filter(p => !p.wallet.payoutIban).length;
       const withIban = pending.filter(p => p.wallet.payoutIban);
-      const processingStartedAt = new Date().toISOString();
-      let approved = 0;
-      let skipped  = 0;
 
-      for (const payout of withIban) {
-        try {
-          const existingMeta = payout.metadata ? JSON.parse(payout.metadata) : {};
-          await prisma.walletTransaction.update({
-            where: { id: payout.id },
-            data: {
-              status: 'PROCESSING',
-              metadata: JSON.stringify({ ...existingMeta, processingStartedAt }),
-            },
-          });
-          notifySubscriber(payout.id, 'approved');
-          approved++;
-        } catch {
-          skipped++;
+      // §6.1 v1.1 subscription gate — skip users without an ACTIVE/TRIALING sub
+      const userIds = Array.from(new Set(withIban.map(p => p.wallet.user.id)));
+      const eligibleUsers = await prisma.subscription.findMany({
+        where: { userId: { in: userIds }, status: { in: PAYOUT_ELIGIBLE_SUB_STATUSES } },
+        select: { userId: true },
+      });
+      const eligibleUserIds = new Set(eligibleUsers.map(s => s.userId));
+      const eligible = withIban.filter(p => eligibleUserIds.has(p.wallet.user.id));
+      const skippedNoSub = withIban.length - eligible.length;
+
+      let approved         = 0;  // newly transitioned PENDING → PROCESSING by this call
+      let alreadyProcessed = 0;  // claimed by a concurrent caller (still counts as in-flight)
+      let failed           = 0;
+
+      // §6.1 v1.1 — delegate the atomic PENDING → PROCESSING transition to
+      // executePayoutTransfer so we share the same race-safe path the single
+      // /approve endpoint uses. Notifications fire from the *actual outcome* of
+      // the transfer (not optimistically before it runs) so the user never gets
+      // an "approved" email for a payout that immediately failed at Paysera.
+      // Bounded concurrency keeps Paysera fan-out + Prisma pool usage sane
+      // (see BULK_APPROVE_CONCURRENCY rationale above).
+      const results = await runWithConcurrency(
+        eligible,
+        BULK_APPROVE_CONCURRENCY,
+        (p) => walletService.executePayoutTransfer(p.id),
+      );
+      for (let i = 0; i < results.length; i++) {
+        const payout = eligible[i];
+        const result = results[i];
+        if (result.status === 'fulfilled') {
+          if (result.value.alreadyProcessed) {
+            alreadyProcessed++;
+          } else {
+            approved++;
+            notifySubscriber(payout.id, 'approved');
+          }
+        } else {
+          failed++;
+          const reason = result.reason as any;
+          logger.error(`[bulk-approve] transfer for payout ${payout.id} failed: ${reason?.message ?? reason}`);
+          // executePayoutTransfer has already reverted balance + marked FAILED.
+          notifySubscriber(payout.id, 'failed', reason?.message);
         }
       }
 
-      res.json({ approved, skipped, total: withIban.length });
+      res.json({
+        approved,
+        alreadyProcessed,
+        failed,
+        skippedNoIban,
+        skippedNoSub,
+        // Aggregate kept for backwards compatibility with any older callers.
+        skipped: skippedNoIban + skippedNoSub + failed,
+        total: pending.length,
+      });
     } catch (error) {
       next(error);
     }
@@ -270,18 +359,44 @@ router.patch(
         return;
       }
       if (!payout.wallet.payoutIban) {
-        res.status(422).json({ message: 'Не може да се одобри: абонатът няма регистриран IBAN' });
+        res.status(422).json({ message: 'Не може да се одобри: абонатът няма регистриран IBAN', reason: 'NO_IBAN' });
+        return;
+      }
+      const gate = await checkSubscriptionGate(payout.wallet.userId);
+      if (!gate.eligible) {
+        const rejected = gate as Extract<SubGateResult, { eligible: false }>;
+        res.status(422).json({
+          message: subGateMessage(gate),
+          reason: rejected.reason,
+          ...(rejected.status ? { subscriptionStatus: rejected.status } : {}),
+        });
         return;
       }
 
-      // Store the exact moment of approval so the frontend can show an accurate SLA countdown
-      const existingMeta = payout.metadata ? JSON.parse(payout.metadata) : {};
-      const newMeta = JSON.stringify({ ...existingMeta, processingStartedAt: new Date().toISOString() });
-
-      const updated = await prisma.walletTransaction.update({
-        where: { id },
-        data: { status: 'PROCESSING', metadata: newMeta },
-      });
+      // §6.1 v1.1 — atomic PENDING → PROCESSING + fire Paysera transfer in one
+      // call. executePayoutTransfer handles the state transition, idempotency,
+      // and rollback-on-failure. We notify the subscriber after the transition
+      // succeeds (the helper has its own logging/error handling).
+      let updated;
+      try {
+        const result = await walletService.executePayoutTransfer(id);
+        if (result.alreadyProcessed) {
+          // Lost a race — return current row state without re-notifying.
+          updated = await prisma.walletTransaction.findUnique({ where: { id } });
+          res.json(updated);
+          return;
+        }
+        updated = await prisma.walletTransaction.findUnique({ where: { id } });
+      } catch (err: any) {
+        // Paysera failed and the helper has already reverted balance + marked FAILED.
+        logger.error(`[approve] transfer for payout ${id} failed: ${err?.message ?? err}`);
+        res.status(502).json({
+          message: 'Одобрението е записано, но банковият превод не успя — балансът е възстановен и payout-ът е маркиран като „неуспешен".',
+          reason: 'TRANSFER_FAILED',
+          detail: err?.message ?? String(err),
+        });
+        return;
+      }
 
       notifySubscriber(id, 'approved');
       res.json(updated);
@@ -308,8 +423,10 @@ router.patch(
         res.status(404).json({ message: 'Payout not found' });
         return;
       }
-      if (payout.status !== 'PENDING' && payout.status !== 'RISK_HOLD' && payout.status !== 'TRIAL_PENDING') {
-        res.status(400).json({ message: 'Only PENDING, RISK_HOLD, or TRIAL_PENDING payouts can be rejected' });
+      // WITHDRAWAL rows are never TRIAL_PENDING (that status is reserved for
+      // CASHBACK_CREDIT entries held during the 24h trial refund window).
+      if (payout.status !== 'PENDING' && payout.status !== 'RISK_HOLD') {
+        res.status(400).json({ message: 'Only PENDING or RISK_HOLD payouts can be rejected' });
         return;
       }
 
@@ -331,6 +448,14 @@ router.patch(
           },
         }),
       ]);
+
+      // Spec §4.4 v1.1 — revert the cashback entries from LOCKED back to
+      // CLEARED so they're eligible for a future payout.
+      await walletService.revertCashbackLockForWithdrawal(
+        id,
+        (req as AuthRequest).user?.id ?? null,
+        reason ?? 'admin rejection',
+      );
 
       notifySubscriber(id, 'rejected', reason);
       res.json({ ok: true });
@@ -358,10 +483,21 @@ router.patch(
         return;
       }
 
+      const existingMeta = payout.metadata ? JSON.parse(payout.metadata) : {};
       const updated = await prisma.walletTransaction.update({
         where: { id },
-        data: { status: 'COMPLETED' },
+        data: {
+          status: 'COMPLETED',
+          metadata: JSON.stringify({ ...existingMeta, completedAt: new Date().toISOString() }),
+        },
       });
+
+      // Spec §4.4 v1.1 — terminal lifecycle transition for the locked cashback
+      // entries that funded this payout: LOCKED → PAID.
+      await walletService.markCashbackPaidForWithdrawal(
+        id,
+        (req as AuthRequest).user?.id ?? null,
+      );
 
       notifySubscriber(id, 'completed');
       res.json(updated);
@@ -489,6 +625,104 @@ router.patch(
 
       notifySubscriber(id, 'failed', reason);
       res.json({ ok: true });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ─── PATCH /:id/reset-stuck  PROCESSING → PENDING (crash-recovery only) ──────
+// Recovers payouts where executePayoutTransfer won the PENDING→PROCESSING race
+// but crashed before Paysera createTransfer was called. The row is stuck
+// PROCESSING with no payseraTransferId and no bank transfer was ever
+// initiated, so it is safe to demote back to PENDING for a fresh /approve.
+//
+// Strict guardrails — refuses to reset if any of these are not met:
+//   • status is exactly PROCESSING
+//   • metadata.payseraTransferId is absent (no transfer ever created)
+//   • metadata.manualHold is not set (i.e. the row is not parked by the
+//     no-Paysera-configured path that requires admin /complete)
+//   • processingStartedAt is older than 2 minutes (avoid racing an
+//     executePayoutTransfer call that is still in flight in another process)
+const STUCK_PROCESSING_GRACE_MS = 2 * 60 * 1000;
+
+router.patch(
+  '/:id/reset-stuck',
+  requirePermission('finance.payouts.write'),
+  async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const payout = await prisma.walletTransaction.findFirst({
+        where: { id, type: 'WITHDRAWAL' },
+      });
+      if (!payout) {
+        res.status(404).json({ message: 'Payout not found' });
+        return;
+      }
+      if (payout.status !== 'PROCESSING') {
+        res.status(400).json({
+          message: 'Only PROCESSING payouts can be reset to PENDING',
+          reason: 'NOT_PROCESSING',
+        });
+        return;
+      }
+
+      const meta = payout.metadata ? JSON.parse(payout.metadata) : {};
+      if (meta.payseraTransferId) {
+        // A transfer was created at Paysera — resetting to PENDING is unsafe
+        // because the bank side is already committed. Use /fail to reverse.
+        res.status(409).json({
+          message: 'Cannot reset: a Paysera transfer was already created. Use /fail to reverse.',
+          reason: 'TRANSFER_ALREADY_CREATED',
+          payseraTransferId: meta.payseraTransferId,
+        });
+        return;
+      }
+
+      if (meta.manualHold === true) {
+        // Row is parked in PROCESSING by the no-Paysera-configured branch and
+        // is awaiting an admin /complete or /fail — not a crash recovery case.
+        res.status(409).json({
+          message: 'Cannot reset: this payout is held for manual completion (Paysera transfer not configured). Use /complete or /fail.',
+          reason: 'MANUAL_HOLD',
+        });
+        return;
+      }
+
+      if (meta.processingStartedAt) {
+        const startedAt = new Date(meta.processingStartedAt).getTime();
+        if (Number.isFinite(startedAt) && Date.now() - startedAt < STUCK_PROCESSING_GRACE_MS) {
+          res.status(409).json({
+            message: `Payout entered PROCESSING less than ${STUCK_PROCESSING_GRACE_MS / 60000} minute(s) ago — may still be in flight. Retry after grace period.`,
+            reason: 'WITHIN_GRACE_PERIOD',
+          });
+          return;
+        }
+      }
+
+      // Atomic PROCESSING → PENDING. Strip processingStartedAt so the SLA
+      // tag in the dashboard does not double-count the wait.
+      const { processingStartedAt: _drop, ...metaWithoutStart } = meta as Record<string, unknown>;
+      const upd = await prisma.walletTransaction.updateMany({
+        where: { id, status: WalletTransactionStatus.PROCESSING },
+        data: {
+          status: WalletTransactionStatus.PENDING,
+          description: 'Възстановено за повторно одобрение (нямаше иницииран превод)',
+          metadata: JSON.stringify({ ...metaWithoutStart, resetStuckAt: new Date().toISOString() }),
+        },
+      });
+
+      if (upd.count === 0) {
+        res.status(409).json({
+          message: 'Payout state changed concurrently — reload and retry.',
+          reason: 'CONCURRENT_TRANSITION',
+        });
+        return;
+      }
+
+      const updated = await prisma.walletTransaction.findUnique({ where: { id } });
+      logger.warn(`[reset-stuck] Payout ${id} reset PROCESSING → PENDING (no payseraTransferId; admin recovery).`);
+      res.json(updated);
     } catch (error) {
       next(error);
     }

@@ -45,6 +45,7 @@ model User {
   totpEnabledAt           DateTime?
   totpSecret              String?
   totpPendingSecret       String?
+  mustChangePassword      Boolean                    @default(false)
   preferredLanguage       String                     @default("bg")
   lastActivityAt          DateTime?
   city                    String?
@@ -83,6 +84,7 @@ model User {
   savedPaymentMethods     SavedPaymentMethod[]
   superAdminRequests      PendingSuperAdminRequest[] @relation("SuperAdminRequester")
   subscriptions           Subscription[]
+  triggeredLinkResends    LinkResendLog[]            @relation("LinkResendLogActor")
   wallet                  Wallet?
 
   @@unique([email, role])
@@ -159,6 +161,11 @@ model Partner {
   assignedAdminId       String?
   isVisible             Boolean                  @default(true)
   requestStatus         PartnerRequestStatus?
+  // Spec §5.1 v1.1 — declared venue count bucket at application time. Stored as
+  // an enum so the value cannot drift via non-validating callers (bulk import,
+  // future scripts). The DB column maps to the string forms shown in the UI
+  // ("1" / "2-5" / "6-10" / "11+") via per-value @map directives below.
+  requestObjectCount    PartnerVenueCountBucket?
   onboardingCompletedAt DateTime?
   bookings              Booking[]
   marketingListMembers  MarketingListMember[]
@@ -170,6 +177,8 @@ model Partner {
   reviews               Review[]
   transactions          Transaction[]
   venues                Venue[]
+  activationLinks       ActivationLink[]
+  statusChanges         PartnerStatusChange[]
 
   @@index([category])
   @@index([partnerTypeId])
@@ -191,11 +200,80 @@ model PartnerCashbackPayment {
   marginAmount      Float                 @default(0)
   contractedRate    Float?
   turnoverAmount    Float                 @default(0)
+  invoiceNumber     String?               @unique
   partner           Partner               @relation(fields: [partnerId], references: [id])
 
   @@unique([partnerId, month])
   @@index([status])
   @@index([month])
+}
+
+// Spec §5.2, §9.5 v1.1 — partner activation link.
+// One-time token, valid 72h, only admin can resend. Each new link invalidates
+// the previous (enforced in service by setting invalidatedAt on the old row,
+// inside a transaction with the create of the new row — see activationLink.service.ts).
+// On resend a LinkResendLog row is appended for audit (§10.4).
+//
+// `reason` distinguishes an initial issuance (post-approve) from an admin
+// resend so the drawer can render the audit timeline accurately (resend count,
+// who clicked what, etc.).
+// `emailSentAt` / `emailError` are stamped after the email-layer call returns
+// so admins can see at a glance whether the partner actually received the
+// link (M5 in the audit).
+model ActivationLink {
+  id            String               @id @default(uuid())
+  partnerId     String
+  token         String               @unique
+  expiresAt     DateTime
+  consumedAt    DateTime?
+  invalidatedAt DateTime?
+  reason        ActivationLinkReason @default(INITIAL)
+  emailSentAt   DateTime?
+  emailError    String?
+  createdById   String
+  createdAt     DateTime             @default(now())
+  partner       Partner              @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId])
+  @@index([expiresAt])
+}
+
+// Spec §10.4 v1.1 — audit trail for activation / verification link resends.
+// Kept separate from AuditLog because the link domain has its own primary
+// key relationship and reads (e.g., "show resend history" on partner row).
+//
+// `actorId` is nullable for two reasons: (1) some link types (EMAIL_VERIFICATION,
+// PASSWORD_RESET) may be self-service triggered, in which case there is no
+// admin actor; (2) historical rows from before the actor-FK was added may
+// have orphaned ids. Linking via @relation is OPTIONAL — if the User is
+// deleted we keep the row but null the actor (set-null on delete).
+model LinkResendLog {
+  id        String   @id @default(uuid())
+  linkType  String // "PARTNER_ACTIVATION" | "EMAIL_VERIFICATION" | "PASSWORD_RESET"
+  subjectId String // partnerId or userId — interpreted via linkType
+  actorId   String?
+  createdAt DateTime @default(now())
+  actor     User?    @relation("LinkResendLogActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([linkType, subjectId])
+  @@index([createdAt])
+}
+
+// Spec §5.3 v1.1 + §10.4 — partner status transition log. Drives the
+// "История на промени" view and is the source for audit reads when an
+// admin asks "why is partner X suspended".
+model PartnerStatusChange {
+  id          String        @id @default(uuid())
+  partnerId   String
+  fromStatus  PartnerStatus
+  toStatus    PartnerStatus
+  reason      String?
+  changedById String?
+  createdAt   DateTime      @default(now())
+  partner     Partner       @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId])
+  @@index([partnerId, createdAt])
 }
 
 model PartnerRequestNote {
@@ -213,7 +291,7 @@ model PartnerRequestNote {
 }
 
 model Venue {
-  id                  String              @id @default(uuid())
+  id                  String               @id @default(uuid())
   partnerId           String
   name                String
   nameBg              String?
@@ -230,17 +308,17 @@ model Venue {
   openingHours        String?
   capacity            Int?
   features            String?
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
   menuImages          String?
   menuRejectionReason String?
   menuReviewedAt      DateTime?
   menuReviewedBy      String?
-  menuStatus          MenuStatus          @default(NONE)
+  menuStatus          MenuStatus           @default(NONE)
   menuSubmittedAt     DateTime?
   menuUrl             String?
   pendingMenuUrl      String?
-  venueStatus         VenueStatus         @default(ACTIVE)
+  venueStatus         VenueStatus          @default(ACTIVE)
   venueStatusAt       DateTime?
   venueStatusNote     String?
   bookings            Booking[]
@@ -249,7 +327,7 @@ model Venue {
   stickerLocations    StickerLocation[]
   stickerScans        StickerScan[]
   transactions        Transaction[]
-  partner             Partner             @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partner             Partner              @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   stickerConfig       VenueStickerConfig?
   statusHistory       VenueStatusHistory[]
 
@@ -426,6 +504,7 @@ model Transaction {
   refundedAmount    Float?
   refundedAt        DateTime?
   completedAt       DateTime?
+  riskScore         Int?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   receipt           Receipt?
@@ -484,6 +563,15 @@ model WalletTransaction {
   createdAt             DateTime                @default(now())
   cashbackExpiresAt     DateTime?
   cashbackPaidAt        DateTime?
+  // Spec §4.4 v1.1 — entry-based lifecycle. Only set for CASHBACK_CREDIT rows.
+  // clearedAt drives the 60-day rolling window (per spec, validity starts at
+  // Cleared, not at original transaction date). voided* are populated when a
+  // risk review rejects the originating transaction (§7.1).
+  cashbackStatus        CashbackEntryStatus?
+  clearedAt             DateTime?
+  voidedAt              DateTime?
+  voidedReason          String?
+  voidedByUserId        String?
   receipt               Receipt?                @relation(fields: [receiptId], references: [id])
   stickerScan           StickerScan?            @relation(fields: [stickerScanId], references: [id])
   transaction           Transaction?            @relation(fields: [transactionId], references: [id])
@@ -495,6 +583,7 @@ model WalletTransaction {
   @@index([createdAt])
   @@index([cashbackExpiresAt])
   @@index([stripePaymentIntentId])
+  @@index([cashbackStatus])
   @@map("wallet_transactions")
 }
 
@@ -524,6 +613,16 @@ model Subscription {
   trialRefundEligibleUntil  DateTime?
   trialRefundUsed           Boolean            @default(false)
   lastRenewalReminderSentAt DateTime?
+  // Spec §4.2 v1.1 — set when the single renewal attempt fails. While non-null
+  // and status=FAILED_PAYMENT, scanning is blocked and payouts are gated.
+  failedPaymentAt           DateTime?
+  // Stamped when this FAILED_PAYMENT row is transitioned to EXPIRED because the
+  // user gained a newer ACTIVE/TRIALING subscription. Audit-only — kept so
+  // forensic queries can distinguish "naturally expired" from "force-cleared".
+  failedPaymentClearedAt    DateTime?
+  // Spec §8.3 — bitmask of reminders already sent for the current period:
+  // bit 0 = 3d, bit 1 = 1d, bit 2 = day-of. Reset on renewal.
+  renewalRemindersSent      Int                @default(0)
   planDetails               Plan?              @relation(fields: [planId], references: [id])
   user                      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1174,12 +1273,13 @@ model CashbackRate {
 }
 
 model PayoutThreshold {
-  id        String           @id @default(uuid())
-  plan      SubscriptionPlan
-  minAmount Float
-  createdBy String?
-  notes     String?
-  createdAt DateTime         @default(now())
+  id            String           @id @default(uuid())
+  plan          SubscriptionPlan
+  minAmount     Float
+  createdBy     String?
+  createdByName String?
+  notes         String?
+  createdAt     DateTime         @default(now())
 
   @@index([plan])
   @@index([createdAt])
@@ -1255,38 +1355,90 @@ model SystemSetting {
   @@map("system_settings")
 }
 
+model SystemSettingHistory {
+  id            String   @id @default(uuid())
+  key           String
+  oldValue      String?
+  newValue      String
+  changedBy     String?
+  changedByName String?
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  @@index([key])
+  @@index([createdAt])
+  @@map("system_setting_history")
+}
+
+// Spec §11 v1.1 — unified ticketing system. `requestType` separates
+// support from change requests (single inbox, filterable). `source`
+// records ingress channel ("WEB" / "EMAIL"). `externalEmail` captures
+// the original sender when ingested via email gateway (§11.2).
 model HelpTicket {
-  id         String         @id @default(uuid())
-  subject    String
-  body       String         @default("")
-  category   TicketCategory
-  status     TicketStatus   @default(NEW)
-  priority   TicketPriority @default(MEDIUM)
-  userId     String
-  assigneeId String?
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
-  assignee   User?          @relation("TicketAssignee", fields: [assigneeId], references: [id])
-  user       User           @relation("TicketUser", fields: [userId], references: [id])
-  replies    TicketReply[]
+  id             String         @id @default(uuid())
+  subject        String
+  body           String         @default("")
+  category       TicketCategory
+  status         TicketStatus   @default(NEW)
+  priority       TicketPriority @default(MEDIUM)
+  userId         String
+  assigneeId     String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  // Spec §11.3 — "тип заявка": SUPPORT, DATA_CHANGE, LOCATION_CHANGE,
+  // CONTRACT_CHANGE, DISPUTE, OTHER. Stored as a string for flexibility;
+  // the API layer validates against the enum-like set in shared/ticketing.ts.
+  requestType    String         @default("SUPPORT")
+  // Spec §11.1 ingress channel.
+  source         String         @default("WEB") // "WEB" | "EMAIL"
+  // Spec §11.2 — original sender email for tickets created from an inbound
+  // email (auto-parse). Used to validate reply spoofing and to send auto-reply.
+  externalEmail  String?
+  // RFC 5322 Message-ID of the inbound email that created this ticket.
+  // Used by parser for In-Reply-To / References fallback matching.
+  rootMessageId  String?
+  // Auto re-open watermark (§11.4): when an inbound reply hits a CLOSED ticket
+  // we re-open and stamp this for the audit log.
+  reopenedAt     DateTime?
+  linkedTicketId String?
+  assignee       User?          @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  user           User           @relation("TicketUser", fields: [userId], references: [id])
+  linkedTicket   HelpTicket?    @relation("TicketLink", fields: [linkedTicketId], references: [id])
+  linkingTickets HelpTicket[]   @relation("TicketLink")
+  replies        TicketReply[]
 
   @@index([userId])
   @@index([assigneeId])
   @@index([status])
   @@index([createdAt])
+  @@index([requestType])
+  @@index([source])
+  @@index([rootMessageId])
 }
 
 model TicketReply {
-  id        String     @id @default(uuid())
-  ticketId  String
-  authorId  String
-  body      String
-  isAdmin   Boolean    @default(false)
-  createdAt DateTime   @default(now())
-  author    User       @relation("TicketReplies", fields: [authorId], references: [id])
-  ticket    HelpTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  id           String     @id @default(uuid())
+  ticketId     String
+  authorId     String?
+  body         String
+  isAdmin      Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+  // Spec §11.2 — RFC 5322 threading headers. messageId is the unique ID of
+  // this message (outbound: generated by us; inbound: from the email).
+  // inReplyTo is the immediate parent. The parser uses these for thread match.
+  messageId    String?    @unique
+  inReplyTo    String?
+  // "WEB" | "EMAIL". Outbound system emails get "EMAIL" once dispatched.
+  channel      String     @default("WEB")
+  // Auto-replies and out-of-office headers — see §11.2 edge cases. Surfaced
+  // as a metadata-only note in the thread (no reply created).
+  isAutoReply  Boolean    @default(false)
+  externalFrom String? // sender email when source="EMAIL"
+  author       User?      @relation("TicketReplies", fields: [authorId], references: [id])
+  ticket       HelpTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@index([ticketId])
+  @@index([inReplyTo])
 }
 
 model MarketingTemplate {
@@ -1487,6 +1639,27 @@ model MobileErrorLog {
   @@map("mobile_error_logs")
 }
 
+/// Spec §11.1 — inbound emails that arrive when no system admin exists yet
+/// (fresh install) are persisted here instead of being dropped. A follow-up job
+/// can replay them once an admin is provisioned.
+model OrphanInboundEmail {
+  id               String    @id @default(uuid())
+  fromEmail        String
+  fromName         String?
+  subject          String?
+  bodyText         String?
+  bodyHtml         String?
+  messageId        String?
+  rawPayload       Json?
+  reason           String    @default("NO_ADMIN")
+  replayedAt       DateTime?
+  replayedTicketId String?
+  createdAt        DateTime  @default(now())
+
+  @@index([createdAt])
+  @@index([replayedAt])
+}
+
 enum UserRole {
   USER
   PARTNER
@@ -1549,6 +1722,26 @@ enum PartnerStatus {
   PAUSED
   ARCHIVED
   REJECTED
+}
+
+// Spec §5.1 v1.1 — declared venue count bucket. The UI dropdown offers the
+// four options "1" / "2-5" / "6-10" / "11+"; the @map per value keeps the
+// physical column values stable so existing rows / external readers keep
+// working without a backfill.
+enum PartnerVenueCountBucket {
+  ONE         @map("1")
+  TWO_TO_FIVE @map("2-5")
+  SIX_TO_TEN  @map("6-10")
+  ELEVEN_PLUS @map("11+")
+}
+
+// Spec §5.2 v1.1 — activation-link issuance reason. The drawer's audit timeline
+// renders both INITIAL (the post-approve email) and RESEND (admin retries).
+// Stored on the row itself so the resend count is a SQL aggregate, not an
+// off-by-one cardinality heuristic.
+enum ActivationLinkReason {
+  INITIAL
+  RESEND
 }
 
 enum CashbackPaymentStatus {
@@ -1648,6 +1841,22 @@ enum SubscriptionStatus {
   UNPAID
   PAUSED
   EXPIRED
+  // Spec §4.2 v1.1 — single retry, no grace period. On entry: scanning blocked,
+  // CTA shown in mobile app, payouts gated (§6.1 subscription_gate).
+  FAILED_PAYMENT
+}
+
+// Spec §4.4 v1.1 — entry-based cashback lifecycle. Every WalletTransaction
+// of type CASHBACK_CREDIT carries one of these statuses for its 60-day
+// rolling window. Voided is the new "rejected at risk review" terminal state
+// that stays visible to the user (vs deleting the row).
+enum CashbackEntryStatus {
+  PENDING // awaiting risk decision or initial clearance
+  CLEARED // approved, 60-day rolling validity starts at clearedAt
+  LOCKED // included in a pending payout batch
+  PAID // payout completed
+  EXPIRED // 60-day window elapsed without payout
+  VOIDED // risk review rejected — visible to user with reason + audit
 }
 
 enum ReceiptStatus {
@@ -1781,9 +1990,16 @@ enum CardStatus {
 enum TicketStatus {
   NEW
   OPEN
+  // Spec §11.4 — "В преглед": ticket has been assigned to an admin and is
+  // actively being worked. Distinct from OPEN (received + first contact made
+  // but not necessarily owned).
+  IN_REVIEW
   WAITING
   RESOLVED
   CLOSED
+  // Spec §11.4 — "Отказана": admin declined the request with a reason.
+  // Terminal state, distinct from CLOSED (which means resolved+confirmed).
+  REJECTED
 }
 
 enum TicketPriority {

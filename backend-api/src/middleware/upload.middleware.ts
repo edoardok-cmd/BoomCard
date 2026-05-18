@@ -80,8 +80,15 @@ export function validateMagicBytes(req: Request, res: Response, next: NextFuncti
   next();
 }
 
-// Single file upload
+// Single file upload (10 MB — general purpose)
 export const uploadSingle = uploadMiddleware.single('image');
+
+// Single file upload with a tight 2 MB cap — use for avatar endpoints
+export const uploadSingleAvatar = multer({
+  storage,
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter,
+}).single('image');
 
 // Multiple files upload
 export const uploadMultiple = uploadMiddleware.array('images', 5);

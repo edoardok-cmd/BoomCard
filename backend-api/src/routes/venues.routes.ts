@@ -7,6 +7,7 @@ import { Router, Response } from 'express';
 import multer from 'multer';
 import { asyncHandler } from '../middleware/error.middleware';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
+import { requireActivePartnerForWrites } from '../middleware/partnerStatus.middleware';
 import { prisma } from '../lib/prisma';
 import { venueService } from '../services/venue.service';
 import { imageUploadService } from '../services/imageUpload.service';
@@ -186,6 +187,7 @@ router.post(
   '/',
   authenticate,
   authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
+  requireActivePartnerForWrites,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const {
       partnerId,
@@ -263,6 +265,7 @@ router.put(
   '/:id',
   authenticate,
   authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
+  requireActivePartnerForWrites,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
@@ -319,6 +322,7 @@ router.post(
   '/:id/menu',
   authenticate,
   authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
+  requireActivePartnerForWrites,
   menuUpload.array('images', 20),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
@@ -328,7 +332,10 @@ router.post(
       return res.status(400).json({ success: false, error: 'At least one image file is required (field: images)' });
     }
 
-    const venue = await venueService.getVenueById(id);
+    // Authenticated partner/admin endpoint — admins legitimately operate on
+    // venues whose partner is suspended/archived; the per-role owner check
+    // below is the actual authorization gate.
+    const venue = await venueService.getVenueById(id, { includeHidden: true });
     if (!venue) {
       return res.status(404).json({ success: false, error: 'Venue not found' });
     }
@@ -387,10 +394,14 @@ router.delete(
   '/:id/menu',
   authenticate,
   authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
+  requireActivePartnerForWrites,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
-    const venue = await venueService.getVenueById(id);
+    // Authenticated partner/admin endpoint — admins legitimately operate on
+    // venues whose partner is suspended/archived; the per-role owner check
+    // below is the actual authorization gate.
+    const venue = await venueService.getVenueById(id, { includeHidden: true });
     if (!venue) {
       return res.status(404).json({ success: false, error: 'Venue not found' });
     }
@@ -421,6 +432,7 @@ router.post(
   '/:id/menu/submit',
   authenticate,
   authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
+  requireActivePartnerForWrites,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const { url } = req.body as { url?: string };
@@ -495,6 +507,7 @@ router.post(
   '/:id/menu/withdraw',
   authenticate,
   authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
+  requireActivePartnerForWrites,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 

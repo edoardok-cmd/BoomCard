@@ -14,6 +14,9 @@ import { SubscriptionStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { emailService } from '../services/email.service';
 import { logger } from '../utils/logger';
+import { fireAutomation } from '../lib/automationDispatcher';
+import { writeAudit } from '../middleware/audit.middleware';
+import { notificationService } from '../services/notification.service';
 
 const APP_URL = process.env.APP_URL || 'https://mobile.boomcard.bg';
 
@@ -109,6 +112,83 @@ export async function processPayseraRenewals(): Promise<void> {
     }
   }
 
+  // 1b. Spec §4.2 v1.1 — Paysera subscriptions with autoRenewal=true that expire
+  //     get a SINGLE renewal attempt with NO grace period. Because Paysera Checkout
+  //     does not actually charge automatically, the "attempt" here is the natural
+  //     check at expiry: if the period is over and no manual renewal arrived, the
+  //     renewal has failed and we flip straight to FAILED_PAYMENT. This bypasses
+  //     the 7-day PAUSED grace (which still applies to autoRenewal=false subs
+  //     handled in step 2 below).
+  //
+  //     While in FAILED_PAYMENT: scanning is blocked (sticker/receipt services),
+  //     payouts are gated (wallet.service), and the mobile app surfaces a renewal
+  //     CTA via the SUBSCRIPTION_FAILED_PAYMENT marker.
+  const failedRenewals = await prisma.subscription.findMany({
+    where: {
+      status: SubscriptionStatus.ACTIVE,
+      stripeSubscriptionId: null,
+      autoRenewal: true,
+      cancelAtPeriodEnd: false,
+      canceledAt: null,
+      currentPeriodEnd: { lte: now },
+    },
+    include: {
+      user: { select: { id: true, email: true, firstName: true, preferredLanguage: true } },
+      planDetails: { select: { displayName: true, displayNameBg: true, priceWeeklyEur: true, priceMonthlyEur: true, priceYearlyEur: true } },
+    },
+  });
+
+  for (const sub of failedRenewals) {
+    try {
+      const prevStatus = sub.status;
+      const failedAt = new Date();
+
+      await prisma.subscription.update({
+        where: { id: sub.id },
+        data: {
+          status: SubscriptionStatus.FAILED_PAYMENT,
+          failedPaymentAt: failedAt,
+        },
+      });
+
+      // Audit the transition (best-effort — must not block the renewal flow).
+      writeAudit({
+        actorUserId: null,
+        action: 'SUBSCRIPTION_FAILED_PAYMENT',
+        objectType: 'Subscription',
+        objectId: sub.id,
+        before: { status: prevStatus },
+        after: { status: 'FAILED_PAYMENT', failedPaymentAt: failedAt.toISOString() },
+      }).catch((err) => logger.error(`[paysera-renewal] audit write failed for sub ${sub.id}:`, err));
+
+      // Notify the user that the auto-renewal attempt failed. Spec §4.2 v1.1: the
+      // mobile app shows a renewal CTA on receiving SUBSCRIPTION_FAILED_PAYMENT.
+      let subMetadata: Record<string, any> = {};
+      try { if (sub.metadata) subMetadata = JSON.parse(sub.metadata); } catch { subMetadata = {}; }
+      const billingPeriod = (subMetadata.billingPeriod ?? '').toLowerCase();
+      const priceInCents = (() => {
+        const plan = sub.planDetails;
+        if (!plan) return 0;
+        if (billingPeriod.includes('week') && plan.priceWeeklyEur) return plan.priceWeeklyEur;
+        if (billingPeriod.includes('year')) return plan.priceYearlyEur;
+        return plan.priceMonthlyEur ?? 0;
+      })();
+
+      notificationService
+        .notifyPaymentFailed({
+          userId: sub.userId,
+          paymentIntentId: sub.id, // no PI for Paysera renewal — surface sub id for reference
+          amount: priceInCents / 100,
+          currency: 'EUR',
+        })
+        .catch((err) => logger.error(`[paysera-renewal] FAILED_PAYMENT notify failed for sub ${sub.id}:`, err));
+
+      logger.info(`[paysera-renewal] Subscription ${sub.id} → FAILED_PAYMENT (spec §4.2 v1.1, no grace)`);
+    } catch (err) {
+      logger.error(`[paysera-renewal] Failed to transition sub ${sub.id} to FAILED_PAYMENT:`, err);
+    }
+  }
+
   // 2. Find subscriptions that expired and are still ACTIVE — begin 7-day grace period.
   //
   // Spec §4.2: any Paysera sub past currentPeriodEnd needs a terminal-state
@@ -127,6 +207,10 @@ export async function processPayseraRenewals(): Promise<void> {
       // those out too — both filters belt-and-braces.
       cancelAtPeriodEnd: false,
       canceledAt: null,
+      // autoRenewal=true subs were already moved to FAILED_PAYMENT in step 1b
+      // (spec §4.2 v1.1: no grace). Only autoRenewal=false subs receive the
+      // legacy 7-day PAUSED grace here.
+      autoRenewal: false,
       currentPeriodEnd: { lte: now },
     },
     include: {
@@ -239,6 +323,9 @@ export async function processPayseraRenewals(): Promise<void> {
         })
         .catch((err) => logger.error(`[paysera-renewal] Pre-expiry reminder failed for sub ${sub.id}:`, err));
 
+      fireAutomation('subscription.renew_due', { userId: sub.user.id })
+        .catch((err) => logger.error(`[paysera-renewal] subscription.renew_due automation failed for sub ${sub.id}:`, err));
+
       await prisma.subscription.update({
         where: { id: sub.id },
         data: { lastRenewalReminderSentAt: now },
@@ -250,7 +337,7 @@ export async function processPayseraRenewals(): Promise<void> {
     }
   }
 
-  logger.info(`[paysera-renewal] Done — paused ${expiredActive.length} subscription(s), cancelled ${expired.length} after grace period, sent ${preExpiryReminders.length} pre-expiry reminder(s)`);
+  logger.info(`[paysera-renewal] Done — ${failedRenewals.length} → FAILED_PAYMENT (no grace), paused ${expiredActive.length} subscription(s), cancelled ${expired.length} after grace period, sent ${preExpiryReminders.length} pre-expiry reminder(s)`);
 }
 
 // Run directly as a script (npx tsx src/jobs/paysera-renewal.ts)

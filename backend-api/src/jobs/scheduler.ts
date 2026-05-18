@@ -13,6 +13,7 @@
  *   menu-expiry                      — 0 5 * * *    (5:00 AM daily)
  *   trial-pending-cashback           — 30 5 * * *   (5:30 AM daily)
  *   paysera-renewal                  — 0 6 * * *    (6:00 AM UTC daily)
+ *   renewal-reminders                — 0 7 * * *    (7:00 AM daily — auto-renew OFF 3d/1d/0d cadence)
  *   stale-session-cleanup            — 15 7 * * *   (7:15 AM daily)
  *   partner-daily-digest             — 0 8 * * *    (8:00 AM daily)
  *   partner-onboarding-nudge         — 0 9 * * *    (9:00 AM daily)
@@ -22,19 +23,23 @@
  *   ocr-backlog-scan                 — every 6 hours
  *   user-risk-sweep                  — 0 4 * * *    (4:00 AM daily)
  *   marketing-list-sync              — 30 2 * * *   (2:30 AM daily — after cashback-expiry)
+ *   inactive-user-nudge              — 30 4 * * *   (4:30 AM daily — 30-day inactivity automations)
  */
 
 import cron from 'node-cron';
-import { WalletTransactionType, WalletTransactionStatus, SubscriptionStatus, SubscriptionPlan } from '@prisma/client';
+import { WalletTransactionType, WalletTransactionStatus, SubscriptionStatus, SubscriptionPlan, CashbackEntryStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { emailService } from '../services/email.service';
 import { notificationService } from '../services/notification.service';
 import { processPayseraRenewals } from './paysera-renewal';
 import { processPendingPaymentReminders, cleanupExpiredPendingPayments } from './pending-payment-reminders';
+import { runRenewalReminders } from './renewal-reminders';
 import { runUserRiskSweep } from './user-risk-sweep';
 import { fireAutomation } from '../lib/automationDispatcher';
 import { getPayoutThresholdBGN } from '../utils/payoutThreshold';
+import { getSystemSettingInt } from '../utils/systemSettings';
+import { CASHBACK_VALIDITY_DAYS } from '../constants/receipt.constants';
 
 const CASHBACK_EXPIRY_BATCH = 10;
 
@@ -102,6 +107,15 @@ export async function expireWallet(walletId: string, now: Date): Promise<number>
         type: WalletTransactionType.CASHBACK_CREDIT,
         status: WalletTransactionStatus.COMPLETED,
         cashbackExpiresAt: { lt: now },
+        // Spec §4.4 / §6.1 v1.1 — exclude entries that have already exited the
+        // expirable lifecycle:
+        //   LOCKED — committed to an in-flight payout (balance already debited
+        //     at requestPayout time); expiring would double-decrement.
+        //   PAID   — terminal state after a successful payout; markPaid leaves
+        //     status=COMPLETED and does not clear cashbackExpiresAt, so without
+        //     this filter the next nightly sweep would cancel a paid-out row
+        //     and erase the PAID audit trail.
+        cashbackStatus: { notIn: [CashbackEntryStatus.LOCKED, CashbackEntryStatus.PAID] },
       },
     });
 
@@ -114,9 +128,15 @@ export async function expireWallet(walletId: string, now: Date): Promise<number>
     // run of this job could cancel some rows between our findMany and an updateMany,
     // causing updateMany.count < expired.length and a resulting over-decrement.
     // RETURNING eliminates that race by returning only the rows we actually updated.
+    //
+    // Spec §4.4 v1.1: also write cashbackStatus='EXPIRED' on the new-world
+    // lifecycle column so buildStateWhere('Expired') resolves these rows. Without
+    // this, expired entries stay forever counted under "Cleared" in dashboard stats
+    // (the new-world branch matches cashbackStatus='CLEARED' regardless of expiry).
     const cancelledRows = await (tx as any).$queryRaw<Array<{ id: string; amount: number }>>`
       UPDATE "wallet_transactions"
-      SET status = 'CANCELLED'::"WalletTransactionStatus"
+      SET status = 'CANCELLED'::"WalletTransactionStatus",
+          "cashbackStatus" = 'EXPIRED'::"CashbackEntryStatus"
       WHERE id = ANY(${expired.map(t => t.id)})
         AND status = 'COMPLETED'::"WalletTransactionStatus"
       RETURNING id, amount
@@ -634,6 +654,10 @@ async function sendPartnerMonthlyStatements(): Promise<void> {
         revenueBGN,
         cashbackOwedBGN,
       });
+      if (partner.userId) {
+        fireAutomation('billing.month_end', { userId: partner.userId })
+          .catch((err) => logger.error(`[partner-monthly-statement] billing.month_end automation failed for partner ${partner.id}:`, err));
+      }
       sent++;
     } catch (err) {
       logger.error(`[partner-monthly-statement] Failed for partner ${partner.id}:`, err);
@@ -729,10 +753,18 @@ async function resolveTrialPendingCashback(): Promise<void> {
 
     if (refundUsedSub) {
       // Void: trial refund was used but voiding failed earlier — clean up now.
+      // Spec §4.4 — mark the entry-based lifecycle as VOIDED so it remains
+      // visible to the user with a reason / audit trail (vs. silently deleted).
+      const voidedAt = new Date();
       await prisma.$transaction(async (tx) => {
         await tx.walletTransaction.updateMany({
           where: { id: { in: txs.map(t => t.id) } },
-          data: { status: WalletTransactionStatus.CANCELLED },
+          data: {
+            status: WalletTransactionStatus.CANCELLED,
+            cashbackStatus: CashbackEntryStatus.VOIDED,
+            voidedAt,
+            voidedReason: 'Trial refund used',
+          },
         });
         await tx.wallet.update({
           where: { id: wallet.id },
@@ -743,17 +775,28 @@ async function resolveTrialPendingCashback(): Promise<void> {
       voided++;
     } else {
       // Promote: trial window expired without a refund — funds are now spendable.
+      // Spec §4.4 v1.1 — the 60-day rolling window starts at clearedAt, NOT at
+      // the original credit time, so the user actually gets a full 60-day
+      // validity window from the moment funds become Available.
+      const cashbackValidityDays = await getSystemSettingInt('cashback_expiry_days', CASHBACK_VALIDITY_DAYS);
+      const releasedAt = new Date();
+      const expiresAt = new Date(releasedAt.getTime() + cashbackValidityDays * 24 * 60 * 60 * 1000);
       const updatedWallet = await prisma.$transaction(async (tx) => {
         await tx.walletTransaction.updateMany({
           where: { id: { in: txs.map(t => t.id) } },
-          data: { status: WalletTransactionStatus.COMPLETED },
+          data: {
+            status: WalletTransactionStatus.COMPLETED,
+            cashbackStatus: CashbackEntryStatus.CLEARED,
+            clearedAt: releasedAt,
+            cashbackExpiresAt: expiresAt,
+          },
         });
         return tx.wallet.update({
           where: { id: wallet.id },
           data: { availableBalance: { increment: totalAmount } },
         });
       });
-      logger.info(`[trial-pending-cashback] Released ${totalAmount} BGN for wallet ${wallet.id} (user ${wallet.userId})`);
+      logger.info(`[trial-pending-cashback] Released ${totalAmount} BGN for wallet ${wallet.id} (user ${wallet.userId}); cleared 60-day window now runs until ${expiresAt.toISOString()}`);
 
       // Fire payout-ready notification if the release crosses the plan's payout threshold.
       try {
@@ -1000,6 +1043,48 @@ async function notifyCashbackExpiring(): Promise<void> {
   logger.info(`[cashback-expiring-warning] Done — fired automation for ${fired} user(s)`);
 }
 
+// ── Inactive-user 30-day nudge ─────────────────────────────────────────────────
+// Fires the user.inactive_30d automation for users whose lastActivityAt crossed
+// the 30-day mark within the last 24 hours (narrow window to prevent re-firing
+// every day). Runs at 4:30 AM daily so it fires after the risk-sweep that may
+// update lastActivityAt.
+
+async function notifyInactiveUsers(): Promise<void> {
+  const now = new Date();
+  const inactiveFrom = new Date(now.getTime() - 31 * MS_PER_DAY);
+  const inactiveUntil = new Date(now.getTime() - 30 * MS_PER_DAY);
+
+  logger.info(`[inactive-user-nudge] Checking for users inactive between ${inactiveFrom.toISOString()} and ${inactiveUntil.toISOString()}`);
+
+  const users = await prisma.user.findMany({
+    where: {
+      role: 'USER',
+      status: 'ACTIVE',
+      lastActivityAt: { gte: inactiveFrom, lte: inactiveUntil },
+    },
+    select: { id: true },
+  });
+
+  if (users.length === 0) {
+    logger.info('[inactive-user-nudge] No newly-inactive users found');
+    return;
+  }
+
+  logger.info(`[inactive-user-nudge] ${users.length} user(s) crossed 30-day inactivity mark`);
+
+  let fired = 0;
+  for (const { id } of users) {
+    try {
+      await fireAutomation('user.inactive_30d', { userId: id });
+      fired++;
+    } catch (err) {
+      logger.error(`[inactive-user-nudge] Failed for user ${id}:`, err);
+    }
+  }
+
+  logger.info(`[inactive-user-nudge] Done — fired automation for ${fired} user(s)`);
+}
+
 export function registerScheduledJobs(): void {
   // Never register cron jobs in test mode — they keep the process alive and
   // can corrupt test fixtures with async DB mutations.
@@ -1054,6 +1139,16 @@ export function registerScheduledJobs(): void {
   });
 
   logger.info('[scheduler] Registered: paysera-renewal (0 6 * * * UTC)');
+
+  // 7 AM every day — auto-renew OFF reminder cadence (spec §8.3 v1.1).
+  // Fires 3d / 1d / day-of reminders for subscriptions with autoRenewal=false
+  // that are still ACTIVE or TRIALING. Bitmask on the subscription row gates
+  // each reminder to once-per-period; renewal write paths reset it to 0.
+  cron.schedule('0 7 * * *', () => {
+    runRenewalReminders().catch((err) => alertSchedulerFailure('renewal-reminders', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: renewal-reminders (0 7 * * *)');
 
   // 5 AM every day — auto-reject menu submissions pending for more than 30 days
   cron.schedule('0 5 * * *', () => {
@@ -1130,4 +1225,12 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: marketing-list-sync (30 2 * * *)');
+
+  // 4:30 AM every day — fire user.inactive_30d automation for users who
+  // crossed the 30-day inactivity threshold within the last 24 hours.
+  cron.schedule('30 4 * * *', () => {
+    notifyInactiveUsers().catch((err) => alertSchedulerFailure('inactive-user-nudge', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: inactive-user-nudge (30 4 * * *)');
 }

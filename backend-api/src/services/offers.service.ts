@@ -7,6 +7,7 @@ import { notificationService } from './notification.service';
 import { logger } from '../utils/logger';
 import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
 import { getSystemSettingInt } from '../utils/systemSettings';
+import { publicPartnerFilter } from './publicPartnerFilter';
 
 const DEFAULT_OFFER_VALIDITY_DAYS = 90;
 
@@ -246,7 +247,12 @@ class OffersService {
     // slash-format subcategory id (e.g. "restaurants/curated"). Subcategory ids
     // are matched against the Partner.categories array; main ids stay on the
     // singular Partner.category column for backward compatibility.
-    const partnerFilter: Prisma.PartnerWhereInput = {};
+    //
+    // Spec §5.3 v1.1 — non-admin reads MUST gate on the public partner matrix
+    // (status=ACTIVE + verifiedAt + isVisible). Without this, a suspended /
+    // not-yet-activated / hidden partner's offers continue to surface in the
+    // customer-facing endpoints. Admins see everything for ops visibility.
+    const partnerFilter: Prisma.PartnerWhereInput = isAdmin ? {} : { ...publicPartnerFilter };
     if (category) {
       if (category.includes('/')) {
         partnerFilter.categories = { has: category };
@@ -330,11 +336,16 @@ class OffersService {
       OR: [{ isFeatured: true }, { discountPercent: { gte: 10 } }],
     };
 
+    // Spec §5.3 — public partner matrix gate (see getOffers for full note).
+    const partnerFilter: Prisma.PartnerWhereInput = isAdmin ? {} : { ...publicPartnerFilter };
     if (!isAdmin) {
       const visibleTypeIds = await partnerTypeService.getVisibleTypeIdsForPlan(userPlan ?? null);
       if (visibleTypeIds !== null) {
-        where.partner = { partnerTypeId: { in: visibleTypeIds } };
+        partnerFilter.partnerTypeId = { in: visibleTypeIds };
       }
+    }
+    if (Object.keys(partnerFilter).length > 0) {
+      where.partner = partnerFilter;
     }
 
     const offers = await prisma.offer.findMany({
@@ -357,11 +368,16 @@ class OffersService {
       endDate: { gte: new Date() },
     };
 
+    // Spec §5.3 — public partner matrix gate (see getOffers for full note).
+    const partnerFilter: Prisma.PartnerWhereInput = isAdmin ? {} : { ...publicPartnerFilter };
     if (!isAdmin) {
       const visibleTypeIds = await partnerTypeService.getVisibleTypeIdsForPlan(userPlan ?? null);
       if (visibleTypeIds !== null) {
-        where.partner = { partnerTypeId: { in: visibleTypeIds } };
+        partnerFilter.partnerTypeId = { in: visibleTypeIds };
       }
+    }
+    if (Object.keys(partnerFilter).length > 0) {
+      where.partner = partnerFilter;
     }
 
     const offers = await prisma.offer.findMany({
@@ -387,11 +403,24 @@ class OffersService {
             phone: true,
             email: true,
             website: true,
+            status: true,
+            verifiedAt: true,
+            isVisible: true,
+            partnerTypeId: true,
           },
         },
       },
     });
     if (!offer) return null;
+
+    // Spec §5.3 — non-admin direct fetch must respect the public matrix.
+    // Otherwise a deep link bypasses the suspend / archive / hide controls.
+    if (!isAdmin) {
+      const p = offer.partner as { status: string; verifiedAt: Date | null; isVisible: boolean; partnerTypeId: string | null } | null;
+      if (!p || p.status !== 'ACTIVE' || !p.verifiedAt || !p.isVisible) return null;
+      const visibleTypeIds = await partnerTypeService.getVisibleTypeIdsForPlan(userPlan ?? null);
+      if (visibleTypeIds !== null && p.partnerTypeId && !visibleTypeIds.includes(p.partnerTypeId)) return null;
+    }
     return { ...offer, tags: offer.tags ? JSON.parse(offer.tags) : [] };
   }
 
@@ -532,6 +561,9 @@ class OffersService {
         partner: {
           select: {
             partnerTypeId: true,
+            status: true,
+            verifiedAt: true,
+            isVisible: true,
             latitude: true,
             longitude: true,
             venues: { select: { latitude: true, longitude: true } },
@@ -543,6 +575,21 @@ class OffersService {
     if (!offer) throw new Error('Offer not found');
 
     if (offer.status !== 'ACTIVE') throw new Error('This offer is no longer active');
+
+    // Spec §5.3 v1.1 — non-admin redemption respects the public partner
+    // matrix. Without this an offer id cached by the customer (or shared)
+    // could be redeemed against a suspended / archived / hidden partner.
+    // Admins keep the bypass so they can validate flows on hidden partners.
+    if (!isAdmin) {
+      const p = offer.partner as {
+        status: string;
+        verifiedAt: Date | null;
+        isVisible: boolean;
+      } | null;
+      if (!p || p.status !== 'ACTIVE' || !p.verifiedAt || !p.isVisible) {
+        throw new Error('This offer is no longer available');
+      }
+    }
 
     const now = new Date();
     if (offer.startDate > now) throw new Error('This offer has not started yet');

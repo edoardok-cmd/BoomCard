@@ -30,8 +30,11 @@ import bcrypt from 'bcrypt';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
+import { uploadSingleAvatar, validateMagicBytes } from '../middleware/upload.middleware';
+import { imageUploadService } from '../services/imageUpload.service';
 import { prisma } from '../lib/prisma';
 import { AuthService } from '../services/auth.service';
+import { getClientIp } from '../utils/requestIp';
 
 const LOOPBACK_IPS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
@@ -88,6 +91,12 @@ router.get(
 router.patch(
   '/',
   asyncHandler(async (req: AuthRequest, res: Response) => {
+    if ('email' in req.body) {
+      return res.status(400).json({
+        error: 'Email cannot be updated here. Use POST /admin/me/email-change/request instead.',
+      });
+    }
+
     const { firstName, lastName, phone } = req.body as {
       firstName?: string;
       lastName?: string;
@@ -110,6 +119,66 @@ router.patch(
     });
 
     res.json(updated);
+  })
+);
+
+/* ─── Avatar upload ──────────────────────────────────────────────────────────*/
+
+/**
+ * POST /api/admin/me/avatar
+ * Multipart form-data field: "image" (JPEG/PNG/WebP, max 2 MB)
+ * Uploads to R2 under avatars/<userId>/ and stores the public URL.
+ */
+router.post(
+  '/avatar',
+  uploadSingleAvatar,
+  validateMagicBytes,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    // Fetch the current avatar URL so we can delete the old R2 object after
+    // a successful upload — prevents permanent storage leaks on each update.
+    const current = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { avatar: true },
+    });
+
+    const upload = await imageUploadService.uploadImage({
+      file: req.file.buffer,
+      fileName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      folder: 'avatars',
+      userId: req.user!.id,
+    });
+
+    const updated = await prisma.user.update({
+      where: { id: req.user!.id },
+      data: { avatar: upload.url },
+      select: { id: true, avatar: true },
+    });
+
+    // Delete old R2 object after DB is updated. Non-fatal: log but never fail
+    // the request if cleanup errors (e.g. object already gone, wrong host).
+    if (current?.avatar) {
+      try {
+        const publicUrl = (process.env.R2_PUBLIC_URL || '').replace(/\/$/, '');
+        const parsed = new URL(current.avatar);
+        const isOwnStorage =
+          parsed.host.endsWith('.r2.dev') ||
+          (publicUrl && parsed.origin === publicUrl) ||
+          parsed.host.endsWith('.amazonaws.com');
+        if (isOwnStorage) {
+          const key = parsed.pathname.replace(/^\//, '');
+          await imageUploadService.deleteImage(key);
+        }
+      } catch {
+        // swallow — stale object in R2 is preferable to a failed avatar update
+      }
+    }
+
+    res.json({ avatar: updated.avatar });
   })
 );
 
@@ -182,7 +251,7 @@ router.post(
     const hash = await bcrypt.hash(newPassword, 12);
     await prisma.user.update({
       where: { id: req.user!.id },
-      data: { passwordHash: hash, passwordChangedAt: new Date() },
+      data: { passwordHash: hash, passwordChangedAt: new Date(), mustChangePassword: false },
     });
 
     res.json({ ok: true });
@@ -300,6 +369,9 @@ router.delete(
 router.get(
   '/sessions',
   asyncHandler(async (req: AuthRequest, res: Response) => {
+    const currentIp = getClientIp(req) ?? null;
+    const currentUA = req.headers['user-agent'] ?? null;
+
     const sessions = await prisma.refreshToken.findMany({
       where: {
         userId: req.user!.id,
@@ -316,7 +388,16 @@ router.get(
       orderBy: { createdAt: 'desc' },
     });
 
-    res.json({ sessions });
+    // Mark the most recent session whose IP+UA matches this request as current.
+    // Sessions are desc-ordered so the first match is the most recently created one.
+    let markedCurrent = false;
+    const sessionsWithFlag = sessions.map((s) => {
+      const isCurrent = !markedCurrent && s.ip === currentIp && s.userAgent === currentUA;
+      if (isCurrent) markedCurrent = true;
+      return { ...s, isCurrent };
+    });
+
+    res.json({ sessions: sessionsWithFlag });
   })
 );
 
@@ -339,8 +420,9 @@ router.delete(
 
 /**
  * DELETE /api/admin/me/sessions
- * Revoke all sessions except the one represented by the current JWT
- * (identified by comparing createdAt to the token's iat).
+ * Revoke all active sessions for the current user, including the current one.
+ * The frontend is expected to call logout() immediately after — the short-lived
+ * access token JWT remains valid until its natural expiry, which is intentional.
  */
 router.delete(
   '/sessions',

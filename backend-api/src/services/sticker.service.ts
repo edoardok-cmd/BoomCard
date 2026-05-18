@@ -9,6 +9,8 @@ import { fraudDetectionService } from './fraudDetection.service';
 import { recognizeReceiptImage } from './ocr.service';
 import { imageUploadService } from './imageUpload.service';
 import { enqueueMerchantVerification } from '../queues/merchantVerification.queue';
+import { cashbackLifecycleService } from './cashbackLifecycle.service';
+import { writeAudit } from '../middleware/audit.middleware';
 
 // ============================================
 // Interfaces
@@ -179,6 +181,42 @@ export interface FraudCheckResult {
 // ============================================
 
 class StickerService {
+  /**
+   * Spec §4.2 v1.1 — block receipt scanning when the user's current
+   * subscription is in PAST_DUE or FAILED_PAYMENT ("неуспешно плащане").
+   * No protected period, no retry window. The mobile app pattern-matches the
+   * SUBSCRIPTION_PAST_DUE / SUBSCRIPTION_FAILED_PAYMENT marker to render the
+   * renewal CTA.
+   *
+   * A user can have multiple subscriptions over time; we only block if their
+   * MOST-RECENT subscription is in a failed-payment state. Users with an older
+   * expired sub plus a new ACTIVE one are not blocked. We also block if ANY
+   * subscription for the user is in FAILED_PAYMENT — per spec §4.2 v1.1 this
+   * is a hard gate that supersedes the most-recent-only check.
+   */
+  async assertSubscriptionAllowsScanning(userId: string): Promise<void> {
+    // FAILED_PAYMENT / PAST_DUE only block when the user has no NEWER active subscription.
+    // A user who lapsed and then re-subscribed (new ACTIVE/TRIALING row) is recovered and
+    // must be allowed to scan even if an older FAILED_PAYMENT row is still on file.
+    const latest = await prisma.subscription.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      select: { status: true },
+    });
+    if (latest?.status === SubscriptionStatus.FAILED_PAYMENT) {
+      throw new Error(
+        'SUBSCRIPTION_FAILED_PAYMENT: Абонаментът Ви е в статус „неуспешно плащане". ' +
+        'Възобновете го от менюто „Абонамент и плащания", за да продължите да сканирате бележки.'
+      );
+    }
+    if (latest?.status === SubscriptionStatus.PAST_DUE) {
+      throw new Error(
+        'SUBSCRIPTION_PAST_DUE: Абонаментът Ви е в статус „неуспешно плащане". ' +
+        'Възобновете го от менюто „Абонамент и плащания", за да продължите да сканирате бележки.'
+      );
+    }
+  }
+
   /**
    * Resolve the user's cashback tier from their active Subscription.
    * Returns null when no active subscription exists — callers should treat this as
@@ -357,7 +395,7 @@ class StickerService {
             id: true,
             name: true,
             stickerConfig: true,
-            partner: { select: { id: true, discountRate: true, partnerType: { select: { maxDiscountRate: true } } } },
+            partner: { select: { id: true, status: true, verifiedAt: true, discountRate: true, partnerType: { select: { maxDiscountRate: true } } } },
           },
         },
       },
@@ -369,6 +407,20 @@ class StickerService {
 
     if (sticker.status !== StickerStatus.ACTIVE) {
       return { valid: false, message: `Sticker is ${sticker.status.toLowerCase()}` };
+    }
+
+    // Spec §5.3 v1.1 — even if the sticker row is ACTIVE, the partner's status
+    // + verifiedAt gates whether the QR is operationally active. Mirror the
+    // createSession / scanSticker gates so the mobile app gets a consistent
+    // answer during pre-scan validation.
+    if (
+      sticker.venue.partner &&
+      (sticker.venue.partner.status !== 'ACTIVE' || !sticker.venue.partner.verifiedAt)
+    ) {
+      return {
+        valid: false,
+        message: 'PARTNER_NOT_ACCEPTING: Този обект временно не приема BoomCard транзакции.',
+      };
     }
 
     // Show the best-case cashback % for this venue (Premium tier at partner's discount level).
@@ -400,6 +452,9 @@ class StickerService {
   async createSession(data: CreateSessionData): Promise<StickerScan> {
     const { userId, latitude, longitude, ipAddress, userAgent } = data;
     let { stickerId, cardId } = data;
+
+    // Spec §4.2 v1.1 — block immediately when subscription is in PAST_DUE.
+    await this.assertSubscriptionAllowsScanning(userId);
 
     // Findings #4 + #5 (info-leak mitigation): validate payload fields that do NOT depend
     // on the DB BEFORE the sticker lookup, so attackers can't enumerate stickerIds by
@@ -444,8 +499,20 @@ class StickerService {
     // 3. Subscription / partner access check
     const partner = await prisma.partner.findFirst({
       where: { venues: { some: { id: sticker.venueId } } },
-      select: { id: true, partnerTypeId: true },
+      select: { id: true, partnerTypeId: true, status: true, verifiedAt: true },
     });
+
+    // Spec §5.3 v1.1 — QR auto-deactivates when partner leaves ACTIVE status.
+    // Mobile app surfaces this as: "Този обект временно не приема BoomCard
+    // транзакции. Опитайте отново по-късно или вижте близки активни обекти."
+    // The server raises a distinct marker the client pattern-matches without
+    // parsing localized text. The gate is BOTH status=ACTIVE AND verifiedAt
+    // not null — a partner technically status=ACTIVE but with verifiedAt null
+    // means the admin approved but the activation link was never consumed,
+    // which the spec treats as not operational.
+    if (partner && (partner.status !== 'ACTIVE' || !partner.verifiedAt)) {
+      throw new Error('PARTNER_NOT_ACCEPTING: Този обект временно не приема BoomCard транзакции.');
+    }
 
     if (partner?.partnerTypeId) {
       const userSubscription = await prisma.subscription.findFirst({
@@ -524,6 +591,9 @@ class StickerService {
   async scanSticker(data: ScanStickerData): Promise<StickerScan> {
     const { userId, billAmount, latitude, longitude, ipAddress, userAgent, sessionId } = data;
 
+    // Spec §4.2 v1.1 — block scanning when subscription is in PAST_DUE.
+    await this.assertSubscriptionAllowsScanning(userId);
+
     // ── Path A: complete an existing SESSION_ACTIVE session ──────────────────
     if (sessionId) {
       const existing = await prisma.stickerScan.findUnique({
@@ -538,6 +608,25 @@ class StickerService {
       if (existing.userId !== userId) throw new Error('Session does not belong to user');
       if (existing.status !== ScanStatus.SESSION_ACTIVE) {
         throw new Error('Session has already been submitted or is no longer active');
+      }
+
+      // Spec §5.3 v1.1 — re-check partner status at receipt-upload time.
+      // The session created earlier passed the gate, but a partner can be
+      // deactivated between session-open and receipt-upload. Without this
+      // re-check the user could complete the scan and earn cashback at a
+      // venue that is no longer accepting BoomCard.
+      const sessionPartner = await prisma.partner.findFirst({
+        where: { venues: { some: { id: existing.venueId } } },
+        select: { status: true, verifiedAt: true },
+      });
+      // Spec §5.3 — mirror the createSession / validateStickerById gate.
+      // verifiedAt cleared between session open and receipt upload (admin
+      // re-onboarding) means the partner is no longer operationally active.
+      if (
+        sessionPartner &&
+        (sessionPartner.status !== 'ACTIVE' || !sessionPartner.verifiedAt)
+      ) {
+        throw new Error('PARTNER_NOT_ACCEPTING: Този обект временно не приема BoomCard транзакции.');
       }
 
       // Server-side deadline: receipts must be submitted by 6:00 AM Sofia time the morning
@@ -608,6 +697,13 @@ class StickerService {
         data: { totalScans: { increment: 1 } },
       });
 
+      // Audit-pass [1.2]: PENDING cashback row is now written ONCE, by
+      // uploadReceipt when the scan transitions to MANUAL_REVIEW. That keeps
+      // a single canonical insertion point and avoids three places racing for
+      // the same row (Path A scanSticker, Path B scanSticker, uploadReceipt).
+      // The DB-level partial unique index added in 20260518_audit_pass_v11_followups
+      // is the safety net against any straggling caller.
+
       return updated;
     }
 
@@ -676,8 +772,13 @@ class StickerService {
     // 3. Subscription check
     const partner = await prisma.partner.findFirst({
       where: { venues: { some: { id: sticker.venueId } } },
-      select: { id: true, partnerTypeId: true, status: true },
+      select: { id: true, partnerTypeId: true, status: true, verifiedAt: true },
     });
+
+    // Spec §5.3 — partner status + verifiedAt gate (see createSession for full note).
+    if (partner && (partner.status !== 'ACTIVE' || !partner.verifiedAt)) {
+      throw new Error('PARTNER_NOT_ACCEPTING: Този обект временно не приема BoomCard транзакции.');
+    }
 
     if (partner && partner.partnerTypeId) {
       const userSubscription = await prisma.subscription.findFirst({
@@ -769,6 +870,9 @@ class StickerService {
       data: { totalScans: { increment: 1 }, lastScannedAt: new Date() },
     });
 
+    // Audit-pass [1.2]: Pending cashback row is now written by uploadReceipt
+    // (single canonical insertion point). See note in Path A above.
+
     return scan;
   }
 
@@ -813,6 +917,9 @@ class StickerService {
   async uploadReceipt(data: UploadReceiptData): Promise<StickerScan> {
     const { scanId, userId, receiptImageUrl, receiptImageHash, ocrData, imageBuffer } = data;
 
+    // Spec §4.2 v1.1 — block receipt scanning when subscription = PAST_DUE.
+    if (userId) await this.assertSubscriptionAllowsScanning(userId);
+
     // IDOR guard: when the caller provides a userId, the scan must belong to that user.
     // Route handlers pass req.user.id here. Internal callers that omit userId fall back
     // to the old unguarded lookup — they already know what scan they're working with.
@@ -827,6 +934,19 @@ class StickerService {
         });
 
     if (!scan) throw new Error('Scan not found');
+
+    // Audit-pass [2.1]: re-check partner status here. The original Path A
+    // scanSticker(sessionId) re-checks too, but uploadReceipt is a separate
+    // route handler that can be hit independently. Without this gate, a user
+    // could complete a SESSION_ACTIVE scan and then upload the receipt after
+    // their partner was deactivated, reaching PENDING cashback at a venue
+    // that no longer accepts BoomCard. Mirrors the createSession gate exactly.
+    if (
+      scan.venue?.partner &&
+      (scan.venue.partner.status !== 'ACTIVE' || !scan.venue.partner.verifiedAt)
+    ) {
+      throw new Error('PARTNER_NOT_ACCEPTING: Този обект временно не приема BoomCard транзакции.');
+    }
 
     // Pre-existing-bug fix: reject re-upload on scans past the upload stage. Without this,
     // a second POST to /scan/:id/receipt would silently downgrade APPROVED → VALIDATING →
@@ -919,10 +1039,31 @@ class StickerService {
     }
 
     // All scans require admin approval — no auto-approve
-    return prisma.stickerScan.update({
+    const finalScan = await prisma.stickerScan.update({
       where: { id: scanId },
       data: { status: ScanStatus.MANUAL_REVIEW },
     });
+
+    // Spec §7.1 v1.1 — create a PENDING cashback record visible to the user
+    // for the duration of the risk review. Non-fatal: a write failure here
+    // must not roll back the upload. Idempotent — repeated calls return the
+    // existing entry. On admin approve, this row is promoted to CLEARED
+    // (and the wallet finally credited); on reject, it's marked VOIDED.
+    try {
+      if (scan.userId && (scan.cashbackAmount ?? 0) > 0) {
+        await cashbackLifecycleService.recordPendingForRiskReview({
+          userId: scan.userId,
+          amount: scan.cashbackAmount,
+          description: `Чакащ кешбек (риск преглед) — ${scan.venue?.name ?? 'обект'}`,
+          stickerScanId: scan.id,
+          metadata: { source: 'STICKER_SCAN_MANUAL_REVIEW', venueId: scan.venueId },
+        });
+      }
+    } catch (err) {
+      logger.error(`[uploadReceipt] failed to record PENDING cashback for scan ${scanId}:`, err);
+    }
+
+    return finalScan;
   }
 
   /**
@@ -1034,7 +1175,7 @@ class StickerService {
    * to reflect the corrected values before crediting the wallet. Without it,
    * the pre-computed scan.cashbackAmount is used as-is.
    */
-  async approveScan(scanId: string, opts?: { verifiedAmount?: number }): Promise<StickerScan> {
+  async approveScan(scanId: string, opts?: { verifiedAmount?: number; adminUserId?: string | null }): Promise<StickerScan> {
     const scan = await prisma.stickerScan.findUnique({
       where: { id: scanId },
       include: {
@@ -1068,6 +1209,16 @@ class StickerService {
     if (opts?.verifiedAmount != null) {
       if (!isFinite(opts.verifiedAmount) || opts.verifiedAmount <= 0) {
         throw new Error('verifiedAmount must be a positive number');
+      }
+      // Sanity ceiling: reject overrides that are more than 10× the scanned amount.
+      // This catches admin typos (e.g. 1000 instead of 100) while still allowing
+      // legitimate corrections in both directions.
+      const originalBill = scan.billAmount > 0 ? scan.billAmount : 1;
+      if (opts.verifiedAmount > originalBill * 10) {
+        throw new Error(
+          `verifiedAmount ${opts.verifiedAmount} exceeds 10× the scanned bill amount (${scan.billAmount}). ` +
+          `Check the value and retry.`
+        );
       }
       const cardTier = await this.resolveCashbackTier(scan.userId);
       const recalc = await fraudDetectionService.calculateCashback({
@@ -1158,6 +1309,11 @@ class StickerService {
     let updated: StickerScan | null = null;
 
     try {
+      // Spec §4.3 v1.1 — persist the fraud/risk score at transaction creation
+      // so admin search/filter by risk score works without re-deriving from
+      // receipt+stickerScan at query time.
+      const persistedRiskScore = Math.round(scan.fraudScore ?? 0);
+
       const transaction = await prisma.transaction.create({
         data: {
           userId: scan.userId,
@@ -1171,6 +1327,7 @@ class StickerService {
           finalAmount: effectiveBillAmount - effectiveCashbackAmount,
           currency: 'BGN',
           status: TransactionStatus.COMPLETED,
+          riskScore: persistedRiskScore,
           metadata: JSON.stringify({
             scanId: scan.id,
             stickerId: scan.stickerId,
@@ -1200,20 +1357,63 @@ class StickerService {
       // scan.card?.type was misleading (Finding #1/#2 leftover) — the tier at the time of
       // the scan was already gated by the subscription, so record it that way.
       const metadataTier = await this.resolveCashbackTier(scan.userId);
-      await walletService.credit({
-        userId: scan.userId,
-        amount: effectiveCashbackAmount,
-        type: WalletTransactionType.CASHBACK_CREDIT,
-        description: `Кешбек от сканиране на стикер в ${locationName}`,
-        stickerScanId: scan.id,
-        metadata: {
-          venueId: scan.venueId,
-          locationName,
-          billAmount: effectiveBillAmount,
-          cashbackTier: metadataTier ?? 'NONE',
-          ...(opts?.verifiedAmount != null ? { adminAmountOverride: { from: scan.billAmount, to: opts.verifiedAmount } } : {}),
+
+      // Spec §7.1 v1.1 — if a PENDING cashback entry was created when the scan
+      // entered MANUAL_REVIEW, promote it to CLEARED (and credit wallet balance)
+      // rather than creating a NEW credit row. Without this branch, the approve
+      // path would double-record: one PENDING ghost + one CLEARED credit.
+      // Legacy scans (pre-§7.1) have no PENDING entry → fall back to credit.
+      const pendingEntry = await prisma.walletTransaction.findFirst({
+        where: {
+          stickerScanId: scan.id,
+          type: WalletTransactionType.CASHBACK_CREDIT,
+          cashbackStatus: 'PENDING' as any,
         },
+        select: { id: true, amount: true },
       });
+
+      if (pendingEntry) {
+        // Audit-pass [1.1]: pass overrideAmount only when it actually differs,
+        // so the lifecycle service can apply the reconciliation atomically with
+        // the promotion + wallet credit (single $transaction).
+        await cashbackLifecycleService.promotePendingToCleared({
+          walletTransactionId: pendingEntry.id,
+          actorUserId: opts?.adminUserId ?? null,
+          reason: 'Admin approved sticker scan after risk review',
+          ...(pendingEntry.amount !== effectiveCashbackAmount
+            ? { overrideAmount: effectiveCashbackAmount }
+            : {}),
+        });
+      } else {
+        await walletService.credit({
+          userId: scan.userId,
+          amount: effectiveCashbackAmount,
+          type: WalletTransactionType.CASHBACK_CREDIT,
+          description: `Кешбек от сканиране на стикер в ${locationName}`,
+          stickerScanId: scan.id,
+          metadata: {
+            venueId: scan.venueId,
+            locationName,
+            billAmount: effectiveBillAmount,
+            cashbackTier: metadataTier ?? 'NONE',
+            ...(opts?.verifiedAmount != null ? { adminAmountOverride: { from: scan.billAmount, to: opts.verifiedAmount } } : {}),
+          },
+        });
+      }
+
+      // Write a dedicated audit row when an admin overrides the bill amount so the
+      // before/after figures are permanently traceable to the actor (not just in the
+      // transaction metadata JSON which is harder to query).
+      if (opts?.verifiedAmount != null) {
+        writeAudit({
+          actorUserId: opts.adminUserId ?? null,
+          action: 'ADMIN_AMOUNT_OVERRIDE',
+          objectType: 'StickerScan',
+          objectId: scanId,
+          before: { billAmount: scan.billAmount, cashbackAmount: scan.cashbackAmount },
+          after: { billAmount: effectiveBillAmount, cashbackAmount: effectiveCashbackAmount, verifiedAmount: opts.verifiedAmount },
+        }).catch((err) => logger.error(`[approveScan] audit write failed for override on scan ${scanId}:`, err));
+      }
 
       logger.info(`Credited ${effectiveCashbackAmount} BGN cashback for scan ${scanId}${opts?.verifiedAmount != null ? ` (admin override: ${scan.billAmount} → ${opts.verifiedAmount})` : ''}`);
     } catch (error) {
@@ -1279,11 +1479,21 @@ class StickerService {
   }
 
   /**
-   * Reject a scan
+   * Reject a scan.
+   *
+   * Spec §4.4 / §7.1 v1.1: also record a Voided cashback ghost row so the user
+   * sees an "Анулиран" entry with the reason instead of the cashback silently
+   * disappearing. actorUserId is the admin who made the decision (audit).
    */
-  async rejectScan(scanId: string, reason: string): Promise<StickerScan> {
+  async rejectScan(scanId: string, reason: string, actorUserId: string | null = null): Promise<StickerScan> {
     // Guard against rejecting an already-approved scan — cashback would already be
     // credited to the wallet, leaving the user with funds but a REJECTED status.
+    const scan = await prisma.stickerScan.findUnique({
+      where: { id: scanId },
+      select: { id: true, userId: true, cashbackAmount: true, venueId: true, status: true },
+    });
+    if (!scan) throw new Error(`Scan ${scanId} not found`);
+
     const result = await prisma.stickerScan.updateMany({
       where: { id: scanId, status: { not: ScanStatus.APPROVED } },
       data: { status: ScanStatus.REJECTED, rejectionReason: reason, processedAt: new Date() },
@@ -1291,6 +1501,50 @@ class StickerService {
     if (result.count === 0) {
       throw new Error('Scan has already been approved and cannot be rejected');
     }
+
+    // Spec §4.4 — visible Voided record with the rejection reason. Non-fatal:
+    // a ghost write failure must not leave the scan in an inconsistent state.
+    //
+    // Audit-pass [1.4]: the scan-level updateMany above already serialized
+    // approve vs reject (both filter on status, only one can transition out
+    // of MANUAL_REVIEW). If reject wins the scan claim, the PENDING row was
+    // not yet promoted because approveScan's promotion is in the same try
+    // block as the scan flip. We can safely void the PENDING row OR write
+    // a ghost. Defensive: if the row is no longer PENDING (e.g. legacy data,
+    // direct DB intervention), skip the wallet-mutating markVoided to avoid
+    // double-spending against a CLEARED entry.
+    try {
+      const pendingEntry = await prisma.walletTransaction.findFirst({
+        where: {
+          stickerScanId: scan.id,
+          type: WalletTransactionType.CASHBACK_CREDIT,
+        },
+        select: { id: true, cashbackStatus: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (pendingEntry && pendingEntry.cashbackStatus === 'PENDING') {
+        await cashbackLifecycleService.markVoided({
+          walletTransactionId: pendingEntry.id,
+          actorUserId,
+          reason,
+        });
+      } else if (pendingEntry) {
+        logger.warn(`[stickerService.rejectScan] scan ${scanId} cashback entry already in ${pendingEntry.cashbackStatus}; skipping void to avoid wallet desync`);
+      } else {
+        await cashbackLifecycleService.recordRejectedAsVoided({
+          userId: scan.userId,
+          amount: scan.cashbackAmount ?? 0,
+          reason,
+          actorUserId,
+          description: `Кешбек анулиран след риск преглед`,
+          stickerScanId: scan.id,
+          metadata: { source: 'STICKER_SCAN_REJECT', venueId: scan.venueId },
+        });
+      }
+    } catch (err) {
+      logger.error(`[stickerService.rejectScan] failed to record voided ghost for ${scanId}:`, err);
+    }
+
     return prisma.stickerScan.findUniqueOrThrow({ where: { id: scanId } });
   }
 
@@ -1317,12 +1571,12 @@ class StickerService {
   /**
    * Bulk reject scans with a shared reason.
    */
-  async bulkReject(scanIds: string[], reason: string): Promise<{ successCount: number; errorCount: number; errors: Array<{ scanId: string; error: string }> }> {
+  async bulkReject(scanIds: string[], reason: string, actorUserId: string | null = null): Promise<{ successCount: number; errorCount: number; errors: Array<{ scanId: string; error: string }> }> {
     let successCount = 0;
     const errors: Array<{ scanId: string; error: string }> = [];
     for (const scanId of scanIds) {
       try {
-        await this.rejectScan(scanId, reason);
+        await this.rejectScan(scanId, reason, actorUserId);
         successCount++;
       } catch (error: any) {
         logger.error(`Bulk reject failed for scan ${scanId}:`, error);

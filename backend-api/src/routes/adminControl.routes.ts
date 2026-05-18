@@ -456,8 +456,49 @@ router.post(
   requirePermission('control.risk.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : 'Rejected by admin';
-    const scan = await stickerService.rejectScan(req.params.id, reason);
+    // Spec §7.1 v1.1 — actorUserId threads into cashbackLifecycleService so the
+    // Voided ghost record carries `voidedByUserId` for the audit trail.
+    const scan = await stickerService.rejectScan(req.params.id, reason, req.user?.id ?? null);
     res.json({ success: true, data: scan, message: 'Signal rejected' });
+  })
+);
+
+/**
+ * POST /api/admin/control/risk-queue/bulk-reject
+ * Body: { scanIds: string[]; reason?: string }
+ *
+ * Bulk-reject sticker scans from the risk queue with a shared reason. Each
+ * scan's PENDING cashback row transitions to VOIDED with the same audit
+ * trail as the single-scan endpoint. Failures are isolated per-scan so one
+ * bad row doesn't kill the batch.
+ */
+router.post(
+  '/risk-queue/bulk-reject',
+  requirePermission('control.risk.write'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const scanIds = Array.isArray(req.body?.scanIds)
+      ? req.body.scanIds.filter((id: unknown): id is string => typeof id === 'string')
+      : [];
+    if (scanIds.length === 0) {
+      return res.status(400).json({ error: 'scanIds array is required' });
+    }
+    // Audit-pass [7.1]: lower the per-request cap from 100 → 25 since each
+    // scan triggers a wallet write + audit row (~5 DB round-trips × 100 =
+    // ~500 round-trips that block the HTTP request for many seconds). For
+    // batches > 25, frontends should chunk and call the endpoint multiple
+    // times; each call is independent and idempotent at the cashback layer.
+    if (scanIds.length > 25) {
+      return res.status(400).json({ error: 'bulk-reject batch limited to 25 scans per request (chunk larger sets client-side)' });
+    }
+    // De-duplicate IDs so a client that accidentally repeats one doesn't
+    // double-spend audit rows.
+    const uniqueIds: string[] = Array.from(new Set(scanIds));
+    const reason =
+      typeof req.body?.reason === 'string' && req.body.reason.trim()
+        ? req.body.reason.trim()
+        : 'Bulk rejected by admin';
+    const result = await stickerService.bulkReject(uniqueIds, reason, req.user?.id ?? null);
+    res.json({ success: true, data: result, message: 'Bulk reject completed' });
   })
 );
 

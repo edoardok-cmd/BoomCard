@@ -7,8 +7,10 @@
  * GET    /api/admin/settings/payout-thresholds/history               — recent threshold history
  * GET    /api/admin/settings/system                                  — all key/value system settings
  * PUT    /api/admin/settings/system                                  — upsert one or many settings
+ * GET    /api/admin/settings/system/history                          — last 30 system-setting change records
  * GET    /api/admin/settings/mobile-app                              — structured mobile app settings
  * PUT    /api/admin/settings/mobile-app                              — update mobile app settings
+ * GET    /api/admin/settings/mobile-app/history                      — last 30 mobile-app setting change records
  * GET    /api/admin/settings/mobile-errors                           — last 50 mobile error log entries
  * DELETE /api/admin/settings/mobile-errors                           — clear all mobile error log entries
  * GET    /api/admin/settings/fraud-rules                             — list fraud rules (filterable)
@@ -39,6 +41,17 @@ const router = Router();
 
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
 router.use(auditMiddleware);
+
+/* ─── Admin name resolver ─────────────────────────────────────────────────── */
+
+async function resolveAdminName(userId: string): Promise<string | null> {
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { firstName: true, lastName: true, email: true },
+  });
+  if (!u) return null;
+  return [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email;
+}
 
 /* ─── Payout Thresholds ───────────────────────────────────────────────────── */
 
@@ -81,7 +94,8 @@ router.get(
 
 /**
  * GET /api/admin/settings/payout-thresholds/history
- * Last 30 threshold change records, newest first, with creator email resolved.
+ * Last 30 threshold change records, newest first.
+ * Uses the name stored at save time; falls back to a live DB lookup for older rows.
  */
 router.get(
   '/payout-thresholds/history',
@@ -92,14 +106,17 @@ router.get(
       take: 30,
     });
 
-    // Resolve admin email for each row (createdBy is a plain user ID string, no Prisma relation)
-    const adminIds = [...new Set(history.map((r) => r.createdBy).filter(Boolean))] as string[];
+    // For rows that predate the createdByName column, fall back to a live lookup.
+    const needsLookup = history.filter((r) => r.createdBy && !r.createdByName);
+    const adminIds = [...new Set(needsLookup.map((r) => r.createdBy).filter(Boolean))] as string[];
     const admins = adminIds.length
       ? await prisma.user.findMany({ where: { id: { in: adminIds } }, select: { id: true, email: true, firstName: true, lastName: true } })
       : [];
     const adminMap = new Map(admins.map((u) => [u.id, u]));
 
     const data = history.map((r) => {
+      const storedName = r.createdByName;
+      if (storedName) return { ...r, createdByEmail: null, createdByName: storedName };
       const admin = r.createdBy ? adminMap.get(r.createdBy) : undefined;
       return {
         ...r,
@@ -141,6 +158,8 @@ router.put(
       }
     }
 
+    const adminName = await resolveAdminName(req.user!.id);
+
     const created = await prisma.$transaction(
       entries.map(([plan, amount]) =>
         prisma.payoutThreshold.create({
@@ -148,6 +167,7 @@ router.put(
             plan,
             minAmount: Math.round(amount * 100) / 100,
             createdBy: req.user!.id,
+            createdByName: adminName,
             notes: notes ?? null,
           },
         })
@@ -222,13 +242,13 @@ router.get(
 
 /**
  * PUT /api/admin/settings/system
- * Body: { settings: Record<string, string> }
+ * Body: { settings: Record<string, string>, notes?: string }
  */
 router.put(
   '/system',
   requirePermission('settings.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { settings } = req.body as { settings?: Record<string, string> };
+    const { settings, notes } = req.body as { settings?: Record<string, string>; notes?: string };
     if (!settings || typeof settings !== 'object') {
       return res.status(400).json({ success: false, error: 'settings object is required' });
     }
@@ -322,6 +342,15 @@ router.put(
     const toDelete = entries.filter(([k, v]) => CLEARABLE_KEYS.has(k) && v === '').map(([k]) => k);
     const toUpsert = entries.filter(([k, v]) => !(CLEARABLE_KEYS.has(k) && v === ''));
 
+    // Read current values for history before writing.
+    const currentRows = await prisma.systemSetting.findMany({
+      where: { key: { in: entries.map(([k]) => k) } },
+      select: { key: true, value: true },
+    });
+    const currentMap = new Map(currentRows.map((r) => [r.key, r.value]));
+
+    const adminName = await resolveAdminName(req.user!.id);
+
     await prisma.$transaction([
       ...(toDelete.length ? [prisma.systemSetting.deleteMany({ where: { key: { in: toDelete } } })] : []),
       ...toUpsert.map(([key, value]) =>
@@ -331,11 +360,58 @@ router.put(
           update: { value, updatedBy: req.user!.id },
         })
       ),
+      // Write history for every key that actually changed value.
+      ...entries
+        .filter(([key, value]) => {
+          const old = currentMap.get(key);
+          const isDelete = CLEARABLE_KEYS.has(key) && value === '';
+          return isDelete ? old !== undefined : old !== value;
+        })
+        .map(([key, value]) =>
+          prisma.systemSettingHistory.create({
+            data: {
+              key,
+              oldValue: currentMap.get(key) ?? null,
+              newValue: CLEARABLE_KEYS.has(key) && value === '' ? '' : value,
+              changedBy: req.user!.id,
+              changedByName: adminName,
+              notes: notes?.trim() || null,
+            },
+          })
+        ),
     ]);
 
     for (const [key] of entries) invalidateSystemSettingCache(key);
 
     res.json({ success: true, message: 'Settings saved' });
+  })
+);
+
+/**
+ * GET /api/admin/settings/system/history
+ * Last 30 system-setting change records.
+ * Optional query param: keys (comma-separated) — restricts results to those keys.
+ * Defaults to all ALLOWED_KEYS when omitted.
+ */
+router.get(
+  '/system/history',
+  requirePermission('settings.read'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const keysParam = (req.query as { keys?: string }).keys;
+    const keyFilter = keysParam
+      ? keysParam.split(',').map(k => k.trim()).filter(k => ALLOWED_KEYS.has(k))
+      : Array.from(ALLOWED_KEYS);
+
+    if (keysParam && keyFilter.length === 0) {
+      return res.status(400).json({ success: false, error: 'None of the requested keys are valid system setting keys' });
+    }
+
+    const history = await prisma.systemSettingHistory.findMany({
+      where: { key: { in: keyFilter } },
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+    });
+    res.json({ success: true, data: history });
   })
 );
 
@@ -398,7 +474,7 @@ router.put(
   '/mobile-app',
   requirePermission('settings.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { settings } = req.body as { settings?: Record<string, string> };
+    const { settings, notes } = req.body as { settings?: Record<string, string>; notes?: string };
     if (!settings || typeof settings !== 'object') {
       return res.status(400).json({ success: false, error: 'settings object is required' });
     }
@@ -432,21 +508,77 @@ router.put(
           error: `${key} must be "true" or "false"`,
         });
       }
+      if (key === 'mobile_app.error_log_url' && value !== '') {
+        let parsed: URL;
+        try { parsed = new URL(value); } catch {
+          return res.status(400).json({
+            success: false,
+            error: 'mobile_app.error_log_url must be a valid URL (e.g. https://errors.example.com/ingest) or empty',
+          });
+        }
+        if (!['https:', 'http:'].includes(parsed.protocol)) {
+          return res.status(400).json({
+            success: false,
+            error: 'mobile_app.error_log_url must use https or http',
+          });
+        }
+      }
     }
 
-    await prisma.$transaction(
-      entries.map(([key, value]) =>
+    // Read current values for history before writing.
+    const currentMobileRows = await prisma.systemSetting.findMany({
+      where: { key: { in: entries.map(([k]) => k) } },
+      select: { key: true, value: true },
+    });
+    const currentMobileMap = new Map(currentMobileRows.map((r) => [r.key, r.value]));
+
+    const mobileAdminName = await resolveAdminName(req.user!.id);
+
+    await prisma.$transaction([
+      ...entries.map(([key, value]) =>
         prisma.systemSetting.upsert({
           where: { key },
           create: { key, value, updatedBy: req.user!.id },
           update: { value, updatedBy: req.user!.id },
         })
-      )
-    );
+      ),
+      // Write history only for keys that changed value.
+      ...entries
+        .filter(([key, value]) => currentMobileMap.get(key) !== value)
+        .map(([key, value]) =>
+          prisma.systemSettingHistory.create({
+            data: {
+              key,
+              oldValue: currentMobileMap.get(key) ?? null,
+              newValue: value,
+              changedBy: req.user!.id,
+              changedByName: mobileAdminName,
+              notes: notes?.trim() || null,
+            },
+          })
+        ),
+    ]);
 
     for (const [key] of entries) invalidateSystemSettingCache(key);
 
     res.json({ success: true, message: 'Mobile app settings saved' });
+  })
+);
+
+/**
+ * GET /api/admin/settings/mobile-app/history
+ * Last 30 mobile-app setting change records.
+ */
+router.get(
+  '/mobile-app/history',
+  requirePermission('settings.read'),
+  asyncHandler(async (_req: AuthRequest, res: Response) => {
+    const history = await prisma.systemSettingHistory.findMany({
+      where: { key: { in: [...MOBILE_APP_KEYS] } },
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+    });
+    res.json({ success: true, data: history });
   })
 );
 

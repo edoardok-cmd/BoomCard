@@ -1218,6 +1218,16 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
           data: { status: UserStatus.ACTIVE },
         });
 
+        // Spec §4.2 v1.1 — recovery: any prior FAILED_PAYMENT subs for this user
+        // are now stale (the user re-paid). EXPIRE them so the scan/payout gates
+        // stop firing. Non-fatal — must not block the activation.
+        try {
+          const { clearFailedPaymentSubsForUser } = await import('../services/subscription.service');
+          await clearFailedPaymentSubsForUser(subscription.userId, subscription.id, null);
+        } catch (clearErr) {
+          logger.error(`[paysera-callback] FAILED_PAYMENT cleanup failed for user ${subscription.userId}:`, clearErr);
+        }
+
         logger.info(`Subscription activated: ${subscription.id} for user ${subscription.userId}`);
 
         // Sync user's card type to match the newly activated subscription plan
@@ -1418,6 +1428,12 @@ router.post('/transfer-callback', asyncHandler(async (req: Request, res: Respons
 
     logger.info(`Payout completed: transfer ${transferId} for user ${userId}, ${Math.abs(walletTx.amount).toFixed(2)} BGN`);
 
+    // Spec §4.4 v1.1 — terminal LOCKED → PAID transition for the cashback
+    // entries that funded this payout. Best-effort.
+    walletService
+      .markCashbackPaidForWithdrawal(walletTx.id, null)
+      .catch((err) => logger.error('[paysera-callback] markCashbackPaid failed:', err));
+
     // Notify user via email
     if (walletTx.wallet.user?.email) {
       const amountBGN = Math.abs(walletTx.amount);
@@ -1473,6 +1489,12 @@ router.post('/transfer-callback', asyncHandler(async (req: Request, res: Respons
       });
 
       logger.warn(`Payout reversed for user ${userId}: transfer ${transferId} ${status}`);
+
+      // Spec §4.4 v1.1 — revert LOCKED → CLEARED so the entries are eligible
+      // for a future payout attempt. Best-effort.
+      walletService
+        .revertCashbackLockForWithdrawal(walletTx.id, null, `Paysera transfer ${status}`)
+        .catch((err) => logger.error('[paysera-callback] revertCashbackLock failed:', err));
 
       // Notify user that payout failed and balance was restored
       if (walletTx.wallet.user?.email) {

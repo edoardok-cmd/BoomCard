@@ -14,6 +14,7 @@ import { notificationService } from './notification.service';
 import { SECURITY_CONFIG } from '../config/security.config';
 import { resolveUserPermissions } from './permission.service';
 import { findInvalidCategoryEntry } from '../constants/categoryRegistry';
+import { parseVenueCountBucket } from './partnerVenueCountBucket.helper';
 
 // Translate a Prisma P2002 (unique violation) on the (email, role) index
 // into a user-facing 409. Two concurrent register POSTs with the same
@@ -32,6 +33,32 @@ function isEmailRoleUniqueViolation(err: unknown): boolean {
 }
 
 const TERMS_VERSION = process.env.TERMS_VERSION || '2026-02-24';
+
+// Audit-pass [4.3]: per-email throttle for the public verification-resend
+// endpoint. The route uses authRateLimiter which is per-IP — an attacker on
+// a clean IP can still iterate addresses. This cap is in-process (single-node
+// safe; for clustered deploys replace with Redis SETEX). 60s mirrors the
+// usual user expectation of "I clicked resend; wait a minute before retrying".
+const VERIFICATION_RESEND_WINDOW_MS = 60_000;
+const verificationResendCache = new Map<string, number>();
+function verificationResendIsAllowed(email: string): boolean {
+  const now = Date.now();
+  const last = verificationResendCache.get(email);
+  if (last == null) return true;
+  if (now - last >= VERIFICATION_RESEND_WINDOW_MS) return true;
+  return false;
+}
+function markVerificationResendAttempt(email: string): void {
+  const now = Date.now();
+  verificationResendCache.set(email, now);
+  // Cheap GC: when the map grows past 10k entries, drop anything older than
+  // the window. Bounded by visit frequency, so amortized O(1) per call.
+  if (verificationResendCache.size > 10_000) {
+    for (const [k, v] of verificationResendCache) {
+      if (now - v >= VERIFICATION_RESEND_WINDOW_MS) verificationResendCache.delete(k);
+    }
+  }
+}
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
@@ -53,7 +80,14 @@ export interface BusinessInfo {
   website?: string;
   city?: string;
   address?: string;
+  /** Spec §5.1 v1.1 — declared venue count bucket: "1" | "2-5" | "6-10" | "11+" */
+  requestObjectCount?: string;
 }
+
+// Spec §5.1 v1.1 — whitelist of allowed venue-count buckets. Must stay in sync
+// with the public form (RegisterPartnerPage.tsx) and the admin filter dropdown.
+export const ALLOWED_REQUEST_OBJECT_COUNTS = ['1', '2-5', '6-10', '11+'] as const;
+export type RequestObjectCount = typeof ALLOWED_REQUEST_OBJECT_COUNTS[number];
 
 export interface RegisterInput {
   email: string;
@@ -140,6 +174,23 @@ export class AuthService {
 
     if (isPartner && !businessInfo) {
       throw new AppError('businessInfo is required for partner accounts', 400);
+    }
+
+    // Spec §5.1 v1.1 — if requestObjectCount is provided, it must be one of the
+    // four whitelisted bucket values. Empty/undefined is tolerated here so the
+    // server stays backwards-compatible with older callers; the public form now
+    // enforces presence client-side.
+    if (
+      isPartner &&
+      businessInfo?.requestObjectCount !== undefined &&
+      businessInfo.requestObjectCount !== null &&
+      businessInfo.requestObjectCount !== '' &&
+      !(ALLOWED_REQUEST_OBJECT_COUNTS as readonly string[]).includes(businessInfo.requestObjectCount)
+    ) {
+      throw new AppError(
+        `requestObjectCount must be one of: ${ALLOWED_REQUEST_OBJECT_COUNTS.join(', ')}`,
+        400,
+      );
     }
 
     const targetRole: 'USER' | 'PARTNER' = isPartner ? 'PARTNER' : 'USER';
@@ -239,6 +290,8 @@ export class AuthService {
               website: info.website?.trim() || null,
               city: info.city?.trim() || null,
               address: info.address?.trim() || null,
+              // Spec §5.1 v1.1 — declared number of venues at application time.
+              requestObjectCount: parseVenueCountBucket(info.requestObjectCount),
             },
             select: { id: true },
           });
@@ -263,6 +316,14 @@ export class AuthService {
         businessName: info.businessName.trim(),
         verificationUrl,
       }).catch((err) => logger.error('Failed to send partner email verification:', err));
+
+      // Spec §5.1 v1.1 — "до 2 работни дни" external promise email. Sent in
+      // addition to the email-verification message above so the applicant
+      // has the SLA copy as a standalone, on-record reply.
+      emailService.sendPartnerApplicationAck(user.email, {
+        firstName: user.firstName || user.email.split('@')[0],
+        businessName: info.businessName.trim(),
+      }).catch((err) => logger.error('Failed to send partner application ack:', err));
 
       emailService.sendPartnerApplicationAdminNotification({
         applicantName: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
@@ -346,6 +407,125 @@ export class AuthService {
   }
 
   /**
+   * Public, unauthenticated email-verification request (spec §9.5).
+   *
+   * Self-service resend by email — needed because login is blocked until
+   * `emailVerified=true`, so the user can't authenticate to call the
+   * authenticated variant. Always returns success (no user-enumeration via
+   * response shape); per-account rate limiting is enforced upstream.
+   *
+   * Email may map to multiple accounts (User/Partner can share an address);
+   * we resend for every unverified match.
+   */
+  static async requestEmailVerificationByEmail(email: string): Promise<{ ok: true }> {
+    const normalized = email.toLowerCase().trim();
+
+    // Audit-pass [4.3]: per-email throttle on top of the per-IP route limiter.
+    // Without this, an attacker iterates addresses from a clean IP. 60s window.
+    if (!verificationResendIsAllowed(normalized)) {
+      return { ok: true };
+    }
+    markVerificationResendAttempt(normalized);
+
+    // Audit-pass [4.1]: fire-and-forget the mail work. Doing findMany +
+    // per-user mint + sendEmail synchronously made response time scale with
+    // "N real matches", a timing oracle for account enumeration.
+    setImmediate(async () => {
+      try {
+        const matches = await prisma.user.findMany({
+          where: { email: normalized },
+          select: { id: true, email: true, firstName: true, emailVerified: true, role: true },
+        });
+        const unverified = matches.filter((m) => !m.emailVerified);
+        for (const u of unverified) {
+          try {
+            await AuthService.issueAndSendVerification(u);
+          } catch (err) {
+            logger.error(`[auth.requestEmailVerificationByEmail] failed for ${u.id}:`, err);
+          }
+        }
+      } catch (err) {
+        logger.error(`[auth.requestEmailVerificationByEmail] async work failed:`, err);
+      }
+    });
+
+    return { ok: true };
+  }
+
+  /**
+   * Internal helper: mint a fresh 24h verification token for a user and email
+   * the link. Centralised so authenticated + public resend paths share logic.
+   *
+   * Audit-pass [4.2]: branch on role so non-partner users receive a plain
+   * BoomCard verification email rather than the partner-application copy
+   * (which renders "BOOM Card partner network with <strong></strong>" when
+   * businessName is empty, and promises a 24h application review that
+   * doesn't apply to plain users).
+   */
+  private static async issueAndSendVerification(user: {
+    id: string;
+    email: string;
+    firstName: string | null;
+    role: string;
+  }) {
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiry = new Date(Date.now() + SECURITY_CONFIG.SECURITY.EMAIL_VERIFICATION_EXPIRY);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerificationToken: token, emailVerificationExpiry: expiry },
+    });
+
+    const apiBase = process.env.API_URL || 'https://boomcard-api.fly.dev';
+    const verificationUrl = `${apiBase}/api/auth/verify-email?token=${token}`;
+    const firstName = user.firstName || user.email.split('@')[0];
+
+    if (user.role === 'PARTNER') {
+      // Partner-application template. Fetch businessName best-effort so the
+      // template doesn't render "<strong></strong>".
+      let businessName = '';
+      try {
+        const partner = await prisma.partner.findUnique({
+          where: { userId: user.id },
+          select: { businessName: true },
+        });
+        if (partner?.businessName) businessName = partner.businessName;
+      } catch (err) {
+        logger.error(`[auth.issueAndSendVerification] businessName lookup failed for ${user.id}:`, err);
+      }
+      await emailService.sendPartnerEmailVerification(user.email, {
+        firstName,
+        businessName,
+        verificationUrl,
+      });
+    } else {
+      // USER / ADMIN / SUPER_ADMIN — plain user-facing template.
+      await emailService.sendUserEmailVerification(user.email, {
+        firstName,
+        verificationUrl,
+      });
+    }
+  }
+
+  /**
+   * Self-service resend of the email verification link (spec §9.5).
+   * Issues a fresh 24h token; the new value overwrites the previous, which
+   * implicitly invalidates the old link (single token column). Safe to call
+   * for already-verified accounts — returns alreadyVerified=true.
+   */
+  static async resendEmailVerification(userId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, firstName: true, emailVerified: true, role: true },
+    });
+    if (!user) throw new AppError('User not found', 404);
+    if (user.emailVerified) return { alreadyVerified: true };
+    this.issueAndSendVerification(user).catch((err) =>
+      logger.error('Failed to resend email verification:', err),
+    );
+    return { alreadyVerified: false };
+  }
+
+  /**
    * Verify a partner's email address via the token sent on registration.
    * Sets emailVerified=true and clears the token.
    */
@@ -402,6 +582,7 @@ export class AuthService {
         emailVerified: true,
         totpSecret: true,
         totpEnabledAt: true,
+        mustChangePassword: true,
       },
       // Stable ordering so password-disambiguation picks the same row
       // across replicas/pods if more than one candidate matches.
@@ -449,6 +630,58 @@ export class AuthService {
         prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'pending_verification' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
         throw new AppError('Your partner application is under review. You will be notified by email once approved.', 403);
       }
+
+      // Spec §5.3 v1.1 — Partner status matrix gates login.
+      //   ACTIVE    + verifiedAt → full login
+      //   INACTIVE  + verifiedAt → login permitted (read-only enforced downstream)
+      //   ACTIVE    + verifiedAt=null  → block: awaiting activation (link not clicked)
+      //   INACTIVE  + verifiedAt=null  → block: awaiting activation
+      //   SUSPENDED / PAUSED           → block: temporarily suspended
+      //   ARCHIVED                     → block: account archived
+      //   PENDING                      → block: pipeline not finished
+      //   REJECTED                     → block: rejected
+      //
+      // The verifiedAt-null block runs FIRST. Deliberate trade-off, not an
+      // obvious-right answer:
+      //   PRO: a partner suspended-before-activation still sees "check your
+      //        email", which is the only path forward — the suspension is
+      //        meaningless until they ever had a working account.
+      //   CON: a partner archived-without-activating sees "check your email"
+      //        even though there is no path forward. We accept this because
+      //        the "archived without activating" cohort is empirically empty
+      //        (status only moves to ARCHIVED via /partner-status, which
+      //        requires status to have first been ACTIVE — and the activation
+      //        gate prevented login during that ACTIVE phase).
+      // Future status additions inherit the verifiedAt-null block by default.
+      const partner = await prisma.partner.findUnique({
+        where: { userId: user.id },
+        select: { status: true, verifiedAt: true },
+      });
+      const LOGIN_ALLOWED_WITHOUT_VERIFIED_AT = new Set<string>([]); // intentionally empty
+      if (
+        partner &&
+        !partner.verifiedAt &&
+        !LOGIN_ALLOWED_WITHOUT_VERIFIED_AT.has(partner.status)
+      ) {
+        prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'awaiting_activation' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
+        throw new AppError('Вашият партньорски акаунт очаква активиране. Моля проверете имейла си за активационен линк.', 403);
+      }
+      if (partner?.status === 'SUSPENDED' || partner?.status === 'PAUSED') {
+        prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'partner_suspended' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
+        throw new AppError('Вашият партньорски акаунт е временно спрян. Свържете се с office@boomcard.bg.', 403);
+      }
+      if (partner?.status === 'ARCHIVED') {
+        prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'partner_archived' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
+        throw new AppError('Вашият партньорски акаунт е архивиран и достъпът е прекратен.', 403);
+      }
+      if (partner?.status === 'REJECTED') {
+        prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'partner_rejected' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
+        throw new AppError('Вашата кандидатура за партньорство е отказана.', 403);
+      }
+      // INACTIVE / ACTIVE with verifiedAt set: login permitted (read-only
+      // operational mode for INACTIVE per spec). The read-only enforcement
+      // happens downstream — partner can view transactions but cannot
+      // generate new QR activity / new transactions.
     }
 
     // The mobile app is for customers (role=USER) only. Block partner/admin roles
@@ -507,11 +740,15 @@ export class AuthService {
       switchableAccounts = await this.getSwitchableAccounts(accountGroup, clientType);
     }
 
-    // Remove password hash from response
-    const { passwordHash, ...userWithoutPassword } = user;
+    // Normalize and strip fields that must not reach the client.
+    // totpEnabledAt / totpSecret are internal; expose only the boolean.
+    const { passwordHash, totpEnabledAt, totpSecret, ...userWithoutPassword } = user;
 
     return {
-      user: userWithoutPassword,
+      user: {
+        ...userWithoutPassword,
+        twoFactorEnabled: totpEnabledAt !== null,
+      },
       ...tokens,
       ...(switchableAccounts ? { switchableAccounts } : {}),
     };
@@ -653,6 +890,8 @@ export class AuthService {
         marketingConsent: true,
         marketingConsentEmail: true,
         marketingConsentPhone: true,
+        totpEnabledAt: true,
+        mustChangePassword: true,
         loyaltyAccount: {
           select: {
             tier: true,
@@ -668,7 +907,11 @@ export class AuthService {
       throw new AppError('User not found', 404);
     }
 
-    return user;
+    const { totpEnabledAt, ...rest } = user;
+    return {
+      ...rest,
+      twoFactorEnabled: totpEnabledAt !== null,
+    };
   }
 
   /**
@@ -858,9 +1101,10 @@ export class AuthService {
     // Update password. Stamp passwordChangedAt so switchAccount can refuse
     // sibling-pivot attempts from access tokens issued before this rotation
     // (access tokens are not individually revocable — see switchAccount).
+    // Clear mustChangePassword so the admin panel gate lifts after first change.
     await prisma.user.update({
       where: { id: userId },
-      data: { passwordHash: newPasswordHash, passwordChangedAt: new Date() },
+      data: { passwordHash: newPasswordHash, passwordChangedAt: new Date(), mustChangePassword: false },
     });
 
     // Invalidate all refresh tokens for this user AND any sibling session
@@ -1160,7 +1404,16 @@ export class AuthService {
     for (const user of users) {
       const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit
       const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
-      const expires = new Date(Date.now() + SECURITY_CONFIG.SECURITY.OTP_EXPIRY_MS);
+      // Spec §9.5: per-role validity. Admin tightened to 1h, partner/user 24h.
+      // Each new OTP overwrites the previous, which implicitly invalidates older
+      // codes (single column + later expires wins on lookup).
+      const expiryMs =
+        user.role === 'ADMIN' || user.role === 'SUPER_ADMIN'
+          ? SECURITY_CONFIG.SECURITY.PASSWORD_RESET_EXPIRY_ADMIN_MS
+          : user.role === 'PARTNER'
+            ? SECURITY_CONFIG.SECURITY.PASSWORD_RESET_EXPIRY_PARTNER_MS
+            : SECURITY_CONFIG.SECURITY.PASSWORD_RESET_EXPIRY_USER_MS;
+      const expires = new Date(Date.now() + expiryMs);
 
       await prisma.user.update({
         where: { id: user.id },
@@ -1438,6 +1691,8 @@ export class AuthService {
           status: true,
           avatar: true,
           passwordChangedAt: true,
+          mustChangePassword: true,
+          totpEnabledAt: true,
         },
       }),
       // Caller's own passwordChangedAt so we can also refuse pivots from a
@@ -1513,7 +1768,7 @@ export class AuthService {
 
     const tokens = await this.generateTokens(target, clientType, accountGroup);
 
-    const { passwordHash, ...targetWithoutPassword } = target;
+    const { passwordHash, totpEnabledAt, ...targetWithoutPassword } = target;
     const switchableAccounts = await this.fetchSwitchableAccounts(accountGroup);
     const filtered = switchableAccounts.filter((a) =>
       clientType === 'mobile' ? a.role === 'USER' : a.role !== 'USER'
@@ -1524,7 +1779,7 @@ export class AuthService {
     );
 
     return {
-      user: targetWithoutPassword,
+      user: { ...targetWithoutPassword, twoFactorEnabled: totpEnabledAt !== null },
       ...tokens,
       switchableAccounts: filtered,
     };
@@ -1701,6 +1956,8 @@ export class AuthService {
         role: true,
         status: true,
         avatar: true,
+        mustChangePassword: true,
+        totpEnabledAt: true,
       },
     });
 
@@ -1747,8 +2004,9 @@ export class AuthService {
       endedAt: new Date().toISOString(),
     });
 
+    const { totpEnabledAt: adminTotpEnabledAt, ...adminWithout } = admin;
     return {
-      user: admin,
+      user: { ...adminWithout, twoFactorEnabled: adminTotpEnabledAt !== null },
       ...tokens,
       ...(switchableAccounts ? { switchableAccounts } : {}),
     };

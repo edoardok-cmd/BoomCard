@@ -7,6 +7,7 @@ import {
   SUSPICIOUS_PREFIX_CODES,
 } from '../services/adminAlerts.service';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
+import { requireActivePartnerForWrites } from '../middleware/partnerStatus.middleware';
 import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
 import { imageUploadService } from '../services/imageUpload.service';
 import { LocationType, ScanStatus } from '@prisma/client';
@@ -348,7 +349,7 @@ router.get('/validate/:stickerId', async (req: Request, res: Response) => {
  * Create a new sticker location for a venue
  * Requires authentication (Partner role)
  */
-router.post('/locations', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+router.post('/locations', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: Request, res: Response) => {
   try {
     const { venueId, name, nameBg, locationType, locationNumber, capacity, floor, section } = req.body;
 
@@ -388,7 +389,7 @@ router.post('/locations', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADM
  * Create multiple sticker locations at once
  * Requires authentication (Partner role)
  */
-router.post('/locations/bulk', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+router.post('/locations/bulk', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: Request, res: Response) => {
   try {
     const { locations } = req.body;
 
@@ -420,7 +421,7 @@ router.post('/locations/bulk', authenticate, authorize('PARTNER', 'ADMIN', 'SUPE
  * Generate a sticker with QR code for a location
  * Requires authentication (Partner role)
  */
-router.post('/generate/:locationId', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+router.post('/generate/:locationId', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: Request, res: Response) => {
   try {
     const { locationId } = req.params;
 
@@ -444,7 +445,7 @@ router.post('/generate/:locationId', authenticate, authorize('PARTNER', 'ADMIN',
  * Generate multiple stickers at once
  * Requires authentication (Partner role)
  */
-router.post('/generate/bulk', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+router.post('/generate/bulk', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: Request, res: Response) => {
   try {
     const { locationIds } = req.body;
 
@@ -476,7 +477,7 @@ router.post('/generate/bulk', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER
  * Mark sticker as printed and active
  * Requires authentication (Partner role)
  */
-router.post('/activate/:stickerId', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+router.post('/activate/:stickerId', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: Request, res: Response) => {
   try {
     const { stickerId } = req.params;
 
@@ -500,7 +501,7 @@ router.post('/activate/:stickerId', authenticate, authorize('PARTNER', 'ADMIN', 
  * Get all stickers for a venue
  * Requires authentication (Partner role)
  */
-router.get('/venue/:venueId', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+router.get('/venue/:venueId', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: Request, res: Response) => {
   try {
     const { venueId } = req.params;
 
@@ -525,7 +526,7 @@ router.get('/venue/:venueId', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER
  * Get all scans for a venue
  * Requires authentication (Partner role)
  */
-router.get('/venue/:venueId/scans', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+router.get('/venue/:venueId/scans', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: Request, res: Response) => {
   try {
     const { venueId } = req.params;
     const limit = parseInt(req.query.limit as string) || 100;
@@ -551,7 +552,7 @@ router.get('/venue/:venueId/scans', authenticate, authorize('PARTNER', 'ADMIN', 
  * Get analytics for venue sticker scans
  * Requires authentication (Partner role)
  */
-router.get('/venue/:venueId/analytics', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+router.get('/venue/:venueId/analytics', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: Request, res: Response) => {
   try {
     const { venueId } = req.params;
     const days = parseInt(req.query.days as string) || 30;
@@ -576,7 +577,7 @@ router.get('/venue/:venueId/analytics', authenticate, authorize('PARTNER', 'ADMI
  * Get venue sticker configuration
  * Requires authentication (Partner role)
  */
-router.get('/venue/:venueId/config', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+router.get('/venue/:venueId/config', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: Request, res: Response) => {
   try {
     const { venueId } = req.params;
 
@@ -600,7 +601,7 @@ router.get('/venue/:venueId/config', authenticate, authorize('PARTNER', 'ADMIN',
  * Update venue sticker configuration
  * Requires authentication (Partner role)
  */
-router.put('/venue/:venueId/config', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
+router.put('/venue/:venueId/config', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: AuthRequest, res: Response) => {
   try {
     const { venueId } = req.params;
     const config = req.body;
@@ -865,14 +866,15 @@ router.post('/admin/approve/:scanId', authenticate, authorize('ADMIN', 'SUPER_AD
   try {
     const { scanId } = req.params;
     const { verifiedAmount } = req.body ?? {};
+    const adminUserId = (req as any).user?.id ?? null;
 
-    let opts: { verifiedAmount?: number } | undefined;
+    let opts: { verifiedAmount?: number; adminUserId?: string | null } = { adminUserId };
     if (verifiedAmount !== undefined && verifiedAmount !== null && verifiedAmount !== '') {
       const parsed = typeof verifiedAmount === 'number' ? verifiedAmount : Number(verifiedAmount);
       if (!isFinite(parsed) || parsed <= 0) {
         return res.status(400).json({ success: false, error: 'verifiedAmount must be a positive number' });
       }
-      opts = { verifiedAmount: parsed };
+      opts = { ...opts, verifiedAmount: parsed };
     }
 
     const scan = await stickerService.approveScan(scanId, opts);
@@ -896,14 +898,14 @@ router.post('/admin/approve/:scanId', authenticate, authorize('ADMIN', 'SUPER_AD
  * Body: { notes?: string } - Optional admin notes
  * Requires authentication (Admin role)
  */
-router.post('/admin/reject/:scanId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+router.post('/admin/reject/:scanId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
     const { scanId } = req.params;
     const { notes } = req.body;
 
     const reason = notes || 'Rejected by admin';
 
-    const scan = await stickerService.rejectScan(scanId, reason);
+    const scan = await stickerService.rejectScan(scanId, reason, req.user?.id ?? null);
 
     res.json({
       success: true,
@@ -947,7 +949,7 @@ router.post('/admin/bulk-approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN
  * POST /api/stickers/admin/bulk-reject
  * Body: { scanIds: string[], reason: string }
  */
-router.post('/admin/bulk-reject', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+router.post('/admin/bulk-reject', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
     const { scanIds, reason } = req.body as { scanIds?: unknown; reason?: unknown };
     if (!Array.isArray(scanIds) || scanIds.length === 0 || !scanIds.every((id) => typeof id === 'string')) {
@@ -959,7 +961,7 @@ router.post('/admin/bulk-reject', authenticate, authorize('ADMIN', 'SUPER_ADMIN'
     if (typeof reason !== 'string' || !reason.trim()) {
       return res.status(400).json({ success: false, error: 'reason is required' });
     }
-    const result = await stickerService.bulkReject(scanIds as string[], reason.trim());
+    const result = await stickerService.bulkReject(scanIds as string[], reason.trim(), req.user?.id ?? null);
     res.json({ success: true, ...result, message: `${result.successCount} scans rejected, ${result.errorCount} errors` });
   } catch (error: any) {
     res.status(400).json({ success: false, error: error?.message || 'Failed to bulk reject scans' });

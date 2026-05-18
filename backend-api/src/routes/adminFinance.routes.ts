@@ -21,6 +21,7 @@ import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
 import * as XLSX from 'xlsx';
 import { Prisma, ReportingPeriodStatus, ScanStatus } from '@prisma/client';
+import { adminCashbackService } from '../services/adminCashback.service';
 
 const router = Router();
 
@@ -194,6 +195,9 @@ router.post(
 
     let created = 0;
     let updated = 0;
+    let skippedPaid = 0;
+
+    const invoiceYear = parseInt(month.slice(0, 4), 10);
 
     for (const [partnerId, totals] of byPartner) {
       const contractedRate = partnerRateMap.get(partnerId) ?? null;
@@ -216,26 +220,66 @@ router.post(
         where: { partnerId_month: { partnerId, month } },
       });
 
-      await prisma.partnerCashbackPayment.upsert({
-        where: { partnerId_month: { partnerId, month } },
-        create: {
-          partnerId, month,
-          totalCashbackOwed, turnoverAmount, contractedRate, marginAmount,
-          status: 'PENDING',
-        },
-        update: {
-          totalCashbackOwed, turnoverAmount, contractedRate, marginAmount,
-          // Keep existing status/paidAt/paidBy so we don't overwrite a PAID record.
-        },
-      });
-
-      if (existing) updated++; else created++;
+      if (existing) {
+        // PAID invoices are frozen accounting records — never recompute their
+        // financial totals, even if scan state changed after payment. The admin
+        // must explicitly reverse the payment first.
+        if (existing.status === 'PAID') {
+          skippedPaid++;
+          continue;
+        }
+        // Update path: never touch invoiceNumber once assigned.
+        await prisma.partnerCashbackPayment.update({
+          where: { partnerId_month: { partnerId, month } },
+          data: { totalCashbackOwed, turnoverAmount, contractedRate, marginAmount },
+        });
+        updated++;
+      } else {
+        // Create path: assign invoice number and write in one serializable transaction
+        // so concurrent generate requests cannot read the same max and collide.
+        try {
+          await prisma.$transaction(async (tx) => {
+            const invoiceNumber = await nextInvoiceNumberTx(tx, invoiceYear);
+            await tx.partnerCashbackPayment.create({
+              data: {
+                partnerId, month,
+                totalCashbackOwed, turnoverAmount, contractedRate, marginAmount,
+                status: 'PENDING',
+                invoiceNumber,
+              },
+            });
+          }, { isolationLevel: 'Serializable' });
+          created++;
+        } catch (err: unknown) {
+          // P2002 — unique constraint on (partnerId, month): a concurrent request
+          // already committed this invoice; treat as a no-op for this request.
+          // P2034 — serialization failure: PostgreSQL SSI aborted this transaction
+          // because another concurrent serializable transaction committed first;
+          // same outcome — the invoice was already created by the winner.
+          if (
+            err instanceof Prisma.PrismaClientKnownRequestError &&
+            (err.code === 'P2002' || err.code === 'P2034')
+          ) {
+            updated++;
+          } else {
+            throw err;
+          }
+        }
+      }
     }
+
+    // Backfill of legacy unnumbered invoices is exposed as a separate one-shot
+    // admin endpoint (POST /admin/finance/invoices/backfill-numbers) — it must
+    // not run inside the hot generate path (it walked the entire unnumbered
+    // table on every call, which is O(N) on a per-request basis).
 
     return res.json({
       success: true,
-      data: { created, updated, total: created + updated },
-      message: `Generated ${created + updated} invoice(s) for ${month}.`,
+      data: { created, updated, skippedPaid, total: created + updated + skippedPaid },
+      message:
+        `Generated ${created + updated} invoice(s) for ${month}` +
+        (skippedPaid > 0 ? ` (${skippedPaid} paid invoice(s) preserved unchanged)` : '') +
+        '.',
     });
   })
 );
@@ -343,6 +387,86 @@ router.patch(
     });
 
     res.json({ success: true, data: updated });
+  })
+);
+
+/* ─── Invoice number helpers ──────────────────────────────────────────────── */
+
+// Accepted transaction-client type from Prisma's $transaction callback parameter.
+type PrismaTxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
+/**
+ * Reads the current max invoice number for the year and returns the next one.
+ * Must be called within a serializable transaction so the read and the subsequent
+ * create are atomic — preventing concurrent requests from computing the same sequence.
+ * Format: BC-YYYY-NNNN (e.g. BC-2026-0001).
+ */
+async function nextInvoiceNumberTx(tx: PrismaTxClient, year: number): Promise<string> {
+  const prefix = `BC-${year}-`;
+  const last = await tx.partnerCashbackPayment.findFirst({
+    where: { invoiceNumber: { startsWith: prefix } },
+    orderBy: { invoiceNumber: 'desc' },
+    select: { invoiceNumber: true },
+  });
+  const seq = last?.invoiceNumber
+    ? parseInt(last.invoiceNumber.slice(prefix.length), 10) + 1
+    : 1;
+  return `${prefix}${String(seq).padStart(4, '0')}`;
+}
+
+/** Convenience wrapper used by the backfill helper (runs outside an explicit tx). */
+async function nextInvoiceNumber(year: number): Promise<string> {
+  return prisma.$transaction(
+    (tx) => nextInvoiceNumberTx(tx, year),
+    { isolationLevel: 'Serializable' },
+  );
+}
+
+/**
+ * One-shot backfill: assigns invoice numbers to any PartnerCashbackPayment rows
+ * that are missing one. Exposed via POST /invoices/backfill-numbers below so
+ * the admin can trigger it manually — it must NOT run inside the per-request
+ * generate path (O(N) over the unnumbered set per call).
+ */
+async function backfillInvoiceNumbers(): Promise<{ backfilled: number; remaining: number }> {
+  const unnumbered = await prisma.partnerCashbackPayment.findMany({
+    where: { invoiceNumber: null },
+    orderBy: [{ month: 'asc' }, { createdAt: 'asc' }],
+    select: { id: true, month: true },
+  });
+  let backfilled = 0;
+  for (const inv of unnumbered) {
+    const year = parseInt(inv.month.slice(0, 4), 10);
+    const num = await nextInvoiceNumber(year);
+    try {
+      await prisma.partnerCashbackPayment.update({
+        where: { id: inv.id },
+        data: { invoiceNumber: num },
+      });
+      backfilled++;
+    } catch {
+      // Unique constraint race — skip; admin can re-run if they want a clean state.
+    }
+  }
+  const remaining = await prisma.partnerCashbackPayment.count({ where: { invoiceNumber: null } });
+  return { backfilled, remaining };
+}
+
+/**
+ * POST /api/admin/finance/invoices/backfill-numbers
+ * Admin one-shot to assign invoice numbers to legacy rows missing one.
+ * Idempotent: safe to call repeatedly; only operates on unnumbered records.
+ */
+router.post(
+  '/invoices/backfill-numbers',
+  requirePermission('finance.invoices.write'),
+  asyncHandler(async (_req: AuthRequest, res: Response) => {
+    const result = await backfillInvoiceNumbers();
+    res.json({
+      success: true,
+      data: result,
+      message: `Backfilled ${result.backfilled} invoice number(s); ${result.remaining} still missing.`,
+    });
   })
 );
 
@@ -1036,6 +1160,30 @@ router.delete(
   })
 );
 
+/**
+ * PATCH /api/admin/finance/reporting-periods/:month/notes
+ * Updates the notes field on a ReportingPeriod. Allowed at any lifecycle stage.
+ * Body: { notes: string }
+ */
+router.patch(
+  '/reporting-periods/:month/notes',
+  requirePermission('finance.periods.write'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { month } = req.params;
+    const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : '';
+
+    const period = await prisma.reportingPeriod.findUnique({ where: { month } });
+    if (!period) return res.status(404).json({ success: false, error: 'Reporting period not found' });
+
+    const updated = await prisma.reportingPeriod.update({
+      where: { month },
+      data: { notes: notes || null },
+    });
+
+    res.json({ success: true, data: updated });
+  })
+);
+
 /* ─── CSV/xlsx export (spec 6.4) ──────────────────────────────────────────── */
 
 /**
@@ -1057,8 +1205,8 @@ router.get(
       status: exportStatus,
     } = req.query as Record<string, string>;
 
-    if (!['invoices', 'periods', 'reports', 'payouts'].includes(type)) {
-      return res.status(400).json({ success: false, error: 'type must be invoices, periods, reports, or payouts' });
+    if (!['invoices', 'periods', 'reports', 'payouts', 'cashback-summary'].includes(type)) {
+      return res.status(400).json({ success: false, error: 'type must be invoices, periods, reports, payouts, or cashback-summary' });
     }
     if (!['csv', 'xlsx'].includes(format)) {
       return res.status(400).json({ success: false, error: 'format must be csv or xlsx' });
@@ -1068,13 +1216,32 @@ router.get(
 
     if (type === 'invoices') {
       const VALID_STATUSES = ['PENDING', 'PAID', 'OVERDUE'] as const;
+      const expPartnerId = typeof req.query.partnerId === 'string' ? req.query.partnerId.trim() : '';
       const where: Parameters<typeof prisma.partnerCashbackPayment.findMany>[0]['where'] = {};
-      // month is more specific than year — it wins when both are present.
-      if (month) where.month = month;
-      else if (year) where.month = { startsWith: year };
+      // Priority: month (exact) > from/to range (month-list) > year prefix > no filter.
+      if (month) {
+        where.month = month;
+      } else if (fromParam && toParam) {
+        // Build months list from YYYY-MM-DD range params (same logic as /reports endpoint).
+        const invFromYM = /^\d{4}-\d{2}-\d{2}$/.test(fromParam) ? fromParam.slice(0, 7) : fromParam.slice(0, 7);
+        const invToYM   = /^\d{4}-\d{2}-\d{2}$/.test(toParam)   ? toParam.slice(0, 7)   : toParam.slice(0, 7);
+        const [invFromY, invFromM] = invFromYM.split('-').map(Number);
+        const [invToY, invToM]     = invToYM.split('-').map(Number);
+        const invMonths: string[] = [];
+        const invCursor = new Date(Date.UTC(invFromY, invFromM - 1, 1));
+        const invToMonthStart = new Date(Date.UTC(invToY, invToM - 1, 1));
+        while (invCursor <= invToMonthStart) {
+          invMonths.push(`${invCursor.getUTCFullYear()}-${String(invCursor.getUTCMonth() + 1).padStart(2, '0')}`);
+          invCursor.setUTCMonth(invCursor.getUTCMonth() + 1);
+        }
+        if (invMonths.length > 0) where.month = { in: invMonths };
+      } else if (year) {
+        where.month = { startsWith: year };
+      }
       if (exportStatus && (VALID_STATUSES as readonly string[]).includes(exportStatus)) {
         where.status = exportStatus as (typeof VALID_STATUSES)[number];
       }
+      if (expPartnerId) where.partnerId = expPartnerId;
       if (search) where.partner = { businessName: { contains: search, mode: 'insensitive' } };
 
       const invoices = await prisma.partnerCashbackPayment.findMany({
@@ -1087,6 +1254,7 @@ router.get(
       const invoiceNameMap = await resolveAdminNames(invoices.map(i => i.paidBy));
 
       rows = invoices.map(i => ({
+        invoiceNumber: i.invoiceNumber ?? '',
         id: i.id,
         partner: i.partner.businessName,
         city: i.partner.city ?? '',
@@ -1351,7 +1519,7 @@ router.get(
 
       // Section 2 — plan breakdown rows: one row per subscription plan (plan + cashback + turnover)
       const PLAN_LABELS_BG: Record<string, string> = {
-        LIGHT: 'Light', BASIC: 'Basic', PREMIUM: 'Premium', UNKNOWN: 'Без абонамент',
+        LIGHT: 'Premium Weekly', BASIC: 'Basic', PREMIUM: 'Premium', UNKNOWN: 'Без абонамент',
       };
       const planSection = Object.entries(expPlanAccum)
         .sort((a, b) => b[1].cashback - a[1].cashback)
@@ -1378,7 +1546,7 @@ router.get(
       const WALLET_TYPE_BG: Record<string, string> = {
         CASHBACK_CREDIT: 'Кешбек кредит', WITHDRAWAL: 'Плащане към абонат', TOP_UP: 'Зареждане',
       };
-      const EXP_PLAN_LABELS: Record<string, string> = { LIGHT: 'Light', BASIC: 'Basic', PREMIUM: 'Premium', UNKNOWN: 'Без абонамент' };
+      const EXP_PLAN_LABELS: Record<string, string> = { LIGHT: 'Premium Weekly', BASIC: 'Basic', PREMIUM: 'Premium', UNKNOWN: 'Без абонамент' };
       // Wallet stats are subscriber-side, so the partnerId filter does not apply here.
       // Lead the parenthetical with the plan scope (always shown when any filter is active
       // so the partner-only branch isn't ambiguous), then append the partner caveat as
@@ -1449,16 +1617,36 @@ router.get(
         ? (/^\d{4}-\d{2}-\d{2}$/.test(toParam) ? new Date(toParam + 'T23:59:59.999+02:00') : new Date(toParam))
         : new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59);
 
+      // Plan filter — mirrors the /reports endpoint planUserIdsPromise logic so the
+      // export matches what the payout breakdown table shows when a plan filter is active.
+      const payoutPlanParam = typeof req.query.plan === 'string' ? req.query.plan.trim() : '';
+      if (payoutPlanParam && !(VALID_PLANS as readonly string[]).includes(payoutPlanParam)) {
+        return res.status(400).json({ success: false, error: `plan must be one of: ${VALID_PLANS.join(', ')}` });
+      }
+      let payoutPlanUserIds: string[] | undefined;
+      if (payoutPlanParam === 'UNKNOWN') {
+        // UNKNOWN means "no active subscription" — no real userId set maps to this.
+        payoutPlanUserIds = [];
+      } else if (payoutPlanParam) {
+        const planSubs = await prisma.subscription.findMany({
+          where: { plan: payoutPlanParam as 'LIGHT' | 'BASIC' | 'PREMIUM' },
+          select: { userId: true },
+          distinct: ['userId'],
+        });
+        payoutPlanUserIds = planSubs.map(s => s.userId);
+      }
+
       const payoutsExp = await prisma.walletTransaction.findMany({
         where: {
           type: 'WITHDRAWAL',
           createdAt: { gte: expFrom, lte: expTo },
           ...(exportStatus ? { status: exportStatus as 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'RISK_HOLD' | 'ANNULLED' | 'TRIAL_PENDING' } : {}),
+          ...(payoutPlanUserIds !== undefined ? { wallet: { userId: { in: payoutPlanUserIds } } } : {}),
         },
         orderBy: { createdAt: 'desc' },
         select: {
           id: true, amount: true, currency: true, status: true,
-          description: true, createdAt: true,
+          description: true, createdAt: true, metadata: true,
           wallet: {
             select: {
               payoutIban: true, payoutBeneficiaryName: true,
@@ -1474,6 +1662,14 @@ router.get(
         ANNULLED: 'Анулирано', TRIAL_PENDING: 'Изчакване (пробен)',
       };
 
+      const parseCompletedAt = (meta: string | null): string => {
+        if (!meta) return '';
+        try {
+          const parsed = JSON.parse(meta) as Record<string, unknown>;
+          return typeof parsed.completedAt === 'string' ? parsed.completedAt : '';
+        } catch { return ''; }
+      };
+
       rows = payoutsExp.map(p => ({
         id: p.id,
         subscriberName: [p.wallet.user.firstName, p.wallet.user.lastName].filter(Boolean).join(' ') || '',
@@ -1486,6 +1682,31 @@ router.get(
         status: PAYOUT_STATUS_BG[p.status] ?? p.status,
         description: p.description ?? '',
         requestedAt: p.createdAt.toISOString(),
+        completedAt: parseCompletedAt(p.metadata),
+      }));
+
+    } else if (type === 'cashback-summary') {
+      const VALID_CB_STATUSES = ['PENDING', 'PAID', 'OVERDUE'] as const;
+      const cbStatus = exportStatus && (VALID_CB_STATUSES as readonly string[]).includes(exportStatus)
+        ? exportStatus as 'PENDING' | 'PAID' | 'OVERDUE'
+        : undefined;
+      const summary = await adminCashbackService.getSummary({ month: month || undefined, status: cbStatus });
+
+      const CB_STATUS_BG: Record<string, string> = {
+        PENDING: 'Изчакващо',
+        PAID: 'Платено',
+        OVERDUE: 'Просрочено',
+      };
+      rows = summary.map(s => ({
+        partnerId: s.partnerId,
+        partnerName: s.partnerName,
+        partnerEmail: s.partnerEmail ?? '',
+        month: s.month,
+        receiptCount: s.receiptCount,
+        totalOwed: s.totalOwed,
+        paymentStatus: CB_STATUS_BG[s.paymentStatus] ?? s.paymentStatus,
+        paidAt: s.paidAt ?? '',
+        notes: s.notes ?? '',
       }));
     }
 
@@ -1496,13 +1717,15 @@ router.get(
     // because wallet rows and cashback rows have different keys — the first
     // row alone does not represent the full schema.
     const HEADERS: Record<string, string[]> = {
-      invoices: ['id', 'partner', 'city', 'month', 'turnoverAmount', 'contractedRate', 'totalCashbackOwed', 'marginAmount', 'obligation', 'status', 'paidAt', 'paidBy', 'notes', 'createdAt'],
-      periods:  ['month', 'status', 'partners', 'cashback', 'margin', 'total', 'paid', 'pending', 'overdue', 'openedAt', 'openedBy', 'reviewedAt', 'reviewedBy', 'lockedAt', 'lockedBy', 'invoicedAt', 'invoicedBy', 'notes'],
-      reports:  ['section', 'period', 'partnerName', 'partnerId', 'plan', 'scanCount', 'cashback', 'margin', 'turnover', 'invoiceStatus', 'walletType', 'walletTotal', 'walletCount'],
-      payouts:  ['id', 'subscriberName', 'email', 'phone', 'iban', 'beneficiaryName', 'amount', 'currency', 'status', 'description', 'requestedAt'],
+      invoices:          ['invoiceNumber', 'id', 'partner', 'city', 'month', 'turnoverAmount', 'contractedRate', 'totalCashbackOwed', 'marginAmount', 'obligation', 'status', 'paidAt', 'paidBy', 'notes', 'createdAt'],
+      periods:           ['month', 'status', 'partners', 'cashback', 'margin', 'total', 'paid', 'pending', 'overdue', 'openedAt', 'openedBy', 'reviewedAt', 'reviewedBy', 'lockedAt', 'lockedBy', 'invoicedAt', 'invoicedBy', 'notes'],
+      reports:           ['section', 'period', 'partnerName', 'partnerId', 'plan', 'scanCount', 'cashback', 'margin', 'turnover', 'invoiceStatus', 'walletType', 'walletTotal', 'walletCount'],
+      payouts:           ['id', 'subscriberName', 'email', 'phone', 'iban', 'beneficiaryName', 'amount', 'currency', 'status', 'description', 'requestedAt', 'completedAt'],
+      'cashback-summary': ['partnerId', 'partnerName', 'partnerEmail', 'month', 'receiptCount', 'totalOwed', 'paymentStatus', 'paidAt', 'notes'],
     };
     // Bulgarian column header labels for all export types (accounting-friendly)
     const INVOICES_DISPLAY_HEADERS: Record<string, string> = {
+      invoiceNumber: 'Номер на фактура',
       id: 'ID',
       partner: 'Партньор',
       city: 'Град',
@@ -1565,12 +1788,25 @@ router.get(
       status: 'Статус',
       description: 'Бележка',
       requestedAt: 'Дата на заявка',
+      completedAt: 'Платено на',
+    };
+    const CASHBACK_SUMMARY_DISPLAY_HEADERS: Record<string, string> = {
+      partnerId:     'ID на партньор',
+      partnerName:   'Партньор',
+      partnerEmail:  'Имейл',
+      month:         'Месец',
+      receiptCount:  'Брой сканирания',
+      totalOwed:     'Дължимо (лв.)',
+      paymentStatus: 'Статус',
+      paidAt:        'Платено на',
+      notes:         'Бележки',
     };
     const DISPLAY_HEADERS_MAP: Record<string, Record<string, string>> = {
-      invoices: INVOICES_DISPLAY_HEADERS,
-      periods:  PERIODS_DISPLAY_HEADERS,
-      reports:  REPORTS_DISPLAY_HEADERS,
-      payouts:  PAYOUTS_DISPLAY_HEADERS,
+      invoices:          INVOICES_DISPLAY_HEADERS,
+      periods:           PERIODS_DISPLAY_HEADERS,
+      reports:           REPORTS_DISPLAY_HEADERS,
+      payouts:           PAYOUTS_DISPLAY_HEADERS,
+      'cashback-summary': CASHBACK_SUMMARY_DISPLAY_HEADERS,
     };
 
     const fieldKeys = HEADERS[type] ?? [];

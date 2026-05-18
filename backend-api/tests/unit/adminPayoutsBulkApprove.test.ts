@@ -1,0 +1,180 @@
+/**
+ * Unit tests for PATCH /api/admin/payouts/bulk-approve response semantics.
+ *
+ * Pins:
+ *   • `approved` counts ONLY the rows this call newly transitioned
+ *     PENDING → PROCESSING — not rows another concurrent caller already
+ *     claimed (those count under `alreadyProcessed`).
+ *   • Email notifications fire only on the newly-approved set, never on
+ *     already-processed rows (would double-email the subscriber).
+ *   • Failed rows are counted separately and a failed-payout email fires.
+ *   • Aggregate `skipped` includes no-IBAN + no-sub + failed for backwards
+ *     compatibility with older API callers.
+ */
+
+const findManyMock        = jest.fn();
+const subFindManyMock     = jest.fn();
+const findUniqueMock      = jest.fn();
+const executeTransferMock = jest.fn();
+const sendEmailMock       = jest.fn(async () => undefined);
+
+jest.mock('../../src/lib/prisma', () => {
+  const client = {
+    walletTransaction: {
+      findMany: findManyMock,
+      findUnique: findUniqueMock,
+    },
+    subscription: { findMany: subFindManyMock },
+  };
+  return { __esModule: true, default: client, prisma: client };
+});
+
+jest.mock('../../src/middleware/auth.middleware', () => ({
+  authenticate: (req: any, _res: any, next: any) => {
+    req.user = { id: 'admin-1', role: 'ADMIN', permissions: ['finance.payouts.write'] };
+    next();
+  },
+  authorize: () => (_req: any, _res: any, next: any) => next(),
+  requirePermission: () => (_req: any, _res: any, next: any) => next(),
+}));
+
+jest.mock('../../src/middleware/audit.middleware', () => ({
+  auditMiddleware: (_req: any, _res: any, next: any) => next(),
+}));
+
+jest.mock('../../src/services/email.service', () => ({
+  emailService: { sendEmail: sendEmailMock },
+}));
+
+jest.mock('../../src/services/wallet.service', () => ({
+  walletService: { executePayoutTransfer: executeTransferMock },
+}));
+
+jest.mock('../../src/utils/logger', () => ({
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+}));
+
+import express from 'express';
+import request from 'supertest';
+import adminPayoutsRouter from '../../src/routes/adminPayouts.routes';
+
+const app = express();
+app.use(express.json());
+app.use('/api/admin/payouts', adminPayoutsRouter);
+
+function row(id: string, opts: { iban?: string | null; userId?: string } = {}) {
+  return {
+    id,
+    type: 'WITHDRAWAL',
+    status: 'PENDING',
+    amount: -100,
+    currency: 'BGN',
+    wallet: {
+      payoutIban: opts.iban === undefined ? 'BG80BNBG96611020345678' : opts.iban,
+      user: { id: opts.userId ?? `user-${id}`, email: `${id}@x.com`, firstName: 'A', lastName: 'B' },
+    },
+  };
+}
+
+beforeEach(() => {
+  findManyMock.mockReset();
+  subFindManyMock.mockReset();
+  findUniqueMock.mockReset();
+  executeTransferMock.mockReset();
+  sendEmailMock.mockReset();
+  sendEmailMock.mockResolvedValue(undefined);
+  // notifySubscriber re-reads the tx to populate the email body — return a
+  // minimal shape so the email sender doesn't crash on missing fields.
+  findUniqueMock.mockImplementation(async (args: any) => ({
+    amount: -100,
+    currency: 'BGN',
+    wallet: { user: { email: 'u@x.com', firstName: 'U', lastName: 'B' } },
+  }));
+});
+
+describe('PATCH /api/admin/payouts/bulk-approve — response counts', () => {
+  it('counts approved separately from alreadyProcessed; only newly-approved rows get notified', async () => {
+    const a = row('a');                  // newly approved
+    const b = row('b');                  // already processed by a concurrent caller
+    const c = row('c', { iban: null }); // skipped: no IBAN
+    const d = row('d', { userId: 'no-sub' }); // skipped: no eligible subscription
+    findManyMock.mockResolvedValue([a, b, c, d]);
+    subFindManyMock.mockResolvedValue([
+      { userId: 'user-a' },
+      { userId: 'user-b' },
+      // user-no-sub absent → d gets skipped
+    ]);
+
+    executeTransferMock.mockImplementation(async (id: string) => {
+      if (id === 'a') return { amount: 100, currency: 'BGN', transferId: 't-1' };
+      if (id === 'b') return { amount: 100, currency: 'BGN', alreadyProcessed: true };
+      throw new Error('unexpected execute call for ' + id);
+    });
+
+    const res = await request(app).patch('/api/admin/payouts/bulk-approve').send({});
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      approved: 1,
+      alreadyProcessed: 1,
+      failed: 0,
+      skippedNoIban: 1,
+      skippedNoSub: 1,
+      total: 4,
+      skipped: 2, // noIban + noSub + failed
+    });
+
+    // Exactly one APPROVED email — the alreadyProcessed row must NOT re-notify.
+    // (Subjects include "одобрено" for approved; "не беше успешно" for failed.)
+    const approvedEmails = sendEmailMock.mock.calls.filter(
+      (c: any[]) => /одобрено/.test((c[0] as any).subject),
+    );
+    expect(approvedEmails).toHaveLength(1);
+  });
+
+  it('counts failures and sends a failed-payout email for each failure', async () => {
+    const a = row('a');
+    const b = row('b');
+    findManyMock.mockResolvedValue([a, b]);
+    subFindManyMock.mockResolvedValue([{ userId: 'user-a' }, { userId: 'user-b' }]);
+
+    executeTransferMock.mockImplementation(async (id: string) => {
+      if (id === 'a') return { amount: 100, currency: 'BGN', transferId: 't-1' };
+      throw new Error('Paysera 503');
+    });
+
+    const res = await request(app).patch('/api/admin/payouts/bulk-approve').send({});
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      approved: 1,
+      alreadyProcessed: 0,
+      failed: 1,
+      skippedNoIban: 0,
+      skippedNoSub: 0,
+      total: 2,
+      skipped: 1, // 0 + 0 + 1 failed
+    });
+
+    const failedEmails = sendEmailMock.mock.calls.filter(
+      (c: any[]) => /не беше успешно/.test((c[0] as any).subject),
+    );
+    expect(failedEmails).toHaveLength(1);
+  });
+
+  it('returns zeros when there is nothing pending', async () => {
+    findManyMock.mockResolvedValue([]);
+    subFindManyMock.mockResolvedValue([]);
+
+    const res = await request(app).patch('/api/admin/payouts/bulk-approve').send({});
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      approved: 0,
+      alreadyProcessed: 0,
+      failed: 0,
+      skippedNoIban: 0,
+      skippedNoSub: 0,
+      total: 0,
+      skipped: 0,
+    });
+    expect(executeTransferMock).not.toHaveBeenCalled();
+  });
+});

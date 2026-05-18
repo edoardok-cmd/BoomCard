@@ -26,6 +26,7 @@ import stickersRouter from './routes/stickers.routes';
 import receiptsRouter from './routes/receipts.routes';
 import receiptsEnhancedRouter from './routes/receipts.enhanced.routes';
 import webhooksRouter from './routes/webhooks.routes';
+import emailWebhookRouter from './routes/emailWebhook.routes';
 import cardsRouter from './routes/cards.routes';
 import notificationsRouter from './routes/notifications.routes';
 import plansRouter from './routes/plans.routes';
@@ -166,9 +167,10 @@ app.use(cors({
   credentials: true,
 }));
 
-// Stripe webhooks need the raw body for signature verification.
-// Mount raw parser BEFORE express.json() so the body isn't parsed as JSON.
+// Webhook routes need the raw body for signature verification.
+// Mount raw parsers BEFORE express.json() so the body isn't parsed as JSON.
 app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
+app.use('/api/email/inbound', express.raw({ type: 'application/json' }));
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -240,6 +242,7 @@ setupSwagger(app);
 // API Routes
 app.use('/api/health', healthRouter); // Health checks (monitoring)
 app.use('/api/webhooks', webhooksRouter); // Webhooks (must be first for raw body)
+app.use('/api/email', emailWebhookRouter); // Spec §11.2 — inbound email webhook (HMAC or X-Webhook-Secret)
 app.use('/api/plans', plansRouter); // Public plans API (no auth required)
 app.use('/api/contact', contactRouter); // Public contact form (no auth required)
 app.use('/api/config/mobile', mobileConfigRouter); // Public mobile app config (feature flags, versions, status)

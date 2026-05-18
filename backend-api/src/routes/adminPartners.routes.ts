@@ -1,26 +1,56 @@
 /**
  * Admin Partner-Requests Routes — spec sections 5.1–5.3
  *
- * GET  /api/admin/partner-requests                         — list (PENDING + pipeline)
- * GET  /api/admin/partner-requests/:id                     — single request detail
- * PATCH /api/admin/partner-requests/:id/status             — advance pipeline status
- * PATCH /api/admin/partner-requests/:id/assign             — assign "Отговорник"
- * POST /api/admin/partner-requests/:id/notes               — add communication note
- * GET  /api/admin/partner-requests/:id/notes               — list notes for request
- * POST /api/admin/partner-requests/:id/approve             — final approve (→ ACTIVE)
- * POST /api/admin/partner-requests/:id/reject              — reject
- * PATCH /api/admin/partner-requests/:id/visibility         — toggle isVisible
- * PATCH /api/admin/partner-requests/:id/partner-status     — set active-partner status
+ * Permission matrix (source of truth — see also docs/permission-matrix.md):
+ *
+ *   §5.1 / §5.2 Requests pipeline (partners.requests.*)
+ *   ─────────────────────────────────────────────────
+ *   GET    /                              partners.requests.read
+ *   GET    /_assignable-admins            partners.requests.write  (write-scope — it backs the assign action)
+ *   GET    /:id                           partners.requests.read
+ *   GET    /:id/onboarding-readiness      partners.requests.read
+ *   GET    /:id/notes                     partners.requests.read
+ *   POST   /:id/notes                     partners.requests.write
+ *   PATCH  /:id/status                    partners.requests.write
+ *   PATCH  /:id/assign                    partners.requests.write
+ *   PATCH  /:id/contract                  partners.requests.write
+ *   POST   /:id/approve                   partners.requests.write
+ *   POST   /:id/reject                    partners.requests.write
+ *   POST   /:id/resend-activation         partners.requests.write
+ *   GET    /:id/activation-links          partners.requests.read
+ *   PATCH  /:id/visibility                partners.requests.write
+ *   GET    /:id/audit                     partners.requests.read
+ *
+ *   §5.3 Active-partner controls (partners.*)
+ *   ─────────────────────────────────────────
+ *   PATCH  /:id/partner-status            partners.write           (post-onboarding status transitions)
+ *   GET    /:id/status-history            partners.read            (paired with /partner-status write)
+ *
+ * The split is deliberate: §5.1/§5.2 model the *application pipeline* and use
+ * the partners.requests.* namespace; §5.3 deals with *operational state* of
+ * an already-active partner and uses the partners.* namespace. Roles can be
+ * granted one without the other (a partner-onboarding admin doesn't
+ * automatically get permission to suspend live partners).
  */
 
 import { Router } from 'express';
-import { PartnerStatus, PartnerRequestStatus } from '@prisma/client';
+import { PartnerStatus, PartnerRequestStatus, ActivationLinkReason } from '@prisma/client';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { fireAutomation } from '../lib/automationDispatcher';
+import { issueActivationLink, sendActivationEmail, stampEmailOutcome } from '../services/partnerActivation.service';
+import { emailService } from '../services/email.service';
+import { partnerService } from '../services/partner.service';
+import { writeAudit } from '../middleware/audit.middleware';
+import { computePartnerSla } from '../services/partnerSla.helper';
+import {
+  parseVenueCountBucket,
+  formatVenueCountBucket,
+  VENUE_COUNT_BUCKET_DISPLAY_VALUES,
+} from '../services/partnerVenueCountBucket.helper';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -36,6 +66,7 @@ const PARTNER_SELECT = {
   city: true,
   address: true,
   discountRate: true,
+  features: true,
   status: true,
   requestStatus: true,
   assignedAdminId: true,
@@ -43,9 +74,16 @@ const PARTNER_SELECT = {
   joinedAt: true,
   verifiedAt: true,
   onboardingCompletedAt: true,
+  // Spec §5.1 v1.1 — declared venue count bucket and activation state.
+  requestObjectCount: true,
   partnerType: { select: { id: true, name: true, color: true } },
   user: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+  _count: { select: { requestNotes: true } },
 } as const;
+
+// SLA helper lives in services/partnerSla.helper.ts — single source of truth
+// shared between the live routes here and the unit tests in
+// tests/unit/adminPartnersSla.test.ts.
 
 // ─── List partner requests ────────────────────────────────────────────────────
 
@@ -53,7 +91,7 @@ router.get(
   '/',
   requirePermission('partners.requests.read'),
   asyncHandler(async (req, res) => {
-    const { search, status, requestStatus, page = '1', limit = '20' } = req.query as Record<string, string>;
+    const { search, status, requestStatus, objectCount, page = '1', limit = '20' } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(Math.max(1, parseInt(limit) || 20), 100);
     const skip = (pageNum - 1) * limitNum;
@@ -69,6 +107,15 @@ router.get(
 
     if (requestStatus && Object.values(PartnerRequestStatus).includes(requestStatus as PartnerRequestStatus)) {
       where.requestStatus = requestStatus as PartnerRequestStatus;
+    }
+
+    // Spec §5.1 v1.1 — filter by declared venue count bucket. Whitelisted to the
+    // four canonical values so a malformed query can't return surprising matches.
+    // The column is the PartnerVenueCountBucket enum; parseVenueCountBucket
+    // translates the wire-format ("1" / "2-5" / "6-10" / "11+") to the enum.
+    if (objectCount && (VENUE_COUNT_BUCKET_DISPLAY_VALUES as readonly string[]).includes(objectCount)) {
+      const bucket = parseVenueCountBucket(objectCount);
+      if (bucket) where.requestObjectCount = bucket;
     }
 
     if (search) {
@@ -98,10 +145,18 @@ router.get(
         })
       : [];
     const adminMap = new Map(admins.map((a) => [a.id, a]));
-    const enriched = partners.map((p) => ({
-      ...p,
-      assignedAdmin: p.assignedAdminId ? adminMap.get(p.assignedAdminId) ?? null : null,
-    }));
+    const enriched = partners.map((p) => {
+      let features: Record<string, unknown> | null = null;
+      if (p.features) { try { features = JSON.parse(p.features) as Record<string, unknown>; } catch { /* ignore */ } }
+      return {
+        ...p,
+        // Serialise the enum back to the wire-format string the UI renders directly.
+        requestObjectCount: formatVenueCountBucket(p.requestObjectCount),
+        features,
+        assignedAdmin: p.assignedAdminId ? adminMap.get(p.assignedAdminId) ?? null : null,
+        sla: computePartnerSla(p.joinedAt as Date, p.requestStatus ?? null),
+      };
+    });
 
     res.json({ partners: enriched, total, page: pageNum, limit: take });
   })
@@ -231,7 +286,22 @@ router.get(
       });
     }
 
-    res.json({ partner: { ...partner, assignedAdmin } });
+    // features is stored as a JSON string (String? column); parse it so the
+    // frontend receives an object it can access without manual JSON.parse.
+    let features: Record<string, unknown> | null = null;
+    if (partner.features) {
+      try { features = JSON.parse(partner.features) as Record<string, unknown>; } catch { /* ignore */ }
+    }
+
+    res.json({
+      partner: {
+        ...partner,
+        requestObjectCount: formatVenueCountBucket(partner.requestObjectCount),
+        assignedAdmin,
+        features,
+        sla: computePartnerSla(partner.joinedAt as Date, partner.requestStatus ?? null),
+      },
+    });
   })
 );
 
@@ -362,6 +432,40 @@ router.get(
   })
 );
 
+// ─── Contract tracking (spec §5.2 — control principle) ───────────────────────
+// Stores contract-signed status and date in partner.features JSON.
+router.patch(
+  '/:id/contract',
+  requirePermission('partners.requests.write'),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const { signed } = req.body as { signed?: boolean };
+    if (typeof signed !== 'boolean') {
+      return res.status(400).json({ error: 'signed (boolean) is required' });
+    }
+    const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+
+    const existingFeatures: Record<string, unknown> = partner.features
+      ? (JSON.parse(partner.features) as Record<string, unknown>)
+      : {};
+    const updated = await prisma.partner.update({
+      where: { id: req.params.id },
+      data: {
+        features: JSON.stringify({
+          ...existingFeatures,
+          contractSigned: signed,
+          contractSignedAt: signed ? new Date().toISOString() : null,
+          contractSignedBy: signed && req.user ? req.user.id : null,
+        }),
+      },
+      select: { id: true, features: true },
+    });
+    let parsedFeatures: Record<string, unknown> | null = null;
+    if (updated.features) { try { parsedFeatures = JSON.parse(updated.features); } catch { /* ignore */ } }
+    res.json({ partner: { ...updated, features: parsedFeatures } });
+  })
+);
+
 // ─── Approve → ACTIVE ─────────────────────────────────────────────────────────
 
 router.post(
@@ -377,13 +481,33 @@ router.post(
     if (NON_APPROVABLE_STATUSES.includes(partner.status)) {
       return res.status(400).json({ error: 'Cannot approve a partner in this state. Use /partner-status to manage post-onboarding partner statuses.' });
     }
+    // Spec §5.2 — the full onboarding pipeline must be completed before activation.
+    // Approval directly from NOVA/KOMUNIKACIYA/DOGOVARYANE bypasses required steps.
+    if (partner.requestStatus !== PartnerRequestStatus.ONBOARDING && partner.requestStatus !== PartnerRequestStatus.ODOBRENA) {
+      return res.status(400).json({
+        error: `Partner must reach the ONBOARDING stage before approval. Current stage: ${partner.requestStatus ?? 'NOVA'}`,
+        currentStatus: partner.requestStatus ?? 'NOVA',
+      });
+    }
 
+    // Spec §5.2 v1.1 — approve + issue must be coherent. The status flip and
+    // the activation-link create both go inside one transaction; the
+    // activationLinkService uses SERIALIZABLE isolation internally so two
+    // concurrent approves can't both end up with a non-invalidated link.
+    //
+    // We do this in two steps because activationLinkService.issue opens its
+    // own transaction; nesting via `tx` would require passing the client
+    // around. The Partner row's status change is the durable mark — if the
+    // link create fails, the admin can resend from the drawer.
     const updated = await prisma.partner.update({
       where: { id: req.params.id },
       data: {
         status: PartnerStatus.ACTIVE,
         requestStatus: PartnerRequestStatus.ODOBRENA,
-        verifiedAt: new Date(),
+        // Spec §5.2 v1.1 — `verifiedAt` is the "fully activated" flag, stamped
+        // only on activation-token consumption. Leaving it null here ensures
+        // the partner can't log in or be publicly visible until they click the
+        // activation link.
         // Spec §3.2 — stamp onboarding completion the first time the partner
         // gets approved; later approvals (re-activation) don't bump it.
         ...(partner.onboardingCompletedAt ? {} : { onboardingCompletedAt: new Date() }),
@@ -391,13 +515,152 @@ router.post(
       select: PARTNER_SELECT,
     });
 
+    // Spec §5.2 v1.1 — issue a 72h activation link and email it. We await the
+    // link issuance so that on success the API response can confirm a link
+    // exists; the email send is still fire-and-forget (a transient SMTP
+    // failure shouldn't unwind the approval, admins can resend).
+    let issued: Awaited<ReturnType<typeof issueActivationLink>> | null = null;
+    let issueError: string | null = null;
+    try {
+      issued = await issueActivationLink({
+        partnerId: updated.id,
+        adminId: (req as AuthRequest).user!.id,
+        reason: 'initial',
+      });
+    } catch (err) {
+      issueError = String((err as Error)?.message ?? err);
+      logger.error('[partner-activation] issue failed:', err);
+    }
+
+    const recipientEmail = updated.email ?? updated.user.email ?? null;
+    if (issued && recipientEmail) {
+      const linkId = issued.linkId;
+      const { url, expiresAt } = issued;
+      sendActivationEmail({
+        email: recipientEmail,
+        firstName: updated.user.firstName || updated.businessName,
+        businessName: updated.businessName,
+        activationUrl: url,
+        expiresAt,
+      })
+        .then(() => stampEmailOutcome(linkId, { sent: true }))
+        .catch((err) => {
+          logger.error('[partner-activation] email failed:', err);
+          stampEmailOutcome(linkId, { sent: false, error: String((err as Error)?.message ?? err) });
+        });
+    } else if (issued && !recipientEmail) {
+      // Link issued but no email to send to — stamp the row so the drawer
+      // shows the failure state and an admin can fix the email + resend.
+      stampEmailOutcome(issued.linkId, { sent: false, error: 'No recipient email on partner record' });
+    }
+
     fireAutomation('partner.approved', {
       partnerId: updated.id,
       recipientEmail: updated.email ?? undefined,
       recipientName: updated.businessName,
     }).catch((err) => logger.error('[automation] partner.approved fire failed:', err));
 
-    res.json({ success: true, partner: updated });
+    // Spec §5.2 v1.1 — H4 fix: response now reflects the actual outcome of
+    // link issuance so the UI can warn the admin to resend (the drawer also
+    // surfaces this from /activation-links, but the response is the
+    // immediate signal).
+    res.json({
+      success: true,
+      partner: updated,
+      activationLink: issued
+        ? { issued: true, expiresAt: issued.expiresAt }
+        : { issued: false, error: issueError ?? 'Unknown error issuing activation link' },
+    });
+  })
+);
+
+// ─── Resend activation link (spec §5.2 v1.1) ─────────────────────────────────
+// Admin-only: regenerate the 72h activation token, invalidating any prior
+// unconsumed token, log the resend, and email the new link. Rate-limited
+// per-partner so a misclick (or a hostile admin token) can't flood the
+// applicant's inbox.
+const RESEND_RATE_LIMIT_MS = 60 * 1000; // 1 issue per partner per minute
+router.post(
+  '/:id/resend-activation',
+  requirePermission('partners.requests.write'),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const partner = await prisma.partner.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true,
+        email: true,
+        businessName: true,
+        status: true,
+        verifiedAt: true,
+        user: { select: { email: true, firstName: true } },
+      },
+    });
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+
+    if (partner.verifiedAt) {
+      return res.status(400).json({
+        error: 'Partner is already activated. Resending an activation link is unnecessary.',
+      });
+    }
+    if (partner.status !== PartnerStatus.ACTIVE) {
+      return res.status(400).json({
+        error: 'Activation links are only issued after admin approval. Approve the partner first.',
+      });
+    }
+
+    // Rate limit: don't allow a new RESEND within RESEND_RATE_LIMIT_MS of the
+    // previous one. Scoped to reason=RESEND so the initial post-approve
+    // INITIAL link doesn't block a legit "I mis-typed the email, please
+    // resend immediately" flow. The minute cap is a UX guardrail.
+    const recentResend = await prisma.activationLink.findFirst({
+      where: { partnerId: partner.id, reason: ActivationLinkReason.RESEND },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    if (recentResend && Date.now() - recentResend.createdAt.getTime() < RESEND_RATE_LIMIT_MS) {
+      return res.status(429).json({
+        error: 'Activation link was resent less than a minute ago. Please wait before resending.',
+      });
+    }
+
+    const { url, expiresAt, linkId } = await issueActivationLink({
+      partnerId: partner.id,
+      adminId: req.user!.id,
+      reason: 'resend',
+    });
+
+    sendActivationEmail({
+      email: partner.email ?? partner.user.email,
+      firstName: partner.user.firstName || partner.businessName,
+      businessName: partner.businessName,
+      activationUrl: url,
+      expiresAt,
+      isResend: true,
+    })
+      .then(() => stampEmailOutcome(linkId, { sent: true }))
+      .catch((err) => {
+        logger.error('[partner-activation] resend email failed:', err);
+        stampEmailOutcome(linkId, { sent: false, error: String((err as Error)?.message ?? err) });
+      });
+
+    res.json({ success: true, expiresAt });
+  })
+);
+
+// ─── Activation link history (spec §5.2 v1.1 — admin sees resend audit) ──────
+router.get(
+  '/:id/activation-links',
+  requirePermission('partners.requests.read'),
+  asyncHandler(async (req, res) => {
+    const partner = await prisma.partner.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+
+    const links = await prisma.activationLink.findMany({
+      where: { partnerId: partner.id },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+    res.json({ links });
   })
 );
 
@@ -466,8 +729,13 @@ router.patch(
 
 // ─── Active-partner status (spec 5.3) ─────────────────────────────────────────
 
+// Spec §5.3 v1.1 matrix — these four are the post-onboarding statuses an admin
+// can move a partner between. ACTIVE = full operational, INACTIVE = read-only
+// no new tx, SUSPENDED (Спрян) = temporarily blocked, ARCHIVED = permanently
+// deactivated. PAUSED is retained as an alias for SUSPENDED for back-compat.
 const ACTIVE_PARTNER_STATUSES: PartnerStatus[] = [
   PartnerStatus.ACTIVE,
+  PartnerStatus.INACTIVE,
   PartnerStatus.PAUSED,
   PartnerStatus.SUSPENDED,
   PartnerStatus.ARCHIVED,
@@ -476,28 +744,116 @@ const ACTIVE_PARTNER_STATUSES: PartnerStatus[] = [
 router.patch(
   '/:id/partner-status',
   requirePermission('partners.write'),
-  asyncHandler(async (req, res) => {
-    const { status } = req.body as { status?: string };
+  asyncHandler(async (req: AuthRequest, res) => {
+    const { status, reason } = req.body as { status?: string; reason?: string };
 
     if (!status || !ACTIVE_PARTNER_STATUSES.includes(status as PartnerStatus)) {
       return res.status(400).json({
-        error: 'status must be one of: ACTIVE, PAUSED, SUSPENDED, ARCHIVED (use ARCHIVED instead of INACTIVE)',
+        error: 'status must be one of: ACTIVE, INACTIVE, PAUSED, SUSPENDED, ARCHIVED',
       });
     }
 
-    const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
+    const partner = await prisma.partner.findUnique({
+      where: { id: req.params.id },
+      include: { user: { select: { email: true, firstName: true } } },
+    });
     if (!partner) return res.status(404).json({ error: 'Partner not found' });
     if (!ACTIVE_PARTNER_STATUSES.includes(partner.status)) {
       return res.status(400).json({ error: 'This endpoint only manages post-onboarding partners. Use the onboarding pipeline for partners not yet active.' });
     }
 
-    const updated = await prisma.partner.update({
+    if (partner.status === status) {
+      return res.status(400).json({ error: `Partner is already in ${status} state` });
+    }
+
+    // Spec §5.3 / §5.4 v1.1 — delegate to the centralized helper. Status flip
+    // + PartnerStatusChange row are written atomically. QR "auto-deactivation"
+    // is enforced as a scan-time gate in sticker.service (see partner.service
+    // comment for the rationale of the gate-only approach).
+    const change = await partnerService.setPartnerStatus({
+      partnerId: req.params.id,
+      toStatus: status as PartnerStatus,
+      reason,
+      changedById: req.user!.id,
+    });
+
+    // Spec §10.4 — record an AuditLog entry with actor metadata. The
+    // PartnerStatusChange row above is the user-facing history; this is the
+    // append-only admin audit trail.
+    writeAudit({
+      actorUserId: req.user!.id,
+      action: 'PARTNER_STATUS_CHANGED',
+      objectType: 'partner',
+      objectId: req.params.id,
+      before: { status: change.fromStatus },
+      after: {
+        status: change.toStatus,
+        reason: reason?.trim() || null,
+      },
+    }).catch((err) => logger.error('[adminPartners] writeAudit failed:', err));
+
+    // Spec §8.2 v1.1 — notify the partner by email about the status change.
+    // Prefer the partner contact email, fall back to the linked user account.
+    // Fire-and-forget: a delivery failure must not roll back the status move.
+    const notifyTo = partner.email || partner.user?.email || null;
+    if (notifyTo) {
+      emailService
+        .sendPartnerStatusChangeEmail(notifyTo, {
+          firstName: partner.user?.firstName || partner.businessName,
+          businessName: partner.businessName,
+          fromStatus: change.fromStatus,
+          toStatus: change.toStatus,
+          reason: reason ?? null,
+        })
+        .catch((err) => logger.error('[adminPartners] partner status email failed:', err));
+    } else {
+      logger.warn(`[adminPartners] partner ${req.params.id} has no contact email — status change email skipped`);
+    }
+
+    const updated = await prisma.partner.findUnique({
       where: { id: req.params.id },
-      data: { status: status as PartnerStatus },
       select: PARTNER_SELECT,
     });
 
     res.json({ partner: updated });
+  })
+);
+
+// Spec §5.3 v1.1 — partner status-change history for the admin "История" tab.
+// Reads pair with the partners.write status PATCH that writes the rows; the
+// drawer's "История на промени" panel needs both, so we gate on the read
+// permission of the same domain (partners.read).
+router.get(
+  '/:id/status-history',
+  requirePermission('partners.read'),
+  asyncHandler(async (req, res) => {
+    const partner = await prisma.partner.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+
+    const entries = await prisma.partnerStatusChange.findMany({
+      where: { partnerId: partner.id },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    // Hydrate the actor (no FK relation defined — mirrors assignedAdminId pattern).
+    const actorIds = Array.from(
+      new Set(entries.map((e) => e.changedById).filter((x): x is string => !!x))
+    );
+    const actors = actorIds.length
+      ? await prisma.user.findMany({
+          where: { id: { in: actorIds } },
+          select: { id: true, firstName: true, lastName: true, email: true },
+        })
+      : [];
+    const actorMap = new Map(actors.map((a) => [a.id, a]));
+
+    res.json({
+      entries: entries.map((e) => ({
+        ...e,
+        actor: e.changedById ? actorMap.get(e.changedById) ?? null : null,
+      })),
+    });
   })
 );
 
@@ -520,5 +876,12 @@ router.get(
     res.json({ entries });
   })
 );
+
+// NOTE: The legacy POST /:id/activation-link/resend endpoint that lived here
+// was removed. It hand-built a broken URL (`/activate/<token>` instead of the
+// real partner-side route `/partner/activate?token=...`), used a different
+// permission key (partners.write vs partners.requests.write), and duplicated
+// the resend logic. The canonical resend is POST /:id/resend-activation
+// above.
 
 export default router;

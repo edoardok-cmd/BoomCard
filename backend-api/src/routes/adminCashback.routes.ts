@@ -18,7 +18,7 @@ import { authenticate, authorize, requirePermission, AuthRequest } from '../midd
 import { auditMiddleware } from '../middleware/audit.middleware';
 import {
   adminCashbackService, getSubscriberCashbackEntries, getAllCashbackEntries,
-  CashbackEntryStatus, approveEntry, lockEntry, expireEntry, payEntry, backfillCashbackExpiry,
+  CashbackEntryStatus, approveEntry, lockEntry, expireEntry, payEntry, voidEntry, backfillCashbackExpiry,
 } from '../services/adminCashback.service';
 import {
   PAYOUT_THRESHOLD_BASIC_EUR,
@@ -273,7 +273,7 @@ router.get('/entries', requirePermission('cashback.read'), async (req: AuthReque
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 20), 10000);
     const status = typeof req.query.status === 'string' ? req.query.status : undefined;
-    const validStatuses: CashbackEntryStatus[] = ['Pending', 'Cleared', 'Locked', 'Paid', 'Expired'];
+    const validStatuses: CashbackEntryStatus[] = ['Pending', 'Cleared', 'Locked', 'Paid', 'Expired', 'Voided'];
     const statusFilter = status && (validStatuses as string[]).includes(status)
       ? (status as CashbackEntryStatus)
       : undefined;
@@ -347,6 +347,9 @@ router.get('/:partnerId/:month/receipts', requirePermission('cashback.read'), as
 router.post('/entries/:id/approve', requirePermission('cashback.write'), async (req: AuthRequest, res: Response) => {
   try {
     await approveEntry(req.params.id, req.user!.id);
+    // approveEntry writes its own CASHBACK_CLEARED audit row with before/after diff;
+    // skip the middleware row to avoid duplicate, less-informative entries.
+    req.skipAudit = true;
     res.json({ success: true, message: 'Entry approved' });
   } catch (error: any) {
     const status = error.statusCode ?? 500;
@@ -379,6 +382,24 @@ router.post('/entries/:id/pay', requirePermission('cashback.write'), async (req:
   try {
     await payEntry(req.params.id, req.user!.id);
     res.json({ success: true, message: 'Entry marked as paid' });
+  } catch (error: any) {
+    const status = error.statusCode ?? 500;
+    res.status(status).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/admin/cashback/entries/:id/void  — any active state → Voided (spec §4.4 v1.1)
+// body: { reason: string }
+// The entry stays visible to the user as "Анулиран" with the reason; balance is
+// adjusted by cashbackLifecycleService.markVoided when the entry was Cleared/Locked.
+// skipAudit=true: cashbackLifecycleService.markVoided writes its own AuditLog row
+// with full before/after diff. Middleware would log a second, less-informative row.
+router.post('/entries/:id/void', requirePermission('cashback.write'), async (req: AuthRequest, res: Response) => {
+  try {
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason : '';
+    await voidEntry(req.params.id, req.user!.id, reason);
+    req.skipAudit = true;
+    res.json({ success: true, message: 'Entry voided' });
   } catch (error: any) {
     const status = error.statusCode ?? 500;
     res.status(status).json({ success: false, error: error.message });

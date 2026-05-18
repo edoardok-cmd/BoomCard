@@ -148,7 +148,7 @@ adminVenueMenuRouter.get(
             select: { stickers: true, statusHistory: true },
           },
           stickers: {
-            select: { createdAt: true, status: true, stickerId: true },
+            select: { createdAt: true, status: true, stickerId: true, qrCode: true },
             orderBy: { createdAt: 'desc' },
             take: 5,
           },
@@ -440,6 +440,23 @@ adminVenueMenuRouter.patch(
     }
 
     const trimmedNote = note?.trim() || null;
+
+    // Spec §5.4 — "Всяка локация има уникален QR код — основата на връзката."
+    // Block activation of a venue that has no active sticker config (= no QR).
+    // An admin can still override by first setting up the QR config.
+    if (venueStatus === 'ACTIVE') {
+      const stickerConfig = await prisma.venueStickerConfig.findUnique({
+        where: { venueId: id },
+        select: { isActive: true },
+      });
+      if (!stickerConfig || !stickerConfig.isActive) {
+        return res.status(400).json({
+          success: false,
+          error: 'Не може да се активира локация без QR код. Настройте QR / стикер конфигурацията първо.',
+          code: 'MISSING_QR_CONFIG',
+        });
+      }
+    }
 
     // Spec §5.4 — append a history row on every status change so the locations
     // page can render the full "Кога и защо е сменян" timeline. We append even

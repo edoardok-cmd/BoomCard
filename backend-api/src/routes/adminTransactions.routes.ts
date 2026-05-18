@@ -330,10 +330,12 @@ function buildBusinessWhere(query: Record<string, unknown>): BusinessTxWhere {
   if (minRisk) {
     const n = parseFloat(minRisk);
     if (Number.isFinite(n) && n > 0) {
-      // Risk score = max(receipt.fraudScore, stickerScan.fraudScore). At the DB
-      // level, "row passes" iff EITHER source is at or above the threshold.
+      // Spec §4.3 v1.1 — prefer the persisted Transaction.riskScore; fall back
+      // to live max(receipt.fraudScore, stickerScan.fraudScore) for legacy rows
+      // where the column is still null.
       ands.push({
         OR: [
+          { riskScore: { gte: Math.round(n) } },
           { receipt: { fraudScore: { gte: n } } },
           { stickerScan: { fraudScore: { gte: n } } },
         ],
@@ -374,6 +376,7 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
           netAmount: true,
           currency: true,
           paymentMethod: true,
+          riskScore: true,
           createdAt: true,
           user: {
             select: { id: true, firstName: true, lastName: true, email: true, phone: true, riskScore: true },
@@ -497,7 +500,10 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
           ? (partnerDiscountRate / 100) * tx.amount - cashback
           : null;
 
-      const riskScore = Math.round(
+      // Prefer the persisted Transaction.riskScore (spec §4.3 v1.1, written at
+       // approval time). Fall back to the live max of receipt/stickerScan
+       // fraudScores for legacy rows where the column is null.
+      const riskScore = tx.riskScore ?? Math.round(
         Math.max(tx.receipt?.fraudScore ?? 0, tx.stickerScan?.fraudScore ?? 0),
       );
 

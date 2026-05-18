@@ -793,6 +793,14 @@ class StripeService {
           // The "effective" renewal state is computed in the UI from
           // (autoRenewal && !cancelAtPeriodEnd).
           cancelAt: subscription.cancel_at ? new Date(subscription.cancel_at * 1000) : null,
+          // Spec §8.3 v1.1 — reset auto-renew-OFF reminder bitmask. This
+          // upsert.update path always rewrites currentPeriodEnd from the
+          // webhook payload; on a real renewal the bitmask should clear. On
+          // non-renewal updates (plan change, cancelAtPeriodEnd toggle) Stripe
+          // typically carries the same period anyway, so the only side-effect
+          // is potentially re-permitting an early reminder if a sub flipped
+          // autoRenewal mid-period — acceptable for §8.3 v1.1.
+          renewalRemindersSent: 0,
         },
       });
 
@@ -802,6 +810,21 @@ class StripeService {
       if (mappedStatus === 'ACTIVE' || mappedStatus === 'TRIALING') {
         const { cardService } = await import('./card.service');
         await cardService.syncCardTypeWithSubscription(userId, plan);
+
+        // Spec §4.2 v1.1 — recovery: clear any prior FAILED_PAYMENT subs so the
+        // scan/payout gates stop firing on them. The current sub is excluded so
+        // a sub that itself recovered from FAILED_PAYMENT (re-activated by the
+        // user) is not double-marked.
+        try {
+          const { clearFailedPaymentSubsForUser } = await import('./subscription.service');
+          const dbSub = await prisma.subscription.findUnique({
+            where: { stripeSubscriptionId: subscription.id },
+            select: { id: true },
+          });
+          await clearFailedPaymentSubsForUser(userId, dbSub?.id ?? null, null);
+        } catch (clearErr) {
+          logger.error(`[stripe-webhook] FAILED_PAYMENT cleanup failed for user ${userId}:`, clearErr);
+        }
       }
 
       logger.info(`Subscription updated in database for user ${userId} (plan: ${plan}, status: ${statusMap[subscription.status]})`);
@@ -971,6 +994,8 @@ class StripeService {
             gracePeriodEndsAt: null,
             currentPeriodStart: invoice.period_start ? new Date(invoice.period_start * 1000) : undefined,
             currentPeriodEnd: invoice.period_end ? new Date(invoice.period_end * 1000) : undefined,
+            // Spec §8.3 v1.1 — new period → fresh reminder cadence.
+            renewalRemindersSent: 0,
           },
         });
         logger.info(`Subscription ${dbSub.id} recovered from PAST_DUE — grace period cleared`);

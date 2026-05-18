@@ -116,8 +116,11 @@ router.get('/pending', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
     const skip = (pageNum - 1) * limitNum;
     const take = limitNum;
 
+    // Only surface ADMIN-role users — SUPER_ADMIN users without panel roles
+    // are a degenerate state that can't be actioned here (their role is assigned
+    // during the double-approval creation flow, not from this page).
     const baseCondition = {
-      role: { in: ['ADMIN', 'SUPER_ADMIN'] as UserRole[] },
+      role: 'ADMIN' as UserRole,
       adminRoles: { none: {} },
     };
 
@@ -204,7 +207,7 @@ router.get('/pending-all', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requ
   try {
     const [pendingRoleAssignments, pendingSuperAdmins] = await Promise.all([
       prisma.user.findMany({
-        where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] as UserRole[] }, adminRoles: { none: {} } },
+        where: { role: 'ADMIN' as UserRole, adminRoles: { none: {} } },
         orderBy: { createdAt: 'desc' },
         select: { id: true, email: true, firstName: true, lastName: true, status: true, createdAt: true },
       }),
@@ -375,6 +378,7 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
           role: 'ADMIN',
           status: 'ACTIVE',
           emailVerified: true,
+          mustChangePassword: true,
           adminRoles: {
             create: { roleId: adminRole.id, grantedById: req.user!.id },
           },
@@ -434,6 +438,7 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
             role: 'SUPER_ADMIN',
             status: 'ACTIVE',
             emailVerified: true,
+            mustChangePassword: true,
             adminRoles: {
               create: { roleId: superAdminRole.id, grantedById: req.user!.id },
             },

@@ -176,6 +176,7 @@ type DispatchRecipient =
       email: string | null;
       businessName: string;
       linkedUserId: string | null;
+      linkedUserEmail: string | null; // fallback when Partner.email is null
       linkedUserConsentEmail: boolean | null; // null = no linked User → implicit B2B consent
     };
 
@@ -189,10 +190,10 @@ async function buildRecipientsFromSyncKey(syncKey: string): Promise<DispatchReci
     kind: 'USER', userId: u.id, email: u.email, firstName: u.firstName, lastName: u.lastName, marketingConsentEmail: u.marketingConsentEmail, preferredLanguage: u.preferredLanguage,
   });
 
-  const partnerSel = { id: true, email: true, businessName: true, user: { select: { id: true, marketingConsentEmail: true } } } as const;
-  const toPartner = (p: { id: string; email: string | null; businessName: string; user: { id: string; marketingConsentEmail: boolean } | null }): DispatchRecipient => ({
+  const partnerSel = { id: true, email: true, businessName: true, user: { select: { id: true, email: true, marketingConsentEmail: true } } } as const;
+  const toPartner = (p: { id: string; email: string | null; businessName: string; user: { id: string; email: string; marketingConsentEmail: boolean } | null }): DispatchRecipient => ({
     kind: 'PARTNER', partnerId: p.id, email: p.email, businessName: p.businessName,
-    linkedUserId: p.user?.id ?? null, linkedUserConsentEmail: p.user?.marketingConsentEmail ?? null,
+    linkedUserId: p.user?.id ?? null, linkedUserEmail: p.user?.email ?? null, linkedUserConsentEmail: p.user?.marketingConsentEmail ?? null,
   });
 
   switch (syncKey) {
@@ -261,7 +262,7 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
           members: {
             include: {
               partner: {
-                select: { id: true, email: true, businessName: true, user: { select: { id: true, marketingConsentEmail: true } } },
+                select: { id: true, email: true, businessName: true, user: { select: { id: true, email: true, marketingConsentEmail: true } } },
               },
               user: { select: { id: true, email: true, firstName: true, lastName: true, marketingConsentEmail: true, preferredLanguage: true } },
             },
@@ -289,6 +290,7 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
           email: m.partner?.email ?? null,
           businessName: m.partner?.businessName ?? '',
           linkedUserId: m.partner?.user?.id ?? null,
+          linkedUserEmail: m.partner?.user?.email ?? null,
           linkedUserConsentEmail: m.partner?.user?.marketingConsentEmail ?? null,
         };
       });
@@ -308,7 +310,7 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
         } else {
           // Partner email: respect explicit opt-out by linked User; null = no linked User = send
           if (recipient.linkedUserConsentEmail === false) continue;
-          email = recipient.email;
+          email = recipient.email ?? recipient.linkedUserEmail;
           recipientName = recipient.businessName;
         }
 
@@ -567,6 +569,9 @@ router.patch('/campaigns/:id/status', ...WRITE, async (req, res, next) => {
 
     // Guard: sending requires a template and a non-empty audience list
     if (status === 'SENT' && existing.status !== 'SENT') {
+      if (existing.type === 'SMS') {
+        return res.status(422).json({ error: 'SMS провайдър не е конфигуриран. SMS кампании не могат да бъдат изпратени в момента.' });
+      }
       if (!existing.templateId) {
         return res.status(422).json({ error: 'Cannot send: campaign has no template. Assign a template first.' });
       }
@@ -602,17 +607,25 @@ router.patch('/campaigns/:id/status', ...WRITE, async (req, res, next) => {
       select: CAMPAIGN_SELECT,
     });
 
-    // Dispatch after status is recorded — errors are non-fatal (campaign is already SENT)
+    // Dispatch after status is recorded — errors are non-fatal (campaign is already SENT).
+    // On success: audience is updated to the actual dispatched count.
+    // On failure: audience is set to 0 so the admin can see the discrepancy and retry.
     if (status === 'SENT' && existing.status !== 'SENT') {
       dispatchCampaign(req.params.id)
         .then((count) => {
           logger.info(`[marketing] campaign ${req.params.id} dispatched to ${count} recipients`);
           return prisma.marketingCampaign.update({
             where: { id: req.params.id },
-            data: { audience: count },
+            data: { audience: count, openRate: null, clickRate: null },
           });
         })
-        .catch((err) => logger.error('[marketing] dispatch error:', err));
+        .catch((err) => {
+          logger.error('[marketing] dispatch error:', err);
+          return prisma.marketingCampaign.update({
+            where: { id: req.params.id },
+            data: { audience: 0 },
+          }).catch((dbErr) => logger.error('[marketing] failed to reset audience on dispatch error:', dbErr));
+        });
     }
 
     res.json(item);
@@ -1086,7 +1099,7 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
     // Using find+update instead of upsert because template name has no unique DB constraint.
     const syncTpl = async (
       name: string,
-      data: { type: MarketingChannel; subject?: string; subjectEn?: string; body: string; bodyEn?: string },
+      data: { type: MarketingChannel; category?: string; subject?: string; subjectEn?: string; body: string; bodyEn?: string },
     ) => {
       const existing = await prisma.marketingTemplate.findFirst({ where: { name } });
       if (existing) {
@@ -1095,10 +1108,13 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
       return prisma.marketingTemplate.create({ data: { name, ...data } });
     };
 
+    // Indices 0-3 are referenced by the automation wiring below — order is load-bearing.
+    // Indices 4-5 (Registration, Support) are free-standing templates with no linked automation.
     const [tplCashbackEarned, tplCashbackExpiring, tplPartnerWelcome, tplPartnerApproved] =
       await Promise.all([
         syncTpl('Cashback Earned Notification', {
           type: 'EMAIL',
+          category: 'threshold',
           subject: 'Достигнахте ниво — вашият кешбек е начислен!',
           subjectEn: 'You reached a cashback milestone — your cashback has been credited!',
           body: `<h2>Достигнахте ниво за кешбек!</h2>
@@ -1112,6 +1128,7 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
         }),
         syncTpl('Cashback Expiring Soon', {
           type: 'EMAIL',
+          category: 'cashback',
           subject: 'Вашият кешбек в BoomCard изтича скоро — използвайте го навреме',
           subjectEn: 'Your BoomCard cashback is expiring soon — use it before it\'s gone',
           body: `<h2>Кешбекът ви предстои да изтече!</h2>
@@ -1127,6 +1144,7 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
         }),
         syncTpl('Partner Welcome Email', {
           type: 'EMAIL',
+          category: 'partner_request',
           subject: 'Добре дошли в мрежата на партньорите на BoomCard!',
           subjectEn: 'Welcome to the BoomCard partner network!',
           body: `<h2>Добре дошли на борда, партньор!</h2>
@@ -1152,6 +1170,7 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
         }),
         syncTpl('Partner Approved', {
           type: 'EMAIL',
+          category: 'onboarding',
           subject: 'Поздравления — вашият партньорски акаунт в BoomCard е активен!',
           subjectEn: 'Congratulations — your BoomCard partner account is now active!',
           body: `<h2>Вие сте активни в BoomCard!</h2>
@@ -1175,6 +1194,51 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
 </ul>
 <p>Log in to the partner portal to complete your profile and attract more customers.</p>
 <p>Welcome to the network!</p>
+<p>The BoomCard Team</p>`,
+        }),
+        // Spec §8: Registration and Support templates — no linked automation, seeded for manual use
+        syncTpl('Registration Welcome Email', {
+          type: 'EMAIL',
+          category: 'registration',
+          subject: 'Добре дошли в BoomCard!',
+          subjectEn: 'Welcome to BoomCard!',
+          body: `<h2>Добре дошли в BoomCard!</h2>
+<p>Радваме се, че се присъединихте към нас. Вашият акаунт е създаден успешно.</p>
+<p>С BoomCard ще получавате кешбек при покупки при нашите партньори директно по сметката ви.</p>
+<p><strong>Как да започнете:</strong></p>
+<ul>
+  <li>Изтеглете приложението BoomCard</li>
+  <li>Разгледайте нашите партньори наблизо</li>
+  <li>Пазарувайте и натрупвайте кешбек автоматично</li>
+</ul>
+<p>При въпроси сме на ваше разположение на <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
+<p>Екипът на BoomCard</p>`,
+          bodyEn: `<h2>Welcome to BoomCard!</h2>
+<p>We're glad you joined us. Your account has been created successfully.</p>
+<p>With BoomCard you'll receive cashback on purchases at our partners directly to your account.</p>
+<p><strong>How to get started:</strong></p>
+<ul>
+  <li>Download the BoomCard app</li>
+  <li>Explore our nearby partners</li>
+  <li>Shop and accumulate cashback automatically</li>
+</ul>
+<p>If you have any questions, we're here for you at <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
+<p>The BoomCard Team</p>`,
+        }),
+        syncTpl('Support Contact Email', {
+          type: 'EMAIL',
+          category: 'support',
+          subject: 'Получихме вашето запитване — BoomCard поддръжка',
+          subjectEn: 'We received your inquiry — BoomCard support',
+          body: `<h2>Получихме вашето запитване!</h2>
+<p>Благодарим ви, че се свързахте с нас. Нашият екип ще разгледа въпроса ви и ще отговори в рамките на 1–2 работни дни.</p>
+<p>Референтният номер на вашето запитване е запазен в системата ни.</p>
+<p>При спешни въпроси можете да пишете директно на <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
+<p>Екипът на BoomCard</p>`,
+          bodyEn: `<h2>We received your inquiry!</h2>
+<p>Thank you for reaching out. Our team will review your question and respond within 1–2 business days.</p>
+<p>Your inquiry reference number has been saved in our system.</p>
+<p>For urgent questions you can write directly to <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
 <p>The BoomCard Team</p>`,
         }),
       ]);
@@ -1253,7 +1317,7 @@ router.get('/automations', ...READ, async (req, res, next) => {
         select: {
           id: true, name: true, trigger: true, status: true,
           totalRuns: true, lastRunAt: true, createdAt: true, templateId: true,
-          template: { select: { id: true, name: true } },
+          template: { select: { id: true, name: true, type: true } },
         },
       }),
       prisma.marketingAutomation.count({ where }),

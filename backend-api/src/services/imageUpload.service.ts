@@ -109,6 +109,9 @@ export class ImageUploadService {
     if (mimeType === 'image/png') {
       return image.png({ compressionLevel: 8 }).toBuffer();
     }
+    if (mimeType === 'image/webp') {
+      return image.webp({ quality: 85 }).toBuffer();
+    }
     return image.jpeg({ quality: 85, progressive: true }).toBuffer();
   }
 

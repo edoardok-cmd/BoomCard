@@ -14,14 +14,17 @@
 import { Router, Response } from 'express';
 import { asyncHandler } from '../middleware/error.middleware';
 import { authenticate, authorize, optionalAuthenticate, AuthRequest } from '../middleware/auth.middleware';
+import { requireActivePartnerForWrites } from '../middleware/partnerStatus.middleware';
 import { prisma } from '../lib/prisma';
-import { OfferStatus, PartnerStatus, ScanStatus, UserStatus } from '@prisma/client';
+import { LocationType, OfferStatus, PartnerRequestStatus, PartnerStatus, ScanStatus, UserStatus } from '@prisma/client';
 import { partnerTypeService } from '../services/partnerType.service';
 import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
 import { emailService } from '../services/email.service';
 import { logger } from '../utils/logger';
 import { fireAutomation } from '../lib/automationDispatcher';
 import { findInvalidCategoryEntry } from '../constants/categoryRegistry';
+import { writeAudit } from '../middleware/audit.middleware';
+import { issueActivationLink, sendActivationEmail, stampEmailOutcome } from '../services/partnerActivation.service';
 
 /**
  * Normalize a categories[] payload alongside its main category id.
@@ -47,6 +50,27 @@ function normalizePartnerCategories(
   return { value: merged, error: null };
 }
 
+/**
+ * Coerce an unknown value into a non-negative integer, defaulting to 0.
+ * Used for the `tables` / `cashDesks` fields on a venue payload.
+ */
+function normalizeInt(v: unknown): number {
+  const n = typeof v === 'number' ? v : v === undefined || v === null || v === '' ? NaN : Number(v);
+  if (!isFinite(n) || n < 0) return 0;
+  return Math.floor(n);
+}
+
+/**
+ * Like normalizeInt but preserves the "absent" signal as null.
+ * Used for `capacity` (venues may genuinely have no capacity recorded).
+ */
+function normalizeIntOrNull(v: unknown): number | null {
+  if (v === undefined || v === null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!isFinite(n) || n < 0) return null;
+  return Math.floor(n);
+}
+
 const PARTNER_TYPE_SELECT = {
   id: true,
   name: true,
@@ -56,6 +80,13 @@ const PARTNER_TYPE_SELECT = {
 } as const;
 
 const router = Router();
+
+// Spec §5.3 v1.1 — PARTNER role write operations are blocked when the linked
+// Partner.status != ACTIVE. Read methods (GET/HEAD/OPTIONS) bypass so an
+// Inactive partner can still view their data. Admin roles bypass entirely.
+// Mounted at router level for breadth; the middleware is a no-op for
+// admin-only or public-GET paths.
+router.use(requireActivePartnerForWrites);
 
 // ----------------------------------------------------------------
 // GET /api/partners
@@ -68,9 +99,17 @@ router.get(
     const { category, city, status, search, partnerTypeId, page = '1', limit = '20',
             verifiedAfter, onboardingCompletedAfter } = req.query as Record<string, string>;
 
+    // Spec §5.3 v1.1 — public visibility matrix: a partner is visible to the
+    // public list only if status=ACTIVE AND verifiedAt is set (activation link
+    // consumed) AND isVisible=true. Admin/ops callers can pass ?status= to
+    // bypass this — the gates apply only on the default-ACTIVE branch.
     const where: any = {
       status: status ?? PartnerStatus.ACTIVE,
     };
+    if (!status) {
+      where.verifiedAt = { not: null };
+      where.isVisible = true;
+    }
     if (category) {
       // Match on the categories array (new records) OR the category field (legacy records with empty array)
       if (!where.AND) where.AND = [];
@@ -86,7 +125,12 @@ router.get(
     }
     if (verifiedAfter) {
       const from = new Date(verifiedAfter);
-      if (!isNaN(from.getTime())) where.verifiedAt = { gte: from };
+      // verifiedAfter narrows an already-existing verifiedAt filter (set by the
+      // §5.3 gate above). Convert to AND so we don't overwrite "not: null".
+      if (!isNaN(from.getTime())) {
+        where.AND = where.AND ?? [];
+        where.AND.push({ verifiedAt: { gte: from } });
+      }
     }
     if (onboardingCompletedAfter) {
       const from = new Date(onboardingCompletedAfter);
@@ -120,6 +164,7 @@ router.get(
           onboardingCompletedAt: true,
           pendingChanges: true,
           pendingChangesAt: true,
+          _count: { select: { venues: true } },
         },
         orderBy: [{ rating: 'desc' }],
         skip,
@@ -128,9 +173,11 @@ router.get(
       prisma.partner.count({ where }),
     ]);
 
+    const data = partners.map(({ _count, ...p }) => ({ ...p, venueCount: _count.venues }));
+
     res.json({
       success: true,
-      data: partners,
+      data,
       pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
     });
   }),
@@ -348,6 +395,91 @@ router.get(
 );
 
 // ----------------------------------------------------------------
+// GET /api/partners/me/stickers — spec §5.4 v1.1
+// Partner-side READ-ONLY view of their own venues + sticker QR codes.
+// Returns each venue with the status mirror of:
+//   - sticker config (Активен / В обработка / Неактивен)
+//   - sticker count
+//   - the partner's overall status (since QR is gated on Partner.status=ACTIVE)
+// Partners cannot manage QR codes from this endpoint; admin is source of truth.
+// ----------------------------------------------------------------
+router.get(
+  '/me/stickers',
+  authenticate,
+  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const partner = await prisma.partner.findUnique({
+      where: { userId: req.user!.id },
+      select: {
+        id: true,
+        status: true,
+        verifiedAt: true,
+        venues: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            city: true,
+            venueStatus: true,
+            stickerConfig: { select: { isActive: true, updatedAt: true } },
+            stickers: {
+              select: {
+                id: true,
+                stickerId: true,
+                status: true,
+                locationType: true,
+                location: { select: { name: true, locationNumber: true } },
+                lastScannedAt: true,
+                totalScans: true,
+              },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        },
+      },
+    });
+
+    if (!partner) {
+      return res.status(404).json({ success: false, error: 'Partner profile not found' });
+    }
+
+    // Spec §5.4 — operational status mirror per venue. The partner-side panel
+    // shows a single status badge per sticker derived from the partner status
+    // + the sticker row's status:
+    //   - Partner.status != ACTIVE         → all stickers display as "Неактивен"
+    //   - Sticker.status != ACTIVE         → display as Sticker.status (PENDING / INACTIVE / RETIRED / DAMAGED)
+    //   - Otherwise                        → "Активен"
+    const partnerOperationallyActive = partner.status === 'ACTIVE' && !!partner.verifiedAt;
+    const venues = partner.venues.map((v) => ({
+      id: v.id,
+      name: v.name,
+      address: v.address,
+      city: v.city,
+      venueStatus: v.venueStatus,
+      stickerConfigActive: v.stickerConfig?.isActive ?? false,
+      stickerConfigUpdatedAt: v.stickerConfig?.updatedAt ?? null,
+      stickers: v.stickers.map((s) => ({
+        ...s,
+        // Derived display status the UI badge uses directly
+        displayStatus: !partnerOperationallyActive
+          ? 'INACTIVE'
+          : s.status,
+      })),
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        partnerStatus: partner.status,
+        partnerActivated: !!partner.verifiedAt,
+        readonlyNotice: 'QR кодовете се управляват от BoomCard администратор. Изпратете заявка чрез „Заяви промяна" за корекции.',
+        venues,
+      },
+    });
+  }),
+);
+
+// ----------------------------------------------------------------
 // GET /api/partners/:id/stats
 // Owner (PARTNER role + own record) or ADMIN — aggregate KPIs for the partner dashboard.
 // ----------------------------------------------------------------
@@ -453,11 +585,27 @@ router.get(
         amenities: true,
         joinedAt: true,
         verifiedAt: true,
+        isVisible: true,
       },
     });
 
-    if (!partner || partner.status !== PartnerStatus.ACTIVE) {
+    const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
+
+    // Spec §5.3 v1.1 — public single-partner detail respects the same matrix
+    // as the list endpoint. Admins (any auth method) see hidden partners for
+    // ops visibility. Non-admins (anonymous customers, signed-in users) are
+    // blocked on any of: status≠ACTIVE, verifiedAt null, isVisible=false.
+    if (!partner) {
       return res.status(404).json({ success: false, error: 'Partner not found' });
+    }
+    if (!isAdmin) {
+      if (
+        partner.status !== PartnerStatus.ACTIVE ||
+        !partner.verifiedAt ||
+        !partner.isVisible
+      ) {
+        return res.status(404).json({ success: false, error: 'Partner not found' });
+      }
     }
 
     res.json({ success: true, data: partner });
@@ -586,20 +734,54 @@ router.post(
       include: { partnerType: { select: PARTNER_TYPE_SELECT } },
     });
 
-    // Create venue records for each location
+    // Create venue records (+ sticker locations) for each location.
+    // Each venue is its own $transaction so we can fan out stickers atomically
+    // per venue; a single venue failure logs + surfaces but doesn't block others.
+    let venuesCreated = 0;
+    let stickerLocationsCreated = 0;
+    const venueErrors: Array<{ name: string; error: string }> = [];
     if (locations && locations.length > 0) {
-      await prisma.venue.createMany({
-        data: locations.map((loc: any) => ({
-          partnerId: partner.id,
-          name: loc.name,
-          address: loc.address,
-          city: loc.city,
-          region: loc.region ?? null,
-          latitude: typeof loc.latitude === 'number' ? loc.latitude : null,
-          longitude: typeof loc.longitude === 'number' ? loc.longitude : null,
-          phone: loc.phone ?? null,
-        })),
-      });
+      for (const loc of locations as any[]) {
+        const capacity = normalizeIntOrNull(loc.capacity);
+        const tables = normalizeInt(loc.tables);
+        const cashDesks = normalizeInt(loc.cashDesks);
+        try {
+          const txResult = await prisma.$transaction(async (tx) => {
+            const venue = await tx.venue.create({
+              data: {
+                partnerId: partner.id,
+                name: loc.name,
+                address: loc.address,
+                city: loc.city,
+                region: loc.region ?? null,
+                latitude: typeof loc.latitude === 'number' ? loc.latitude : null,
+                longitude: typeof loc.longitude === 'number' ? loc.longitude : null,
+                phone: loc.phone ?? null,
+                capacity,
+              },
+              select: { id: true },
+            });
+            const locationRows: Array<{ venueId: string; name: string; locationType: LocationType; locationNumber: string }> = [];
+            for (let i = 1; i <= tables; i++) {
+              locationRows.push({ venueId: venue.id, name: `Table ${i}`, locationType: LocationType.TABLE, locationNumber: String(i) });
+            }
+            for (let i = 1; i <= cashDesks; i++) {
+              locationRows.push({ venueId: venue.id, name: `Cash Desk ${i}`, locationType: LocationType.COUNTER, locationNumber: String(i) });
+            }
+            let count = 0;
+            if (locationRows.length > 0) {
+              const r = await tx.stickerLocation.createMany({ data: locationRows });
+              count = r.count;
+            }
+            return { count };
+          });
+          venuesCreated++;
+          stickerLocationsCreated += txResult.count;
+        } catch (venueErr: any) {
+          venueErrors.push({ name: loc.name, error: venueErr.message });
+          logger.error(`[POST /partners] failed to create venue "${loc.name}" for partner ${partner.id}:`, venueErr);
+        }
+      }
     }
 
     fireAutomation('partner.created', {
@@ -616,6 +798,9 @@ router.post(
         ...partner,
         typeMaxDiscountPercent: typeMax,
         effectiveDiscountRate: effectiveRate,
+        venuesCreated,
+        stickerLocationsCreated,
+        venueErrors,
       },
       message: partner.partnerType
         ? `Partner created with type "${partner.partnerType.name}" — up to ${typeMax}% discount for cardholders`
@@ -794,10 +979,33 @@ router.put(
             error: `Invalid status. Must be one of: ${Object.values(PartnerStatus).join(', ')}`,
           });
         }
-        updateData.status = status;
-        if (status === PartnerStatus.ACTIVE && !partner.verifiedAt) {
-          updateData.verifiedAt = new Date();
+        // Spec §5.2 — block direct activation of a PENDING partner that has not
+        // completed the onboarding pipeline. An admin using the general edit form
+        // must not be able to bypass the pipeline by flipping status=ACTIVE from
+        // NOVA/KOMUNIKACIYA/DOGOVARYANE. Partners already in ONBOARDING or ODOBRENA
+        // (pipeline complete) and re-activations of post-onboarding partners (e.g.
+        // PAUSED → ACTIVE) are always allowed.
+        if (status === PartnerStatus.ACTIVE && partner.status === PartnerStatus.PENDING) {
+          const approvedStages: PartnerRequestStatus[] = [
+            PartnerRequestStatus.ONBOARDING,
+            PartnerRequestStatus.ODOBRENA,
+          ];
+          const currentRequestStatus = partner.requestStatus ?? PartnerRequestStatus.NOVA;
+          if (!approvedStages.includes(currentRequestStatus)) {
+            return res.status(400).json({
+              success: false,
+              error: `Cannot activate a partner that has not completed onboarding. Current pipeline stage: ${currentRequestStatus}. Advance the partner to ONBOARDING via the partner requests pipeline first.`,
+              currentRequestStatus,
+            });
+          }
         }
+        updateData.status = status;
+        // Spec §5.2 v1.1 — verifiedAt is the "activation link consumed" flag,
+        // stamped ONLY by activationLinkService.consume. Auto-stamping it here
+        // bypassed the activation flow entirely (admin flips PENDING→ACTIVE
+        // and verifiedAt gets set without an email ever being sent or
+        // password ever being chosen). Removed; the partner must click the
+        // activation link.
       }
 
       // Spec §5.3 — Видимост (visible vs. hidden to subscribers)
@@ -821,6 +1029,45 @@ router.put(
       data: updateData,
       include: { partnerType: { select: PARTNER_TYPE_SELECT } },
     });
+
+    // Spec §5.3 — История на промени: record admin edits so the edit modal's
+    // "История на промени" section is populated. Non-admin edits go through
+    // pendingChanges flow and are audited via the approval workflow instead.
+    if (isAdmin) {
+      const auditableFields = ['businessName', 'businessNameBg', 'category', 'categories',
+        'description', 'city', 'region', 'address', 'phone', 'email', 'website',
+        'discountRate', 'partnerTypeId', 'status', 'isVisible'];
+      const before: Record<string, unknown> = {};
+      const after: Record<string, unknown> = {};
+      for (const field of auditableFields) {
+        const oldVal = (partner as Record<string, unknown>)[field];
+        const newVal = updateData[field];
+        if (newVal === undefined) continue;
+        // Arrays (e.g. categories[]) must be compared by value, not reference,
+        // and order-insensitively — the DB and the client may return the same
+        // items in different order, which must not produce a spurious audit entry.
+        const sortedForCmp = (v: unknown) => Array.isArray(v) ? [...v].sort() : v;
+        const changed = Array.isArray(oldVal) || Array.isArray(newVal)
+          ? JSON.stringify(sortedForCmp(oldVal)) !== JSON.stringify(sortedForCmp(newVal))
+          : oldVal !== newVal;
+        if (changed) {
+          before[field] = oldVal;
+          after[field] = newVal;
+        }
+      }
+      if (Object.keys(after).length > 0) {
+        writeAudit({
+          actorUserId: req.user!.id,
+          action: 'partner.update',
+          objectType: 'Partner',
+          objectId: req.params.id,
+          before,
+          after,
+          ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? null,
+          userAgent: req.headers['user-agent'] ?? null,
+        }).catch(() => {});
+      }
+    }
 
     // When a partner transitions TO ACTIVE, activate the owning user account and
     // send the approval email. Guard against re-firing on already-active partners.
@@ -1135,11 +1382,21 @@ router.post(
           // Admin-created accounts are pre-verified — no email confirmation needed.
           emailVerified: true,
           status: UserStatus.ACTIVE,
+          // Spec §5.2 v1.1 — flag so the activation page knows the partner
+          // never chose this (random) password and MUST set one when consuming
+          // the activation link. consume() clears this flag when a password
+          // is supplied.
+          mustChangePassword: true,
         },
       });
 
-      // Admin onboarding always creates an active partner; a status override in
-      // the request body is still honoured (e.g. bulk-import with explicit status).
+      // Spec §5.2 v1.1 — admin-onboarded partners get status=ACTIVE but
+      // verifiedAt stays null. We issue an activation link below so the
+      // partner can set their own password (admin onboarding generates a
+      // random temp password the partner never sees). A request-body
+      // status override is still honoured (bulk-import with explicit
+      // PENDING etc.), but verifiedAt is NEVER stamped by admin onboard —
+      // only by activationLinkService.consume.
       const resolvedStatus = status && Object.values(PartnerStatus).includes(status)
         ? (status as PartnerStatus)
         : PartnerStatus.ACTIVE;
@@ -1164,7 +1421,7 @@ router.post(
           status: resolvedStatus,
           features: Object.keys(featuresData).length > 0 ? JSON.stringify(featuresData) : null,
           amenities: amenitiesData ? JSON.stringify(amenitiesData) : null,
-          verifiedAt: resolvedStatus === PartnerStatus.ACTIVE ? new Date() : null,
+          // verifiedAt stays null — set on activation-link consume only.
         },
         include: { partnerType: { select: PARTNER_TYPE_SELECT } },
       });
@@ -1172,15 +1429,28 @@ router.post(
       return { user, partner };
     });
 
-    // Auto-create venues from onboarding data
-    const venuesToCreate = [];
+    // Auto-create venues from onboarding data.
+    // We collect a normalized list first, then create venues + their sticker
+    // locations one by one (we need the venue id to fan out stickers).
+    type VenueSpec = {
+      name: string;
+      address: string;
+      city: string;
+      region: string | null;
+      phone: string | null;
+      latitude: number | null;
+      longitude: number | null;
+      capacity: number | null;
+      tables: number;
+      cashDesks: number;
+    };
+
+    const venueSpecs: VenueSpec[] = [];
 
     if (Array.isArray(locations) && locations.length > 0) {
-      // Prefer structured locations array (from admin create form with geocoded coords)
       for (const loc of locations) {
         if (loc.name && loc.address && loc.city) {
-          venuesToCreate.push({
-            partnerId: result.partner.id,
+          venueSpecs.push({
             name: loc.name,
             address: loc.address,
             city: loc.city,
@@ -1188,14 +1458,15 @@ router.post(
             phone: loc.phone || null,
             latitude: typeof loc.latitude === 'number' ? loc.latitude : null,
             longitude: typeof loc.longitude === 'number' ? loc.longitude : null,
+            capacity: normalizeIntOrNull(loc.capacity),
+            tables: normalizeInt(loc.tables),
+            cashDesks: normalizeInt(loc.cashDesks),
           });
         }
       }
     } else {
-      // Fallback: create primary venue from top-level address fields
       if (address && city) {
-        venuesToCreate.push({
-          partnerId: result.partner.id,
+        venueSpecs.push({
           name: businessName,
           address,
           city,
@@ -1203,15 +1474,15 @@ router.post(
           phone: phone || null,
           latitude: null,
           longitude: null,
+          capacity: null,
+          tables: 0,
+          cashDesks: 0,
         });
       }
-
-      // Additional venues from legacy additionalVenues array
       if (Array.isArray(additionalVenues)) {
         for (const v of additionalVenues) {
           if (v.name && v.address && v.city) {
-            venuesToCreate.push({
-              partnerId: result.partner.id,
+            venueSpecs.push({
               name: v.name,
               address: v.address,
               city: v.city,
@@ -1219,14 +1490,93 @@ router.post(
               phone: v.phone || null,
               latitude: typeof v.latitude === 'number' ? v.latitude : null,
               longitude: typeof v.longitude === 'number' ? v.longitude : null,
+              capacity: normalizeIntOrNull(v.capacity),
+              tables: normalizeInt(v.tables),
+              cashDesks: normalizeInt(v.cashDesks),
             });
           }
         }
       }
     }
 
-    if (venuesToCreate.length > 0) {
-      await prisma.venue.createMany({ data: venuesToCreate });
+    let venuesCreated = 0;
+    let stickerLocationsCreated = 0;
+    const venueErrors: Array<{ name: string; error: string }> = [];
+    for (const spec of venueSpecs) {
+      // Each venue + its sticker locations is atomic. Failure of one venue
+      // doesn't roll back the partner or the other venues; the failure is
+      // surfaced in the response so the wizard can warn the admin.
+      try {
+        const txResult = await prisma.$transaction(async (tx) => {
+          const venue = await tx.venue.create({
+            data: {
+              partnerId: result.partner.id,
+              name: spec.name,
+              address: spec.address,
+              city: spec.city,
+              region: spec.region,
+              phone: spec.phone,
+              latitude: spec.latitude,
+              longitude: spec.longitude,
+              capacity: spec.capacity,
+            },
+            select: { id: true },
+          });
+          const locationRows: Array<{ venueId: string; name: string; locationType: LocationType; locationNumber: string }> = [];
+          for (let i = 1; i <= spec.tables; i++) {
+            locationRows.push({ venueId: venue.id, name: `Table ${i}`, locationType: LocationType.TABLE, locationNumber: String(i) });
+          }
+          for (let i = 1; i <= spec.cashDesks; i++) {
+            locationRows.push({ venueId: venue.id, name: `Cash Desk ${i}`, locationType: LocationType.COUNTER, locationNumber: String(i) });
+          }
+          let count = 0;
+          if (locationRows.length > 0) {
+            const r = await tx.stickerLocation.createMany({ data: locationRows });
+            count = r.count;
+          }
+          return { count };
+        });
+        venuesCreated++;
+        stickerLocationsCreated += txResult.count;
+      } catch (venueErr: any) {
+        venueErrors.push({ name: spec.name, error: venueErr.message });
+        logger.error(`[onboard] failed to create venue "${spec.name}" for partner ${result.partner.id}:`, venueErr);
+      }
+    }
+
+    // Spec §5.2 v1.1 — admin-onboarded partners get an activation link too.
+    // The wizard creates a random temp password that the partner never sees;
+    // without the activation link they would have no way to log in. They
+    // can't log in until verifiedAt is stamped anyway (login gate), so this
+    // is also the only path that brings them online.
+    if (result.partner.status === PartnerStatus.ACTIVE) {
+      try {
+        const issued = await issueActivationLink({
+          partnerId: result.partner.id,
+          adminId: req.user!.id,
+          reason: 'initial',
+        });
+        const recipient = result.partner.email ?? result.user.email;
+        if (recipient) {
+          const linkId = issued.linkId;
+          sendActivationEmail({
+            email: recipient,
+            firstName: result.user.firstName || result.partner.businessName,
+            businessName: result.partner.businessName,
+            activationUrl: issued.url,
+            expiresAt: issued.expiresAt,
+          })
+            .then(() => stampEmailOutcome(linkId, { sent: true }))
+            .catch((err) => {
+              logger.error('[partner-activation] onboard email failed:', err);
+              stampEmailOutcome(linkId, { sent: false, error: String((err as Error)?.message ?? err) });
+            });
+        } else {
+          logger.warn(`[onboard] partner ${result.partner.id} has no email — activation link issued but not sent`);
+        }
+      } catch (err) {
+        logger.error('[onboard] issueActivationLink failed:', err);
+      }
     }
 
     // Fire partner.created for all wizard-created partners.
@@ -1253,8 +1603,61 @@ router.post(
         effectiveDiscountRate: result.partner.discountRate ?? typeMax,
         userCreated: true,
         userId: result.user.id,
+        venuesCreated,
+        stickerLocationsCreated,
+        venueErrors,
       },
       message: `Partner "${businessName}" created successfully`,
+    });
+  }),
+);
+
+// ----------------------------------------------------------------
+// Spec §5.2, §9.5 v1.1 — public partner activation preview endpoint.
+// The CONSUME endpoint lives at POST /api/auth/partner/activate (auth.routes)
+// — a previous parallel-work split left two competing consume endpoints with
+// different password/verifiedAt contracts; consolidated to a single one.
+// ----------------------------------------------------------------
+router.get(
+  '/activation/:token/verify',
+  asyncHandler(async (req, res: Response) => {
+    const token = req.params.token;
+    const link = await prisma.activationLink.findUnique({
+      where: { token },
+      include: {
+        partner: {
+          select: {
+            id: true,
+            businessName: true,
+            email: true,
+            user: { select: { mustChangePassword: true } },
+          },
+        },
+      },
+    });
+
+    if (!link || link.invalidatedAt || link.consumedAt || link.expiresAt.getTime() < Date.now()) {
+      return res.status(400).json({ success: false, valid: false, error: 'Invalid or expired activation link' });
+    }
+
+    // Spec §5.2 v1.1 — distinguish self-registered (chose a password at
+    // /auth/register) from admin-onboarded partners (random temp password
+    // they never saw). Admin-onboarded users are created with
+    // mustChangePassword=true; if they consume the link without supplying
+    // a password they're locked out of the dashboard. The UI uses this flag
+    // to make the password fields required.
+    const mustSetPassword = link.partner.user?.mustChangePassword === true;
+
+    res.json({
+      success: true,
+      valid: true,
+      expiresAt: link.expiresAt,
+      mustSetPassword,
+      partner: {
+        id: link.partner.id,
+        businessName: link.partner.businessName,
+        email: link.partner.email,
+      },
     });
   }),
 );

@@ -11,7 +11,7 @@
 import * as XLSX from 'xlsx';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
-import { OfferStatus, OfferType, PartnerStatus } from '@prisma/client';
+import { OfferStatus, OfferType, PartnerStatus, LocationType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { imageUploadService } from './imageUpload.service';
 import { notificationService } from './notification.service';
@@ -39,9 +39,12 @@ export interface ImportResult {
 
 export interface PartnerImportResult {
   partnersCreated: number;
+  partnersUpdated: number;
   partnersSkipped: number;
   imagesUploaded: number;
   tierApplied: string | null;
+  venuesCreated: number;
+  stickerLocationsCreated: number;
   errors: string[];
   warnings: string[];
   partners: Array<{ id: string; businessName: string; created: boolean }>;
@@ -573,6 +576,9 @@ const PCOL = {
   OPENING_HOURS:    'opening_hours',
   DISCOUNT_RATE:    'discount_rate',
   STATUS:           'status',
+  CAPACITY:         'capacity',
+  TABLES:           'tables',
+  CASH_DESKS:       'cash_desks',
 } as const;
 
 /**
@@ -600,6 +606,9 @@ export function generatePartnersTemplate(): Buffer {
     'Mon-Fri 09:00-22:00',          // opening_hours
     '10',                           // discount_rate (%)
     'ACTIVE',                       // status: ACTIVE | PENDING | SUSPENDED
+    '80',                           // capacity (seats)
+    '12',                           // tables (TABLE sticker locations to pre-create)
+    '2',                            // cash_desks (COUNTER sticker locations to pre-create)
   ];
 
   const ws = XLSX.utils.aoa_to_sheet([headers, exampleRow]);
@@ -633,6 +642,23 @@ export function generatePartnersTemplate(): Buffer {
     [''],
     ['STATUS VALUES'],
     ['  ACTIVE | PENDING | SUSPENDED | INACTIVE'],
+    [''],
+    ['VENUE FIELDS'],
+    ['When any of capacity / tables / cash_desks is > 0 AND the partner has'],
+    ['no venues yet, a primary venue is auto-created using the partner'],
+    ['address/city/region/phone/lat/lng/opening_hours.'],
+    ['  capacity    — total seats at the venue (non-negative integer, optional)'],
+    ['  tables      — number of TABLE sticker locations to pre-create (integer)'],
+    ['  cash_desks  — number of COUNTER sticker locations to pre-create (integer)'],
+    [''],
+    ['Requirements & behaviour:'],
+    ['  • address AND city must be filled, otherwise venue creation is skipped'],
+    ['    with a warning.'],
+    ['  • If the partner already has one or more venues (e.g. created by a'],
+    ['    previous import or by the onboarding form), these fields are ignored.'],
+    ['  • If two rows resolve to the same partner (same email), only the first'],
+    ['    row creates a venue; the second row\'s venue data is ignored.'],
+    ['  • Fractional values are floored to integers with a warning.'],
   ];
   const wsInstr = XLSX.utils.aoa_to_sheet(instructions);
   wsInstr['!cols'] = [{ wch: 80 }];
@@ -665,8 +691,11 @@ export async function importPartnersFromSpreadsheet(
   const errors: string[] = [];
   const warnings: string[] = [];
   let partnersCreated = 0;
+  let partnersUpdated = 0;
   let partnersSkipped = 0;
   let imagesUploaded = 0;
+  let venuesCreated = 0;
+  let stickerLocationsCreated = 0;
   const partners: Array<{ id: string; businessName: string; created: boolean }> = [];
 
   // ── 1. Parse spreadsheet ──────────────────────────────────────────────────
@@ -806,7 +835,7 @@ export async function importPartnersFromSpreadsheet(
 
     // Find or create partner record
     let created = false;
-    let partnerId: string;
+    let partnerId: string | null = null;
     try {
       const existingPartner = await prisma.partner.findUnique({ where: { userId: partnerUser.id } });
       if (existingPartner) {
@@ -836,6 +865,7 @@ export async function importPartnersFromSpreadsheet(
           },
         });
         partnerId = existingPartner.id;
+        partnersUpdated++;
         warnings.push(`Row ${rowNum}: partner "${businessName}" already existed — updated.`);
       } else {
         const newPartner = await prisma.partner.create({
@@ -881,13 +911,104 @@ export async function importPartnersFromSpreadsheet(
       errors.push(`Row ${rowNum}: failed to create/update partner "${businessName}": ${err.message}`);
       partnersSkipped++;
     }
+
+    // Venue + StickerLocations live in their own scope: a failure here must
+    // not contaminate the partner-level counters (the partner row already
+    // succeeded). Only fires when we have a partnerId and at least one of
+    // tables / cash_desks / capacity is a positive number.
+    if (partnerId === null) continue;
+
+    const capacityRaw = toNumber(row[PCOL.CAPACITY]);
+    const tablesRaw = toNumber(row[PCOL.TABLES]);
+    const cashDesksRaw = toNumber(row[PCOL.CASH_DESKS]);
+    const hasVenueData = (capacityRaw ?? 0) > 0 || (tablesRaw ?? 0) > 0 || (cashDesksRaw ?? 0) > 0;
+    if (!hasVenueData) continue;
+
+    // Coerce to non-negative integers; warn if user provided fractional values.
+    const floorIfFractional = (v: number | undefined, fieldName: string): number => {
+      if (v === undefined) return 0;
+      const floored = Math.max(0, Math.floor(v));
+      if (v !== floored) warnings.push(`Row ${rowNum}: ${fieldName} "${v}" is not a non-negative integer — using ${floored}.`);
+      return floored;
+    };
+    const capacityInt = capacityRaw === undefined ? undefined : floorIfFractional(capacityRaw, 'capacity');
+    const tableCount = floorIfFractional(tablesRaw, 'tables');
+    const cashDeskCount = floorIfFractional(cashDesksRaw, 'cash_desks');
+
+    const venueAddress = str(row[PCOL.ADDRESS]);
+    const venueCity = str(row[PCOL.CITY]);
+    if (!venueAddress || !venueCity) {
+      warnings.push(`Row ${rowNum}: capacity/tables/cash_desks provided but address or city is missing — skipped venue creation for "${businessName}".`);
+      continue;
+    }
+
+    // Don't propagate the synthetic @import.boomcard.bg placeholder onto the venue.
+    const venueEmail = partnerEmail && !partnerEmail.endsWith('@import.boomcard.bg') ? partnerEmail : undefined;
+
+    try {
+      // Atomic: count check + venue + all sticker locations succeed or roll back
+      // together. The count must be inside the tx to prevent a TOCTOU race with
+      // a parallel writer creating a venue between the check and the insert.
+      const txResult = await prisma.$transaction(async (tx) => {
+        const existingVenueCount = await tx.venue.count({ where: { partnerId } });
+        if (existingVenueCount > 0) {
+          return { skipped: true as const, existingVenueCount };
+        }
+
+        const venue = await tx.venue.create({
+          data: {
+            partnerId,
+            name: businessName,
+            nameBg: partnerNameBg,
+            address: venueAddress,
+            city: venueCity,
+            region: str(row[PCOL.REGION]) || undefined,
+            latitude: toNumber(row[PCOL.LATITUDE]),
+            longitude: toNumber(row[PCOL.LONGITUDE]),
+            phone: str(row[PCOL.PHONE]) || undefined,
+            email: venueEmail,
+            openingHours: str(row[PCOL.OPENING_HOURS]) || undefined,
+            capacity: capacityInt,
+          },
+          select: { id: true },
+        });
+
+        const locationRows: Array<{ venueId: string; name: string; locationType: LocationType; locationNumber: string }> = [];
+        for (let i = 1; i <= tableCount; i++) {
+          locationRows.push({ venueId: venue.id, name: `Table ${i}`, locationType: LocationType.TABLE, locationNumber: String(i) });
+        }
+        for (let i = 1; i <= cashDeskCount; i++) {
+          locationRows.push({ venueId: venue.id, name: `Cash Desk ${i}`, locationType: LocationType.COUNTER, locationNumber: String(i) });
+        }
+        let locationsCreated = 0;
+        if (locationRows.length > 0) {
+          const result = await tx.stickerLocation.createMany({ data: locationRows });
+          locationsCreated = result.count;
+        }
+        return { skipped: false as const, venueId: venue.id, locationsCreated };
+      });
+
+      if (txResult.skipped) {
+        warnings.push(`Row ${rowNum}: partner "${businessName}" already has ${txResult.existingVenueCount} venue(s) — capacity/tables/cash_desks ignored.`);
+        continue;
+      }
+
+      venuesCreated++;
+      stickerLocationsCreated += txResult.locationsCreated;
+      logger.info(`Partners bulk import: venue ${txResult.venueId} for "${businessName}" with ${tableCount} tables + ${cashDeskCount} cash desks (${txResult.locationsCreated} locations)`);
+    } catch (venueErr: any) {
+      warnings.push(`Row ${rowNum}: failed to auto-create venue for "${businessName}": ${venueErr.message}`);
+    }
   }
 
   return {
     partnersCreated,
+    partnersUpdated,
     partnersSkipped,
     imagesUploaded,
     tierApplied: tierName,
+    venuesCreated,
+    stickerLocationsCreated,
     errors,
     warnings,
     partners,

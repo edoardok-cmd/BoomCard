@@ -1,0 +1,294 @@
+// Spec §5.2, §9.5 v1.1 — partner activation link issuance, resend, and consume.
+//
+// Two architectural invariants enforced here:
+//   (1) "Every new link supersedes the previous" — the invalidate of the prior
+//       active link and the create of the new link happen inside a single
+//       prisma.$transaction with SERIALIZABLE isolation, so two concurrent
+//       admin approves cannot both end up with a non-invalidated active link.
+//       On a P2034 (serialization failure) we retry once — the second pass
+//       sees the first writer's invalidate and proceeds cleanly.
+//   (2) Consume = mark consumed + stamp Partner.verifiedAt + (optionally)
+//       set the partner's password — all atomic. Crashes between any two of
+//       these previously left the partner locked out (token spent, no
+//       verifiedAt, no password). The transaction below removes that hole.
+
+import bcrypt from 'bcrypt';
+import crypto from 'crypto';
+import { Prisma, ActivationLinkReason, PartnerStatus, UserStatus } from '@prisma/client';
+import prisma from '../lib/prisma';
+import { logger } from '../utils/logger';
+import { writeAudit } from '../middleware/audit.middleware';
+import { SECURITY_CONFIG } from '../config/security.config';
+
+const LINK_TTL_MS = SECURITY_CONFIG.SECURITY.PARTNER_ACTIVATION_EXPIRY_MS;
+const SERIALIZATION_RETRY_LIMIT = 2;
+
+/**
+ * Typed error class so callers can map to HTTP status codes without
+ * substring-matching the message text (L1 in the audit). All consumer-facing
+ * failures throw one of these.
+ */
+export type ActivationErrorCode =
+  | 'INVALID_TOKEN'
+  | 'TOKEN_EXPIRED'
+  | 'TOKEN_USED'
+  | 'PASSWORD_TOO_SHORT';
+
+export class ActivationLinkError extends Error {
+  constructor(public code: ActivationErrorCode, message: string) {
+    super(message);
+    this.name = 'ActivationLinkError';
+  }
+}
+
+export interface IssueLinkInput {
+  partnerId: string;
+  createdById: string;
+  reason?: ActivationLinkReason;
+}
+
+export class ActivationLinkService {
+  /**
+   * Issue a new ActivationLink. Atomically invalidates any prior unconsumed,
+   * non-invalidated link for the partner and creates the new row. Retries
+   * once on a SERIALIZABLE conflict so two concurrent approves converge to
+   * exactly one active link (the later writer wins).
+   */
+  async issue(input: IssueLinkInput): Promise<{ token: string; expiresAt: Date; id: string; reason: ActivationLinkReason }> {
+    const { partnerId, createdById, reason = ActivationLinkReason.INITIAL } = input;
+
+    for (let attempt = 0; attempt < SERIALIZATION_RETRY_LIMIT; attempt++) {
+      try {
+        return await prisma.$transaction(
+          async (tx) => {
+            const now = new Date();
+            await tx.activationLink.updateMany({
+              where: { partnerId, consumedAt: null, invalidatedAt: null },
+              data: { invalidatedAt: now },
+            });
+
+            const token = crypto.randomBytes(32).toString('hex');
+            const expiresAt = new Date(now.getTime() + LINK_TTL_MS);
+
+            const link = await tx.activationLink.create({
+              data: { partnerId, token, expiresAt, createdById, reason },
+            });
+            return { token, expiresAt, id: link.id, reason };
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        );
+      } catch (err) {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2034' &&
+          attempt + 1 < SERIALIZATION_RETRY_LIMIT
+        ) {
+          logger.warn(`[activationLink] serialization conflict for partner=${partnerId}; retrying`);
+          continue;
+        }
+        throw err;
+      }
+    }
+    // Unreachable — the loop either returns or rethrows. TypeScript needs the explicit throw.
+    throw new Error('activationLink.issue: exhausted retries');
+  }
+
+  /**
+   * Resend = issue a new link with reason=RESEND + append LinkResendLog + AuditLog.
+   * Verifies the partner exists; throws otherwise.
+   */
+  async resend({ partnerId, actorId }: { partnerId: string; actorId: string }) {
+    const partner = await prisma.partner.findUnique({
+      where: { id: partnerId },
+      select: { id: true },
+    });
+    if (!partner) {
+      throw new Error('Partner not found');
+    }
+
+    const issued = await this.issue({ partnerId, createdById: actorId, reason: ActivationLinkReason.RESEND });
+
+    await prisma.linkResendLog.create({
+      data: {
+        linkType: 'PARTNER_ACTIVATION',
+        subjectId: partnerId,
+        actorId,
+      },
+    });
+
+    await writeAudit({
+      actorUserId: actorId,
+      action: 'PARTNER_ACTIVATION_LINK_RESENT',
+      objectType: 'Partner',
+      objectId: partnerId,
+      after: { expiresAt: issued.expiresAt },
+    }).catch((err) => logger.error('[activationLink] audit write failed:', err));
+
+    return issued;
+  }
+
+  /**
+   * Mark email-send outcome on a link row. Both callers (initial issuance and
+   * admin resend) call this after the email layer returns so the admin drawer
+   * can show "delivered" vs "send failed" without a separate log table.
+   *
+   * Fire-and-forget on errors — telemetry beats correctness here: if we lose
+   * the stamp the link still works, the audit just shows null. We log so a
+   * pattern of misses surfaces.
+   */
+  async markEmail(linkId: string, outcome: { sent: true } | { sent: false; error: string }): Promise<void> {
+    try {
+      if (outcome.sent === true) {
+        await prisma.activationLink.update({
+          where: { id: linkId },
+          data: { emailSentAt: new Date(), emailError: null },
+        });
+      } else {
+        const errorText = outcome.error.slice(0, 500);
+        await prisma.activationLink.update({
+          where: { id: linkId },
+          data: { emailError: errorText },
+        });
+      }
+    } catch (err) {
+      logger.error('[activationLink] markEmail failed:', err);
+    }
+  }
+
+  /**
+   * Consume a token. Single SERIALIZABLE transaction:
+   *   - re-validates the token (must still be consumedAt=null)
+   *   - atomically claims the row via an updateMany guarded on consumedAt=null
+   *     so two concurrent consume calls cannot both succeed; the second one
+   *     sees count=0 and throws "already used"
+   *   - stamps Partner.verifiedAt if null
+   *   - if a password is supplied, sets User.passwordHash and clears
+   *     mustChangePassword (the admin-onboard "temp password" flow)
+   *   - if Partner.status === PENDING, advances to ACTIVE
+   *
+   * On any internal error the whole consume is rolled back, so the token
+   * stays unconsumed and the partner can click the link again.
+   *
+   * Retries once on a P2034 (SERIALIZABLE conflict) — the second pass sees
+   * the other writer's commit and throws "already used" cleanly. Other errors
+   * propagate.
+   *
+   * Defensive error messages — this is partner-facing.
+   */
+  async consume(token: string, opts: { password?: string } = {}) {
+    if (!token || typeof token !== 'string') {
+      throw new ActivationLinkError('INVALID_TOKEN', 'Invalid activation link');
+    }
+
+    for (let attempt = 0; attempt < SERIALIZATION_RETRY_LIMIT; attempt++) {
+      try {
+        return await this.consumeOnce(token, opts);
+      } catch (err) {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2034' &&
+          attempt + 1 < SERIALIZATION_RETRY_LIMIT
+        ) {
+          logger.warn(`[activationLink] consume serialization conflict; retrying`);
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new Error('activationLink.consume: exhausted retries');
+  }
+
+  private async consumeOnce(token: string, opts: { password?: string }) {
+    return prisma.$transaction(
+      async (tx) => {
+      const link = await tx.activationLink.findUnique({
+        where: { token },
+        include: { partner: true },
+      });
+
+      if (!link) throw new ActivationLinkError('INVALID_TOKEN', 'Invalid activation link');
+      if (link.invalidatedAt) throw new ActivationLinkError('INVALID_TOKEN', 'Invalid activation link');
+      if (link.consumedAt) throw new ActivationLinkError('TOKEN_USED', 'Activation link already used');
+      if (link.expiresAt.getTime() < Date.now()) throw new ActivationLinkError('TOKEN_EXPIRED', 'Activation link has expired');
+
+      // 1. Atomic claim: guard on consumedAt=null so a race-loser sees count=0.
+      //    Under SERIALIZABLE this is belt-and-braces — Postgres also raises
+      //    P2034 on the second commit attempt — but the guard makes the
+      //    READ COMMITTED degenerate behaviour also safe.
+      const claim = await tx.activationLink.updateMany({
+        where: { id: link.id, consumedAt: null },
+        data: { consumedAt: new Date() },
+      });
+      if (claim.count === 0) {
+        throw new ActivationLinkError('TOKEN_USED', 'Activation link already used');
+      }
+      const consumed = await tx.activationLink.findUniqueOrThrow({
+        where: { id: link.id },
+        include: { partner: true },
+      });
+
+      // 2. Stamp verifiedAt the first time. Re-activations from SUSPENDED don't
+      //    reset it (the partner has already "fully activated" once).
+      const partnerUpdate: Prisma.PartnerUpdateInput = {};
+      if (!consumed.partner.verifiedAt) {
+        partnerUpdate.verifiedAt = new Date();
+      }
+      // Spec §5.2 — the activation link is the canonical hand-off for
+      // admin-onboarded partners too. If they are still PENDING (admin
+      // onboarded without a separate approve), bring them online.
+      if (consumed.partner.status === PartnerStatus.PENDING) {
+        partnerUpdate.status = PartnerStatus.ACTIVE;
+      }
+      if (Object.keys(partnerUpdate).length > 0) {
+        await tx.partner.update({
+          where: { id: consumed.partner.id },
+          data: partnerUpdate,
+        });
+      }
+
+      // 3. Set the partner user's password if supplied. Used by:
+      //   - admin-onboard partners who never set a password at registration
+      //   - self-registered partners who want a fresh password on activation
+      //     (currently optional in the UI; backend supports either path).
+      //   Also force-set status=ACTIVE and emailVerified — at this point the
+      //   token (an out-of-band secret) is sufficient proof.
+      if (opts.password) {
+        if (opts.password.length < 8) {
+          throw new ActivationLinkError('PASSWORD_TOO_SHORT', 'Password must be at least 8 characters');
+        }
+        const passwordHash = await bcrypt.hash(opts.password, 12);
+        await tx.user.update({
+          where: { id: consumed.partner.userId },
+          data: {
+            passwordHash,
+            status: UserStatus.ACTIVE,
+            emailVerified: true,
+            emailVerifiedAt: new Date(),
+            mustChangePassword: false,
+            passwordChangedAt: new Date(),
+          },
+        });
+      } else {
+        // No password supplied — still ensure the partner user is ACTIVE and
+        // emailVerified so the login gate doesn't trip on the user-level
+        // status check for self-registered partners who set their password
+        // at registration time.
+        await tx.user.update({
+          where: { id: consumed.partner.userId },
+          data: {
+            status: UserStatus.ACTIVE,
+            emailVerified: true,
+            ...(consumed.partner.verifiedAt ? {} : { emailVerifiedAt: new Date() }),
+          },
+        });
+      }
+
+      logger.info(`[activationLink] consumed token for partner=${consumed.partner.id} (passwordSet=${!!opts.password})`);
+      return consumed;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  }
+}
+
+export const activationLinkService = new ActivationLinkService();

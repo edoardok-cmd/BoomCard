@@ -24,13 +24,23 @@ router.get(
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
+    // Абонати — use "latest subscription per user" logic so tile counts match what
+    // clicking the StatCard tile shows (resolveLatestSubUserIds in adminSubscribers
+    // also resolves by the most-recent subscription, not any historical one).
+    // Two raw queries:
+    //   1. Grouped count of all users by their current (latest) subscription status.
+    //   2. Active subscribers with the additional account-status guard (spec §4.1 "Активни
+    //      абонати" = account ACTIVE + latest sub ACTIVE + not soft-deleted).
+    // Both use DISTINCT ON ("userId") ORDER BY "userId", "createdAt" DESC which is
+    // Postgres-native and efficient with the existing (userId, createdAt) index.
+    type RawStatusCount = { status: string; cnt: bigint };
+    type RawCount      = { cnt: bigint };
     const [
-      // Абонати — counted by USER profile per spec §4.1, bucketed by spec §4.2
-      activeSubscribers,
+      latestSubCountsRaw,
+      activeSubscribersRaw,
+      // New registrations: count ALL accounts (including soft-deleted) so the tile
+      // matches the filter result — the filter has no deletedAt guard on dateFrom.
       newSubscribers,
-      expiredSubscribers,
-      pausedSubscribers,
-      failedPaymentSubscribers,
 
       // Транзакции
       todayTxCount,
@@ -56,44 +66,39 @@ router.get(
       partnerReceivables,
       totalMargin,
     ] = await Promise.all([
-      // Active = profile has any ACTIVE subscription
+      // Latest-sub grouped count: one row per subscription status, cnt = number of users
+      // whose most-recent subscription has that status.
+      // Role guard keeps PARTNER/ADMIN accounts (which share the User table) from
+      // inflating expired/paused/failed tiles — mirrors the role:'USER' guard on
+      // the subscribers list endpoint and on newSubscribers below.
+      prisma.$queryRaw<RawStatusCount[]>`
+        SELECT status, COUNT(*) AS cnt
+        FROM (
+          SELECT DISTINCT ON (s."userId") s."userId", s.status
+          FROM subscriptions s
+          JOIN "User" u ON u.id = s."userId"
+          WHERE u.role = 'USER'
+          ORDER BY s."userId", s."createdAt" DESC
+        ) latest
+        GROUP BY status
+      `,
+      // Active subscribers: latest sub ACTIVE + account ACTIVE + not soft-deleted.
+      // Matches the StatCard click filter: status=ACTIVE + accountStatus=ACTIVE.
+      prisma.$queryRaw<RawCount[]>`
+        SELECT COUNT(*) AS cnt
+        FROM (
+          SELECT DISTINCT ON (s."userId") s."userId", s.status
+          FROM subscriptions s
+          ORDER BY s."userId", s."createdAt" DESC
+        ) latest
+        JOIN "User" u ON u.id = latest."userId"
+        WHERE latest.status = 'ACTIVE'
+          AND u.status = 'ACTIVE'
+          AND u.role = 'USER'
+          AND u."deletedAt" IS NULL
+      `,
       prisma.user.count({
-        where: { subscriptions: { some: { status: 'ACTIVE' } } },
-      }),
-      // New = profile created in last 30 days
-      prisma.user.count({
-        where: { createdAt: { gte: thirtyDaysAgo }, deletedAt: null },
-      }),
-      // Expired (изтекъл per spec §4.2) = no ACTIVE subscription, but has a
-      // CANCELLED / EXPIRED / INCOMPLETE_EXPIRED one. EXPIRED is the natural
-      // billing-period lapse path (Paysera renewal cron); CANCELLED is the
-      // user-initiated path. Both count toward "expired subscribers" on the
-      // dashboard since the user has no live access.
-      prisma.user.count({
-        where: {
-          subscriptions: {
-            some: { status: { in: ['CANCELLED', 'EXPIRED', 'INCOMPLETE_EXPIRED'] } },
-            none: { status: 'ACTIVE' },
-          },
-        },
-      }),
-      // Paused (спрян) = no ACTIVE, has PAUSED — distinct from failed-payment per spec §4.2
-      prisma.user.count({
-        where: {
-          subscriptions: {
-            some: { status: 'PAUSED' },
-            none: { status: 'ACTIVE' },
-          },
-        },
-      }),
-      // Failed payment (неуспешно плащане) = no ACTIVE, has PAST_DUE or UNPAID
-      prisma.user.count({
-        where: {
-          subscriptions: {
-            some: { status: { in: ['PAST_DUE', 'UNPAID'] } },
-            none: { status: 'ACTIVE' },
-          },
-        },
+        where: { createdAt: { gte: thirtyDaysAgo }, role: 'USER' },
       }),
 
       // Транзакции — днес (count + volume) + общ оборот (cumulative volume per spec §3.1)
@@ -155,6 +160,20 @@ router.get(
         _sum: { marginAmount: true },
       }),
     ]);
+
+    // Derive per-status counts from the grouped raw result.
+    const countByStatuses = (statuses: string[]) =>
+      latestSubCountsRaw
+        .filter((r) => statuses.includes(r.status))
+        .reduce((sum, r) => sum + Number(r.cnt), 0);
+
+    const activeSubscribers      = Number(activeSubscribersRaw[0]?.cnt ?? 0n);
+    const expiredSubscribers     = countByStatuses(['CANCELLED', 'EXPIRED', 'INCOMPLETE_EXPIRED']);
+    const pausedSubscribers      = countByStatuses(['PAUSED']);
+    // Spec §4.2 v1.1 — FAILED_PAYMENT is the canonical no-grace failed state
+    // written by the Paysera renewal cron. PAST_DUE / UNPAID are the legacy
+    // Stripe-lifecycle states still present in older rows.
+    const failedPaymentSubscribers = countByStatuses(['PAST_DUE', 'UNPAID', 'FAILED_PAYMENT']);
 
     const todayVolume = todayTxVolume._sum.finalAmount ?? 0;
     const todayAvg = todayTxCount > 0
