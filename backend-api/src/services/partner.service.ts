@@ -32,7 +32,7 @@
  * alone, so no regression today, but the helper is now the authoritative check.
  *
  * NB: This service deliberately does NOT call writeAudit() — the AuditLog row
- * with the action label "PARTNER_STATUS_CHANGED" is written by the caller so
+ * with the action label "partner.status.update" is written by the caller so
  * the actor's IP / userAgent can be attached. The PartnerStatusChange row IS
  * written here because it has no actor metadata to forward.
  */

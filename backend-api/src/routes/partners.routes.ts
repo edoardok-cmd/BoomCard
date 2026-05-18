@@ -1059,7 +1059,7 @@ router.put(
     if (isAdmin) {
       // 'status' deliberately excluded — status changes go through
       // partnerService.setPartnerStatus() which writes a PartnerStatusChange row
-      // and a PARTNER_STATUS_CHANGED AuditLog entry separately.
+      // and a partner.status.update AuditLog entry separately.
       const auditableFields = ['businessName', 'businessNameBg', 'category', 'categories',
         'description', 'city', 'region', 'address', 'phone', 'email', 'website',
         'discountRate', 'partnerTypeId', 'isVisible'];
