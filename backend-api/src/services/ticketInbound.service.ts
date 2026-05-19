@@ -24,7 +24,7 @@ import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { writeAudit } from '../middleware/audit.middleware';
 import { emailService } from './email.service';
-import { buildTicketSubject, buildTicketHeaders } from './ticketEmail.service';
+import { buildTicketSubject, buildTicketHeaders, computeShortRef } from './ticketEmail.service';
 import { notificationService } from './notification.service';
 
 export interface InboundEmailPayload {
@@ -102,21 +102,30 @@ async function resolveTicket(payload: InboundEmailPayload): Promise<{
   }
 
   // Priority 3: subject [#XXXXXXXX] prefix — match either full UUID or
-  // first-8-hex-chars short form.
+  // 8-char short form via the indexed shortRef column (Gap 8 fix).
   const m = payload.subject?.match(SUBJECT_REF_RE);
   if (m) {
     const ref = m[1].toLowerCase();
-    // Try exact UUID lookup first.
+    // Try exact UUID lookup first (full 32-char hex or hyphenated form).
     if (ref.length === 32 || ref.includes('-')) {
       const t = await prisma.helpTicket.findUnique({ where: { id: ref } });
       if (t) return { ticket: t, matchedBy: 'subject-prefix' };
     }
-    // Short-ref scan: last 200 tickets is a safe O(N) ceiling. A future
-    // optimisation would denormalize the short ref to its own column.
+    // Short-ref O(1) indexed lookup — replaces the previous 200-ticket in-memory
+    // scan. Tickets created before this column was added have shortRef=null and
+    // will fall through to the fallback below.
+    if (ref.length <= 8) {
+      const t = await prisma.helpTicket.findUnique({ where: { shortRef: ref } });
+      if (t) return { ticket: t, matchedBy: 'subject-prefix' };
+    }
+    // Graceful fallback for legacy tickets without shortRef: scan the most recent
+    // 500 tickets. This window is intentionally larger than the old 200-ticket cap
+    // and shrinks naturally as the shortRef column is populated by new tickets.
     const recent = await prisma.helpTicket.findMany({
+      where: { shortRef: null },
       select: { id: true },
       orderBy: { createdAt: 'desc' },
-      take: 200,
+      take: 500,
     });
     const hit = recent.find((t) => t.id.replace(/-/g, '').toLowerCase().startsWith(ref));
     if (hit) {
@@ -312,23 +321,28 @@ export async function ingestInboundEmail(
     const cleanedSubject =
       (payload.subject || '').replace(SUBJECT_REF_RE, '').trim() || '(no subject)';
 
-    const ticket = await prisma.helpTicket.create({
-      data: {
-        subject: cleanedSubject,
-        // Prefer plain text; strip HTML if that's all we got. Simple and
-        // adequate for MVP.
-        body: payload.text || (payload.html ? payload.html.replace(/<[^>]+>/g, '') : ''),
-        category: TicketCategory.OTHER,
-        priority: TicketPriority.MEDIUM,
-        // Spec §11.4 initial status is "Отворена" (OPEN). NEW is legacy-only.
-        status: TicketStatus.OPEN,
-        userId: ownerId,
-        source: 'EMAIL',
-        externalEmail: fromEmail,
-        rootMessageId: payload.messageId || null,
-        requestType: inferRequestType(payload.to || ''),
-      },
-    });
+    const newTicketData = {
+      subject: cleanedSubject,
+      // Prefer plain text; strip HTML if that's all we got. Simple and
+      // adequate for MVP.
+      body: payload.text || (payload.html ? payload.html.replace(/<[^>]+>/g, '') : ''),
+      category: TicketCategory.OTHER,
+      priority: TicketPriority.MEDIUM,
+      // Spec §11.4 initial status is "Отворена" (OPEN). NEW is legacy-only.
+      status: TicketStatus.OPEN,
+      userId: ownerId,
+      source: 'EMAIL',
+      externalEmail: fromEmail,
+      rootMessageId: payload.messageId || null,
+      requestType: inferRequestType(payload.to || ''),
+    };
+    const ticket = await prisma.helpTicket.create({ data: newTicketData });
+    // Gap 8: backfill shortRef immediately after creation (computed from the UUID
+    // assigned by Postgres). create() doesn't know the id ahead of time.
+    await prisma.helpTicket.update({
+      where: { id: ticket.id },
+      data: { shortRef: computeShortRef(ticket.id) },
+    }).catch(() => {});
 
     await writeAudit({
       actorUserId: null,
@@ -350,13 +364,19 @@ export async function ingestInboundEmail(
       logger.error(`[ticketInbound] failed to send auto-reply for ${ticket.id}:`, err),
     );
 
+    // Gap 9 fix: §11.6 routing — email tickets default to SUPPORT; admin can
+    // reclassify. Surface the destination mailbox so the admin can see which
+    // channel it arrived on (support@ vs. office@).
+    const emailReqType = inferRequestType(payload.to || '');
+    const emailQueue = payload.to?.includes('office@') ? 'Partner support' : 'User support';
     notificationService
       .notifyAdminOps({
         opsType: `help_ticket_created_email_${ticket.id}`,
-        title: `Имейл заявка: ${inferRequestType(payload.to || '')}`,
+        title: `Имейл заявка [${emailReqType}]: ${emailQueue}`,
         message: cleanedSubject,
         severity: 'info',
         fields: [
+          { label: 'Опашка', value: emailQueue },
           { label: 'От', value: fromEmail },
           { label: 'До', value: payload.to || '' },
           { label: 'Ticket ID', value: ticket.id },
@@ -416,6 +436,11 @@ export async function ingestInboundEmail(
         linkedTicketId: t.id,
       },
     });
+    // Gap 8: populate shortRef for the spoof-linked ticket.
+    await prisma.helpTicket.update({
+      where: { id: linked.id },
+      data: { shortRef: computeShortRef(linked.id) },
+    }).catch(() => {});
     await writeAudit({
       actorUserId: null,
       action: 'TICKET_INBOUND_SPOOF_BLOCKED',
@@ -485,7 +510,7 @@ export async function ingestInboundEmail(
   // Capture previousStatus before the update — the in-memory object may be
   // mutated by the ORM layer before writeAudit reads t.status.
   const previousStatus = t.status;
-  if (previousStatus === TicketStatus.CLOSED || previousStatus === TicketStatus.RESOLVED) {
+  if (previousStatus === TicketStatus.CLOSED || previousStatus === TicketStatus.RESOLVED || previousStatus === TicketStatus.WAITING) {
     await prisma.helpTicket.update({
       where: { id: t.id },
       data: { status: TicketStatus.OPEN, reopenedAt: new Date(), resolvedAt: null },

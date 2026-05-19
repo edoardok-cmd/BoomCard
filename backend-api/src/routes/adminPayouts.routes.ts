@@ -36,6 +36,7 @@ async function checkSubscriptionGate(userId: string): Promise<SubGateResult> {
 }
 
 const SUB_STATUS_BG: Record<string, string> = {
+  FAILED_PAYMENT:     'неуспешно плащане',
   PAST_DUE:           'неуспешно плащане',
   UNPAID:             'неплатен',
   CANCELLED:          'отказан',
@@ -291,13 +292,11 @@ router.patch(
       const skippedNoIban = pending.filter(p => !p.wallet.payoutIban).length;
       const withIban = pending.filter(p => p.wallet.payoutIban);
 
-      // §6.1 v1.1 subscription gate — skip users without an ACTIVE/TRIALING sub
+      // §6.1 v1.1 subscription gate — check LATEST subscription per user so a new
+      // FAILED_PAYMENT sub always blocks even if an older ACTIVE one exists in the DB.
       const userIds = Array.from(new Set(withIban.map(p => p.wallet.user.id)));
-      const eligibleUsers = await prisma.subscription.findMany({
-        where: { userId: { in: userIds }, status: { in: PAYOUT_ELIGIBLE_SUB_STATUSES } },
-        select: { userId: true },
-      });
-      const eligibleUserIds = new Set(eligibleUsers.map(s => s.userId));
+      const subGates = await Promise.all(userIds.map(uid => checkSubscriptionGate(uid)));
+      const eligibleUserIds = new Set(userIds.filter((_, i) => subGates[i].eligible));
       const eligible = withIban.filter(p => eligibleUserIds.has(p.wallet.user.id));
       const skippedNoSub = withIban.length - eligible.length;
 

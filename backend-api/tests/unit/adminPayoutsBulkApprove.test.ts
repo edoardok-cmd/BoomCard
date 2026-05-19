@@ -10,13 +10,18 @@
  *   • Failed rows are counted separately and a failed-payout email fires.
  *   • Aggregate `skipped` includes no-IBAN + no-sub + failed for backwards
  *     compatibility with older API callers.
+ *   • Subscription gate uses findFirst+orderBy:desc per user so the LATEST
+ *     subscription determines eligibility ("latest-sub-wins" semantics).
  */
 
 const findManyMock        = jest.fn();
-const subFindManyMock     = jest.fn();
+const subFindFirstMock    = jest.fn();
 const findUniqueMock      = jest.fn();
 const executeTransferMock = jest.fn();
 const sendEmailMock       = jest.fn(async () => undefined);
+
+// subByUserId maps userId → subscription row (or undefined = no sub)
+const subByUserId: Record<string, { status: string } | null> = {};
 
 jest.mock('../../src/lib/prisma', () => {
   const client = {
@@ -24,7 +29,9 @@ jest.mock('../../src/lib/prisma', () => {
       findMany: findManyMock,
       findUnique: findUniqueMock,
     },
-    subscription: { findMany: subFindManyMock },
+    subscription: {
+      findFirst: subFindFirstMock,
+    },
   };
   return { __esModule: true, default: client, prisma: client };
 });
@@ -78,32 +85,35 @@ function row(id: string, opts: { iban?: string | null; userId?: string } = {}) {
 
 beforeEach(() => {
   findManyMock.mockReset();
-  subFindManyMock.mockReset();
   findUniqueMock.mockReset();
   executeTransferMock.mockReset();
   sendEmailMock.mockReset();
   sendEmailMock.mockResolvedValue(undefined);
+  for (const k of Object.keys(subByUserId)) delete subByUserId[k];
   // notifySubscriber re-reads the tx to populate the email body — return a
   // minimal shape so the email sender doesn't crash on missing fields.
-  findUniqueMock.mockImplementation(async (args: any) => ({
+  findUniqueMock.mockImplementation(async (_args: any) => ({
     amount: -100,
     currency: 'BGN',
-    wallet: { user: { email: 'u@x.com', firstName: 'U', lastName: 'B' } },
+    wallet: { userId: 'u-1', user: { email: 'u@x.com', firstName: 'U', lastName: 'B' } },
   }));
+  // Wire findFirst to the per-user subByUserId map (latest-sub-wins semantics)
+  subFindFirstMock.mockImplementation(async (args: any) => {
+    const userId = args?.where?.userId;
+    return subByUserId[userId] ?? null;
+  });
 });
 
 describe('PATCH /api/admin/payouts/bulk-approve — response counts', () => {
   it('counts approved separately from alreadyProcessed; only newly-approved rows get notified', async () => {
-    const a = row('a');                  // newly approved
-    const b = row('b');                  // already processed by a concurrent caller
-    const c = row('c', { iban: null }); // skipped: no IBAN
-    const d = row('d', { userId: 'no-sub' }); // skipped: no eligible subscription
+    const a = row('a');                         // newly approved
+    const b = row('b');                         // already processed by a concurrent caller
+    const c = row('c', { iban: null });         // skipped: no IBAN
+    const d = row('d', { userId: 'no-sub' });   // skipped: no eligible subscription
     findManyMock.mockResolvedValue([a, b, c, d]);
-    subFindManyMock.mockResolvedValue([
-      { userId: 'user-a' },
-      { userId: 'user-b' },
-      // user-no-sub absent → d gets skipped
-    ]);
+    // user-a and user-b have ACTIVE subs; user-no-sub absent → d gets skippedNoSub
+    subByUserId['user-a'] = { status: 'ACTIVE' };
+    subByUserId['user-b'] = { status: 'ACTIVE' };
 
     executeTransferMock.mockImplementation(async (id: string) => {
       if (id === 'a') return { amount: 100, currency: 'BGN', transferId: 't-1' };
@@ -135,7 +145,8 @@ describe('PATCH /api/admin/payouts/bulk-approve — response counts', () => {
     const a = row('a');
     const b = row('b');
     findManyMock.mockResolvedValue([a, b]);
-    subFindManyMock.mockResolvedValue([{ userId: 'user-a' }, { userId: 'user-b' }]);
+    subByUserId['user-a'] = { status: 'ACTIVE' };
+    subByUserId['user-b'] = { status: 'ACTIVE' };
 
     executeTransferMock.mockImplementation(async (id: string) => {
       if (id === 'a') return { amount: 100, currency: 'BGN', transferId: 't-1' };
@@ -162,7 +173,6 @@ describe('PATCH /api/admin/payouts/bulk-approve — response counts', () => {
 
   it('returns zeros when there is nothing pending', async () => {
     findManyMock.mockResolvedValue([]);
-    subFindManyMock.mockResolvedValue([]);
 
     const res = await request(app).patch('/api/admin/payouts/bulk-approve').send({});
     expect(res.status).toBe(200);
