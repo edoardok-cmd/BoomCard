@@ -289,9 +289,11 @@ router.post('/tickets/:id/reply', asyncHandler(async (req: AuthRequest, res) => 
 
 // GET /api/partner/help/tickets/:id/replies — list replies for own ticket
 router.get('/tickets/:id/replies', asyncHandler(async (req: AuthRequest, res) => {
-  const ticket = await prisma.helpTicket.findUnique({ where: { id: req.params.id } });
-  if (!ticket) return res.status(404).json({ error: 'Заявката не е намерена' });
-  if (ticket.userId !== req.user!.id) return res.status(403).json({ error: 'Отказан достъп' });
+  // Single-query ownership check: findFirst with userId filter collapses the prior
+  // two-query pattern (findUnique + separate ownership check) that exposed ticket
+  // existence via 404 vs 403 differential to non-owners (IDOR information disclosure).
+  const ticket = await prisma.helpTicket.findFirst({ where: { id: req.params.id, userId: req.user!.id } });
+  if (!ticket) return res.status(404).json({ error: 'Заявката не е намерена или нямате достъп' });
 
   const replies = await prisma.ticketReply.findMany({
     where: { ticketId: req.params.id, isAutoReply: false },
