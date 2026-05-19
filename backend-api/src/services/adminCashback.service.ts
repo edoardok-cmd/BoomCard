@@ -1281,7 +1281,13 @@ export async function expireEntry(entryId: string, adminUserId: string): Promise
     ));
   await prisma.$transaction(async (tx) => {
     const result = await tx.walletTransaction.updateMany({
-      where: { id: entryId, NOT: { cashbackStatus: { in: ['EXPIRED', 'PAID', 'VOIDED'] } } },
+      where: {
+        id: entryId,
+        OR: [
+          { cashbackStatus: null },
+          { NOT: { cashbackStatus: { in: ['EXPIRED', 'PAID', 'VOIDED'] } } },
+        ],
+      },
       data: { status: 'CANCELLED', cashbackStatus: 'EXPIRED', cashbackExpiresAt: now },
     });
     if (result.count === 0) return; // concurrent expire already ran — skip wallet debit
@@ -1331,10 +1337,13 @@ export async function payEntry(entryId: string, adminUserId: string): Promise<vo
       (!entry.cashbackExpiresAt || entry.cashbackExpiresAt <= now)) {
     throw new AppError('Entry has already expired and cannot be marked as paid', 400);
   }
-  await prisma.walletTransaction.update({
-    where: { id: entryId },
+  const result = await prisma.walletTransaction.updateMany({
+    where: { id: entryId, cashbackPaidAt: null },
     data: { cashbackStatus: 'PAID', cashbackPaidAt: now },
   });
+  if (result.count === 0) {
+    throw new AppError('Entry has already been marked as paid by a concurrent request', 409);
+  }
   logger.info(`Admin ${adminUserId} marked cashback entry ${entryId} as paid`);
 }
 
