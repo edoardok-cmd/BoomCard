@@ -7,6 +7,7 @@
  * Schedule (Europe/Sofia unless noted):
  *   subscription-expiry              — 30 1 * * *   (1:30 AM daily)
  *   cashback-expiry                  — 0 2 * * *    (2:00 AM daily)
+ *   stale-pending-cashback-expiry    — 5 2 * * *    (2:05 AM daily — expire PENDING entries >60d old)
  *   cashback-expiring-warning        — 0 3 * * *    (3:00 AM daily — warn users 7 days before expiry)
  *   upload-token-cleanup             — 30 3 * * *   (3:30 AM daily)
  *   pending-subscription-cleanup     — 30 3 * * *   (3:30 AM daily)
@@ -45,6 +46,7 @@ import { getSystemSettingInt } from '../utils/systemSettings';
 import { CASHBACK_VALIDITY_DAYS } from '../constants/receipt.constants';
 import { writeAudit } from '../middleware/audit.middleware';
 import { buildTicketSubject, buildTicketHeaders } from '../services/ticketEmail.service';
+import { expireStalePendingCashback } from '../services/cashbackLifecycle.service';
 
 const CASHBACK_EXPIRY_BATCH = 10;
 
@@ -1318,6 +1320,17 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: cashback-expiry (0 2 * * *)');
+
+  // 2:05 AM every day — expire PENDING cashback entries older than 60 days.
+  // Spec §4.4: Pending cashback stays pending until subscription recovery OR
+  // natural expiry by the 60-day rule. Because PENDING entries have no clearedAt,
+  // we age them from createdAt. Runs 5 minutes after cashback-expiry to avoid
+  // contention on the wallet_transactions table.
+  cron.schedule('5 2 * * *', () => {
+    expireStalePendingCashback(null).catch((err) => alertSchedulerFailure('stale-pending-cashback-expiry', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: stale-pending-cashback-expiry (5 2 * * *)');
 
   // 3 AM every day — warn users whose cashback expires within the next 7 days
   cron.schedule('0 3 * * *', () => {

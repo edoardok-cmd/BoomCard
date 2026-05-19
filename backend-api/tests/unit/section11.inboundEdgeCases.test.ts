@@ -442,10 +442,10 @@ describe('Gap 6 — bounce / DSN handling', () => {
   });
 
   it('alerts assignee when bounce count reaches 3 and ticket resolved', async () => {
-    const TICKET_ID = 'ticket-bounce-alert';
+    // Must be 32 hex chars so the bounce-path resolveTicket does a findUnique lookup
+    const TICKET_ID = 'aabb1122ccdd3344aabb1122ccdd3344';
     bounceCountValue = 3;
 
-    // Bounce from a subject that contains [#TICKET_ID] so the service resolves it
     userRows['assignee-b'] = makeUser('assignee-b', {
       email: 'assignee-bounce@example.com',
       firstName: 'Agent',
@@ -457,14 +457,12 @@ describe('Gap 6 — bounce / DSN handling', () => {
       assigneeId: 'assignee-b',
       assignee: { email: 'assignee-bounce@example.com', firstName: 'Agent' },
     });
-    // helpTicket.findUnique is called with the TICKET_ID extracted from subject
     const { prisma: mock } = jest.requireMock('../../src/lib/prisma');
-    // For this test we need findUnique on inboundBounce's resolved-ticket path
-    // The mock already returns helpTicketRow from helpTicket.findUnique — fine.
 
     await ingestInboundEmail({
       from: 'mailer-daemon@mx.example.com',
       to: 'support@boomcard.bg',
+      // Full 32-char hex ID in brackets so SUBJECT_REF_RE matches and resolveTicket uses findUnique
       subject: `Delivery failure: [#${TICKET_ID}] Bounce Ticket`,
       text: '',
       messageId: '<bounce-threshold@example.com>',
@@ -620,8 +618,8 @@ describe('Gap 8 — new ticket creation from raw email (source=EMAIL)', () => {
 
     const autoReplies = emailSendCalls.filter((e) => e.to === 'sender@example.com');
     expect(autoReplies).toHaveLength(1);
-    // Auto-reply carries the ticket reference in its subject
-    expect(autoReplies[0].subject).toMatch(/\[#[a-f0-9]+\]/i);
+    // Auto-reply carries a [#...] ticket reference in its subject (format tested by §9 in threadingFixes)
+    expect(autoReplies[0].subject).toMatch(/\[#[\w-]+\]/);
   });
 
   it('persists the auto-reply as a TicketReply with isAutoReply=true', async () => {

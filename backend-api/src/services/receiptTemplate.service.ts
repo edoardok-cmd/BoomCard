@@ -4,12 +4,6 @@ import { imageUploadService } from './imageUpload.service';
 import {
   DHASH_BITS,
   DHASH_HEX_LENGTH,
-  DEFAULT_TEMPLATE_FRAUD_POINTS,
-  DEFAULT_TEMPLATE_KEYWORD_WEIGHT,
-  DEFAULT_TEMPLATE_MERCHANT_THRESHOLD,
-  DEFAULT_TEMPLATE_MERCHANT_WEIGHT,
-  DEFAULT_TEMPLATE_MIN_SIMILARITY,
-  DEFAULT_TEMPLATE_VISUAL_WEIGHT,
 } from '../constants/receipt.constants';
 import { AppError } from '../middleware/error.middleware';
 

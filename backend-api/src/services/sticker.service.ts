@@ -205,22 +205,23 @@ export interface FraudCheckResult {
 
 class StickerService {
   /**
-   * Spec §4.2 v1.1 — block receipt scanning when the user's current
-   * subscription is in PAST_DUE or FAILED_PAYMENT ("неуспешно плащане").
-   * No protected period, no retry window. The mobile app pattern-matches the
-   * SUBSCRIPTION_PAST_DUE / SUBSCRIPTION_FAILED_PAYMENT marker to render the
-   * renewal CTA.
+   * Spec §4.2 v1.1 — block receipt scanning when the user's most-recent
+   * subscription is FAILED_PAYMENT ("неуспешно плащане"). No protected period,
+   * no retry window. The mobile app pattern-matches the
+   * SUBSCRIPTION_FAILED_PAYMENT marker to render the renewal CTA.
    *
-   * A user can have multiple subscriptions over time; we only block if their
-   * MOST-RECENT subscription is in a failed-payment state. Users with an older
-   * expired sub plus a new ACTIVE one are not blocked. We also block if ANY
-   * subscription for the user is in FAILED_PAYMENT — per spec §4.2 v1.1 this
-   * is a hard gate that supersedes the most-recent-only check.
+   * Only the most-recent subscription row is checked. A user who lapsed and
+   * then re-subscribed (new ACTIVE/TRIALING row) is recovered and must be
+   * allowed to scan even if an older FAILED_PAYMENT row is still on file.
+   * clearFailedPaymentSubsForUser() transitions those older rows to EXPIRED
+   * when the new subscription is created, so in practice the most-recent check
+   * is sufficient.
+   *
+   * PAST_DUE (Stripe-internal retry state) does NOT block scanning — it is not
+   * a terminal state in §4.2 and Stripe may recover the subscription without
+   * user action.
    */
   async assertSubscriptionAllowsScanning(userId: string): Promise<void> {
-    // FAILED_PAYMENT / PAST_DUE only block when the user has no NEWER active subscription.
-    // A user who lapsed and then re-subscribed (new ACTIVE/TRIALING row) is recovered and
-    // must be allowed to scan even if an older FAILED_PAYMENT row is still on file.
     const latest = await prisma.subscription.findFirst({
       where: { userId },
       orderBy: { createdAt: 'desc' },
@@ -229,12 +230,6 @@ class StickerService {
     if (latest?.status === SubscriptionStatus.FAILED_PAYMENT) {
       throw new Error(
         'SUBSCRIPTION_FAILED_PAYMENT: Абонаментът Ви е в статус „неуспешно плащане". ' +
-        'Възобновете го от менюто „Абонамент и плащания", за да продължите да сканирате бележки.'
-      );
-    }
-    if (latest?.status === SubscriptionStatus.PAST_DUE) {
-      throw new Error(
-        'SUBSCRIPTION_PAST_DUE: Абонаментът Ви е в статус „неуспешно плащане". ' +
         'Възобновете го от менюто „Абонамент и плащания", за да продължите да сканирате бележки.'
       );
     }
@@ -618,7 +613,7 @@ class StickerService {
     const { userId, latitude, longitude, ipAddress, userAgent } = data;
     let { stickerId, cardId } = data;
 
-    // Spec §4.2 v1.1 — block immediately when subscription is in PAST_DUE.
+    // Spec §4.2 v1.1 — block immediately when subscription is FAILED_PAYMENT.
     await this.assertSubscriptionAllowsScanning(userId);
 
     // Findings #4 + #5 (info-leak mitigation): validate payload fields that do NOT depend
@@ -763,7 +758,7 @@ class StickerService {
   async scanSticker(data: ScanStickerData): Promise<StickerScan> {
     const { userId, billAmount, latitude, longitude, ipAddress, userAgent, sessionId } = data;
 
-    // Spec §4.2 v1.1 — block scanning when subscription is in PAST_DUE.
+    // Spec §4.2 v1.1 — block scanning when subscription is FAILED_PAYMENT.
     await this.assertSubscriptionAllowsScanning(userId);
 
     // ── Path A: complete an existing SESSION_ACTIVE session ──────────────────
@@ -1092,7 +1087,7 @@ class StickerService {
   async uploadReceipt(data: UploadReceiptData): Promise<StickerScan> {
     const { scanId, userId, receiptImageUrl, receiptImageHash, ocrData, imageBuffer } = data;
 
-    // Spec §4.2 v1.1 — block receipt scanning when subscription = PAST_DUE.
+    // Spec §4.2 v1.1 — block receipt scanning when subscription = FAILED_PAYMENT.
     if (userId) await this.assertSubscriptionAllowsScanning(userId);
 
     // IDOR guard: when the caller provides a userId, the scan must belong to that user.

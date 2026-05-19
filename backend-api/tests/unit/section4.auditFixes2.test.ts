@@ -10,10 +10,14 @@
  *   Fix 6 — expireEntry race condition: the atomic updateMany now excludes
  *            PAID and VOIDED in addition to EXPIRED, preventing a concurrent
  *            markPaid/markVoided from being silently overwritten to EXPIRED.
+ *            Also fixed: OR[cashbackStatus:null] branch so legacy null-status
+ *            entries are not silently skipped by the Prisma NOT-IN null-SQL gap.
  *
  *   Fix 7 — payEntry ANNULLED mis-classification: ANNULLED maps to 'Voided'
  *            in deriveCashbackEntryStatus, not 'Locked'. Removed ANNULLED from
  *            LEGACY_LOCKED_STATUSES so legacy-voided entries cannot be paid out.
+ *            Also fixed: payEntry now uses updateMany (CAS) instead of update,
+ *            preventing a concurrent pay from writing a duplicate PAID state.
  */
 
 // ── Shared mutable state ──────────────────────────────────────────────────────
@@ -38,7 +42,12 @@ jest.mock('../../src/lib/prisma', () => {
       Object.assign(wtRow, args.data);
       return wtRow;
     }),
-    updateMany: jest.fn(async (args: any) => ({ count: updateManyCount })),
+    updateMany: jest.fn(async (args: any) => {
+      if (updateManyCount > 0 && wtRow && args?.data) {
+        Object.assign(wtRow, args.data);
+      }
+      return { count: updateManyCount };
+    }),
   };
 
   // Separate delegates for the $transaction callback context
@@ -214,13 +223,32 @@ describe('Fix 6 — expireEntry race-condition guard', () => {
 
     expect(updateManyWhereArgs.length).toBeGreaterThan(0);
     const whereArg = updateManyWhereArgs[0];
-    // The NOT clause must include an `in` array containing all three terminal states
-    const notClause = whereArg?.NOT;
-    expect(notClause).toBeDefined();
-    const inValues: string[] = notClause?.cashbackStatus?.in ?? [];
+    // The OR clause must include a null branch and a NOT-IN branch covering all three terminal states
+    const orClause: any[] = whereArg?.OR ?? [];
+    expect(orClause).toContainEqual({ cashbackStatus: null });
+    const notBranch = orClause.find((c: any) => c.NOT);
+    expect(notBranch).toBeDefined();
+    const inValues: string[] = notBranch?.NOT?.cashbackStatus?.in ?? [];
     expect(inValues).toContain('EXPIRED');
     expect(inValues).toContain('PAID');
     expect(inValues).toContain('VOIDED');
+  });
+
+  it('null-cashbackStatus legacy COMPLETED entry — OR clause matches, wallet decremented', async () => {
+    // Without the OR[cashbackStatus:null] fix, Prisma NOT-IN evaluates to NULL
+    // for null fields in SQL, causing updateMany to return 0 and silently skip
+    // the wallet decrement on legacy entries.
+    const entry = makeEntry({ cashbackStatus: null, status: 'COMPLETED' });
+    resetState(entry);
+
+    await expireEntry('wt-1', 'admin-1');
+
+    // The OR clause must expose the null branch so the WHERE matches
+    expect(updateManyWhereArgs.length).toBeGreaterThan(0);
+    expect(updateManyWhereArgs[0]?.OR).toContainEqual({ cashbackStatus: null });
+    // Legacy COMPLETED = wasCleared → wallet must be decremented
+    expect(walletUpdateCalls).toHaveLength(1);
+    expect(walletUpdateCalls[0].data.balance.decrement).toBe(10);
   });
 
   it('pre-check guard — PAID entry rejected before entering the transaction', async () => {
@@ -267,7 +295,7 @@ describe('Fix 7 — payEntry ANNULLED exclusion from legacy locked statuses', ()
     resetState(entry);
 
     await expect(payEntry('wt-1', 'admin-1')).rejects.toThrow(/Only Locked entries can be marked as paid/);
-    expect(mp.walletTransaction.update).not.toHaveBeenCalled();
+    expect(mp.walletTransaction.updateMany).not.toHaveBeenCalled();
   });
 
   it('accepts new-world LOCKED entry (cashbackStatus=LOCKED)', async () => {
@@ -280,7 +308,7 @@ describe('Fix 7 — payEntry ANNULLED exclusion from legacy locked statuses', ()
 
     await payEntry('wt-1', 'admin-1');
 
-    expect(mp.walletTransaction.update).toHaveBeenCalledWith(
+    expect(mp.walletTransaction.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ cashbackStatus: 'PAID' }),
       }),
@@ -298,7 +326,7 @@ describe('Fix 7 — payEntry ANNULLED exclusion from legacy locked statuses', ()
 
     await payEntry('wt-1', 'admin-1');
 
-    expect(mp.walletTransaction.update).toHaveBeenCalledWith(
+    expect(mp.walletTransaction.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ cashbackStatus: 'PAID' }),
       }),
@@ -316,7 +344,7 @@ describe('Fix 7 — payEntry ANNULLED exclusion from legacy locked statuses', ()
 
     await payEntry('wt-1', 'admin-1');
 
-    expect(mp.walletTransaction.update).toHaveBeenCalledWith(
+    expect(mp.walletTransaction.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ cashbackStatus: 'PAID', cashbackPaidAt: expect.any(Date) }),
       }),
@@ -333,7 +361,7 @@ describe('Fix 7 — payEntry ANNULLED exclusion from legacy locked statuses', ()
     resetState(entry);
 
     await expect(payEntry('wt-1', 'admin-1')).rejects.toThrow(/already expired/);
-    expect(mp.walletTransaction.update).not.toHaveBeenCalled();
+    expect(mp.walletTransaction.updateMany).not.toHaveBeenCalled();
   });
 
   it('rejects already-paid entry (cashbackPaidAt set)', async () => {
@@ -345,7 +373,7 @@ describe('Fix 7 — payEntry ANNULLED exclusion from legacy locked statuses', ()
     resetState(entry);
 
     await expect(payEntry('wt-1', 'admin-1')).rejects.toThrow(/already marked as paid/);
-    expect(mp.walletTransaction.update).not.toHaveBeenCalled();
+    expect(mp.walletTransaction.updateMany).not.toHaveBeenCalled();
   });
 
   it('rejects already-paid entry (cashbackStatus=PAID)', async () => {
@@ -357,6 +385,38 @@ describe('Fix 7 — payEntry ANNULLED exclusion from legacy locked statuses', ()
     resetState(entry);
 
     await expect(payEntry('wt-1', 'admin-1')).rejects.toThrow(/already marked as paid/);
-    expect(mp.walletTransaction.update).not.toHaveBeenCalled();
+    expect(mp.walletTransaction.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('concurrent-pay CAS — updateMany returns 0 → throws 409 conflict', async () => {
+    // Simulates two concurrent payEntry calls: the second loses the CAS race
+    // because the first already set cashbackPaidAt (making the WHERE cashbackPaidAt:null fail).
+    const entry = makeEntry({
+      cashbackStatus: 'LOCKED',
+      status: 'CANCELLED',
+      cashbackPaidAt: null,
+    });
+    resetState(entry);
+    updateManyCount = 0; // concurrent request already won
+
+    await expect(payEntry('wt-1', 'admin-1')).rejects.toThrow(/concurrent/);
+  });
+
+  it('payEntry CAS WHERE uses cashbackPaidAt:null (no NOT-IN null-SQL gap)', async () => {
+    // Verifies the CAS guard is anchored to cashbackPaidAt IS NULL, which Prisma
+    // translates cleanly without the null-ambiguity of NOT IN.
+    const entry = makeEntry({
+      cashbackStatus: 'LOCKED',
+      cashbackPaidAt: null,
+    });
+    resetState(entry);
+
+    await payEntry('wt-1', 'admin-1');
+
+    expect(mp.walletTransaction.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ cashbackPaidAt: null }),
+      }),
+    );
   });
 });

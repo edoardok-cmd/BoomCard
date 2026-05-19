@@ -632,6 +632,60 @@ export async function promotePendingToCleared(params: {
   return row;
 }
 
+/**
+ * Spec §4.4 — expire PENDING cashback entries that have been waiting longer
+ * than the configured validity window (default 60 days from createdAt).
+ *
+ * The spec says Pending cashback "stays Pending until subscription recovery
+ * OR natural expiry by the 60-day rule". Because PENDING entries never reach
+ * CLEARED they have no clearedAt / cashbackExpiresAt. We use createdAt as the
+ * baseline — after validityDays from creation the entry can never be useful
+ * (even if approved at that point, it would expire immediately or very soon
+ * after clearing). Balance is unaffected: PENDING entries are never credited.
+ *
+ * Returns the count of entries transitioned to EXPIRED.
+ */
+export async function expireStalePendingCashback(actorUserId: string | null = null): Promise<{ count: number }> {
+  const validityDays = await getValidityDays();
+  const cutoff = new Date(Date.now() - validityDays * 24 * 60 * 60 * 1000);
+
+  const stale = await prisma.walletTransaction.findMany({
+    where: {
+      type: WalletTransactionType.CASHBACK_CREDIT,
+      cashbackStatus: CashbackEntryStatus.PENDING,
+      createdAt: { lt: cutoff },
+    },
+    select: { id: true },
+  });
+
+  if (stale.length === 0) return { count: 0 };
+
+  const ids = stale.map((r) => r.id);
+
+  // Use updateMany with the PENDING predicate so a concurrent approve/void that
+  // wins the race leaves count=0 and is correctly skipped (no double-transition).
+  const result = await prisma.walletTransaction.updateMany({
+    where: {
+      id: { in: ids },
+      cashbackStatus: CashbackEntryStatus.PENDING,
+    },
+    data: { cashbackStatus: CashbackEntryStatus.EXPIRED },
+  });
+
+  if (result.count > 0) {
+    await writeAudit({
+      actorUserId,
+      action: 'CASHBACK_PENDING_EXPIRED_BATCH',
+      objectType: 'WalletTransaction',
+      objectId: null,
+      after: { count: result.count, ids, cutoffDays: validityDays },
+    }).catch((err) => logger.error('[cashbackLifecycle] audit write failed (expireStalePending):', err));
+  }
+
+  logger.info(`[cashbackLifecycle] expireStalePendingCashback: expired ${result.count} stale PENDING entries (>${validityDays}d old)`);
+  return { count: result.count };
+}
+
 export const cashbackLifecycleService = {
   markCleared,
   markVoided,
@@ -640,6 +694,7 @@ export const cashbackLifecycleService = {
   revertLocked,
   markPaid,
   expireOverdueCashback,
+  expireStalePendingCashback,
   recordRejectedAsVoided,
   recordPendingForRiskReview,
   promotePendingToCleared,

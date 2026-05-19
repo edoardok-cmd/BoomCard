@@ -476,6 +476,12 @@ router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
     // user-initiated cancel) so we exclude them too — otherwise we'd stamp
     // canceledAt onto a row whose lapse was natural and silently flip its
     // recorded reason from "Изтекъл" to "Спрян/Отказан".
+    //
+    // FAILED_PAYMENT is intentionally included: an admin may need to cancel a
+    // subscription stuck in failed-payment. It is handled separately below —
+    // we set status = CANCELLED immediately rather than using the deferred
+    // cancelAtPeriodEnd path (which would leave an abnormal FAILED_PAYMENT row
+    // with cancelAt set to a past date until the renewal job next runs).
     const subscription = await prisma.subscription.findFirst({
       where: {
         userId,
@@ -488,13 +494,34 @@ router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
       return;
     }
 
-    if (!subscription.stripeSubscriptionId) {
+    const now = new Date();
+
+    if (subscription.status === 'FAILED_PAYMENT') {
+      // Immediately cancel a failed-payment subscription — there is no active
+      // billing period to honour, so the deferred cancelAtPeriodEnd path is
+      // inappropriate. For Stripe-backed subs we still inform Stripe so their
+      // webhook state stays consistent, but we don't wait for the cancel_at.
+      if (subscription.stripeSubscriptionId) {
+        await stripeService.stripe.subscriptions.cancel(subscription.stripeSubscriptionId).catch(() => {
+          // Best-effort: the Stripe sub may already be cancelled on their side.
+        });
+      }
+      await prisma.subscription.update({
+        where: { id: subscription.id },
+        data: {
+          status: 'CANCELLED',
+          canceledAt: now,
+          cancelAt: now,
+          autoRenewal: false,
+        },
+      });
+    } else if (!subscription.stripeSubscriptionId) {
       await prisma.subscription.update({
         where: { id: subscription.id },
         data: {
           cancelAtPeriodEnd: true,
           cancelAt: subscription.currentPeriodEnd,
-          canceledAt: new Date(),
+          canceledAt: now,
           autoRenewal: false,
         },
       });
@@ -508,7 +535,7 @@ router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
         data: {
           cancelAtPeriodEnd: true,
           cancelAt: stripeSub.cancel_at ? new Date(stripeSub.cancel_at * 1000) : null,
-          canceledAt: new Date(),
+          canceledAt: now,
           autoRenewal: false,
         },
       });

@@ -259,7 +259,18 @@ router.put(
       }
     }
 
+    // All values must be strings — the body type assertion does not prevent null from
+    // arriving at runtime, and downstream validators (e.g. EMAIL_RE.test) would coerce
+    // null to the string "null" rather than returning 400.
+    for (const [key, value] of entries) {
+      if (typeof value !== 'string') {
+        return res.status(400).json({ success: false, error: `${key}: value must be a string` });
+      }
+    }
+
     // Spec §9.5: mandatory keys cannot be cleared — sending "" returns 400.
+    // maintenance_mode is also mandatory; its own validator below catches "" with a
+    // more precise message, so it is kept separate from this set.
     // (reply_to_email and partner_reply_to_email are optional and may be cleared
     // to remove the Reply-To header or fall back to office_email respectively.)
     const REQUIRED_KEYS = new Set(['from_email', 'office_email', 'support_email']);

@@ -20,6 +20,11 @@ import {
   UNUSUAL_HOUR_START,
   UNUSUAL_HOUR_END,
   DEFAULT_TEMPLATE_FRAUD_POINTS,
+  DEFAULT_TEMPLATE_VISUAL_WEIGHT,
+  DEFAULT_TEMPLATE_MERCHANT_WEIGHT,
+  DEFAULT_TEMPLATE_KEYWORD_WEIGHT,
+  DEFAULT_TEMPLATE_MIN_SIMILARITY,
+  DEFAULT_TEMPLATE_MERCHANT_THRESHOLD,
   CASHBACK_MATRIX,
   CASHBACK_MATRIX_STEPS,
   PERCEPTUAL_HASH_CLOSE_THRESHOLD,
@@ -294,12 +299,12 @@ class FraudDetectionService {
           merchantName:  params.merchantName,
           ocrRawText:    params.ocrRawText,
           config: {
-            templateVisualWeight:      config.templateVisualWeight      ?? 0.5,
-            templateMerchantWeight:    config.templateMerchantWeight    ?? 0.3,
-            templateKeywordWeight:     config.templateKeywordWeight     ?? 0.2,
-            templateMinSimilarity:     config.templateMinSimilarity     ?? 0.6,
+            templateVisualWeight:      config.templateVisualWeight      ?? DEFAULT_TEMPLATE_VISUAL_WEIGHT,
+            templateMerchantWeight:    config.templateMerchantWeight    ?? DEFAULT_TEMPLATE_MERCHANT_WEIGHT,
+            templateKeywordWeight:     config.templateKeywordWeight     ?? DEFAULT_TEMPLATE_KEYWORD_WEIGHT,
+            templateMinSimilarity:     config.templateMinSimilarity     ?? DEFAULT_TEMPLATE_MIN_SIMILARITY,
             templateFraudPoints:       config.templateFraudPoints       ?? DEFAULT_TEMPLATE_FRAUD_POINTS,
-            templateMerchantThreshold: config.templateMerchantThreshold ?? 0.8,
+            templateMerchantThreshold: config.templateMerchantThreshold ?? DEFAULT_TEMPLATE_MERCHANT_THRESHOLD,
           },
         });
 
@@ -907,6 +912,48 @@ class FraudDetectionService {
     for (const key of ALLOWED) {
       if (key in raw) config[key] = raw[key];
     }
+
+    // Validate template weight fields: each must be in [0, 1].
+    // When all three are supplied together they must also sum to 1.0 (±0.001) so
+    // the weighted score stays in [0, 1] and templateMinSimilarity remains meaningful.
+    const weightKeys = ['templateVisualWeight', 'templateMerchantWeight', 'templateKeywordWeight'] as const;
+    const updatedWeights = weightKeys.filter(k => k in config);
+    for (const k of updatedWeights) {
+      const v = config[k];
+      if (typeof v !== 'number' || !isFinite(v) || v < 0 || v > 1) {
+        throw new Error(`${k} must be a number between 0 and 1`);
+      }
+    }
+    if (updatedWeights.length === 3) {
+      const sum =
+        (config.templateVisualWeight   as number) +
+        (config.templateMerchantWeight as number) +
+        (config.templateKeywordWeight  as number);
+      if (Math.abs(sum - 1) > 0.001) {
+        throw new Error(
+          `templateVisualWeight + templateMerchantWeight + templateKeywordWeight must sum to 1.0 (got ${sum.toFixed(4)})`
+        );
+      }
+    }
+
+    // Threshold fields must be in [0, 1].
+    for (const k of ['templateMinSimilarity', 'templateMerchantThreshold'] as const) {
+      if (k in config) {
+        const v = config[k];
+        if (typeof v !== 'number' || !isFinite(v) || v < 0 || v > 1) {
+          throw new Error(`${k} must be a number between 0 and 1`);
+        }
+      }
+    }
+
+    // Fraud points must be a non-negative finite number.
+    if ('templateFraudPoints' in config) {
+      const v = config.templateFraudPoints;
+      if (typeof v !== 'number' || !isFinite(v) || v < 0) {
+        throw new Error('templateFraudPoints must be a non-negative number');
+      }
+    }
+
     return prisma.venueFraudConfig.upsert({
       where: { venueId },
       create: { venueId, ...config },

@@ -1925,8 +1925,8 @@ enum SubscriptionStatus {
   UNPAID
   PAUSED
   EXPIRED
-  // Spec §4.2 v1.1 — single retry, no grace period. On entry: scanning blocked,
-  // CTA shown in mobile app, payouts gated (§6.1 subscription_gate).
+  // Spec §4.2 v1.1 — single attempt, no retry, no grace period. On entry: scanning
+  // blocked, CTA shown in mobile app, payouts gated (§6.1 subscription_gate).
   FAILED_PAYMENT
 }
 

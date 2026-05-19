@@ -16,6 +16,7 @@ const mockStickerFindMany = jest.fn();
 const mockStickerScanFindMany = jest.fn();
 const mockVenueStickerConfigFindFirst = jest.fn();
 const mockVenueReceiptTemplateFindMany = jest.fn();
+const mockVenueFraudConfigUpsert = jest.fn();
 
 jest.mock('../../src/lib/prisma', () => {
   const client: any = {
@@ -24,6 +25,7 @@ jest.mock('../../src/lib/prisma', () => {
     stickerScan: { findMany: (...a: any[]) => mockStickerScanFindMany(...a) },
     venueStickerConfig: { findFirst: (...a: any[]) => mockVenueStickerConfigFindFirst(...a) },
     venueReceiptTemplate: { findMany: (...a: any[]) => mockVenueReceiptTemplateFindMany(...a) },
+    venueFraudConfig: { upsert: (...a: any[]) => mockVenueFraudConfigUpsert(...a) },
   };
   return { __esModule: true, default: client, prisma: client };
 });
@@ -264,6 +266,7 @@ describe('§5.4 IDOR — GET venue endpoints enforce partner ownership', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { receiptTemplateService } from '../../src/services/receiptTemplate.service';
+import { fraudDetectionService } from '../../src/services/fraudDetection.service';
 
 // Minimal TemplateConfig that makes the merchant score deterministic.
 const cfg = {
@@ -374,6 +377,37 @@ describe('§5.5 — merchantNameVariations used in similarity scoring', () => {
     expect(result.bestSimilarity).toBeGreaterThanOrEqual(cfg.templateMinSimilarity);
   });
 
+  it('merchantName="" is treated as absent — gets 0.5 neutral, threshold NOT applied', async () => {
+    // If '' were truthy, the threshold path would run:
+    //   merchantSimilarity('', 'Cafe Central') → Jaccard({} ∩ {cafe,central}) = 0
+    //   0 < threshold 0.99 → merchantScore = 0 → overall 0 < minSimilarity 0.4 → matches=false  (WRONG)
+    // Correct path: '' is falsy → rawMerchantScore = 0.5 (neutral fallback)
+    //   merchantScore = 0.5 → overall 0.5 ≥ minSimilarity 0.4 → matches=true  (RIGHT)
+    const emptyCfg = { ...cfg, templateMinSimilarity: 0.4, templateMerchantThreshold: 0.99 };
+
+    mockVenueReceiptTemplateFindMany.mockResolvedValue([
+      {
+        id: 't1',
+        perceptualHash:         DUMMY_HASH,
+        merchantName:           'Cafe Central',
+        merchantNameVariations: [],
+        expectedKeywords:       [],
+      },
+    ]);
+
+    const result = await receiptTemplateService.compareAgainstTemplates({
+      venueId:        'v1',
+      perceptualHash: DUMMY_HASH,
+      merchantName:   '',
+      ocrRawText:     '',
+      config:         emptyCfg,
+    });
+
+    // 0.5 (neutral) ≥ 0.4 (minSimilarity) → matches=true confirms threshold was not applied.
+    expect(result.matches).toBe(true);
+    expect(result.bestSimilarity).toBeCloseTo(0.5);
+  });
+
   it('templateMerchantThreshold floors merchant score to 0 when below threshold', async () => {
     // Use a strict threshold so a partial merchant match is floored to 0.
     // With merchantWeight=1 and visualWeight=0, only the merchant dimension contributes.
@@ -402,5 +436,111 @@ describe('§5.5 — merchantNameVariations used in similarity scoring', () => {
 
     expect(result.matches).toBe(false);
     expect(result.reason).toBe('TEMPLATE_MISMATCH');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GROUP D — §5.5: fraudDetectionService.updateVenueConfig weight validation
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('§5.5 — fraudDetectionService.updateVenueConfig weight/threshold validation', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Happy-path upsert succeeds (returns minimal object)
+    mockVenueFraudConfigUpsert.mockResolvedValue({ venueId: 'v1' });
+  });
+
+  // ── Weight individual range ──────────────────────────────────────────────
+
+  it('rejects templateVisualWeight < 0', async () => {
+    await expect(
+      fraudDetectionService.updateVenueConfig('v1', { templateVisualWeight: -0.1 })
+    ).rejects.toThrow('templateVisualWeight must be a number between 0 and 1');
+  });
+
+  it('rejects templateMerchantWeight > 1', async () => {
+    await expect(
+      fraudDetectionService.updateVenueConfig('v1', { templateMerchantWeight: 1.5 })
+    ).rejects.toThrow('templateMerchantWeight must be a number between 0 and 1');
+  });
+
+  it('rejects non-numeric templateKeywordWeight', async () => {
+    await expect(
+      fraudDetectionService.updateVenueConfig('v1', { templateKeywordWeight: 'high' as any })
+    ).rejects.toThrow('templateKeywordWeight must be a number between 0 and 1');
+  });
+
+  // ── All-three-weights sum check ──────────────────────────────────────────
+
+  it('rejects three weights that do not sum to 1.0', async () => {
+    await expect(
+      fraudDetectionService.updateVenueConfig('v1', {
+        templateVisualWeight:   0.6,
+        templateMerchantWeight: 0.3,
+        templateKeywordWeight:  0.3,  // sum = 1.2
+      })
+    ).rejects.toThrow('must sum to 1.0');
+  });
+
+  it('accepts three weights that sum to exactly 1.0', async () => {
+    await expect(
+      fraudDetectionService.updateVenueConfig('v1', {
+        templateVisualWeight:   0.5,
+        templateMerchantWeight: 0.3,
+        templateKeywordWeight:  0.2,
+      })
+    ).resolves.toBeDefined();
+  });
+
+  it('accepts three weights within the 0.001 tolerance', async () => {
+    // floating-point: 0.1 + 0.2 + 0.7 = 0.9999999... in JS — must not reject
+    await expect(
+      fraudDetectionService.updateVenueConfig('v1', {
+        templateVisualWeight:   0.7,
+        templateMerchantWeight: 0.2,
+        templateKeywordWeight:  0.1,
+      })
+    ).resolves.toBeDefined();
+  });
+
+  it('does NOT check sum when only one weight is provided', async () => {
+    // Partial update — only visual weight supplied; sum check is skipped.
+    await expect(
+      fraudDetectionService.updateVenueConfig('v1', { templateVisualWeight: 0.8 })
+    ).resolves.toBeDefined();
+  });
+
+  // ── Threshold fields ──────────────────────────────────────────────────────
+
+  it('rejects templateMinSimilarity > 1', async () => {
+    await expect(
+      fraudDetectionService.updateVenueConfig('v1', { templateMinSimilarity: 1.1 })
+    ).rejects.toThrow('templateMinSimilarity must be a number between 0 and 1');
+  });
+
+  it('rejects templateMerchantThreshold < 0', async () => {
+    await expect(
+      fraudDetectionService.updateVenueConfig('v1', { templateMerchantThreshold: -0.5 })
+    ).rejects.toThrow('templateMerchantThreshold must be a number between 0 and 1');
+  });
+
+  it('accepts templateMerchantThreshold = 0 (disable threshold)', async () => {
+    await expect(
+      fraudDetectionService.updateVenueConfig('v1', { templateMerchantThreshold: 0 })
+    ).resolves.toBeDefined();
+  });
+
+  // ── Fraud points ──────────────────────────────────────────────────────────
+
+  it('rejects negative templateFraudPoints', async () => {
+    await expect(
+      fraudDetectionService.updateVenueConfig('v1', { templateFraudPoints: -5 })
+    ).rejects.toThrow('templateFraudPoints must be a non-negative number');
+  });
+
+  it('accepts templateFraudPoints = 0', async () => {
+    await expect(
+      fraudDetectionService.updateVenueConfig('v1', { templateFraudPoints: 0 })
+    ).resolves.toBeDefined();
   });
 });
