@@ -6,8 +6,9 @@
  *
  *   1. X-BoomCard-Ticket-ID custom header
  *   2. In-Reply-To / References → TicketReply.messageId
- *   3. Subject `[#XXXXXXXX]` reference
- *   4. Fallback: create a new HelpTicket (source=EMAIL)
+ *   3. Plus-addressing in the To header (`support+<shortRef>@…`)
+ *   4. Subject `[#XXXXXXXX]` reference
+ *   5. Fallback: create a new HelpTicket (source=EMAIL)
  *
  * Spoof protection (§11.2): when matching to an existing ticket, the sender
  * email must match the ticket owner, captured externalEmail, or a prior
@@ -52,7 +53,7 @@ const BOUNCE_SUBJECT_RE = /delivery (status|failure)|undeliverable|mailer[- ]dae
 // Spec §11.2 edge case: forwarded emails break header threading and must always
 // create a new ticket regardless of any [#ref] present in the subject. The
 // forward prefix (Fwd: / Fw: and their locale variants) is the canonical signal.
-const FWD_SUBJECT_RE = /^(fwd?|wg|vd|tr|fw|pf)\s*:/i;
+const FWD_SUBJECT_RE = /^(fwd?|wg|vd|tr|fw|pf|enc|rv|i)\s*:/i;
 
 /** Extract a bare lowercase email from a "Name <addr>" or plain `addr` value. */
 function normalizeAddress(raw: string): string {
@@ -404,7 +405,7 @@ export async function ingestInboundEmail(
     await prisma.helpTicket.update({
       where: { id: ticket.id },
       data: { shortRef: computeShortRef(ticket.id) },
-    }).catch(() => {});
+    }).catch((err) => logger.warn(`[ticketInbound] shortRef update failed for ticket ${ticket.id} (possible collision):`, err));
 
     await writeAudit({
       actorUserId: null,
@@ -514,7 +515,7 @@ export async function ingestInboundEmail(
     await prisma.helpTicket.update({
       where: { id: linked.id },
       data: { shortRef: computeShortRef(linked.id) },
-    }).catch(() => {});
+    }).catch((err) => logger.warn(`[ticketInbound] shortRef update failed for linked ticket ${linked.id} (possible collision):`, err));
     await writeAudit({
       actorUserId: null,
       action: 'TICKET_INBOUND_SPOOF_BLOCKED',
