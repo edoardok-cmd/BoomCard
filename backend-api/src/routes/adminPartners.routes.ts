@@ -25,6 +25,7 @@
  *   ─────────────────────────────────────────
  *   PATCH  /:id/partner-status            partners.write           (post-onboarding status transitions)
  *   PATCH  /:id/discount-rate             partners.write           (spec §13 — ADMIN only, not PARTNER_MANAGER)
+ *   POST   /:id/propose-discount-rate     partners.requests.write  (spec §13 — PARTNER_MANAGER proposal → critical-action queue)
  *   GET    /:id/status-history            partners.read            (paired with /partner-status write)
  *
  * The split is deliberate: §5.1/§5.2 model the *application pipeline* and use
@@ -1083,5 +1084,88 @@ router.get(
 // permission key (partners.write vs partners.requests.write), and duplicated
 // the resend logic. The canonical resend is POST /:id/resend-activation
 // above.
+
+// ─── Propose discount-rate change (spec §13 PARTNER_MANAGER path) ─────────────
+// PARTNER_MANAGER lacks partners.write so cannot call PATCH /:id/discount-rate directly.
+// This endpoint lets them propose a rate change which lands in CriticalActionRequest
+// (actionType='DISCOUNT_RATE_CHANGE').  A SUPER_ADMIN must approve via
+// POST /api/admin/admins/critical-actions/:id/approve — approval atomically writes
+// the new rate to the partner row.
+router.post(
+  '/:id/propose-discount-rate',
+  requirePermission('partners.requests.write'),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const { rate, note } = req.body as { rate?: number | null; note?: string };
+
+    if (rate === undefined) {
+      return res.status(400).json({ error: 'rate is required (pass null to clear the override)' });
+    }
+
+    if (rate !== null) {
+      if (!CASHBACK_MATRIX_STEPS.includes(rate as (typeof CASHBACK_MATRIX_STEPS)[number])) {
+        return res.status(400).json({
+          error: `rate must be one of: ${CASHBACK_MATRIX_STEPS.join(', ')}, or null to clear`,
+        });
+      }
+    }
+
+    const partner = await prisma.partner.findUnique({
+      where: { id: req.params.id },
+      include: { partnerType: { select: { maxDiscountRate: true } } },
+    });
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+
+    if (rate !== null && partner.partnerType?.maxDiscountRate != null) {
+      if (rate > partner.partnerType.maxDiscountRate) {
+        return res.status(400).json({
+          error: `rate (${rate}%) exceeds the maximum for this partner type (${partner.partnerType.maxDiscountRate}%)`,
+        });
+      }
+    }
+
+    // Prevent duplicate PENDING proposals for the same partner
+    const existingPending = await prisma.criticalActionRequest.findFirst({
+      where: {
+        actionType: 'DISCOUNT_RATE_CHANGE',
+        status: 'PENDING',
+        payload: { path: ['partnerId'], equals: req.params.id },
+      },
+    });
+    if (existingPending) {
+      return res.status(409).json({
+        error: 'A PENDING discount-rate proposal already exists for this partner',
+        existingId: existingPending.id,
+      });
+    }
+
+    const proposal = await prisma.criticalActionRequest.create({
+      data: {
+        actionType: 'DISCOUNT_RATE_CHANGE',
+        payload: {
+          partnerId: req.params.id,
+          partnerName: partner.businessName,
+          currentRate: partner.discountRate,
+          proposedRate: rate,
+        },
+        note: note?.trim() || null,
+        requestedById: req.user!.id,
+        status: 'PENDING',
+      },
+      include: {
+        requestedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    });
+
+    writeAudit({
+      actorUserId: req.user!.id,
+      action: 'partner.discount-rate.propose',
+      objectType: 'Partner',
+      objectId: req.params.id,
+      after: { proposalId: proposal.id, proposedRate: rate },
+    }).catch((err) => logger.error('[adminPartners] writeAudit failed:', err));
+
+    res.status(201).json({ proposal });
+  })
+);
 
 export default router;

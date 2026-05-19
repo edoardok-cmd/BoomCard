@@ -453,10 +453,11 @@ describe('§7.3 PATCH /dispute-cases/:id — assignedTo validation', () => {
   });
 
   async function createOpenDispute(): Promise<string> {
+    const subjectId = `test-cashback-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const res = await request(app)
       .post('/api/admin/control/dispute-cases')
       .set('Authorization', `Bearer ${superAdminToken}`)
-      .send({ subjectType: 'CASHBACK', subjectId: 'test-cashback-001', userId: ownerId });
+      .send({ subjectType: 'CASHBACK', subjectId, userId: ownerId });
     if (res.status !== 201) throw new Error(`POST dispute-cases failed: ${res.status} ${JSON.stringify(res.body)}`);
     return res.body.data.id;
   }

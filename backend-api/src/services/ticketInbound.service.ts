@@ -24,7 +24,7 @@ import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { writeAudit } from '../middleware/audit.middleware';
 import { emailService } from './email.service';
-import { buildTicketSubject, buildTicketHeaders, computeShortRef } from './ticketEmail.service';
+import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef } from './ticketEmail.service';
 import { notificationService } from './notification.service';
 
 export interface InboundEmailPayload {
@@ -71,7 +71,7 @@ function isBounce(payload: InboundEmailPayload): boolean {
  */
 async function resolveTicket(payload: InboundEmailPayload): Promise<{
   ticket: Awaited<ReturnType<typeof prisma.helpTicket.findUnique>> | null;
-  matchedBy: 'header' | 'in-reply-to' | 'subject-prefix' | null;
+  matchedBy: 'header' | 'in-reply-to' | 'plus-address' | 'subject-prefix' | null;
 }> {
   // Priority 1: X-BoomCard-Ticket-ID
   if (payload.xBoomCardTicketId) {
@@ -99,6 +99,23 @@ async function resolveTicket(payload: InboundEmailPayload): Promise<{
       where: { rootMessageId: { in: candidates } },
     });
     if (root) return { ticket: root, matchedBy: 'in-reply-to' };
+  }
+
+  // Priority 2.5: plus-addressing in the To header.
+  // When the system sends an outbound ticket email it sets Reply-To to
+  // support+<shortRef>@boomcard.bg (or office+...). If the recipient replies,
+  // their mail client's To field contains that plus-address. We extract the
+  // shortRef from the local-part and resolve the ticket via the indexed column.
+  // This path survives forwarding chains that strip custom headers.
+  if (payload.to) {
+    const plusMatch = /[^@+\s]+\+([a-f0-9]{6,32})@/i.exec(payload.to);
+    if (plusMatch) {
+      const ref = plusMatch[1].toLowerCase();
+      if (ref.length <= 8) {
+        const t = await prisma.helpTicket.findUnique({ where: { shortRef: ref } });
+        if (t) return { ticket: t, matchedBy: 'plus-address' };
+      }
+    }
   }
 
   // Priority 3: subject [#XXXXXXXX] prefix — match either full UUID or
@@ -372,6 +389,7 @@ export async function ingestInboundEmail(
       to: fromEmail,
       originalSubject: cleanedSubject,
       inReplyTo: payload.messageId || null,
+      audience: payload.to?.includes('office@') ? 'partner' : 'subscriber',
     }).catch((err) =>
       logger.error(`[ticketInbound] failed to send auto-reply for ${ticket.id}:`, err),
     );
@@ -472,6 +490,7 @@ export async function ingestInboundEmail(
       originalSubject:
         (payload.subject || '').replace(SUBJECT_REF_RE, '').trim() || `(re: ${t.subject})`,
       inReplyTo: payload.messageId || null,
+      audience: payload.to?.includes('office@') ? 'partner' : 'subscriber',
     }).catch((err) =>
       logger.error(`[ticketInbound] failed to send spoof-branch auto-reply for ${linked.id}:`, err),
     );
@@ -618,6 +637,7 @@ async function sendInboundAutoReply(args: {
   to: string;
   originalSubject: string;
   inReplyTo: string | null;
+  audience: 'partner' | 'subscriber';
 }): Promise<void> {
   const threading = buildTicketHeaders({
     ticketId: args.ticketId,
@@ -679,5 +699,8 @@ async function sendInboundAutoReply(args: {
     html,
     text,
     headers: threading.headers,
+    // Plus-addressed Reply-To: threads the reply via To-header parsing (Priority 2.5)
+    // even when X-BoomCard-Ticket-ID is stripped by forwarding chains.
+    replyTo: buildPlusReplyTo(args.ticketId, args.audience),
   });
 }

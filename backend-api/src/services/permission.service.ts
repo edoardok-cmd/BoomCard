@@ -72,7 +72,9 @@ export const ROLE_DEFAULT_ALLOWS: Record<string, string[]> = {
   ADMIN: PERMISSION_CATALOG.map((p) => p.key),
   // control.disputes.write is intentionally excluded: approving a dispute triggers wallet credit
   // (a financial action). Support can view disputes but only RISK_REVIEW may approve/reject.
-  SUPPORT: ['dashboard.read', 'subscribers.read', 'partners.read', 'control.disputes.read', 'help.read', 'help.read.all', 'help.write'],
+  // subscriptions.read / transactions.read / cashback.read are included so Support can see a
+  // complete subscriber profile (plan, status, transaction history, cashback) without write access.
+  SUPPORT: ['dashboard.read', 'subscribers.read', 'subscriptions.read', 'transactions.read', 'cashback.read', 'partners.read', 'control.disputes.read', 'help.read', 'help.read.all', 'help.write'],
   // transactions.write (balance adjustments) is intentionally excluded: Finance can read and process
   // payouts/invoices but must not create arbitrary wallet adjustments — that stays with ADMIN.
   FINANCE: ['dashboard.read', 'subscribers.read', 'transactions.read', 'cashback.read', 'finance.payouts.read', 'finance.payouts.write', 'finance.invoices.read', 'finance.invoices.write', 'finance.periods.read', 'finance.periods.write', 'finance.reports.read'],
@@ -80,8 +82,11 @@ export const ROLE_DEFAULT_ALLOWS: Record<string, string[]> = {
   RISK_REVIEW: ['dashboard.read', 'subscribers.read', 'transactions.read', 'control.risk.read', 'control.risk.write', 'control.disputes.read', 'control.disputes.write', 'control.rules.read'],
   // partners.write (live-partner status changes) is intentionally excluded: PARTNER_MANAGER works the
   // application pipeline and onboarding only; suspending/archiving live partners requires ADMIN.
-  // admins.actions.read grants access to the critical-action approval queue (pending discount-rate
-  // changes, etc.) without exposing the full admin user listing (admins.read).
+  // admins.actions.read grants read access to GET /admin/admins/critical-actions so
+  // PARTNER_MANAGER can monitor pending DISCOUNT_RATE_CHANGE requests they submitted,
+  // without exposing the full admin user listing (admins.read).
+  // Discount-rate change proposals are submitted via POST /admin/partners/:id/propose-discount-rate
+  // (requires partners.requests.write) and are executed only on SUPER_ADMIN approval.
   PARTNER_MANAGER: ['dashboard.read', 'partners.read', 'partners.requests.read', 'partners.requests.write', 'partners.onboarding.read', 'partners.onboarding.write', 'partners.locations.read', 'partners.locations.write', 'admins.actions.read'],
 };
 

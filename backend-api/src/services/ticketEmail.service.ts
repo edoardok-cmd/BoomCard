@@ -17,6 +17,12 @@ import crypto from 'crypto';
 
 const DEFAULT_DOMAIN = 'mail.boomcard.bg';
 
+// Inbound mailboxes for plus-addressing — must match the mail routing rules.
+// Replies to subscriber tickets arrive at support+<shortRef>@boomcard.bg;
+// replies to partner tickets arrive at office+<shortRef>@boomcard.bg.
+const SUBSCRIBER_INBOUND = process.env.SUBSCRIBER_INBOUND_EMAIL ?? 'support@boomcard.bg';
+const PARTNER_INBOUND = process.env.PARTNER_INBOUND_EMAIL ?? 'office@boomcard.bg';
+
 function shortTicketRef(ticketId: string): string {
   // 8-char prefix is plenty for visual disambiguation; the full UUID stays in
   // headers and the database, so subject parsing only needs to be unique
@@ -31,6 +37,22 @@ function shortTicketRef(ticketId: string): string {
  */
 export function computeShortRef(ticketId: string): string {
   return shortTicketRef(ticketId);
+}
+
+/**
+ * Build the plus-addressed Reply-To for an outbound ticket email.
+ *
+ * When a recipient replies to a ticket email, their mail client sends the
+ * reply to the plus-addressed mailbox (e.g. support+abc12345@boomcard.bg).
+ * The inbound parser (resolveTicket, Priority 2.5) extracts the shortRef
+ * from the To header and resolves the ticket without relying on header
+ * preservation — the fallback that survives forwarding and webmail.
+ */
+export function buildPlusReplyTo(ticketId: string, audience: 'partner' | 'subscriber'): string {
+  const base = audience === 'partner' ? PARTNER_INBOUND : SUBSCRIBER_INBOUND;
+  const atIdx = base.lastIndexOf('@');
+  const shortRef = shortTicketRef(ticketId);
+  return `${base.slice(0, atIdx)}+${shortRef}${base.slice(atIdx)}`;
 }
 
 /**

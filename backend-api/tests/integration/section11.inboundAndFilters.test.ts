@@ -4,6 +4,7 @@
  * BUG-1  Spoof-guard must include the assignee's email in the allowed set —
  *         an inbound from the assignee threads as a reply, not a new ticket.
  * BUG-2  Inbound reply on a RESOLVED ticket reopens it (status→OPEN, resolvedAt→null).
+ * BUG-3  Inbound reply on a CLOSED or WAITING ticket reopens it (status→OPEN, resolvedAt→null, reopenedAt stamped).
  * BUG-4  Inbound reply on an unassigned ticket triggers notifyAdminOps fallback.
  * GAP-1  GET /api/admin/help accepts `from`, `to` (ISO date range) and
  *         `assigneeId` query params and returns correct subsets.
@@ -231,6 +232,63 @@ describe('BUG-2 — inbound reply reopens a RESOLVED ticket', () => {
     const after = await prisma.helpTicket.findUnique({ where: { id: ticket.id } });
     expect(after!.status).toBe('OPEN');
     expect(after!.resolvedAt).toBeNull();
+    expect(after!.reopenedAt).not.toBeNull();
+  });
+});
+
+// ─── BUG-3: CLOSED ticket reopen on inbound reply ───────────────────────────
+
+describe('BUG-3 — inbound reply reopens a CLOSED ticket', () => {
+  it('sets status=OPEN, clears resolvedAt, and stamps reopenedAt', async () => {
+    const owner = await createUser({ role: 'USER' });
+    const { ticket, msgId } = await createTicketWithReply({
+      userId: owner.id,
+      status: 'CLOSED',
+      resolvedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 7 days ago
+      externalEmail: owner.email,
+    });
+
+    const before = await prisma.helpTicket.findUnique({ where: { id: ticket.id } });
+    expect(before!.status).toBe('CLOSED');
+    expect(before!.resolvedAt).not.toBeNull();
+
+    const res = await request(app)
+      .post('/api/email/inbound')
+      .set('Content-Type', 'application/json')
+      .send(inboundPayload({ from: owner.email, inReplyTo: msgId }));
+
+    expect(res.status).toBeLessThan(300);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.created).toBe(false);
+    expect(res.body.replyId).toBeTruthy();
+
+    const after = await prisma.helpTicket.findUnique({ where: { id: ticket.id } });
+    expect(after!.status).toBe('OPEN');
+    expect(after!.resolvedAt).toBeNull();
+    expect(after!.reopenedAt).not.toBeNull();
+  });
+
+  it('WAITING ticket also reopens and stamps reopenedAt', async () => {
+    const owner = await createUser({ role: 'USER' });
+    const { ticket, msgId } = await createTicketWithReply({
+      userId: owner.id,
+      status: 'WAITING',
+      externalEmail: owner.email,
+    });
+
+    const before = await prisma.helpTicket.findUnique({ where: { id: ticket.id } });
+    expect(before!.status).toBe('WAITING');
+
+    const res = await request(app)
+      .post('/api/email/inbound')
+      .set('Content-Type', 'application/json')
+      .send(inboundPayload({ from: owner.email, inReplyTo: msgId }));
+
+    expect(res.status).toBeLessThan(300);
+    expect(res.body.created).toBe(false);
+
+    const after = await prisma.helpTicket.findUnique({ where: { id: ticket.id } });
+    expect(after!.status).toBe('OPEN');
     expect(after!.reopenedAt).not.toBeNull();
   });
 });
