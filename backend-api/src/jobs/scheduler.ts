@@ -1269,10 +1269,17 @@ export async function autoCloseResolvedTickets(): Promise<void> {
     take: 200,
   });
   if (!tickets.length) return;
+  if (tickets.length === 200) {
+    logger.warn('[ticket-auto-close] batch limit hit (200) — additional RESOLVED tickets older than 7 days may carry over to the next nightly run');
+  }
 
+  // Do NOT clear resolvedAt here. CLOSED is a terminal state that can never
+  // re-enter the auto-close cycle, so there is no risk of the job re-firing.
+  // Preserving resolvedAt maintains the audit record of when the ticket was
+  // resolved (vs. when it was auto-closed, captured by updatedAt).
   await prisma.helpTicket.updateMany({
     where: { id: { in: tickets.map((t) => t.id) } },
-    data: { status: 'CLOSED', resolvedAt: null },
+    data: { status: 'CLOSED' },
   });
 
   // Write audit rows — one per ticket so the history is clear.

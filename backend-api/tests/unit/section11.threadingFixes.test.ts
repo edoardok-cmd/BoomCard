@@ -218,15 +218,20 @@ describe('Bug 9 — autoCloseResolvedTickets email threading', () => {
     expect(emailSendCalls).toHaveLength(0);
   });
 
-  it('updateMany sets resolvedAt: null when closing tickets', async () => {
+  it('updateMany preserves resolvedAt (does not clear it) when auto-closing tickets', async () => {
     helpTicketRows.push(makeResolvedTicket({ rootMessageId: '<r@mail.boomcard.bg>' }));
 
     await autoCloseResolvedTickets();
 
     const { prisma } = jest.requireMock('../../src/lib/prisma');
+    // resolvedAt must NOT be nulled — it records when the ticket was resolved for audit.
+    // Only status='CLOSED' should be set; the timestamp is preserved.
     expect(prisma.helpTicket.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ resolvedAt: null }) }),
+      expect.objectContaining({ data: expect.objectContaining({ status: 'CLOSED' }) }),
     );
+    const calls = prisma.helpTicket.updateMany.mock.calls;
+    const lastCall = calls[calls.length - 1][0];
+    expect(lastCall.data).not.toHaveProperty('resolvedAt');
   });
 
   it('does not close a RESOLVED ticket that was resolved less than 7 days ago', async () => {

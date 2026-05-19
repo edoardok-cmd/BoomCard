@@ -477,28 +477,44 @@ class StickerService {
     };
 
     // Atomic: mark old REPLACED + create new with replacesId in one transaction.
-    const { oldSticker, newSticker } = await prisma.$transaction(async (tx) => {
-      const updatedOld = await tx.sticker.update({
-        where: { stickerId: oldStickerId },
-        data: { status: StickerStatus.REPLACED, deactivatedAt: new Date() },
-      });
+    // The pre-flight conflict check (above) closes the common case; if two replaces
+    // both pass that check simultaneously the DB unique constraint on stickerId will
+    // reject the second. Catch P2002 here and surface a retry-friendly message
+    // rather than leaking the raw Prisma error to the caller.
+    let oldSticker: Sticker;
+    let newSticker: Sticker & { venue: unknown; location: unknown };
+    try {
+      ({ oldSticker, newSticker } = await prisma.$transaction(async (tx) => {
+        const updatedOld = await tx.sticker.update({
+          where: { stickerId: oldStickerId },
+          data: { status: StickerStatus.REPLACED, deactivatedAt: new Date() },
+        });
 
-      const created = await tx.sticker.create({
-        data: {
-          venueId: location.venueId,
-          locationId: location.id,
-          stickerId: newStickerId,
-          qrCode: JSON.stringify(qrData),
-          locationType: location.locationType,
-          status: StickerStatus.PENDING,
-          metadata: JSON.stringify({ stickerId: newStickerId }),
-          replacesId: old.id, // new sticker → old sticker (correct direction)
-        },
-        include: { venue: true, location: true },
-      });
+        const created = await tx.sticker.create({
+          data: {
+            venueId: location.venueId,
+            locationId: location.id,
+            stickerId: newStickerId,
+            qrCode: JSON.stringify(qrData),
+            locationType: location.locationType,
+            status: StickerStatus.PENDING,
+            metadata: JSON.stringify({ stickerId: newStickerId }),
+            replacesId: old.id, // new sticker → old sticker (correct direction)
+          },
+          include: { venue: true, location: true },
+        });
 
-      return { oldSticker: updatedOld, newSticker: created };
-    });
+        return { oldSticker: updatedOld, newSticker: created };
+      }));
+    } catch (err: any) {
+      if (err?.code === 'P2002' && String(err?.meta?.target ?? '').includes('stickerId')) {
+        throw new Error(
+          `Cannot replace ${oldStickerId}: a concurrent replacement already claimed ` +
+          `${newStickerId}. Please retry.`,
+        );
+      }
+      throw err;
+    }
 
     writeAudit({
       actorUserId: actorUserId ?? null,

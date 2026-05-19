@@ -126,6 +126,20 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
           where: { id: ticket.id },
           data: { rootMessageId: threading.messageId, shortRef: computeShortRef(ticket.id) },
         });
+        // Persist the reply row BEFORE sending so Priority-2 In-Reply-To threading
+        // resolves via TicketReply.messageId lookup even if the mailer later fails.
+        // Mirrors the same pattern in help.routes.ts (user ticket creation).
+        await prisma.ticketReply.create({
+          data: {
+            ticketId: ticket.id,
+            authorId: null,
+            body: '[auto-reply confirmation sent]',
+            isAdmin: true,
+            messageId: threading.messageId,
+            channel: 'EMAIL',
+            isAutoReply: true,
+          },
+        });
         const ref = buildTicketSubject(ticket.id, '').match(/\[#[a-f0-9]+\]/i)?.[0] ?? `#${ticket.id.slice(0, 8)}`;
         await emailService.sendEmail({
           to: req.user!.email,
@@ -360,7 +374,10 @@ router.post('/:id/assign', requirePermission('help.write'), async (req: AuthRequ
     const targetId = hasExplicitTarget && !isUnassign ? (body.assigneeId as string) : undefined;
 
     // Any explicit target (including null for unassign) requires SUPER_ADMIN.
-    if (hasExplicitTarget && !hasFullAccess(req)) {
+    // hasFullAccess() is intentionally NOT used here — it returns true for SUPPORT
+    // (help.read.all), but arbitrary assignment/unassignment is SUPER_ADMIN-only;
+    // SUPPORT may only self-assign.
+    if (hasExplicitTarget && req.user!.role !== 'SUPER_ADMIN') {
       return res.status(403).json({ error: 'Само SUPER_ADMIN може да назначава на друг администратор' });
     }
 
@@ -463,9 +480,9 @@ router.post('/:id/reject', requirePermission('help.write'), async (req: AuthRequ
     // Policy (confirmed audit-fix [7]): only the assignee or SUPER_ADMIN can reject.
     // Regular help.write admins who are not assigned to this ticket cannot reject —
     // rejection is a terminal action that should be owned by someone accountable.
-    // If the policy changes (e.g., any help.write admin may reject), remove the
-    // assigneeId check and keep only the hasFullAccess / role gate.
-    if (!hasFullAccess(req) && ticket.assigneeId !== req.user!.id) {
+    // hasFullAccess() is intentionally NOT used here — it returns true for SUPPORT
+    // (help.read.all), but the "bypass assignee gate" privilege must remain SUPER_ADMIN-only.
+    if (req.user!.role !== 'SUPER_ADMIN' && ticket.assigneeId !== req.user!.id) {
       return res.status(403).json({ error: 'Отказан достъп — само отговорникът или SUPER_ADMIN може да отхвърли' });
     }
     // Terminal states cannot transition further. CLOSED is the success-side
@@ -583,7 +600,7 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
       }
     }
 
-    const data: { status?: TicketStatus; priority?: TicketPriority; resolvedAt?: Date | null } = {};
+    const data: { status?: TicketStatus; priority?: TicketPriority; resolvedAt?: Date | null; reopenedAt?: Date } = {};
     if (status && Object.values(TicketStatus).includes(status as TicketStatus)) {
       data.status = status as TicketStatus;
       // Stamp resolvedAt so auto-close can use a stable timestamp (not updatedAt,
@@ -593,6 +610,12 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
       } else if (status !== 'RESOLVED') {
         // Clear resolvedAt if the ticket is moved away from RESOLVED (e.g. re-opened).
         data.resolvedAt = null;
+      }
+      // Stamp reopenedAt whenever a manual admin PATCH transitions the ticket back
+      // to OPEN from a parked state — parity with all other reopen paths (reply
+      // handlers and ticketInbound.service.ts).
+      if (status === 'OPEN' && (ticket.status === 'RESOLVED' || ticket.status === 'WAITING')) {
+        data.reopenedAt = new Date();
       }
     }
     if (priority && Object.values(TicketPriority).includes(priority as TicketPriority)) {

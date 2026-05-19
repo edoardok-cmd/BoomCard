@@ -163,7 +163,7 @@ router.get(
       select: {
         id: true, subject: true, body: true, category: true,
         status: true, priority: true, requestType: true, source: true,
-        reopenedAt: true, createdAt: true, updatedAt: true,
+        reopenedAt: true, resolvedAt: true, createdAt: true, updatedAt: true,
         assignee: { select: { id: true, firstName: true, lastName: true } },
       },
     });

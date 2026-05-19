@@ -107,7 +107,7 @@ router.post('/ticket', asyncHandler(async (req: AuthRequest, res) => {
       .catch((err) => logger.error('[partnerHelp] failed to escalate CONTRACT_CHANGE to SUPER_ADMIN:', err));
   }
 
-  // Fire-and-forget: set rootMessageId + send confirmation email
+  // Fire-and-forget: set rootMessageId + persist TicketReply anchor + send confirmation email
   (async () => {
     try {
       const subject_built = buildTicketSubject(ticket.id, 'Вашата заявка е получена');
@@ -119,6 +119,20 @@ router.post('/ticket', asyncHandler(async (req: AuthRequest, res) => {
       await prisma.helpTicket.update({
         where: { id: ticket.id },
         data: { rootMessageId: threading.messageId, shortRef: computeShortRef(ticket.id) },
+      });
+      // Persist the reply row BEFORE sending so Priority-2 In-Reply-To threading
+      // resolves via TicketReply.messageId lookup even if the mailer later fails.
+      // Mirrors the same pattern in help.routes.ts (user ticket creation).
+      await prisma.ticketReply.create({
+        data: {
+          ticketId: ticket.id,
+          authorId: null,
+          body: '[auto-reply confirmation sent]',
+          isAdmin: true,
+          messageId: threading.messageId,
+          channel: 'EMAIL',
+          isAutoReply: true,
+        },
       });
       const officeEmail = await getSystemSettingStr('office_email', 'office@boomcard.bg');
       await emailService.sendEmail({
@@ -163,23 +177,18 @@ router.get('/tickets', asyncHandler(async (req: AuthRequest, res) => {
 
 // GET /api/partner/help/tickets/:id — full ticket detail for own ticket
 router.get('/tickets/:id', asyncHandler(async (req: AuthRequest, res) => {
-  const ticket = await prisma.helpTicket.findUnique({
-    where: { id: req.params.id },
+  // Single query: filter by id + userId so partners can only see their own tickets.
+  // Replaces the previous two-query pattern (findUnique then findFirst ownership check).
+  const ticket = await prisma.helpTicket.findFirst({
+    where: { id: req.params.id, userId: req.user!.id },
     select: {
       id: true, subject: true, body: true, category: true, status: true, priority: true,
-      requestType: true, source: true, externalEmail: true, reopenedAt: true,
+      requestType: true, source: true, externalEmail: true, reopenedAt: true, resolvedAt: true,
       createdAt: true, updatedAt: true,
       assignee: { select: { id: true, firstName: true, lastName: true } },
     },
   });
-  if (!ticket) return res.status(404).json({ error: 'Заявката не е намерена' });
-
-  // Partners may only see their own tickets.
-  const owned = await prisma.helpTicket.findFirst({
-    where: { id: req.params.id, userId: req.user!.id },
-    select: { id: true },
-  });
-  if (!owned) return res.status(403).json({ error: 'Отказан достъп' });
+  if (!ticket) return res.status(404).json({ error: 'Заявката не е намерена или нямате достъп' });
 
   return res.json({ success: true, data: ticket });
 }));

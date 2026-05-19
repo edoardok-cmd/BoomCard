@@ -43,11 +43,23 @@ jest.mock('../../src/lib/prisma', () => {
       findMany: jest.fn(async () => []),
       count: jest.fn(async () => 0),
     },
-    // Needed by adminHelp all-tickets endpoint
+    // Needed by adminHelp endpoints
     helpTicket: {
       findMany: jest.fn(async () => []),
+      findUnique: jest.fn(async () => null),
+      count: jest.fn(async () => 0),
+      update: jest.fn(async () => ({})),
+    },
+    ticketReply: {
+      create: jest.fn(async () => ({ id: 'reply-1' })),
+      findMany: jest.fn(async () => []),
+    },
+    inboundBounce: {
       count: jest.fn(async () => 0),
     },
+    // $transaction pass-through: calls the callback with the same client so
+    // tx.helpTicket.update / tx.ticketReply.create hit the same mocked fns.
+    $transaction: jest.fn(async (fn: (tx: any) => Promise<unknown>) => fn(client)),
   };
   return { __esModule: true, default: client, prisma: client };
 });
@@ -159,7 +171,10 @@ const m = prisma as unknown as {
   fraudRuleOverride: { findMany: AnyMock; findFirst: AnyMock; create: AnyMock; delete: AnyMock };
   user: { findUnique: AnyMock };
   criticalActionRequest: { findMany: AnyMock; count: AnyMock };
-  helpTicket: { findMany: AnyMock; count: AnyMock };
+  helpTicket: { findMany: AnyMock; findUnique: AnyMock; count: AnyMock; update: AnyMock };
+  ticketReply: { create: AnyMock; findMany: AnyMock };
+  inboundBounce: { count: AnyMock };
+  $transaction: AnyMock;
 };
 
 // Build a mini Express app wiring only the adminPartners router at /partners
@@ -708,6 +723,135 @@ describe('§13 Audit Fix B — GET /help/ accessible with help.read.all', () => 
   it('200 for SUPER_ADMIN (bypasses requirePermission)', async () => {
     setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
     const res = await api.get('/help/');
+    expect(res.status).toBe(200);
+  });
+});
+
+// ─── §13 Audit Fix B — POST /help/:id/assign privilege gates ─────────────────
+// Explicit assigneeId / unassign (null) must be SUPER_ADMIN-only.
+// SUPPORT (help.read.all) may only self-assign — hasFullAccess() must NOT be used
+// for this gate because it returns true for SUPPORT.
+
+describe('§13 Audit Fix B — POST /help/:id/assign privilege gates', () => {
+  let api: ReturnType<typeof buildHelpApp>;
+
+  // A minimal ticket that satisfies every field the assign handler reads.
+  const baseTicket = {
+    id: 'ticket-1',
+    userId: 'creator-id',
+    assigneeId: null,
+    status: 'OPEN',
+  };
+
+  beforeAll(() => { api = buildHelpApp(); });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    m.helpTicket.findUnique.mockReset();
+    m.helpTicket.update.mockReset();
+    m.user.findUnique.mockReset();
+    // Default: ticket exists, update succeeds
+    m.helpTicket.findUnique.mockResolvedValue(baseTicket);
+    m.helpTicket.update.mockResolvedValue({});
+    m.user.findUnique.mockResolvedValue({ id: 'other-admin', role: 'ADMIN' });
+  });
+
+  it('403 for ADMIN with help.read.all when providing explicit assigneeId', async () => {
+    // SUPPORT profile: has help.read.all (and help.write to pass requirePermission)
+    // but user.role is ADMIN, not SUPER_ADMIN — must be blocked.
+    setMockUser({ id: 'support-id', role: 'ADMIN', permissions: ['help.read.all', 'help.write'] });
+    const res = await api.post('/help/ticket-1/assign').send({ assigneeId: 'other-admin-id' });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/SUPER_ADMIN/i);
+  });
+
+  it('403 for ADMIN with help.read.all when unassigning (assigneeId: null)', async () => {
+    setMockUser({ id: 'support-id', role: 'ADMIN', permissions: ['help.read.all', 'help.write'] });
+    const res = await api.post('/help/ticket-1/assign').send({ assigneeId: null });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/SUPER_ADMIN/i);
+  });
+
+  it('200 for SUPER_ADMIN with explicit assigneeId (passes role gate)', async () => {
+    setMockUser({ id: 'super-id', role: 'SUPER_ADMIN', permissions: [] });
+    // Ticket: creator is someone else, current assignee is null — no creator-self-assign guard fires
+    m.helpTicket.findUnique.mockResolvedValue({ ...baseTicket, userId: 'creator-id', assigneeId: null });
+    m.user.findUnique.mockResolvedValue({ id: 'other-admin', role: 'ADMIN' });
+    const res = await api.post('/help/ticket-1/assign').send({ assigneeId: 'other-admin' });
+    expect(res.status).toBe(200);
+  });
+
+  it('200 for ADMIN without help.read.all on self-assign (no assigneeId in body)', async () => {
+    // Any authenticated admin with help.write can self-assign a ticket they can access.
+    setMockUser({ id: 'admin-1', role: 'ADMIN', permissions: ['help.write'] });
+    // Ticket is owned by this admin so they can access it
+    m.helpTicket.findUnique.mockResolvedValue({ ...baseTicket, userId: 'admin-1', assigneeId: null });
+    const res = await api.post('/help/ticket-1/assign').send({});
+    expect(res.status).toBe(200);
+  });
+});
+
+// ─── §13 Audit Fix B — POST /help/:id/reject privilege gates ─────────────────
+// Rejection of a ticket the caller is not assigned to must be SUPER_ADMIN-only.
+// SUPPORT (help.read.all) is blocked from rejecting unassigned tickets —
+// hasFullAccess() must NOT be used for this gate.
+
+describe('§13 Audit Fix B — POST /help/:id/reject privilege gates', () => {
+  let api: ReturnType<typeof buildHelpApp>;
+
+  const validReason = 'Причина с поне десет символа';
+
+  // Ticket where the current test user is NOT the assignee
+  const unassignedTicket = {
+    id: 'ticket-1',
+    userId: 'creator-id',
+    assigneeId: 'other-admin-id', // != support-id / admin-1
+    rootMessageId: null,
+    status: 'OPEN',
+    user: { email: 'creator@test.com', firstName: 'Creator', role: 'USER' },
+  };
+
+  beforeAll(() => { api = buildHelpApp(); });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    m.helpTicket.findUnique.mockReset();
+    m.helpTicket.update.mockReset();
+    m.$transaction.mockReset();
+    m.ticketReply.create.mockReset();
+    m.ticketReply.findMany.mockReset();
+    m.helpTicket.findUnique.mockResolvedValue(unassignedTicket);
+    m.helpTicket.update.mockResolvedValue({});
+    m.ticketReply.create.mockResolvedValue({ id: 'reply-1' });
+    m.ticketReply.findMany.mockResolvedValue([]);
+    // $transaction calls the callback with the prisma mock so tx.* hits the right fns
+    m.$transaction.mockImplementation(async (fn: (tx: typeof m) => Promise<unknown>) => fn(m));
+  });
+
+  it('403 for ADMIN with help.read.all rejecting a ticket they are not the assignee of', async () => {
+    // SUPPORT profile: help.read.all gives hasFullAccess()=true but role is ADMIN
+    setMockUser({ id: 'support-id', role: 'ADMIN', permissions: ['help.read.all', 'help.write'] });
+    const res = await api.post('/help/ticket-1/reject').send({ reason: validReason });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/SUPER_ADMIN/i);
+  });
+
+  it('403 for ADMIN with help.write but no help.read.all rejecting a non-assigned ticket', async () => {
+    setMockUser({ id: 'admin-1', role: 'ADMIN', permissions: ['help.write'] });
+    const res = await api.post('/help/ticket-1/reject').send({ reason: validReason });
+    expect(res.status).toBe(403);
+  });
+
+  it('200 for SUPER_ADMIN rejecting any ticket regardless of assignee', async () => {
+    setMockUser({ id: 'super-id', role: 'SUPER_ADMIN', permissions: [] });
+    const res = await api.post('/help/ticket-1/reject').send({ reason: validReason });
+    expect(res.status).toBe(200);
+  });
+
+  it('200 for ADMIN who IS the assignee (assignee-owns-rejection policy)', async () => {
+    setMockUser({ id: 'assignee-id', role: 'ADMIN', permissions: ['help.write'] });
+    m.helpTicket.findUnique.mockResolvedValue({ ...unassignedTicket, assigneeId: 'assignee-id' });
+    const res = await api.post('/help/ticket-1/reject').send({ reason: validReason });
     expect(res.status).toBe(200);
   });
 });

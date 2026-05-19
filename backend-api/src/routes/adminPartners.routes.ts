@@ -587,7 +587,7 @@ router.post(
     // set) would receive a stale "Onboarding approved" email + a superfluous
     // activation link, and the PartnerStatusChange row would carry the wrong label.
     if (partner.status === PartnerStatus.REJECTED) {
-      return res.status(400).json({ error: 'Partner was rejected during onboarding and cannot be approved. Re-initiate the onboarding process or contact support.' });
+      return res.status(400).json({ error: 'Partner was rejected during onboarding and cannot be approved. A new partner application must be submitted — the rejected record cannot be reactivated.' });
     }
     const NON_APPROVABLE_STATUSES: PartnerStatus[] = [
       PartnerStatus.INACTIVE,

@@ -597,16 +597,17 @@ router.patch('/:userId/plan', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), r
       return;
     }
 
-    // Defensive guard — findFirst already excludes terminated states, but
-    // guard is kept for type narrowing. EXPIRED rows are also unmodifiable
-    // (natural-lapse end state introduced for spec §4.2).
-    if (
-      subscription.status === 'CANCELLED' ||
-      subscription.status === 'EXPIRED' ||
-      subscription.status === 'INCOMPLETE_EXPIRED' ||
-      subscription.status === 'FAILED_PAYMENT'
-    ) {
+    // Guard against non-modifiable states. Note: findFirst above only excludes
+    // CANCELLED; EXPIRED, INCOMPLETE_EXPIRED, and FAILED_PAYMENT are caught here.
+    // FAILED_PAYMENT is not terminal (dunning may recover it) but plan changes
+    // on a Stripe subscription in dunning create confusing invoice sequences —
+    // admin should cancel then re-subscribe, or wait for recovery.
+    if (subscription.status === 'CANCELLED' || subscription.status === 'EXPIRED' || subscription.status === 'INCOMPLETE_EXPIRED') {
       res.status(400).json({ error: 'Cannot change plan on a terminated subscription' });
+      return;
+    }
+    if (subscription.status === 'FAILED_PAYMENT') {
+      res.status(400).json({ error: 'Cannot change plan on a subscription with a failed payment. Cancel the subscription and create a new one, or wait for the payment to be recovered.' });
       return;
     }
 

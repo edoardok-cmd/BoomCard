@@ -195,12 +195,24 @@ export async function ingestInboundEmail(
       const subjectMatch = (payload.subject || '').match(SUBJECT_REF_RE);
       if (subjectMatch) {
         const ref = subjectMatch[1].toLowerCase();
+        // Mirror the same priority ladder used by resolveTicket (Gap-8 fix):
+        // full-UUID → shortRef O(1) index → legacy linear scan for null-shortRef rows.
         if (ref.length === 32 || ref.includes('-')) {
           const t = await prisma.helpTicket.findUnique({ where: { id: ref }, select: { id: true } });
           relatedTicketId = t?.id ?? null;
         }
+        if (!relatedTicketId && ref.length <= 8) {
+          const t = await prisma.helpTicket.findUnique({ where: { shortRef: ref }, select: { id: true } });
+          relatedTicketId = t?.id ?? null;
+        }
         if (!relatedTicketId) {
-          const recent = await prisma.helpTicket.findMany({ select: { id: true }, orderBy: { createdAt: 'desc' }, take: 200 });
+          // Graceful fallback for legacy tickets predating the shortRef column.
+          const recent = await prisma.helpTicket.findMany({
+            where: { shortRef: null },
+            select: { id: true },
+            orderBy: { createdAt: 'desc' },
+            take: 500,
+          });
           const hit = recent.find((t) => t.id.replace(/-/g, '').toLowerCase().startsWith(ref));
           relatedTicketId = hit?.id ?? null;
         }
