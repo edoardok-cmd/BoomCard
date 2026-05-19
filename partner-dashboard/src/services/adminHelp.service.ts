@@ -46,8 +46,15 @@ export interface TicketReply {
   id: string;
   body: string;
   isAdmin: boolean;
+  /**
+   * Ingress channel:
+   *   "WEB"      — authored in the web UI
+   *   "EMAIL"    — arrived via inbound email gateway
+   *   "INTERNAL" — system-generated note (rejection reason, audit marker); not shown to end-users
+   */
+  channel?: 'WEB' | 'EMAIL' | 'INTERNAL';
   createdAt: string;
-  author: TicketUser;
+  author: TicketUser | null;
 }
 
 export const adminHelpService = {

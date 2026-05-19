@@ -334,6 +334,27 @@ router.post('/critical-actions/:id/approve', authenticate, authorize('SUPER_ADMI
       data: { status: 'APPROVED', resolvedById: req.user!.id, resolvedAt: new Date(), resolvedNote: note?.trim() || null },
     });
 
+    // Execute side-effects for known actionTypes
+    if (item.actionType === 'DISCOUNT_RATE_CHANGE') {
+      const p = item.payload as { partnerId?: string; proposedRate?: number | null };
+      if (p.partnerId !== undefined && 'proposedRate' in p) {
+        await prisma.partner.update({
+          where: { id: p.partnerId },
+          data: { discountRate: p.proposedRate ?? null },
+        });
+        await writeAudit({
+          actorUserId: req.user!.id,
+          action: 'partner.discount-rate.update',
+          objectType: 'Partner',
+          objectId: p.partnerId as string,
+          before: { via: 'critical-action', requestId: item.id },
+          after: { discountRate: p.proposedRate ?? null },
+          ip: getClientIp(req) ?? null,
+          userAgent: req.headers['user-agent'] ?? null,
+        });
+      }
+    }
+
     req.skipAudit = true;
     await writeAudit({
       actorUserId: req.user!.id,
@@ -823,6 +844,9 @@ router.post('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
       create: { userId: user.id, roleId: adminRole.id, grantedById: req.user!.id },
       update: { grantedById: req.user!.id, grantedAt: new Date() },
     });
+    // Stamp rolesUpdatedAt so any in-flight JWTs for this user are rejected by
+    // authenticate() until the user re-logs in with a fresh permission set.
+    await prisma.user.update({ where: { id: user.id }, data: { rolesUpdatedAt: new Date() } });
 
     req.skipAudit = true;
     await writeAudit({
@@ -874,7 +898,7 @@ router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADM
       // would leave the user with full SUPER_ADMIN access.
       const [deleteResult] = await prisma.$transaction([
         prisma.userAdminRole.deleteMany({ where: { userId: id, roleId: adminRole.id } }),
-        prisma.user.update({ where: { id }, data: { role: 'ADMIN' } }),
+        prisma.user.update({ where: { id }, data: { role: 'ADMIN', rolesUpdatedAt: new Date() } }),
       ]);
       if (deleteResult.count === 0) {
         return res.status(404).json({ error: 'Admin does not have this role' });
@@ -884,6 +908,8 @@ router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADM
       if (count === 0) {
         return res.status(404).json({ error: 'Admin does not have this role' });
       }
+      // Stamp rolesUpdatedAt so in-flight JWTs for this user are invalidated.
+      await prisma.user.update({ where: { id }, data: { rolesUpdatedAt: new Date() } });
     }
 
     req.skipAudit = true;

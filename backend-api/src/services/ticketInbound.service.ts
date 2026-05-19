@@ -449,6 +449,17 @@ export async function ingestInboundEmail(
     logger.warn(
       `[ticketInbound] spoof guard: from=${fromEmail} not in allowed set for ticket=${t.id}; creating linked ticket`
     );
+    // Assign the linked ticket to a system admin rather than to the original
+    // ticket's owner. Using t.userId as owner caused the original ticket creator
+    // to see phantom tickets in "My tickets" that they never submitted. A system
+    // admin owns the linked ticket and can re-assign once the sender is identified.
+    const linkedOwnerId = await getSystemOwnerId();
+    if (!linkedOwnerId) {
+      logger.error(
+        `[ticketInbound] spoof guard: no admin available to own linked ticket for original=${t.id} from=${fromEmail}; dropping inbound`
+      );
+      return { ticketId: t.id, created: false };
+    }
     const linked = await prisma.helpTicket.create({
       data: {
         subject:
@@ -458,7 +469,7 @@ export async function ingestInboundEmail(
         category: TicketCategory.OTHER,
         priority: TicketPriority.MEDIUM,
         status: TicketStatus.OPEN,
-        userId: t.userId,
+        userId: linkedOwnerId,
         source: 'EMAIL',
         externalEmail: fromEmail,
         rootMessageId: payload.messageId || null,

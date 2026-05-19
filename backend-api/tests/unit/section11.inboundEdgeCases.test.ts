@@ -225,6 +225,9 @@ describe('Gap 5 — spoof guard: unknown sender creates linked ticket', () => {
 
   beforeEach(() => {
     userRows['owner-sp'] = makeUser('owner-sp', { email: 'owner@example.com' });
+    // Gap 8 fix: spoof-guard now uses getSystemOwnerId() (findFirst by ADMIN/SUPER_ADMIN role).
+    // Add a system admin so the guard can assign ownership and proceed to create the linked ticket.
+    userRows['sys-admin'] = makeUser('sys-admin', { email: 'admin@boomcard.bg', role: 'SUPER_ADMIN' });
     helpTicketRow = makeTicket({
       id: TICKET_ID,
       userId: 'owner-sp',

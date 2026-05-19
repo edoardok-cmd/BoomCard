@@ -295,15 +295,23 @@ describe('GAP-3 — autoCloseResolvedTickets warns when batch limit is reached',
     expect(batchWarn).toBeUndefined();
   });
 
-  it('warning IS emitted when exactly 200 tickets are processed (limit hit)', async () => {
+  it('warning IS emitted when iteration cap is hit (static 200-ticket mock triggers cap)', async () => {
+    // With the mock returning 200 tickets every iteration the loop reaches MAX_ITERATIONS
+    // and emits a warn about the iteration cap (the paginated-loop successor to the
+    // single-batch-limit warning). The warning mentions "iteration cap".
+    const { prisma: mock } = jest.requireMock('../../src/lib/prisma');
     ticketFindManyResult = Array.from({ length: 200 }, (_, i) => makeResolvedTicket(`t-${i}`));
+
+    // The mock always returns the same 200 tickets, so the loop never drains and
+    // eventually hits MAX_ITERATIONS.
+    mock.helpTicket.findMany = jest.fn(async () => ticketFindManyResult);
 
     await autoCloseResolvedTickets();
 
-    const batchWarn = loggerWarnCalls.find((args) =>
-      args.some((a: any) => typeof a === 'string' && a.includes('batch limit'))
+    const iterWarn = loggerWarnCalls.find((args) =>
+      args.some((a: any) => typeof a === 'string' && a.includes('iteration cap'))
     );
-    expect(batchWarn).toBeDefined();
+    expect(iterWarn).toBeDefined();
   });
 
   it('warning message mentions carry-over to the next nightly run', async () => {
@@ -327,13 +335,14 @@ describe('GAP-3 — autoCloseResolvedTickets warns when batch limit is reached',
     expect(updatedManyArgs[0].data.status).toBe('CLOSED');
   });
 
-  it('source: logger.warn call is present inside autoCloseResolvedTickets', () => {
+  it('source: logger.warn is called when the iteration cap is reached', () => {
     const src          = readSource('../../src/jobs/scheduler.ts');
     const fnStart      = src.indexOf('export async function autoCloseResolvedTickets');
     const fnEnd        = src.indexOf('\nexport function registerScheduledJobs', fnStart);
     const fnSrc        = src.slice(fnStart, fnEnd > fnStart ? fnEnd : src.length);
-    // The function must call logger.warn when tickets.length === 200.
-    expect(fnSrc).toMatch(/tickets\.length === 200/);
+    // The paginated-loop implementation warns when iterations >= MAX_ITERATIONS,
+    // not on a simple tickets.length === 200 check.
+    expect(fnSrc).toMatch(/iterations\s*>=\s*MAX_ITERATIONS/);
     expect(fnSrc).toMatch(/logger\.warn/);
   });
 });

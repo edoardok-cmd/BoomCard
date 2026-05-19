@@ -5,7 +5,7 @@ import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { notificationService } from '../services/notification.service';
 import { emailService } from '../services/email.service';
-import { buildTicketSubject, buildTicketHeaders, computeShortRef } from '../services/ticketEmail.service';
+import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef } from '../services/ticketEmail.service';
 import { fireAutomation } from '../lib/automationDispatcher';
 import { logger } from '../utils/logger';
 import type { AuthRequest } from '../middleware/auth.middleware';
@@ -22,6 +22,24 @@ const FRONTEND_URL = (() => {
   }
   return 'http://localhost:3021';
 })();
+
+/**
+ * Return a portal URL the ticket creator can use to view their ticket.
+ * ADMIN/SUPER_ADMIN → admin help panel (mine view).
+ * PARTNER           → partner dashboard help page (no ticket-level deep link needed;
+ *                     the list is scoped to the partner so the ticket is visible).
+ * USER              → no web portal for tickets (mobile-app users receive and reply via email).
+ *                     Returns null; callers should omit the link from the email body.
+ */
+function ticketCreatorUrl(role: string, ticketId: string): string | null {
+  if (role === 'ADMIN' || role === 'SUPER_ADMIN') {
+    return `${FRONTEND_URL}/admin/help/mine?ticket=${ticketId}`;
+  }
+  if (role === 'PARTNER') {
+    return `${FRONTEND_URL}/partners/help`;
+  }
+  return null;
+}
 
 const TICKET_SELECT_ALL = {
   id: true,
@@ -534,6 +552,7 @@ router.post('/:id/reject', requirePermission('help.write'), async (req: AuthRequ
         ...rejectPriorMsgs.map((r) => r.messageId),
       ].filter((id): id is string => !!id);
       const escR = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const rejectAudience = ticket.user.role === 'PARTNER' ? 'partner' : 'subscriber';
       emailService
         .sendEmail({
           to: ticket.user.email,
@@ -544,6 +563,7 @@ router.post('/:id/reject', requirePermission('help.write'), async (req: AuthRequ
             inReplyTo: rejectRefChain.at(-1) ?? null,
             references: rejectRefChain,
           }).headers,
+          replyTo: buildPlusReplyTo(ticket.id, rejectAudience),
           html: `<p>Здравей, ${escR(ticket.user.firstName || ticket.user.email)},</p>
 <p>Вашата заявка беше отказана от администратор.</p>
 <p><strong>Причина:</strong></p>
@@ -670,6 +690,7 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
         ticket.rootMessageId,
         ...patchPriorMsgs.map((r) => r.messageId),
       ].filter((id): id is string => !!id);
+      const patchAudience = ticket.user.role === 'PARTNER' ? 'partner' : 'subscriber';
       emailService
         .sendEmail({
           to: ticket.user.email,
@@ -680,13 +701,20 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
             inReplyTo: patchRefChain.at(-1) ?? null,
             references: patchRefChain,
           }).headers,
-          html: `<p><strong>Здравей, ${escCl(ticket.user.firstName || ticket.user.email)},</strong></p>
+          replyTo: buildPlusReplyTo(ticket.id, patchAudience),
+          html: (() => {
+            const portalUrl = ticketCreatorUrl(ticket.user.role, ticket.id);
+            const footerLink = portalUrl
+              ? ` &middot; <a href="${portalUrl}">Преглед</a>`
+              : '';
+            return `<p><strong>Здравей, ${escCl(ticket.user.firstName || ticket.user.email)},</strong></p>
 <p>Статусът на вашата заявка беше обновен на <strong>${newStatusLabel}</strong>.</p>
 <table cellpadding="4">
   <tr><td><strong>Тема:</strong></td><td>${escCl(ticket.subject)}</td></tr>
   <tr><td><strong>Категория:</strong></td><td>${CATEGORY_BG_NOTIFY[ticket.category] ?? ticket.category}</td></tr>
 </table>
-<p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id} &middot; <a href="${FRONTEND_URL}/admin/help/mine?ticket=${ticket.id}">Преглед</a></p>`,
+<p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id}${footerLink}</p>`;
+          })(),
           text: `Здравей, ${ticket.user.firstName || ticket.user.email},\n\nСтатусът на вашата заявка беше обновен на: ${newStatusLabel}\n\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG_NOTIFY[ticket.category] ?? ticket.category}\n\nTicket ID: ${ticket.id}`,
         })
         .catch((err) => logger.error('[adminHelp] Failed to send status-change notification to creator:', err));
@@ -763,7 +791,9 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
         isAdmin: !isCreator,
         messageId: threading.messageId,
         inReplyTo: refChain.at(-1) ?? null,
-        channel: 'EMAIL',
+        // WEB: reply was authored in the admin panel UI. EMAIL is reserved for
+        // messages that arrived via the inbound email gateway (ticketInbound.service).
+        channel: 'WEB',
       },
       include: {
         author: { select: { id: true, firstName: true, lastName: true, email: true } },
@@ -842,22 +872,30 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
 
     // Notify the ticket creator by email when support (non-creator) replies
     if (!isCreator && ticket.user?.email) {
+      const replyAudience = ticket.user.role === 'PARTNER' ? 'partner' : 'subscriber';
       emailService
         .sendEmail({
           to: ticket.user.email,
           audience: ticket.user.role === 'PARTNER' ? 'partner' : undefined,
           subject: buildTicketSubject(ticket.id, `[Отговор на заявка] ${ticket.subject}`),
           headers: threading.headers,
-          html: `<p><strong>Здравей, ${escR(ticket.user.firstName || ticket.user.email)},</strong></p>
-<p>Получихте отговор на вашата вътрешна заявка.</p>
+          replyTo: buildPlusReplyTo(ticket.id, replyAudience),
+          html: (() => {
+            const portalUrl = ticketCreatorUrl(ticket.user.role, ticket.id);
+            const footerLink = portalUrl
+              ? ` &middot; <a href="${portalUrl}">Отвори заявката</a>`
+              : '';
+            return `<p><strong>Здравей, ${escR(ticket.user.firstName || ticket.user.email)},</strong></p>
+<p>Получихте отговор на вашата заявка.</p>
 <table cellpadding="4">
   <tr><td><strong>Тема:</strong></td><td>${escR(ticket.subject)}</td></tr>
   <tr><td><strong>Категория:</strong></td><td>${CATEGORY_BG[ticket.category] ?? ticket.category}</td></tr>
 </table>
 <hr/>
 <p>${escR(body.trim()).replace(/\n/g, '<br/>')}</p>
-<p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id} &middot; <a href="${FRONTEND_URL}/admin/help/mine?ticket=${ticket.id}">Отвори заявката</a></p>`,
-          text: `Здравей, ${ticket.user.firstName || ticket.user.email},\n\nПолучихте отговор на вашата вътрешна заявка.\n\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG[ticket.category] ?? ticket.category}\n\n${body.trim()}\n\nTicket ID: ${ticket.id}`,
+<p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id}${footerLink}</p>`;
+          })(),
+          text: `Здравей, ${ticket.user.firstName || ticket.user.email},\n\nПолучихте отговор на вашата заявка.\n\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG[ticket.category] ?? ticket.category}\n\n${body.trim()}\n\nTicket ID: ${ticket.id}`,
         })
         .catch((err) => logger.error('[adminHelp] Failed to send reply notification email:', err));
     }

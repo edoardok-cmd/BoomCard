@@ -711,12 +711,12 @@ router.get(
 /**
  * POST /api/admin/settings/fraud-rules
  * Body: { tier, targetId?, dailyScanLimit?, minTransactionValue?, maxTransactionValue?, autoApproveThreshold?, notes? }
- * Spec §7.4: SUPER_ADMIN only.
+ * Spec §7.4: requires control.rules.write. RISK_REVIEW has only control.rules.read
+ * so is blocked; full ADMIN role includes control.rules.write by default.
  */
 router.post(
   '/fraud-rules',
-  authorize('SUPER_ADMIN'),
-  requirePermission(['settings.write', 'control.rules.write']),
+  requirePermission('control.rules.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { tier, targetId, dailyScanLimit, minTransactionValue, maxTransactionValue, autoApproveThreshold, notes } =
       req.body as {
@@ -755,12 +755,11 @@ router.post(
 
 /**
  * PATCH /api/admin/settings/fraud-rules/:id
- * Spec §7.4: SUPER_ADMIN only.
+ * Spec §7.4: requires control.rules.write (same rationale as POST).
  */
 router.patch(
   '/fraud-rules/:id',
-  authorize('SUPER_ADMIN'),
-  requirePermission(['settings.write', 'control.rules.write']),
+  requirePermission('control.rules.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { dailyScanLimit, minTransactionValue, maxTransactionValue, autoApproveThreshold, notes, isActive } =
       req.body as {
@@ -794,12 +793,11 @@ router.patch(
 /**
  * DELETE /api/admin/settings/fraud-rules/:id
  * Soft-deactivates the rule (does not hard-delete to preserve audit trail).
- * Spec §7.4: SUPER_ADMIN only.
+ * Spec §7.4: requires control.rules.write (same rationale as POST).
  */
 router.delete(
   '/fraud-rules/:id',
-  authorize('SUPER_ADMIN'),
-  requirePermission(['settings.write', 'control.rules.write']),
+  requirePermission('control.rules.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const rule = await prisma.fraudRule.findUnique({ where: { id: req.params.id } });
     if (!rule) return res.status(404).json({ success: false, error: 'Fraud rule not found' });
@@ -817,7 +815,6 @@ router.delete(
 router.get(
   '/fraud-rules/:id/overrides',
   authorize('SUPER_ADMIN'),
-  requirePermission(['settings.read', 'control.rules.read']),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const rule = await prisma.fraudRule.findUnique({ where: { id: req.params.id } });
     if (!rule) return res.status(404).json({ success: false, error: 'Fraud rule not found' });
@@ -839,7 +836,6 @@ router.get(
 router.post(
   '/fraud-rules/:id/overrides',
   authorize('SUPER_ADMIN'),
-  requirePermission(['settings.write', 'control.rules.write']),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { targetType, targetId, override, reason, expiresAt } = req.body as {
       targetType?: string;
@@ -883,7 +879,6 @@ router.post(
 router.delete(
   '/fraud-rules/:id/overrides/:overId',
   authorize('SUPER_ADMIN'),
-  requirePermission(['settings.write', 'control.rules.write']),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const ov = await prisma.fraudRuleOverride.findFirst({
       where: { id: req.params.overId, ruleId: req.params.id },

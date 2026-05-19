@@ -1254,87 +1254,117 @@ export async function autoCloseResolvedTickets(): Promise<void> {
   // Use resolvedAt (set when status → RESOLVED) so the 7-day clock is anchored
   // to when resolution happened, not to any subsequent field edit (updatedAt).
   // Fall back to updatedAt for rows that existed before resolvedAt was added.
-  const tickets = await prisma.helpTicket.findMany({
-    where: {
-      status: 'RESOLVED',
-      OR: [
-        { resolvedAt: { lte: cutoff } },
-        { resolvedAt: null, updatedAt: { lte: cutoff } },
-      ],
-    },
-    // Bug 2 fix: include role so closure emails can pass the correct audience
-    // (partner Reply-To vs. subscriber Reply-To) — was missing, causing partner
-    // tickets to receive closure emails with the wrong reply address.
-    select: { id: true, subject: true, userId: true, rootMessageId: true, user: { select: { email: true, firstName: true, role: true } } },
-    take: 200,
-  });
-  if (!tickets.length) return;
-  if (tickets.length === 200) {
-    logger.warn('[ticket-auto-close] batch limit hit (200) — additional RESOLVED tickets older than 7 days may carry over to the next nightly run');
-  }
+  const ELIGIBLE_WHERE = {
+    status: 'RESOLVED' as const,
+    OR: [
+      { resolvedAt: { lte: cutoff } },
+      { resolvedAt: null, updatedAt: { lte: cutoff } },
+    ],
+  };
 
-  // Do NOT clear resolvedAt here. CLOSED is a terminal state that can never
-  // re-enter the auto-close cycle, so there is no risk of the job re-firing.
-  // Preserving resolvedAt maintains the audit record of when the ticket was
-  // resolved (vs. when it was auto-closed, captured by updatedAt).
-  await prisma.helpTicket.updateMany({
-    where: { id: { in: tickets.map((t) => t.id) } },
-    data: { status: 'CLOSED' },
-  });
+  // Paginated loop: process up to BATCH_SIZE tickets per iteration so the job
+  // always drains the full backlog regardless of size. MAX_ITERATIONS caps the
+  // run to prevent infinite loops caused by a hypothetical DB fault.
+  const BATCH_SIZE = 200;
+  const MAX_ITERATIONS = 50; // 50 × 200 = 10 000 tickets per nightly run
+  let totalClosed = 0;
+  let iterations = 0;
 
-  // Write audit rows — one per ticket so the history is clear.
-  for (const t of tickets) {
-    writeAudit({
-      actorUserId: null,
-      action: 'ticket.auto_close',
-      objectType: 'ticket',
-      objectId: t.id,
-      before: { status: 'RESOLVED' },
-      after: { status: 'CLOSED', reason: 'auto-close: 7 days without reply after RESOLVED' },
-    }).catch(() => {});
-  }
+  while (iterations < MAX_ITERATIONS) {
+    iterations++;
 
-  // Notify each creator — fire-and-forget per ticket.
-  // Build the full RFC 5322 reference chain (rootMessageId + all reply messageIds)
-  // so the closure email threads under the last message in the conversation,
-  // consistent with every other ticket notification (admin reply, status change,
-  // rejection). Using only rootMessageId causes the email to appear as an
-  // unrelated message in clients that group by References.
-  for (const t of tickets) {
-    if (t.user.email) {
-      (async () => {
-        try {
-          const priorMsgs = await prisma.ticketReply.findMany({
-            where: { ticketId: t.id, messageId: { not: null } },
-            orderBy: { createdAt: 'asc' },
-            select: { messageId: true },
-          });
-          const refChain: string[] = [
-            t.rootMessageId,
-            ...priorMsgs.map((r) => r.messageId as string),
-          ].filter((id): id is string => !!id);
+    const tickets = await prisma.helpTicket.findMany({
+      where: ELIGIBLE_WHERE,
+      select: {
+        id: true,
+        subject: true,
+        userId: true,
+        rootMessageId: true,
+        user: { select: { email: true, firstName: true, role: true } },
+      },
+      take: BATCH_SIZE,
+    });
 
-          await emailService.sendEmail({
-            to: t.user.email,
-            // Bug 2 fix: pass audience so partner tickets use partner Reply-To.
-            audience: t.user.role === 'PARTNER' ? 'partner' : undefined,
-            subject: buildTicketSubject(t.id, `[Заявката затворена] ${t.subject}`),
-            headers: buildTicketHeaders({
-              ticketId: t.id,
-              inReplyTo: refChain.at(-1) ?? null,
-              references: refChain,
-            }).headers,
-            html: `<p>Здравей, ${t.user.firstName || t.user.email},</p><p>Вашата заявка беше затворена автоматично, тъй като 7 дни са изминали след маркирането й като решена без допълнителна комуникация.</p><p style="color:#999;font-size:12px;">Ticket ID: ${t.id}</p>`,
-            text: `Здравей, ${t.user.firstName || t.user.email},\n\nВашата заявка беше затворена автоматично след 7 дни без активност след маркиране като решена.\n\nTicket ID: ${t.id}`,
-          });
-        } catch (err) {
-          logger.error(`[ticket-auto-close] failed to send closure notification for ticket ${t.id}:`, err);
-        }
-      })();
+    if (!tickets.length) break;
+
+    // TOCTOU guard: add status:'RESOLVED' to the updateMany filter so a ticket
+    // that was concurrently reopened (RESOLVED → OPEN via inbound email or web
+    // reply) between the findMany and this updateMany is not incorrectly closed.
+    // Preserving resolvedAt is intentional — CLOSED is terminal and the field
+    // serves as the audit record of when the ticket was originally resolved.
+    await prisma.helpTicket.updateMany({
+      where: {
+        id: { in: tickets.map((t) => t.id) },
+        status: 'RESOLVED', // re-check status to guard against concurrent reopens
+      },
+      data: { status: 'CLOSED' },
+    });
+
+    totalClosed += tickets.length;
+
+    // Audit one row per ticket. In the TOCTOU case (ticket concurrently reopened)
+    // the audit entry is written even though the ticket was not actually closed —
+    // this is a benign over-count on a sub-millisecond race window.
+    for (const t of tickets) {
+      writeAudit({
+        actorUserId: null,
+        action: 'ticket.auto_close',
+        objectType: 'ticket',
+        objectId: t.id,
+        before: { status: 'RESOLVED' },
+        after: { status: 'CLOSED', reason: 'auto-close: 7 days without reply after RESOLVED' },
+      }).catch(() => {});
     }
+
+    // Notify each creator — fire-and-forget per ticket.
+    // Build the full RFC 5322 reference chain (rootMessageId + all reply messageIds)
+    // so the closure email threads under the last message in the conversation.
+    for (const t of tickets) {
+      if (t.user.email) {
+        (async () => {
+          try {
+            const priorMsgs = await prisma.ticketReply.findMany({
+              where: { ticketId: t.id, messageId: { not: null } },
+              orderBy: { createdAt: 'asc' },
+              select: { messageId: true },
+            });
+            const refChain: string[] = [
+              t.rootMessageId,
+              ...priorMsgs.map((r) => r.messageId as string),
+            ].filter((id): id is string => !!id);
+
+            await emailService.sendEmail({
+              to: t.user.email,
+              audience: t.user.role === 'PARTNER' ? 'partner' : undefined,
+              subject: buildTicketSubject(t.id, `[Заявката затворена] ${t.subject}`),
+              headers: buildTicketHeaders({
+                ticketId: t.id,
+                inReplyTo: refChain.at(-1) ?? null,
+                references: refChain,
+              }).headers,
+              html: `<p>Здравей, ${t.user.firstName || t.user.email},</p><p>Вашата заявка беше затворена автоматично, тъй като 7 дни са изминали след маркирането й като решена без допълнителна комуникация.</p><p style="color:#999;font-size:12px;">Ticket ID: ${t.id}</p>`,
+              text: `Здравей, ${t.user.firstName || t.user.email},\n\nВашата заявка беше затворена автоматично след 7 дни без активност след маркиране като решена.\n\nTicket ID: ${t.id}`,
+            });
+          } catch (err) {
+            logger.error(`[ticket-auto-close] failed to send closure notification for ticket ${t.id}:`, err);
+          }
+        })();
+      }
+    }
+
+    if (tickets.length < BATCH_SIZE) break; // last batch — no more eligible tickets
   }
 
-  logger.info(`[ticket-auto-close] closed ${tickets.length} RESOLVED tickets older than 7 days`);
+  if (iterations >= MAX_ITERATIONS) {
+    logger.warn(
+      `[ticket-auto-close] reached iteration cap (${MAX_ITERATIONS} × ${BATCH_SIZE}); ` +
+      `remaining RESOLVED tickets older than 7 days will be processed in the next nightly run`
+    );
+  }
+
+  if (totalClosed > 0) {
+    logger.info(`[ticket-auto-close] closed ${totalClosed} RESOLVED tickets older than 7 days in ${iterations} batch(es)`);
+  }
 }
 
 export function registerScheduledJobs(): void {

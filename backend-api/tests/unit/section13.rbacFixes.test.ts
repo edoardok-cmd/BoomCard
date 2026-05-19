@@ -6,7 +6,8 @@
  *   Fix 1b — PARTNER_MANAGER no longer has partners.write (live-partner ops)
  *   Fix 1c — seedPermissions() is bidirectional (revokes removed grants)
  *   Fix 2   — control.rules.read activates GET /admin/settings/fraud-rules
- *             for RISK_REVIEW; write ops remain SUPER_ADMIN-only
+ *             for RISK_REVIEW; write ops gated by control.rules.write (ADMIN has it;
+ *             RISK_REVIEW does not — block enforced by requirePermission, not authorize)
  *   Fix 3   — PATCH /:id/discount-rate enforces CASHBACK_MATRIX_STEPS,
  *             partnerType cap, and requires partners.write; absent rate → 400
  *
@@ -108,6 +109,7 @@ jest.mock('../../src/services/notification.service', () => ({
 jest.mock('../../src/services/ticketEmail.service', () => ({
   buildTicketSubject: jest.fn((_id: string, suffix: string) => `[#abc1234] ${suffix}`),
   buildTicketHeaders: jest.fn(() => ({ messageId: '<mid@test>', headers: {} })),
+  buildPlusReplyTo: jest.fn(() => 'support+abc1234@boomcard.bg'),
   computeShortRef: jest.fn(() => '#abc1234'),
 }));
 
@@ -446,33 +448,40 @@ describe('§13 Fix 2 — fraud-rules HTTP permission gates', () => {
     expect(res.status).toBe(200);
   });
 
-  // ── POST /fraud-rules (authorize('SUPER_ADMIN') hard gate before requirePermission) ─
+  // ── POST/PATCH/DELETE /fraud-rules (requirePermission('control.rules.write')) ──
+  // Write ops use requirePermission('control.rules.write') — not a hard SUPER_ADMIN gate.
+  // RISK_REVIEW (control.rules.read only) is blocked; full ADMIN includes the write key.
 
-  it('POST /fraud-rules — 403 for ADMIN role even when holding control.rules.write and settings.write', async () => {
-    // authorize('SUPER_ADMIN') must fire before requirePermission and return 403
-    setMockUser({ role: 'ADMIN', permissions: ['control.rules.write', 'settings.write'] });
+  it('POST /fraud-rules — 201 for ADMIN with control.rules.write', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['control.rules.write'] });
+    const res = await api.post('/settings/fraud-rules').send({ tier: 'SYSTEM' });
+    expect(res.status).toBe(201);
+  });
+
+  it('POST /fraud-rules — 403 when ADMIN lacks control.rules.write', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['control.rules.read'] });
     const res = await api.post('/settings/fraud-rules').send({ tier: 'SYSTEM' });
     expect(res.status).toBe(403);
   });
 
-  it('POST /fraud-rules — SUPER_ADMIN is not blocked at the auth layer (passes authorize + requirePermission)', async () => {
+  it('POST /fraud-rules — SUPER_ADMIN bypasses requirePermission (no tier → 400 from handler)', async () => {
     setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
-    // Missing tier → 400 from handler validation, NOT 403 from auth
     const res = await api.post('/settings/fraud-rules').send({});
-    expect(res.status).not.toBe(403);
     expect(res.status).toBe(400);
   });
 
-  it('PATCH /fraud-rules/:id — 403 for ADMIN role (SUPER_ADMIN-only write gate)', async () => {
-    setMockUser({ role: 'ADMIN', permissions: ['settings.write', 'control.rules.write'] });
+  it('PATCH /fraud-rules/:id — 200 for ADMIN with control.rules.write', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['control.rules.write'] });
+    m.fraudRule.findUnique.mockResolvedValueOnce({ id: 'rule-1', isActive: true });
     const res = await api.patch('/settings/fraud-rules/rule-1').send({ notes: 'test' });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
   });
 
-  it('DELETE /fraud-rules/:id — 403 for ADMIN role (SUPER_ADMIN-only write gate)', async () => {
-    setMockUser({ role: 'ADMIN', permissions: ['settings.write', 'control.rules.write'] });
+  it('DELETE /fraud-rules/:id — 200 for ADMIN with control.rules.write', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['control.rules.write'] });
+    m.fraudRule.findUnique.mockResolvedValueOnce({ id: 'rule-1', isActive: true });
     const res = await api.delete('/settings/fraud-rules/rule-1');
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
   });
 
   it('GET /fraud-rules/:id/overrides — 403 for ADMIN with control.rules.read (override list is SUPER_ADMIN-only)', async () => {

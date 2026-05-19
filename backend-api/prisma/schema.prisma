@@ -54,6 +54,7 @@ model User {
   pendingEmailExpiry      DateTime?
   pendingEmailToken       String?                    @unique
   emailUnsubscribeToken   String?                    @unique
+  rolesUpdatedAt          DateTime?
   auditLogs               AuditLog[]
   bookings                Booking[]
   cards                   Card[]
@@ -122,7 +123,7 @@ model PendingSuperAdminRequest {
 //   BULK_PAYOUT_OVERRIDE        — bulk payout amount override above the safety cap
 //   PARTNER_ARCHIVE             — irreversible archive of an active partner
 //   ADMIN_PERMISSION_GRANT      — granting a sensitive permission outside normal flow
-//   PARTNER_DISCOUNT_RATE_CHANGE — renegotiating a partner's contracted cashback rate (future)
+//   DISCOUNT_RATE_CHANGE         — PARTNER_MANAGER proposes a new cashback rate; SUPER_ADMIN approval executes it
 model CriticalActionRequest {
   id             String    @id @default(uuid())
   actionType     String    // e.g. "BULK_PAYOUT_OVERRIDE", "PARTNER_ARCHIVE"
@@ -1441,7 +1442,10 @@ model HelpTicket {
   subject        String
   body           String         @default("")
   category       TicketCategory
-  status         TicketStatus   @default(NEW)
+  // Spec §11.4: initial status is OPEN. NEW is kept in the enum for existing
+  // rows only — no new ticket should arrive with NEW; this default ensures any
+  // caller that omits status still lands in the correct initial state.
+  status         TicketStatus   @default(OPEN)
   priority       TicketPriority @default(MEDIUM)
   userId         String
   assigneeId     String?
@@ -1498,7 +1502,11 @@ model TicketReply {
   // inReplyTo is the immediate parent. The parser uses these for thread match.
   messageId    String?    @unique
   inReplyTo    String?
-  // "WEB" | "EMAIL". Outbound system emails get "EMAIL" once dispatched.
+  // Ingress channel of this reply message:
+  //   "WEB"      — authored in the admin/partner/user web UI
+  //   "EMAIL"    — arrived via the inbound email gateway (ticketInbound.service)
+  //   "INTERNAL" — system-generated note (e.g. rejection reason, audit marker);
+  //                not shown to end-users, visible only in admin thread view
   channel      String     @default("WEB")
   // Auto-replies and out-of-office headers — see §11.2 edge cases. Surfaced
   // as a metadata-only note in the thread (no reply created).

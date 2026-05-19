@@ -4,9 +4,9 @@ import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
 import { notificationService } from '../services/notification.service';
 import { emailService } from '../services/email.service';
-import { buildTicketSubject, buildTicketHeaders, computeShortRef } from '../services/ticketEmail.service';
+import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef } from '../services/ticketEmail.service';
 import { logger } from '../utils/logger';
-import { fireAutomation } from '../lib/automationDispatcher';
+import { DisputeSubjectType } from '@prisma/client';
 import { z } from 'zod';
 
 const router = Router();
@@ -57,6 +57,17 @@ router.post(
       select: { id: true, subject: true, category: true, status: true, requestType: true, createdAt: true },
     });
 
+    // Spec §11.6: auto-link to Dispute model when type=DISPUTE.
+    if (ticket.requestType === 'DISPUTE') {
+      prisma.dispute.create({
+        data: {
+          userId,
+          ticketId: ticket.id,
+          subjectType: DisputeSubjectType.RECEIPT, // default; admin updates as needed
+        },
+      }).catch((err) => logger.error('[help] failed to create linked Dispute for DISPUTE ticket:', err));
+    }
+
     notificationService
       .notifyAdminOps({
         opsType: 'help_ticket_created',
@@ -105,6 +116,7 @@ router.post(
             to: user.email,
             subject: emailSubject,
             headers: threading.headers,
+            replyTo: buildPlusReplyTo(ticket.id, 'subscriber'),
             html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:'Helvetica Neue',Arial,sans-serif;background:#f5f5f5;margin:0;padding:0"><table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px"><table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.06)"><tr><td style="padding:28px"><p style="margin:0 0 16px;color:#111;font-size:16px">Здравейте${user.firstName ? ', ' + user.firstName : ''},</p><p style="margin:0 0 16px;color:#444;font-size:15px;line-height:1.6">Получихме вашата заявка и тя е регистрирана с референция <strong style="font-family:monospace">${ref}</strong>.</p><p style="margin:0 0 16px;color:#444;font-size:15px;line-height:1.6">Ще се свържем с вас възможно най-скоро. За допълнителна информация напишете ни на <a href="mailto:support@boomcard.bg">support@boomcard.bg</a>.</p><p style="margin:24px 0 0;color:#999;font-size:13px">— Екипът на BoomCard</p></td></tr></table></td></tr></table></body></html>`,
             text: `Здравейте${user.firstName ? ', ' + user.firstName : ''},\n\nПолучихме вашата заявка с референция ${ref}.\n\nЩе се свържем с вас възможно най-скоро.\n\nПри нужда: support@boomcard.bg\n\n— Екипът на BoomCard`,
           });
@@ -231,12 +243,33 @@ router.post(
       return res.status(400).json({ error: 'Не може да се отговаря на заявка в крайно състояние' });
     }
 
+    // Build threading headers BEFORE creating the reply row so the messageId is
+    // both persisted on TicketReply and sent in the outbound notification email.
+    // This anchors Priority-2 In-Reply-To lookup when the assignee replies to
+    // the notification email — mirrors the pattern used by the admin reply handler.
+    const priorMessages = await prisma.ticketReply.findMany({
+      where: { ticketId: ticket.id, messageId: { not: null } },
+      orderBy: { createdAt: 'asc' },
+      select: { messageId: true },
+    });
+    const refChain: string[] = [
+      ticket.rootMessageId,
+      ...priorMessages.map((r: { messageId: string | null }) => r.messageId as string),
+    ].filter((id): id is string => !!id);
+    const threading = buildTicketHeaders({
+      ticketId: ticket.id,
+      inReplyTo: refChain.at(-1) ?? null,
+      references: refChain,
+    });
+
     const reply = await prisma.ticketReply.create({
       data: {
         ticketId: ticket.id,
         authorId: req.user!.id,
         body: body.trim(),
         isAdmin: false,
+        messageId: threading.messageId,
+        inReplyTo: refChain.at(-1) ?? null,
         channel: 'WEB',
       },
       select: { id: true, body: true, isAdmin: true, createdAt: true },
@@ -254,28 +287,7 @@ router.post(
 
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const replyBodyText = body.trim();
-
-    // Build threading chain from rootMessageId so notification emails thread
-    // under the existing ticket conversation.
-    const priorMessages = await prisma.ticketReply.findMany({
-      where: { ticketId: ticket.id, messageId: { not: null } },
-      orderBy: { createdAt: 'asc' },
-      select: { messageId: true },
-    });
-    const refChain: string[] = [
-      ticket.rootMessageId,
-      ...priorMessages.map((r: { messageId: string | null }) => r.messageId as string),
-    ].filter((id): id is string => !!id);
-    const replyHeaders = buildTicketHeaders({
-      ticketId: ticket.id,
-      inReplyTo: refChain.at(-1) ?? null,
-      references: refChain,
-    }).headers;
-
-    // Fire support.reply automation (in-app notification channel only — the
-    // rich email below handles delivery so skipEmail=true avoids a double send).
-    fireAutomation('support.reply', { userId: ticket.userId, skipEmail: true })
-      .catch((err) => logger.error('[help] support.reply automation fire failed:', err));
+    const replyHeaders = threading.headers;
 
     if (ticket.assignee?.email) {
       emailService
