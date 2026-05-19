@@ -177,8 +177,9 @@ const AdminProfileMyDataPage = lazy(() => import('./pages/admin/AdminProfileMyDa
 const AdminProfileSecurityPage = lazy(() => import('./pages/admin/AdminProfileSecurityPage'));
 const AdminProfileLogoutPage = lazy(() => import('./pages/admin/AdminProfileLogoutPage'));
 
-// Receipt pages
+// Receipt / Cashback pages
 const ReceiptsPage = lazy(() => import('./pages/ReceiptsPage'));
+const CashbackPage = lazy(() => import('./pages/CashbackPage'));
 const ReceiptDetailPage = lazy(() => import('./pages/ReceiptDetailPage'));
 const ReceiptAnalyticsPage = lazy(() => import('./pages/ReceiptAnalyticsPage'));
 const AdminReceiptsPage = lazy(() => import('./pages/AdminReceiptsPage'));
@@ -299,6 +300,15 @@ function App() {
                       element={
                         <ProtectedRoute>
                           <ReceiptDetailPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    {/* §5.2 T8 — /cashback is the canonical Cashback & Transactions route */}
+                    <Route
+                      path="cashback"
+                      element={
+                        <ProtectedRoute>
+                          <CashbackPage />
                         </ProtectedRoute>
                       }
                     />

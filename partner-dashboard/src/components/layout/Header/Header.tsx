@@ -1578,9 +1578,9 @@ export const Header: React.FC<HeaderProps> = ({
                               {t('header.dashboard')}
                             </UserMenuItem>
 
-                            {/* 2. Кешбек и транзакции (points to /receipts until T8 ships) */}
+                            {/* 2. Кешбек и транзакции — §5.2 T8 */}
                             <UserMenuItem
-                              to="/receipts"
+                              to="/cashback"
                               onClick={() => setUserMenuOpen(false)}
                             >
                               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
