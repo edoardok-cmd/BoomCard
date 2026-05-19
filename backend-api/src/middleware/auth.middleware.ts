@@ -38,10 +38,14 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
     req.user = decoded;
 
-    // For ADMIN users: if their roles were updated after this JWT was issued, the embedded
-    // permissions are stale — reject with 401 so the client is forced to re-login and get
-    // a fresh token with the correct permission set.
-    if (decoded?.role === 'ADMIN' && decoded?.id) {
+    // For ADMIN and SUPER_ADMIN users: if their roles were updated after this JWT was
+    // issued, the embedded permissions (or role itself) are stale — reject with 401 so
+    // the client is forced to re-login and get a fresh token.
+    // SUPER_ADMIN is included because a downgrade (SUPER_ADMIN → ADMIN via role revoke)
+    // stamps rolesUpdatedAt on the User row while the JWT still carries role='SUPER_ADMIN',
+    // bypassing both authorize() and requirePermission() on every subsequent request until
+    // natural expiry.
+    if ((decoded?.role === 'ADMIN' || decoded?.role === 'SUPER_ADMIN') && decoded?.id) {
       const freshUser = await prisma.user.findUnique({
         where: { id: decoded.id },
         select: { rolesUpdatedAt: true },

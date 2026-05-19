@@ -7,6 +7,7 @@ import { prisma } from '../lib/prisma';
 import type { AuthRequest } from '../middleware/auth.middleware';
 import { getClientIp } from '../utils/requestIp';
 import { emailService } from '../services/email.service';
+import { logger } from '../utils/logger';
 
 const router = Router();
 router.use(auditMiddleware);
@@ -329,30 +330,55 @@ router.post('/critical-actions/:id/approve', authenticate, authorize('SUPER_ADMI
     if (item.status !== 'PENDING') return res.status(400).json({ error: 'Request is no longer pending' });
     if (item.requestedById === req.user!.id) return res.status(400).json({ error: 'Cannot approve your own critical action request' });
 
-    const updated = await prisma.criticalActionRequest.update({
-      where: { id: req.params.id },
-      data: { status: 'APPROVED', resolvedById: req.user!.id, resolvedAt: new Date(), resolvedNote: note?.trim() || null },
+    // Execute the status flip and any actionType side-effect atomically so we
+    // never end up with a request marked APPROVED but the underlying change not
+    // applied (or vice-versa) due to a mid-flight error.
+    let discountRateAudit: { partnerId: string; previousRate: number | null; newRate: number | null } | null = null;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await tx.criticalActionRequest.update({
+        where: { id: req.params.id },
+        data: { status: 'APPROVED', resolvedById: req.user!.id, resolvedAt: new Date(), resolvedNote: note?.trim() || null },
+      });
+
+      if (item.actionType === 'DISCOUNT_RATE_CHANGE') {
+        const p = item.payload as { partnerId?: string; proposedRate?: number | null; currentRate?: number | null };
+        if (p.partnerId !== undefined && 'proposedRate' in p) {
+          await tx.partner.update({
+            where: { id: p.partnerId },
+            data: { discountRate: p.proposedRate ?? null },
+          });
+          discountRateAudit = {
+            partnerId: p.partnerId,
+            previousRate: p.currentRate ?? null,
+            newRate: p.proposedRate ?? null,
+          };
+        } else {
+          // Payload is malformed — log loudly but don't abort the approval.
+          // The SUPER_ADMIN action is still recorded; ops must fix the rate manually.
+          logger.error('[critical-action] DISCOUNT_RATE_CHANGE approved but payload missing partnerId or proposedRate', {
+            requestId: item.id,
+            payload: item.payload,
+          });
+        }
+      }
+
+      return result;
     });
 
-    // Execute side-effects for known actionTypes
-    if (item.actionType === 'DISCOUNT_RATE_CHANGE') {
-      const p = item.payload as { partnerId?: string; proposedRate?: number | null };
-      if (p.partnerId !== undefined && 'proposedRate' in p) {
-        await prisma.partner.update({
-          where: { id: p.partnerId },
-          data: { discountRate: p.proposedRate ?? null },
-        });
-        await writeAudit({
-          actorUserId: req.user!.id,
-          action: 'partner.discount-rate.update',
-          objectType: 'Partner',
-          objectId: p.partnerId as string,
-          before: { via: 'critical-action', requestId: item.id },
-          after: { discountRate: p.proposedRate ?? null },
-          ip: getClientIp(req) ?? null,
-          userAgent: req.headers['user-agent'] ?? null,
-        });
-      }
+    // Write the partner-rate audit entry outside the transaction (AuditLog
+    // writes are fire-and-forget and don't need to be atomic with the rate change).
+    if (discountRateAudit) {
+      writeAudit({
+        actorUserId: req.user!.id,
+        action: 'partner.discount-rate.update',
+        objectType: 'Partner',
+        objectId: discountRateAudit.partnerId,
+        before: { discountRate: discountRateAudit.previousRate },
+        after: { discountRate: discountRateAudit.newRate, via: 'critical-action', requestId: item.id },
+        ip: getClientIp(req) ?? null,
+        userAgent: req.headers['user-agent'] ?? null,
+      }).catch((err) => logger.error('[critical-action] discount-rate audit write failed:', err));
     }
 
     req.skipAudit = true;

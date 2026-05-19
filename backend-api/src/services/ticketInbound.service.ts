@@ -47,8 +47,12 @@ export interface InboundEmailPayload {
   autoSubmitted?: string;
 }
 
-const SUBJECT_REF_RE = /\[#([a-f0-9]{6,32})\]/i;
+const SUBJECT_REF_RE = /\[#([a-f0-9]{8,32})\]/i;
 const BOUNCE_SUBJECT_RE = /delivery (status|failure)|undeliverable|mailer[- ]daemon/i;
+// Spec §11.2 edge case: forwarded emails break header threading and must always
+// create a new ticket regardless of any [#ref] present in the subject. The
+// forward prefix (Fwd: / Fw: and their locale variants) is the canonical signal.
+const FWD_SUBJECT_RE = /^(fwd?|wg|vd|tr|fw|pf)\s*:/i;
 
 /** Extract a bare lowercase email from a "Name <addr>" or plain `addr` value. */
 function normalizeAddress(raw: string): string {
@@ -63,6 +67,23 @@ function isBounce(payload: InboundEmailPayload): boolean {
   const from = normalizeAddress(payload.from);
   if (from.includes('mailer-daemon') || from.startsWith('postmaster@')) return true;
   return false;
+}
+
+/**
+ * Detect forwarded emails (Fwd: / Fw: and locale variants).
+ *
+ * Spec §11.2 edge case: "Препратен имейл (Fwd:) от трета страна. → Headers не
+ * match-ват (forward break-ва threading). → Създава се нов тикет, който може да
+ * бъде merge-нат ръчно от админ."
+ *
+ * A forwarded email may carry a [#ref] subject prefix from the original message.
+ * Without this guard, Priority 4 (subject-prefix) would incorrectly attach the
+ * forward to the original ticket instead of creating a new one for manual review.
+ * We only suppress subject-prefix matching — headers (priorities 1-3) still work
+ * for the rare case where a mail client forwards AND preserves custom headers.
+ */
+function isForwarded(subject: string): boolean {
+  return FWD_SUBJECT_RE.test(subject.trimStart());
 }
 
 /**
@@ -101,14 +122,21 @@ async function resolveTicket(payload: InboundEmailPayload): Promise<{
     if (root) return { ticket: root, matchedBy: 'in-reply-to' };
   }
 
-  // Priority 2.5: plus-addressing in the To header.
+  // Priority 3 (spec §11.2): plus-addressing in the To header.
   // When the system sends an outbound ticket email it sets Reply-To to
   // support+<shortRef>@boomcard.bg (or office+...). If the recipient replies,
   // their mail client's To field contains that plus-address. We extract the
   // shortRef from the local-part and resolve the ticket via the indexed column.
   // This path survives forwarding chains that strip custom headers.
+  //
+  // NOTE: spec §11.2 also lists "cc-нати админи" as an allowed sender group in
+  // the spoof-protection check (below). The HelpTicket model has no CC field, so
+  // CC-admin authorisation is not implemented — adding it requires a schema change
+  // (e.g. a TicketCC join table). The current allowed-set (owner + assignee +
+  // externalEmail + prior externalFrom senders) is strictly more permissive for
+  // known participants and is an acceptable interim posture.
   if (payload.to) {
-    const plusMatch = /[^@+\s]+\+([a-f0-9]{6,32})@/i.exec(payload.to);
+    const plusMatch = /[^@+\s]+\+([a-f0-9]{8,32})@/i.exec(payload.to);
     if (plusMatch) {
       const ref = plusMatch[1].toLowerCase();
       if (ref.length <= 8) {
@@ -118,9 +146,13 @@ async function resolveTicket(payload: InboundEmailPayload): Promise<{
     }
   }
 
-  // Priority 3: subject [#XXXXXXXX] prefix — match either full UUID or
-  // 8-char short form via the indexed shortRef column (Gap 8 fix).
-  const m = payload.subject?.match(SUBJECT_REF_RE);
+  // Priority 4 (spec §11.2): subject [#XXXXXXXX] prefix — match either full UUID
+  // or 8-char short form via the indexed shortRef column (Gap 8 fix).
+  // SKIPPED for forwarded emails (Fwd: / Fw: prefix detected) per spec §11.2
+  // edge case: "Препратен имейл → Създава се нов тикет." The subject prefix
+  // survives forwarding but header threading does not; we must not treat the
+  // forwarded copy as a new reply on the original ticket.
+  const m = !isForwarded(payload.subject ?? '') && payload.subject?.match(SUBJECT_REF_RE);
   if (m) {
     const ref = m[1].toLowerCase();
     // Try exact UUID lookup first (full 32-char hex or hyphenated form).
@@ -151,6 +183,7 @@ async function resolveTicket(payload: InboundEmailPayload): Promise<{
     }
   }
 
+  // Priority 5 (spec §11.2 fallback): no match → caller creates a new ticket.
   return { ticket: null, matchedBy: null };
 }
 

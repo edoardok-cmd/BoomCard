@@ -45,7 +45,7 @@ import { getPayoutThresholdBGN } from '../utils/payoutThreshold';
 import { getSystemSettingInt } from '../utils/systemSettings';
 import { CASHBACK_VALIDITY_DAYS } from '../constants/receipt.constants';
 import { writeAudit } from '../middleware/audit.middleware';
-import { buildTicketSubject, buildTicketHeaders } from '../services/ticketEmail.service';
+import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo } from '../services/ticketEmail.service';
 import { expireStalePendingCashback } from '../services/cashbackLifecycle.service';
 
 const CASHBACK_EXPIRY_BATCH = 10;
@@ -1292,7 +1292,7 @@ export async function autoCloseResolvedTickets(): Promise<void> {
     // reply) between the findMany and this updateMany is not incorrectly closed.
     // Preserving resolvedAt is intentional — CLOSED is terminal and the field
     // serves as the audit record of when the ticket was originally resolved.
-    await prisma.helpTicket.updateMany({
+    const { count: batchClosed } = await prisma.helpTicket.updateMany({
       where: {
         id: { in: tickets.map((t) => t.id) },
         status: 'RESOLVED', // re-check status to guard against concurrent reopens
@@ -1300,12 +1300,23 @@ export async function autoCloseResolvedTickets(): Promise<void> {
       data: { status: 'CLOSED' },
     });
 
-    totalClosed += tickets.length;
+    totalClosed += batchClosed;
 
-    // Audit one row per ticket. In the TOCTOU case (ticket concurrently reopened)
-    // the audit entry is written even though the ticket was not actually closed —
-    // this is a benign over-count on a sub-millisecond race window.
-    for (const t of tickets) {
+    // Determine which tickets were actually closed in this batch. Tickets that
+    // were concurrently reopened (RESOLVED → OPEN between findMany and updateMany)
+    // are excluded — we must not audit or email them as "closed".
+    const actuallyClosedIds = new Set(
+      (
+        await prisma.helpTicket.findMany({
+          where: { id: { in: tickets.map((t) => t.id) }, status: 'CLOSED' },
+          select: { id: true },
+        })
+      ).map((r) => r.id)
+    );
+    const closedTickets = tickets.filter((t) => actuallyClosedIds.has(t.id));
+
+    // Audit one row per actually-closed ticket only.
+    for (const t of closedTickets) {
       writeAudit({
         actorUserId: null,
         action: 'ticket.auto_close',
@@ -1319,7 +1330,9 @@ export async function autoCloseResolvedTickets(): Promise<void> {
     // Notify each creator — fire-and-forget per ticket.
     // Build the full RFC 5322 reference chain (rootMessageId + all reply messageIds)
     // so the closure email threads under the last message in the conversation.
-    for (const t of tickets) {
+    // Include a plus-addressed replyTo so the user's reply routes back via
+    // Priority 3 (plus-address) even if X-BoomCard-Ticket-ID is stripped.
+    for (const t of closedTickets) {
       if (t.user.email) {
         (async () => {
           try {
@@ -1333,15 +1346,17 @@ export async function autoCloseResolvedTickets(): Promise<void> {
               ...priorMsgs.map((r) => r.messageId as string),
             ].filter((id): id is string => !!id);
 
+            const audience = t.user.role === 'PARTNER' ? 'partner' : 'subscriber';
             await emailService.sendEmail({
               to: t.user.email,
-              audience: t.user.role === 'PARTNER' ? 'partner' : undefined,
+              audience: audience === 'partner' ? 'partner' : undefined,
               subject: buildTicketSubject(t.id, `[Заявката затворена] ${t.subject}`),
               headers: buildTicketHeaders({
                 ticketId: t.id,
                 inReplyTo: refChain.at(-1) ?? null,
                 references: refChain,
               }).headers,
+              replyTo: buildPlusReplyTo(t.id, audience),
               html: `<p>Здравей, ${t.user.firstName || t.user.email},</p><p>Вашата заявка беше затворена автоматично, тъй като 7 дни са изминали след маркирането й като решена без допълнителна комуникация.</p><p style="color:#999;font-size:12px;">Ticket ID: ${t.id}</p>`,
               text: `Здравей, ${t.user.firstName || t.user.email},\n\nВашата заявка беше затворена автоматично след 7 дни без активност след маркиране като решена.\n\nTicket ID: ${t.id}`,
             });

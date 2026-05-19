@@ -567,7 +567,7 @@ describe('Fix 4 — fraud-rule write routes use control.rules.write (not hard SU
 
 // ─── Fix 5: stale JWT invalidation via authenticate() ────────────────────────
 
-describe('Fix 5 — authenticate() rejects ADMIN JWT when rolesUpdatedAt > JWT iat', () => {
+describe('Fix 5 — authenticate() rejects ADMIN/SUPER_ADMIN JWT when rolesUpdatedAt > JWT iat', () => {
   // Source-level checks: verify the stale-permissions guard is present and
   // correctly structured in auth.middleware.ts. The exact runtime behaviour
   // is covered by integration tests (real JWT + real DB rolesUpdatedAt row).
@@ -580,11 +580,22 @@ describe('Fix 5 — authenticate() rejects ADMIN JWT when rolesUpdatedAt > JWT i
     'utf8',
   );
 
-  it('guard is scoped to ADMIN tokens only', () => {
+  it('guard covers ADMIN tokens', () => {
     expect(src).toMatch(/decoded\?\.role\s*===\s*['"]ADMIN['"]/);
   });
 
-  it('fetches rolesUpdatedAt from DB inside the ADMIN guard', () => {
+  it('guard also covers SUPER_ADMIN tokens (Bug 2 fix)', () => {
+    // The guard must fire for SUPER_ADMIN too — a demoted SUPER_ADMIN's old JWT
+    // carries role='SUPER_ADMIN' and would bypass requirePermission otherwise.
+    expect(src).toMatch(/decoded\?\.role\s*===\s*['"]SUPER_ADMIN['"]/);
+  });
+
+  it('ADMIN and SUPER_ADMIN checks are in the same conditional block', () => {
+    // Both roles must be covered by the same rolesUpdatedAt check, not two separate blocks.
+    expect(src).toMatch(/decoded\?\.role\s*===\s*['"]ADMIN['"]\s*\|\|\s*decoded\?\.role\s*===\s*['"]SUPER_ADMIN['"]/);
+  });
+
+  it('fetches rolesUpdatedAt from DB inside the guard', () => {
     expect(src).toMatch(/user\.findUnique/);
     expect(src).toMatch(/rolesUpdatedAt/);
   });
@@ -639,5 +650,170 @@ describe('Fix 5b — role mutation endpoints stamp User.rolesUpdatedAt', () => {
         data: expect.objectContaining({ rolesUpdatedAt: expect.any(Date) }),
       })
     );
+  });
+});
+
+// ─── Bug 1: Atomicity of DISCOUNT_RATE_CHANGE approval ───────────────────────
+// Regression guard: both the CriticalActionRequest status flip and the partner
+// rate update must execute inside a single $transaction so a mid-flight error
+// cannot leave one applied without the other.
+
+describe('Bug 1 fix — DISCOUNT_RATE_CHANGE approval uses $transaction for atomicity', () => {
+  it('approval wraps criticalActionRequest.update and partner.update in $transaction', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+
+    const pendingItem = {
+      id: 'car-atomic',
+      actionType: 'DISCOUNT_RATE_CHANGE',
+      status: 'PENDING',
+      requestedById: 'other-admin',
+      payload: { partnerId: 'p-1', proposedRate: 15, currentRate: 10 },
+    };
+    m.criticalActionRequest.findUnique.mockResolvedValueOnce(pendingItem);
+    m.criticalActionRequest.update.mockResolvedValueOnce({ ...pendingItem, status: 'APPROVED' });
+
+    const res = await buildAdminsApp()
+      .post('/admins/critical-actions/car-atomic/approve')
+      .send({ note: 'ok' });
+
+    expect(res.status).toBe(200);
+    // $transaction must have been called (not just individual .update calls)
+    expect(m.$transaction).toHaveBeenCalled();
+    // Both DB writes must have happened
+    expect(m.criticalActionRequest.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'APPROVED' }) })
+    );
+    expect(m.partner.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'p-1' }, data: { discountRate: 15 } })
+    );
+  });
+
+  it('$transaction is NOT called when actionType is not DISCOUNT_RATE_CHANGE (still uses it, but no partner.update)', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+
+    m.criticalActionRequest.findUnique.mockResolvedValueOnce({
+      id: 'car-other',
+      actionType: 'BULK_PAYOUT_OVERRIDE',
+      status: 'PENDING',
+      requestedById: 'other-admin',
+      payload: { foo: 'bar' },
+    });
+    m.criticalActionRequest.update.mockResolvedValueOnce({ id: 'car-other', status: 'APPROVED' });
+
+    const res = await buildAdminsApp()
+      .post('/admins/critical-actions/car-other/approve')
+      .send({});
+
+    expect(res.status).toBe(200);
+    // $transaction is still used (the callback form wraps all approvals)
+    expect(m.$transaction).toHaveBeenCalled();
+    // partner.update must NOT be called for non-discount actions
+    expect(m.partner.update).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Bug 3: Malformed DISCOUNT_RATE_CHANGE payload warning ───────────────────
+
+describe('Bug 3 fix — malformed DISCOUNT_RATE_CHANGE payload logs a warning', () => {
+  it('logs logger.error when payload lacks partnerId, does not crash the endpoint', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+
+    // Payload missing partnerId — the guard (p.partnerId !== undefined) fails
+    const malformedItem = {
+      id: 'car-bad',
+      actionType: 'DISCOUNT_RATE_CHANGE',
+      status: 'PENDING',
+      requestedById: 'other-admin',
+      payload: { proposedRate: 15 }, // partnerId intentionally absent
+    };
+    m.criticalActionRequest.findUnique.mockResolvedValueOnce(malformedItem);
+    m.criticalActionRequest.update.mockResolvedValueOnce({ ...malformedItem, status: 'APPROVED' });
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { logger: mockLogger } = require('../../src/utils/logger') as { logger: { error: jest.Mock } };
+
+    const res = await buildAdminsApp()
+      .post('/admins/critical-actions/car-bad/approve')
+      .send({});
+
+    // Endpoint should still succeed (approval is recorded even if rate wasn't applied)
+    expect(res.status).toBe(200);
+    // partner.update must NOT have been called (guard correctly blocked it)
+    expect(m.partner.update).not.toHaveBeenCalled();
+    // logger.error must have been called to alert ops
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      expect.stringContaining('DISCOUNT_RATE_CHANGE approved but payload missing'),
+      expect.objectContaining({ requestId: 'car-bad' })
+    );
+  });
+});
+
+// ─── Bug 4: audit before field uses currentRate from payload ─────────────────
+
+describe('Bug 4 fix — partner.discount-rate.update audit uses currentRate from proposal payload', () => {
+  it('writeAudit before.discountRate uses payload.currentRate, not a hardcoded sentinel', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+
+    const pendingItem = {
+      id: 'car-audit',
+      actionType: 'DISCOUNT_RATE_CHANGE',
+      status: 'PENDING',
+      requestedById: 'other-admin',
+      payload: { partnerId: 'p-1', proposedRate: 20, currentRate: 5 },
+    };
+    m.criticalActionRequest.findUnique.mockResolvedValueOnce(pendingItem);
+    m.criticalActionRequest.update.mockResolvedValueOnce({ ...pendingItem, status: 'APPROVED' });
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { writeAudit: mockWriteAudit } = require('../../src/middleware/audit.middleware') as { writeAudit: jest.Mock };
+    mockWriteAudit.mockClear();
+
+    const res = await buildAdminsApp()
+      .post('/admins/critical-actions/car-audit/approve')
+      .send({});
+
+    expect(res.status).toBe(200);
+
+    // Find the partner.discount-rate.update audit call (not the admin.critical-action.approve one)
+    const partnerAuditCall = mockWriteAudit.mock.calls.find(
+      (args: any[]) => args[0]?.action === 'partner.discount-rate.update'
+    );
+    expect(partnerAuditCall).toBeDefined();
+    // before must carry the previous rate from the proposal payload
+    expect(partnerAuditCall![0].before).toEqual({ discountRate: 5 });
+    // after must carry the new rate plus provenance metadata
+    expect(partnerAuditCall![0].after).toMatchObject({
+      discountRate: 20,
+      via: 'critical-action',
+      requestId: 'car-audit',
+    });
+  });
+
+  it('writeAudit before.discountRate is null when currentRate was null in the payload', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+
+    m.criticalActionRequest.findUnique.mockResolvedValueOnce({
+      id: 'car-audit2',
+      actionType: 'DISCOUNT_RATE_CHANGE',
+      status: 'PENDING',
+      requestedById: 'other-admin',
+      payload: { partnerId: 'p-1', proposedRate: 10, currentRate: null },
+    });
+    m.criticalActionRequest.update.mockResolvedValueOnce({ id: 'car-audit2', status: 'APPROVED' });
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { writeAudit: mockWriteAudit } = require('../../src/middleware/audit.middleware') as { writeAudit: jest.Mock };
+    mockWriteAudit.mockClear();
+
+    const res = await buildAdminsApp()
+      .post('/admins/critical-actions/car-audit2/approve')
+      .send({});
+
+    expect(res.status).toBe(200);
+    const partnerAuditCall = mockWriteAudit.mock.calls.find(
+      (args: any[]) => args[0]?.action === 'partner.discount-rate.update'
+    );
+    expect(partnerAuditCall).toBeDefined();
+    expect(partnerAuditCall![0].before).toEqual({ discountRate: null });
   });
 });
