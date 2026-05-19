@@ -58,10 +58,14 @@ const SECURITY_ACTION_PREFIXES = [
 /**
  * GET /api/admin/control/security
  * Query: page, limit, action, actorId, from, to
+ * admins.audit.read   — full access (ADMIN)
+ * control.risk.read   — RISK_REVIEW: security events (login failures, auth anomalies) are
+ *                       directly relevant when investigating flagged transactions, so
+ *                       risk reviewers need read access without the broader admins.audit.read.
  */
 router.get(
   '/security',
-  requirePermission('admins.audit.read'),
+  requirePermission(['admins.audit.read', 'control.risk.read']),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 25));

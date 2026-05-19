@@ -46,15 +46,35 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
     // bypassing both authorize() and requirePermission() on every subsequent request until
     // natural expiry.
     if ((decoded?.role === 'ADMIN' || decoded?.role === 'SUPER_ADMIN') && decoded?.id) {
+      const now = new Date();
       const freshUser = await prisma.user.findUnique({
         where: { id: decoded.id },
-        select: { rolesUpdatedAt: true },
+        select: {
+          rolesUpdatedAt: true,
+          // Check for any role assignment that has since expired.  take:1 keeps cost
+          // low — we only need to know if at least one expired row exists.
+          adminRoles: {
+            where: { expiresAt: { lte: now } },
+            select: { expiresAt: true },
+            take: 1,
+          },
+        },
       });
+
       if (
         freshUser?.rolesUpdatedAt &&
         freshUser.rolesUpdatedAt.getTime() > (decoded.iat as number) * 1000
       ) {
         return next(new AppError('Permissions updated — please re-login', 401));
+      }
+
+      // If a time-bounded role assignment has expired, stamp rolesUpdatedAt so that
+      // this cheaper check catches all subsequent requests without re-joining to adminRoles.
+      // The expired UserAdminRole row is retained for audit; resolveUserPermissions
+      // (called on the next successful login) excludes it from the new JWT.
+      if (freshUser?.adminRoles && freshUser.adminRoles.length > 0) {
+        await prisma.user.update({ where: { id: decoded.id }, data: { rolesUpdatedAt: now } });
+        return next(new AppError('Role assignment expired — please re-login', 401));
       }
     }
 

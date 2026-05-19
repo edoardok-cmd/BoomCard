@@ -1383,12 +1383,14 @@ model UserAdminRole {
   roleId      String
   grantedById String?
   grantedAt   DateTime  @default(now())
+  expiresAt   DateTime?
   grantedBy   User?     @relation("GrantedRoles", fields: [grantedById], references: [id])
   role        AdminRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, roleId])
   @@index([userId])
+  @@index([expiresAt])
 }
 
 model AuditLog {

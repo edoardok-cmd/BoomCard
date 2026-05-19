@@ -205,25 +205,33 @@ router.get('/pending-super', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), re
 // GET /api/admin/admins/pending-all — combined view of all pending approval types (§10.3)
 // Returns role-assignment-pending admins, pending SUPER_ADMIN creation requests, AND
 // pending critical-action requests so dashboards show a unified approvals count.
-router.get('/pending-all', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.read'), async (_req, res, next) => {
+// PARTNER_MANAGER (admins.actions.read only) receives an empty pendingRoleAssignments and
+// pendingSuperAdmins — they should only see critical-action requests they submitted.
+router.get('/pending-all', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission(['admins.read', 'admins.actions.read']), async (req: AuthRequest, res, next) => {
   try {
+    const hasAdminsRead = req.user!.role === 'SUPER_ADMIN' || (req.user!.permissions ?? []).includes('admins.read');
+
     const [pendingRoleAssignments, pendingSuperAdmins, pendingCriticalActions] = await Promise.all([
-      prisma.user.findMany({
-        where: { role: 'ADMIN' as UserRole, adminRoles: { none: {} } },
-        orderBy: { createdAt: 'desc' },
-        select: { id: true, email: true, firstName: true, lastName: true, status: true, createdAt: true },
-      }),
-      prisma.pendingSuperAdminRequest.findMany({
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          email: true,
-          firstName: true,
-          lastName: true,
-          createdAt: true,
-          requestedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
-        },
-      }),
+      hasAdminsRead
+        ? prisma.user.findMany({
+            where: { role: 'ADMIN' as UserRole, adminRoles: { none: {} } },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, email: true, firstName: true, lastName: true, status: true, createdAt: true },
+          })
+        : Promise.resolve([]),
+      hasAdminsRead
+        ? prisma.pendingSuperAdminRequest.findMany({
+            orderBy: { createdAt: 'desc' },
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              createdAt: true,
+              requestedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+            },
+          })
+        : Promise.resolve([]),
       prisma.criticalActionRequest.findMany({
         where: { status: 'PENDING' },
         orderBy: { createdAt: 'desc' },
@@ -370,19 +378,24 @@ router.post('/critical-actions/:id/approve', authenticate, authorize('SUPER_ADMI
         // auditMiddleware always observes it — no race is possible in the
         // single-threaded Node.js model.
         req.skipAudit = true;
-        // Audit write is fire-and-forget — the REJECTED status flip above is the
-        // durable state change; the audit trail is best-effort, consistent with
-        // all other writeAudit call sites in this handler.
-        writeAudit({
-          actorUserId: req.user!.id,
-          action: 'admin.critical-action.auto-reject',
-          objectType: 'admin',
-          objectId: item.id,
-          before: { status: 'PENDING', actionType: item.actionType },
-          after: { status: 'REJECTED', resolvedById: req.user!.id, resolvedAt: now.toISOString(), resolvedNote: systemNote },
-          ip: getClientIp(req) ?? null,
-          userAgent: req.headers['user-agent'] ?? null,
-        }).catch((err) => logger.error('[critical-action] auto-reject audit write failed:', err));
+        // Await the audit write — the auto-reject is a security-sensitive event and
+        // its audit record must be committed before responding.  A failure here is
+        // surfaced as a 500 rather than silently dropped, so ops can investigate
+        // rather than face an auto-rejection with no audit trail.
+        try {
+          await writeAudit({
+            actorUserId: req.user!.id,
+            action: 'admin.critical-action.auto-reject',
+            objectType: 'admin',
+            objectId: item.id,
+            before: { status: 'PENDING', actionType: item.actionType },
+            after: { status: 'REJECTED', resolvedById: req.user!.id, resolvedAt: now.toISOString(), resolvedNote: systemNote },
+            ip: getClientIp(req) ?? null,
+            userAgent: req.headers['user-agent'] ?? null,
+          });
+        } catch (auditErr) {
+          logger.error('[critical-action] auto-reject audit write failed:', auditErr);
+        }
         return res.status(422).json({
           error: 'Malformed DISCOUNT_RATE_CHANGE payload — request automatically rejected. Re-submit with a corrected payload.',
           autoRejected: true,
@@ -893,9 +906,12 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
 });
 
 // POST /api/admin/admins/:id/approve — assign a role to a pending admin
+// Optional body field: expiresAt (ISO 8601) — creates a time-bounded role assignment
+// that is automatically excluded from resolveUserPermissions once it lapses, and
+// triggers a forced re-login via the authenticate() expiry guard (Gap 3 fix).
 router.post('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.write'), async (req: AuthRequest, res, next) => {
   try {
-    const { roleKey } = req.body as { roleKey: AdminRoleKey };
+    const { roleKey, expiresAt } = req.body as { roleKey: AdminRoleKey; expiresAt?: string };
 
     if (!roleKey || !Object.values(AdminRoleKey).includes(roleKey)) {
       return res.status(400).json({ error: 'Valid roleKey is required' });
@@ -907,6 +923,17 @@ router.post('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
       return res.status(400).json({
         error: 'SUPER_ADMIN role cannot be assigned via this endpoint. Use the creation flow: POST /api/admin/admins with roleKey=SUPER_ADMIN.',
       });
+    }
+
+    let expiresAtDate: Date | null = null;
+    if (expiresAt !== undefined && expiresAt !== null) {
+      expiresAtDate = new Date(expiresAt);
+      if (isNaN(expiresAtDate.getTime())) {
+        return res.status(400).json({ error: 'Invalid expiresAt — use an ISO 8601 date string' });
+      }
+      if (expiresAtDate <= new Date()) {
+        return res.status(400).json({ error: 'expiresAt must be in the future' });
+      }
     }
 
     const [user, adminRole] = await Promise.all([
@@ -928,8 +955,8 @@ router.post('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
 
     await prisma.userAdminRole.upsert({
       where: { userId_roleId: { userId: user.id, roleId: adminRole.id } },
-      create: { userId: user.id, roleId: adminRole.id, grantedById: req.user!.id },
-      update: { grantedById: req.user!.id, grantedAt: new Date() },
+      create: { userId: user.id, roleId: adminRole.id, grantedById: req.user!.id, expiresAt: expiresAtDate },
+      update: { grantedById: req.user!.id, grantedAt: new Date(), expiresAt: expiresAtDate },
     });
     // Stamp rolesUpdatedAt so any in-flight JWTs for this user are rejected by
     // authenticate() until the user re-logs in with a fresh permission set.
@@ -942,7 +969,7 @@ router.post('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
       objectType: 'admin',
       objectId: user.id,
       before: { roles: beforeRoles },
-      after: { addedRole: roleKey },
+      after: { addedRole: roleKey, expiresAt: expiresAtDate?.toISOString() ?? null },
       ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
     });

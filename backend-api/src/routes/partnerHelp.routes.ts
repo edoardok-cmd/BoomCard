@@ -102,9 +102,9 @@ router.post('/ticket', asyncHandler(async (req: AuthRequest, res) => {
     })
     .catch((err) => logger.error('[partnerHelp] failed to notify admin ops:', err));
 
-  // CONTRACT_CHANGE: additionally email the SUPER_ADMIN team (spec §11.6).
+  // CONTRACT_CHANGE: additionally email the office inbox (spec §11.6).
   if (resolvedType === 'CONTRACT_CHANGE') {
-    getSystemSettingStr('super_admin_email', 'office@boomcard.bg')
+    getSystemSettingStr('office_email', 'office@boomcard.bg')
       .then((superAdminEmail) =>
         emailService.sendEmail({
           to: superAdminEmail,

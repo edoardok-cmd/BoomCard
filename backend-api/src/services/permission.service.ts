@@ -27,6 +27,7 @@ export const PERMISSION_CATALOG: Array<{ key: string; label: string; category: s
   { key: 'partners.onboarding.write', label: 'Manage onboarding pipeline', category: 'partners' },
   { key: 'partners.locations.read', label: 'View locations & QR', category: 'partners' },
   { key: 'partners.locations.write', label: 'Replace QR codes', category: 'partners' },
+  { key: 'partners.receipts.read', label: 'View receipt profiles', category: 'partners' },
   // Finance
   { key: 'finance.payouts.read', label: 'View subscriber payouts', category: 'finance' },
   { key: 'finance.payouts.write', label: 'Process payouts', category: 'finance' },
@@ -43,6 +44,8 @@ export const PERMISSION_CATALOG: Array<{ key: string; label: string; category: s
   { key: 'control.disputes.write', label: 'Manage disputes', category: 'control' },
   { key: 'control.rules.read', label: 'View fraud rules', category: 'control' },
   { key: 'control.rules.write', label: 'Edit fraud rules & limits', category: 'control' },
+  { key: 'control.receipts.read', label: 'View receipt review queue', category: 'control' },
+  { key: 'control.receipts.write', label: 'Approve/reject receipts', category: 'control' },
 
   // Marketing
   { key: 'marketing.read', label: 'View marketing', category: 'marketing' },
@@ -77,9 +80,13 @@ export const ROLE_DEFAULT_ALLOWS: Record<string, string[]> = {
   SUPPORT: ['dashboard.read', 'subscribers.read', 'subscriptions.read', 'transactions.read', 'cashback.read', 'partners.read', 'control.disputes.read', 'help.read', 'help.read.all', 'help.write'],
   // transactions.write (balance adjustments) is intentionally excluded: Finance can read and process
   // payouts/invoices but must not create arbitrary wallet adjustments — that stays with ADMIN.
-  FINANCE: ['dashboard.read', 'subscribers.read', 'transactions.read', 'cashback.read', 'finance.payouts.read', 'finance.payouts.write', 'finance.invoices.read', 'finance.invoices.write', 'finance.periods.read', 'finance.periods.write', 'finance.reports.read'],
+  // subscriptions.read is required so Finance can verify subscription plan/status when processing
+  // payouts and resolving invoice disputes (GET /admin/subscriptions/user/:id/history).
+  FINANCE: ['dashboard.read', 'subscribers.read', 'subscriptions.read', 'transactions.read', 'cashback.read', 'finance.payouts.read', 'finance.payouts.write', 'finance.invoices.read', 'finance.invoices.write', 'finance.periods.read', 'finance.periods.write', 'finance.reports.read'],
   // control.rules.read gives read-only visibility into fraud rules (GET /admin/settings/fraud-rules).
-  RISK_REVIEW: ['dashboard.read', 'subscribers.read', 'transactions.read', 'control.risk.read', 'control.risk.write', 'control.disputes.read', 'control.disputes.write', 'control.rules.read'],
+  // cashback.read is required to see cashback entry state (PENDING/LOCKED/EXPIRED) when investigating
+  // a flagged scan — without it the risk reviewer cannot correlate the transaction with its cashback entry.
+  RISK_REVIEW: ['dashboard.read', 'subscribers.read', 'transactions.read', 'cashback.read', 'control.risk.read', 'control.risk.write', 'control.disputes.read', 'control.disputes.write', 'control.rules.read', 'control.receipts.read', 'control.receipts.write'],
   // partners.write (live-partner status changes) is intentionally excluded: PARTNER_MANAGER works the
   // application pipeline and onboarding only; suspending/archiving live partners requires ADMIN.
   // admins.actions.read grants read access to GET /admin/admins/critical-actions so
@@ -87,7 +94,7 @@ export const ROLE_DEFAULT_ALLOWS: Record<string, string[]> = {
   // without exposing the full admin user listing (admins.read).
   // Discount-rate change proposals are submitted via POST /admin/partners/:id/propose-discount-rate
   // (requires partners.requests.write) and are executed only on SUPER_ADMIN approval.
-  PARTNER_MANAGER: ['dashboard.read', 'partners.read', 'partners.requests.read', 'partners.requests.write', 'partners.onboarding.read', 'partners.onboarding.write', 'partners.locations.read', 'partners.locations.write', 'admins.actions.read'],
+  PARTNER_MANAGER: ['dashboard.read', 'partners.read', 'partners.requests.read', 'partners.requests.write', 'partners.onboarding.read', 'partners.onboarding.write', 'partners.locations.read', 'partners.locations.write', 'partners.receipts.read', 'admins.actions.read'],
 };
 
 // Upserts the full permission catalog and default role allow-sets.
@@ -137,9 +144,14 @@ export async function seedPermissions() {
 
 // Returns the effective permission key set for a given userId.
 // allow=true rows grant; allow=false rows explicitly deny (deny wins).
+// Expired role assignments (expiresAt <= now) are excluded — they do not contribute permissions.
 export async function resolveUserPermissions(userId: string): Promise<string[]> {
+  const now = new Date();
   const userRoles = await prisma.userAdminRole.findMany({
-    where: { userId },
+    where: {
+      userId,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
     include: {
       role: {
         include: {

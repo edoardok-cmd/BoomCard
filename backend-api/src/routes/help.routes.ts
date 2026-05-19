@@ -6,6 +6,7 @@ import { notificationService } from '../services/notification.service';
 import { emailService } from '../services/email.service';
 import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef } from '../services/ticketEmail.service';
 import { logger } from '../utils/logger';
+import { getSystemSettingStr } from '../utils/systemSettings';
 import { DisputeSubjectType } from '@prisma/client';
 import { z } from 'zod';
 
@@ -112,13 +113,14 @@ router.post(
               isAutoReply: true,
             },
           });
+          const supportEmail = await getSystemSettingStr('support_email', 'support@boomcard.bg');
           await emailService.sendEmail({
             to: user.email,
             subject: emailSubject,
             headers: threading.headers,
             replyTo: buildPlusReplyTo(ticket.id, 'subscriber'),
-            html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:'Helvetica Neue',Arial,sans-serif;background:#f5f5f5;margin:0;padding:0"><table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px"><table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.06)"><tr><td style="padding:28px"><p style="margin:0 0 16px;color:#111;font-size:16px">Здравейте${user.firstName ? ', ' + user.firstName : ''},</p><p style="margin:0 0 16px;color:#444;font-size:15px;line-height:1.6">Получихме вашата заявка и тя е регистрирана с референция <strong style="font-family:monospace">${ref}</strong>.</p><p style="margin:0 0 16px;color:#444;font-size:15px;line-height:1.6">Ще се свържем с вас възможно най-скоро. За допълнителна информация напишете ни на <a href="mailto:support@boomcard.bg">support@boomcard.bg</a>.</p><p style="margin:24px 0 0;color:#999;font-size:13px">— Екипът на BoomCard</p></td></tr></table></td></tr></table></body></html>`,
-            text: `Здравейте${user.firstName ? ', ' + user.firstName : ''},\n\nПолучихме вашата заявка с референция ${ref}.\n\nЩе се свържем с вас възможно най-скоро.\n\nПри нужда: support@boomcard.bg\n\n— Екипът на BoomCard`,
+            html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:'Helvetica Neue',Arial,sans-serif;background:#f5f5f5;margin:0;padding:0"><table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px"><table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.06)"><tr><td style="padding:28px"><p style="margin:0 0 16px;color:#111;font-size:16px">Здравейте${user.firstName ? ', ' + user.firstName : ''},</p><p style="margin:0 0 16px;color:#444;font-size:15px;line-height:1.6">Получихме вашата заявка и тя е регистрирана с референция <strong style="font-family:monospace">${ref}</strong>.</p><p style="margin:0 0 16px;color:#444;font-size:15px;line-height:1.6">Ще се свържем с вас възможно най-скоро. За допълнителна информация напишете ни на <a href="mailto:${supportEmail}">${supportEmail}</a>.</p><p style="margin:24px 0 0;color:#999;font-size:13px">— Екипът на BoomCard</p></td></tr></table></td></tr></table></body></html>`,
+            text: `Здравейте${user.firstName ? ', ' + user.firstName : ''},\n\nПолучихме вашата заявка с референция ${ref}.\n\nЩе се свържем с вас възможно най-скоро.\n\nПри нужда: ${supportEmail}\n\n— Екипът на BoomCard`,
           });
         }
       } catch (err) {
@@ -304,17 +306,19 @@ router.post(
         .catch((err) => logger.error('[help] failed to notify assignee of user reply:', err));
     } else {
       // Unassigned — alert support inbox so the reply isn't silently missed.
-      emailService
-        .sendEmail({
-          to: 'support@boomcard.bg',
-          subject: buildTicketSubject(ticket.id, `[Потребителски отговор без отговорник] ${ticket.subject}`),
-          headers: replyHeaders,
-          html: `<p>Потребител изпрати отговор на заявка без назначен отговорник.</p>
+      getSystemSettingStr('support_email', 'support@boomcard.bg')
+        .then((supportEmail) =>
+          emailService.sendEmail({
+            to: supportEmail,
+            subject: buildTicketSubject(ticket.id, `[Потребителски отговор без отговорник] ${ticket.subject}`),
+            headers: replyHeaders,
+            html: `<p>Потребител изпрати отговор на заявка без назначен отговорник.</p>
 <hr/>
 <p>${esc(replyBodyText).replace(/\n/g, '<br/>')}</p>
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id}</p>`,
-          text: `Потребител изпрати отговор на заявка без назначен отговорник.\n\n${replyBodyText}\n\nTicket ID: ${ticket.id}`,
-        })
+            text: `Потребител изпрати отговор на заявка без назначен отговорник.\n\n${replyBodyText}\n\nTicket ID: ${ticket.id}`,
+          })
+        )
         .catch((err) => logger.error('[help] failed to alert support of unassigned user reply:', err));
     }
 
