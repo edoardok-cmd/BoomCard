@@ -5,7 +5,7 @@ import { authenticate, authorize, AuthRequest } from '../middleware/auth.middlew
 import { prisma } from '../lib/prisma';
 import { notificationService } from '../services/notification.service';
 import { emailService } from '../services/email.service';
-import { buildTicketSubject, buildTicketHeaders } from '../services/ticketEmail.service';
+import { buildTicketSubject, buildTicketHeaders, computeShortRef } from '../services/ticketEmail.service';
 import { getSystemSettingStr } from '../utils/systemSettings';
 import { logger } from '../utils/logger';
 
@@ -59,19 +59,53 @@ router.post('/ticket', asyncHandler(async (req: AuthRequest, res) => {
     select: { id: true, subject: true, category: true, priority: true, status: true, requestType: true, createdAt: true },
   });
 
+  // Gap 9 fix: §11.6 per-type routing notifications.
+  // CONTRACT_CHANGE → escalate to SUPER_ADMIN with warning severity.
+  // DISPUTE → flag in ops notification with §7.3 link reference.
+  // DATA_CHANGE / LOCATION_CHANGE → route to "Partner changes" queue.
+  const resolvedType = ticket.requestType ?? 'SUPPORT';
+  const routingSeverity: 'info' | 'warning' =
+    resolvedType === 'CONTRACT_CHANGE' || resolvedType === 'DISPUTE' ? 'warning' : 'info';
+  const routingQueue =
+    resolvedType === 'CONTRACT_CHANGE' ? 'Contract changes (→ SUPER_ADMIN)' :
+    resolvedType === 'DISPUTE'         ? 'Disputes (→ §7.3 Спорове)' :
+    resolvedType === 'DATA_CHANGE' || resolvedType === 'LOCATION_CHANGE'
+                                       ? 'Partner changes' :
+    resolvedType === 'SUPPORT'         ? 'Partner support' : 'General';
+
   notificationService
     .notifyAdminOps({
       opsType: `partner_help_ticket_${ticket.id}`,
-      title: `Партньорска заявка: ${requestType ?? 'SUPPORT'}`,
+      title: `Партньорска заявка [${resolvedType}]: ${routingQueue}`,
       message: subject.trim(),
-      severity: 'info',
+      severity: routingSeverity,
       fields: [
-        { label: 'Тип', value: requestType ?? 'SUPPORT' },
+        { label: 'Тип', value: resolvedType },
+        { label: 'Опашка', value: routingQueue },
         { label: 'Партньор', value: req.user!.email },
         { label: 'Ticket ID', value: ticket.id },
       ],
     })
     .catch((err) => logger.error('[partnerHelp] failed to notify admin ops:', err));
+
+  // CONTRACT_CHANGE: additionally email the SUPER_ADMIN team (spec §11.6).
+  if (resolvedType === 'CONTRACT_CHANGE') {
+    getSystemSettingStr('super_admin_email', 'office@boomcard.bg')
+      .then((superAdminEmail) =>
+        emailService.sendEmail({
+          to: superAdminEmail,
+          subject: `[Договорна промяна] ${subject.trim()}`,
+          html: `<p><strong>Нова заявка за промяна на договорни параметри</strong></p>
+<table cellpadding="4">
+  <tr><td><strong>Партньор:</strong></td><td>${req.user!.email}</td></tr>
+  <tr><td><strong>Тема:</strong></td><td>${subject.trim()}</td></tr>
+</table>
+<p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id} — изисква одобрение и анекс (§11.3)</p>`,
+          text: `Нова заявка за промяна на договорни параметри\n\nПартньор: ${req.user!.email}\nТема: ${subject.trim()}\n\nTicket ID: ${ticket.id} — изисква одобрение и анекс (§11.3)`,
+        })
+      )
+      .catch((err) => logger.error('[partnerHelp] failed to escalate CONTRACT_CHANGE to SUPER_ADMIN:', err));
+  }
 
   // Fire-and-forget: set rootMessageId + send confirmation email
   (async () => {
@@ -82,7 +116,10 @@ router.post('/ticket', asyncHandler(async (req: AuthRequest, res) => {
       // Message-ID sent in the email (a second newMessageId() call would
       // produce a different value, breaking Priority-2 In-Reply-To threading).
       const threading = buildTicketHeaders({ ticketId: ticket.id });
-      await prisma.helpTicket.update({ where: { id: ticket.id }, data: { rootMessageId: threading.messageId } });
+      await prisma.helpTicket.update({
+        where: { id: ticket.id },
+        data: { rootMessageId: threading.messageId, shortRef: computeShortRef(ticket.id) },
+      });
       const officeEmail = await getSystemSettingStr('office_email', 'office@boomcard.bg');
       await emailService.sendEmail({
         to: req.user!.email,
@@ -178,21 +215,32 @@ router.post('/tickets/:id/reply', asyncHandler(async (req: AuthRequest, res) => 
   });
 
   // Move ticket back to OPEN when partner replies on a WAITING/RESOLVED ticket.
+  // Stamp reopenedAt for WEB-channel parity with email-inbound reopens.
   if (ticket.status === 'WAITING' || ticket.status === 'RESOLVED') {
-    await prisma.helpTicket.update({ where: { id: ticket.id }, data: { status: 'OPEN', resolvedAt: null } });
+    await prisma.helpTicket.update({ where: { id: ticket.id }, data: { status: 'OPEN', resolvedAt: null, reopenedAt: new Date() } });
   }
 
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const replyBodyText = body.trim();
 
-  // Build a minimal threading chain so notification emails land in the existing
-  // ticket thread rather than starting a new conversation in the recipient's client.
-  // Partner replies are WEB-channel and don't populate their own messageId rows,
-  // so we use the ticket's rootMessageId as the single-element anchor.
+  // Bug 5 fix: build the full RFC 5322 ref chain (rootMessageId + all prior
+  // TicketReply.messageId rows) so notification emails thread off the most
+  // recent message, not always the original creation email. The previous code
+  // used only rootMessageId, causing notifications to appear disconnected from
+  // later exchanges in mail clients that group by References.
+  const partnerPriorMessages = await prisma.ticketReply.findMany({
+    where: { ticketId: ticket.id, messageId: { not: null } },
+    orderBy: { createdAt: 'asc' },
+    select: { messageId: true },
+  });
+  const partnerRefChain: string[] = [
+    ticket.rootMessageId,
+    ...partnerPriorMessages.map((r: { messageId: string | null }) => r.messageId as string),
+  ].filter((id): id is string => !!id);
   const partnerReplyHeaders = buildTicketHeaders({
     ticketId: ticket.id,
-    inReplyTo: ticket.rootMessageId ?? null,
-    references: ticket.rootMessageId ? [ticket.rootMessageId] : [],
+    inReplyTo: partnerRefChain.at(-1) ?? null,
+    references: partnerRefChain,
   }).headers;
 
   // Notify the assignee if one is set.

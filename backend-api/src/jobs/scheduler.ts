@@ -1262,7 +1262,10 @@ export async function autoCloseResolvedTickets(): Promise<void> {
         { resolvedAt: null, updatedAt: { lte: cutoff } },
       ],
     },
-    select: { id: true, subject: true, userId: true, rootMessageId: true, user: { select: { email: true, firstName: true } } },
+    // Bug 2 fix: include role so closure emails can pass the correct audience
+    // (partner Reply-To vs. subscriber Reply-To) — was missing, causing partner
+    // tickets to receive closure emails with the wrong reply address.
+    select: { id: true, subject: true, userId: true, rootMessageId: true, user: { select: { email: true, firstName: true, role: true } } },
     take: 200,
   });
   if (!tickets.length) return;
@@ -1306,6 +1309,8 @@ export async function autoCloseResolvedTickets(): Promise<void> {
 
           await emailService.sendEmail({
             to: t.user.email,
+            // Bug 2 fix: pass audience so partner tickets use partner Reply-To.
+            audience: t.user.role === 'PARTNER' ? 'partner' : undefined,
             subject: buildTicketSubject(t.id, `[Заявката затворена] ${t.subject}`),
             headers: buildTicketHeaders({
               ticketId: t.id,

@@ -692,12 +692,19 @@ export async function expireStalePendingCashback(actorUserId: string | null = nu
 
   // Use updateMany with the PENDING predicate so a concurrent approve/void that
   // wins the race leaves count=0 and is correctly skipped (no double-transition).
+  // Also set status=CANCELLED (the closest terminal WalletTransactionStatus) so
+  // these entries are not surfaced by operational queries filtering on status=PENDING.
+  // cashbackStatus=EXPIRED is authoritative for display; the legacy fallback in
+  // deriveCashbackEntryStatus also handles CANCELLED correctly (sees EXPIRED first).
   const result = await prisma.walletTransaction.updateMany({
     where: {
       id: { in: ids },
       cashbackStatus: CashbackEntryStatus.PENDING,
     },
-    data: { cashbackStatus: CashbackEntryStatus.EXPIRED },
+    data: {
+      cashbackStatus: CashbackEntryStatus.EXPIRED,
+      status: WalletTransactionStatus.CANCELLED,
+    },
   });
 
   if (result.count > 0) {

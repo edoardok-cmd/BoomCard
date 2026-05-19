@@ -586,9 +586,11 @@ router.post(
     // Without this guard, an INACTIVE partner (requestStatus=ODOBRENA, verifiedAt
     // set) would receive a stale "Onboarding approved" email + a superfluous
     // activation link, and the PartnerStatusChange row would carry the wrong label.
+    if (partner.status === PartnerStatus.REJECTED) {
+      return res.status(400).json({ error: 'Partner was rejected during onboarding and cannot be approved. Re-initiate the onboarding process or contact support.' });
+    }
     const NON_APPROVABLE_STATUSES: PartnerStatus[] = [
       PartnerStatus.INACTIVE,
-      PartnerStatus.REJECTED,
       PartnerStatus.PAUSED,
       PartnerStatus.SUSPENDED,
       PartnerStatus.ARCHIVED,

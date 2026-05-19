@@ -27,9 +27,6 @@ export const PERMISSION_CATALOG: Array<{ key: string; label: string; category: s
   { key: 'partners.onboarding.write', label: 'Manage onboarding pipeline', category: 'partners' },
   { key: 'partners.locations.read', label: 'View locations & QR', category: 'partners' },
   { key: 'partners.locations.write', label: 'Replace QR codes', category: 'partners' },
-  { key: 'partners.receipts.read', label: 'View receipt profiles', category: 'partners' },
-  { key: 'partners.receipts.write', label: 'Manage receipt profiles', category: 'partners' },
-
   // Finance
   { key: 'finance.payouts.read', label: 'View subscriber payouts', category: 'finance' },
   { key: 'finance.payouts.write', label: 'Process payouts', category: 'finance' },
@@ -60,12 +57,11 @@ export const PERMISSION_CATALOG: Array<{ key: string; label: string; category: s
   { key: 'admins.write', label: 'Create/edit admin accounts', category: 'admins' },
   { key: 'admins.audit.read', label: 'View audit log', category: 'admins' },
   { key: 'admins.roles.write', label: 'Assign roles & permissions', category: 'admins' },
+  { key: 'admins.actions.read', label: 'View pending critical-action requests', category: 'admins' },
 
   // Help
-  // help.read.all is intentionally absent from this catalog: it is a SUPER_ADMIN-only synthetic key.
-  // SUPER_ADMIN bypasses requirePermission unconditionally; the nav uses rawRole === 'SUPER_ADMIN'.
-  // Keeping it out of the catalog ensures ADMIN role (which inherits every catalog key) never receives it.
   { key: 'help.read', label: 'View own support tickets', category: 'help' },
+  { key: 'help.read.all', label: 'View all support tickets', category: 'help' },
   { key: 'help.write', label: 'Manage support tickets', category: 'help' },
 ];
 
@@ -74,7 +70,9 @@ export const PERMISSION_CATALOG: Array<{ key: string; label: string; category: s
 // Exported for unit-testing the permission matrix.
 export const ROLE_DEFAULT_ALLOWS: Record<string, string[]> = {
   ADMIN: PERMISSION_CATALOG.map((p) => p.key),
-  SUPPORT: ['dashboard.read', 'subscribers.read', 'partners.read', 'control.disputes.read', 'control.disputes.write', 'help.read', 'help.write'],
+  // control.disputes.write is intentionally excluded: approving a dispute triggers wallet credit
+  // (a financial action). Support can view disputes but only RISK_REVIEW may approve/reject.
+  SUPPORT: ['dashboard.read', 'subscribers.read', 'partners.read', 'control.disputes.read', 'help.read', 'help.read.all', 'help.write'],
   // transactions.write (balance adjustments) is intentionally excluded: Finance can read and process
   // payouts/invoices but must not create arbitrary wallet adjustments — that stays with ADMIN.
   FINANCE: ['dashboard.read', 'subscribers.read', 'transactions.read', 'cashback.read', 'finance.payouts.read', 'finance.payouts.write', 'finance.invoices.read', 'finance.invoices.write', 'finance.periods.read', 'finance.periods.write', 'finance.reports.read'],
@@ -82,7 +80,9 @@ export const ROLE_DEFAULT_ALLOWS: Record<string, string[]> = {
   RISK_REVIEW: ['dashboard.read', 'subscribers.read', 'transactions.read', 'control.risk.read', 'control.risk.write', 'control.disputes.read', 'control.disputes.write', 'control.rules.read'],
   // partners.write (live-partner status changes) is intentionally excluded: PARTNER_MANAGER works the
   // application pipeline and onboarding only; suspending/archiving live partners requires ADMIN.
-  PARTNER_MANAGER: ['dashboard.read', 'partners.read', 'partners.requests.read', 'partners.requests.write', 'partners.onboarding.read', 'partners.onboarding.write', 'partners.locations.read', 'partners.locations.write', 'partners.receipts.read'],
+  // admins.actions.read grants access to the critical-action approval queue (pending discount-rate
+  // changes, etc.) without exposing the full admin user listing (admins.read).
+  PARTNER_MANAGER: ['dashboard.read', 'partners.read', 'partners.requests.read', 'partners.requests.write', 'partners.onboarding.read', 'partners.onboarding.write', 'partners.locations.read', 'partners.locations.write', 'admins.actions.read'],
 };
 
 // Upserts the full permission catalog and default role allow-sets.

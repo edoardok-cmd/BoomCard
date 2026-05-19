@@ -25,6 +25,15 @@ function shortTicketRef(ticketId: string): string {
 }
 
 /**
+ * Compute the shortRef value to persist on HelpTicket.shortRef.
+ * Exported so all ticket creation paths can populate the indexed column
+ * used by the inbound subject-prefix resolver (Gap 8 fix).
+ */
+export function computeShortRef(ticketId: string): string {
+  return shortTicketRef(ticketId);
+}
+
+/**
  * Build the `[#abcd1234] Subject` prefix. Idempotent: re-prefixing a subject
  * that already carries the marker is a no-op (so admin "edit and resend"
  * flows don't pile up multiple prefixes).

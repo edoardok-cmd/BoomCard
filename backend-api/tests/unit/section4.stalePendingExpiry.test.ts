@@ -7,12 +7,13 @@
  * Balance is NOT decremented because PENDING entries are never credited.
  *
  * Cases covered:
- *   1. Happy path — stale PENDING entry is marked EXPIRED, no wallet debit
+ *   1. Happy path — stale PENDING entry is marked EXPIRED + status=CANCELLED, no wallet debit
  *   2. Fresh PENDING entry (within window) is left untouched
  *   3. No candidates — function returns count=0 and writes no audit
  *   4. CAS race — concurrent approve/void wins updateMany (count=0), no audit written
  *   5. updateMany includes cashbackStatus=PENDING predicate (not just id IN [...])
- *   6. Respects validityDays from system setting (mock returns custom value)
+ *   6. Respects validityDays from system setting (mock returns 30 days)
+ *   7. Audit after.cutoffDays matches the configured validity window
  */
 
 // ── Shared mutable state ──────────────────────────────────────────────────────
@@ -100,19 +101,21 @@ function reset() {
 describe('expireStalePendingCashback — §4.4 audit finding #4', () => {
   beforeEach(reset);
 
-  it('happy path — stale PENDING entry is marked EXPIRED, wallet NOT decremented', async () => {
+  it('happy path — stale PENDING entry is marked EXPIRED with status=CANCELLED, wallet NOT decremented', async () => {
     staleRows = [makePendingRow()];
 
     const result = await expireStalePendingCashback(null);
 
     expect(result.count).toBe(1);
     expect(mp.walletTransaction.updateMany).toHaveBeenCalledTimes(1);
-    expect(updateManyDataArgs[0]).toMatchObject({ cashbackStatus: 'EXPIRED' });
+    // cashbackStatus drives display; status=CANCELLED removes the entry from
+    // operational status=PENDING queries without requiring a new enum value.
+    expect(updateManyDataArgs[0]).toMatchObject({ cashbackStatus: 'EXPIRED', status: 'CANCELLED' });
     // Balance is never touched — PENDING entries were never credited
     // (wallet mock has no update delegate, so any wallet call would throw)
   });
 
-  it('happy path — writes an audit entry on success with staleIds field', async () => {
+  it('happy path — writes an audit entry on success with staleIds, count, and cutoffDays fields', async () => {
     staleRows = [makePendingRow(), makePendingRow()];
     updateManyCount = 2; // mock returns the number of rows actually updated
 
@@ -128,6 +131,8 @@ describe('expireStalePendingCashback — §4.4 audit finding #4', () => {
     // confirmed transitions when count < staleIds.length under CAS races.
     expect(auditCalls[0].after.staleIds).toHaveLength(2);
     expect(auditCalls[0].after.ids).toBeUndefined();
+    // cutoffDays documents the configured window used for this sweep run.
+    expect(auditCalls[0].after.cutoffDays).toBe(60);
   });
 
   it('no candidates — returns count=0 and writes no audit', async () => {
@@ -258,5 +263,23 @@ describe('expireStalePendingCashback — §4.4 audit finding #4', () => {
     expect(auditCalls[0].after.count).toBe(2);
     // staleIds = all 3 candidates — makes the discrepancy visible in the audit trail
     expect(auditCalls[0].after.staleIds).toHaveLength(3);
+  });
+
+  it('respects validityDays from system setting — 30-day config produces a ~30-day cutoff date', async () => {
+    // getSystemSettingInt is mocked at module level; override it for this test to
+    // return 30 (instead of the default 60) and confirm the findMany WHERE createdAt.lt
+    // is approximately 30 days ago rather than 60.
+    const { getSystemSettingInt } = require('../../src/utils/systemSettings');
+    (getSystemSettingInt as jest.Mock).mockResolvedValueOnce(30);
+    staleRows = [];
+
+    await expireStalePendingCashback(null);
+
+    const findManyWhere = mp.walletTransaction.findMany.mock.calls[0][0]?.where;
+    const cutoff: Date = findManyWhere?.createdAt?.lt;
+    expect(cutoff).toBeInstanceOf(Date);
+    const expectedCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    // Allow 3-second skew for test execution time
+    expect(Math.abs(cutoff.getTime() - expectedCutoff.getTime())).toBeLessThan(3000);
   });
 });

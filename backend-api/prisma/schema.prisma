@@ -1466,6 +1466,10 @@ model HelpTicket {
   // timestamp rather than updatedAt (which bumps on any field change).
   resolvedAt     DateTime?
   linkedTicketId String?
+  // Gap 8 fix: 8-char hex short-ref (first 8 hex chars of UUID, dashes stripped).
+  // Stored for O(1) subject-prefix lookup instead of the previous 200-ticket scan.
+  // Populated on creation by all ticket creation paths.
+  shortRef       String?        @unique
   assignee       User?          @relation("TicketAssignee", fields: [assigneeId], references: [id])
   user           User           @relation("TicketUser", fields: [userId], references: [id])
   linkedTicket   HelpTicket?    @relation("TicketLink", fields: [linkedTicketId], references: [id])

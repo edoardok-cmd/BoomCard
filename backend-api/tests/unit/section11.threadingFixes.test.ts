@@ -323,12 +323,15 @@ describe('Bug 10 — partnerHelp reply notification source contains threading he
     expect(routeSource).toContain('partnerReplyHeaders');
   });
 
-  it('reply handler passes ticket.rootMessageId as inReplyTo', () => {
-    expect(routeSource).toMatch(/inReplyTo:\s*ticket\.rootMessageId/);
+  it('reply handler uses full refChain for inReplyTo (Bug 5 fix — no longer rootMessageId-only)', () => {
+    // Bug 5 fix: replaced the rootMessageId-only shortcut with a full
+    // RFC 5322 refChain (rootMessageId + all prior TicketReply.messageId rows).
+    expect(routeSource).toMatch(/partnerRefChain/);
+    expect(routeSource).toMatch(/inReplyTo:\s*partnerRefChain\.at\(-1\)/);
   });
 
-  it('reply handler passes rootMessageId array as references', () => {
-    expect(routeSource).toMatch(/references:\s*ticket\.rootMessageId\s*\?/);
+  it('reply handler passes full refChain array as references (Bug 5 fix)', () => {
+    expect(routeSource).toMatch(/references:\s*partnerRefChain/);
   });
 
   it('both notification emails pass the shared partnerReplyHeaders variable', () => {

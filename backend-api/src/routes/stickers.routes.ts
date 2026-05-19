@@ -6,7 +6,7 @@ import {
   SUSPICIOUS_EXACT_CODES,
   SUSPICIOUS_PREFIX_CODES,
 } from '../services/adminAlerts.service';
-import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
+import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { requireActivePartnerForWrites } from '../middleware/partnerStatus.middleware';
 import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
 import { imageUploadService } from '../services/imageUpload.service';
@@ -519,7 +519,7 @@ router.post('/activate/:stickerId', authenticate, authorize('ADMIN', 'SUPER_ADMI
  * Advance a PENDING sticker to PROCESSING (label printed, awaiting deployment).
  * Spec §5.4 — admin-only management.
  */
-router.patch('/:stickerId/processing', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
+router.patch('/:stickerId/processing', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('stickers.write'), async (req: AuthRequest, res: Response) => {
   try {
     const { stickerId } = req.params;
     const actorUserId = req.user?.id ?? null;
@@ -547,7 +547,7 @@ router.patch('/:stickerId/processing', authenticate, authorize('ADMIN', 'SUPER_A
  * PATCH /processing then POST /activate.
  * Spec §5.4 — admin-only management.
  */
-router.patch('/:stickerId/replace', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
+router.patch('/:stickerId/replace', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('stickers.write'), async (req: AuthRequest, res: Response) => {
   try {
     const { stickerId } = req.params;
     const actorUserId = req.user?.id ?? null;

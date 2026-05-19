@@ -447,13 +447,23 @@ class StickerService {
     if (!location) throw new Error(`Location ${old.locationId} not found`);
 
     const venueCode = await this.getVenueCode(location.venueId);
-    const newStickerId = `${venueCode}-${location.locationNumber}`;
+    const baseId = `${venueCode}-${location.locationNumber}`;
 
-    const existingNew = await prisma.sticker.findUnique({ where: { stickerId: newStickerId } });
-    if (existingNew) {
+    // Replacement stickers get a versioned suffix to avoid the @unique collision with
+    // the still-present (REPLACED) old sticker. Count all stickers ever at this location
+    // (including REPLACED ones) — revision = total + 1.
+    // Original sticker: baseId (implicit V1). First replacement: baseId-V2. Etc.
+    const stickerCountAtLocation = await prisma.sticker.count({
+      where: { locationId: old.locationId },
+    });
+    const newStickerId = `${baseId}-V${stickerCountAtLocation + 1}`;
+
+    // Pre-flight: verify the versioned ID isn't already claimed by a concurrent replace.
+    const conflict = await prisma.sticker.findUnique({ where: { stickerId: newStickerId } });
+    if (conflict) {
       throw new Error(
-        `Cannot replace ${oldStickerId}: a sticker with the generated ID ${newStickerId} already exists. ` +
-        `If the old label was previously replaced, use the successor sticker ID.`,
+        `Cannot replace ${oldStickerId}: concurrent replacement in progress ` +
+        `(${newStickerId} was just claimed). Please retry.`,
       );
     }
 

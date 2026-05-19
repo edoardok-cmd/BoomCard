@@ -5,7 +5,7 @@ import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { notificationService } from '../services/notification.service';
 import { emailService } from '../services/email.service';
-import { buildTicketSubject, buildTicketHeaders } from '../services/ticketEmail.service';
+import { buildTicketSubject, buildTicketHeaders, computeShortRef } from '../services/ticketEmail.service';
 import { fireAutomation } from '../lib/automationDispatcher';
 import { logger } from '../utils/logger';
 import type { AuthRequest } from '../middleware/auth.middleware';
@@ -41,8 +41,10 @@ const TICKET_SELECT_ALL = {
 } as const;
 
 // Returns true when the caller may access any ticket (not just their own).
+// SUPER_ADMIN always has full access. Roles granted help.read.all (e.g. SUPPORT)
+// are also given full visibility so they can manage the help queue per §13.
 function hasFullAccess(req: AuthRequest): boolean {
-  return req.user!.role === 'SUPER_ADMIN';
+  return req.user!.role === 'SUPER_ADMIN' || (req.user!.permissions ?? []).includes('help.read.all');
 }
 
 // POST /api/admin/help — G8: admin creates a new help ticket (Spec §11 "Нова заявка")
@@ -120,7 +122,10 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
         // Message-ID sent in the email (a second newMessageId() call would
         // produce a different value, breaking Priority-2 In-Reply-To threading).
         const threading = buildTicketHeaders({ ticketId: ticket.id });
-        await prisma.helpTicket.update({ where: { id: ticket.id }, data: { rootMessageId: threading.messageId } });
+        await prisma.helpTicket.update({
+          where: { id: ticket.id },
+          data: { rootMessageId: threading.messageId, shortRef: computeShortRef(ticket.id) },
+        });
         const ref = buildTicketSubject(ticket.id, '').match(/\[#[a-f0-9]+\]/i)?.[0] ?? `#${ticket.id.slice(0, 8)}`;
         await emailService.sendEmail({
           to: req.user!.email,
@@ -187,10 +192,11 @@ router.get('/count', requirePermission('help.read'), async (req: AuthRequest, re
   }
 });
 
-// GET /api/admin/help — all tickets with optional filters (SUPER_ADMIN only per spec §11)
+// GET /api/admin/help — all tickets with optional filters
+// Accessible to callers with help.read.all (SUPPORT role, SUPER_ADMIN).
 // Spec §11.5: filters by тип, статус, ownership, период.
 // Query params: status, priority, category, requestType, search, from, to, assigneeId, page, limit
-router.get('/', authorize('SUPER_ADMIN'), async (req, res, next) => {
+router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
   try {
     const {
       status, priority, category, search,
@@ -378,9 +384,20 @@ router.post('/:id/assign', requirePermission('help.write'), async (req: AuthRequ
       }
     }
 
-    // Cannot assign the ticket creator as the assignee (irrelevant for unassign).
+    // Cannot assign the ticket creator as the assignee, UNLESS the creator is
+    // an admin/super-admin creating an internal ticket (§11.5 "Нова заявка").
+    // The check prevents subscribers from gaming their own support tickets; it
+    // must not block the legitimate admin-creates-and-assigns-to-self workflow.
     if (resolvedAssigneeId !== null && resolvedAssigneeId === ticket.userId) {
-      return res.status(400).json({ error: 'Не може да назначите заявителя като отговорник на собствената му заявка' });
+      // Allow when the creator is an admin role — check the creator's role.
+      const creatorRecord = await prisma.user.findUnique({
+        where: { id: ticket.userId },
+        select: { role: true },
+      });
+      const creatorIsAdmin = creatorRecord?.role === 'ADMIN' || creatorRecord?.role === 'SUPER_ADMIN';
+      if (!creatorIsAdmin) {
+        return res.status(400).json({ error: 'Не може да назначите заявителя като отговорник на собствената му заявка' });
+      }
     }
     // No-op: already at the requested state.
     if (ticket.assigneeId === resolvedAssigneeId) {

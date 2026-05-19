@@ -603,7 +603,8 @@ router.patch('/:userId/plan', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), r
     if (
       subscription.status === 'CANCELLED' ||
       subscription.status === 'EXPIRED' ||
-      subscription.status === 'INCOMPLETE_EXPIRED'
+      subscription.status === 'INCOMPLETE_EXPIRED' ||
+      subscription.status === 'FAILED_PAYMENT'
     ) {
       res.status(400).json({ error: 'Cannot change plan on a terminated subscription' });
       return;

@@ -8,7 +8,14 @@
  *   - reasons=A,B    → fraudReasons: { hasSome: ['A', 'B'] }
  *   - suspicious=true → triggers raw subquery + id: { in: ids }
  *   - bucket=HIGH_61_PLUS without status → no status filter
+ *
+ * Also covers the §5.4 admin sticker management routes:
+ *   - PATCH /:stickerId/processing — advance PENDING → PROCESSING
+ *   - PATCH /:stickerId/replace    — atomically replace a sticker
  */
+
+const mockMarkStickerProcessing = jest.fn();
+const mockReplaceSticker = jest.fn();
 
 jest.mock('../../src/lib/prisma', () => ({
   __esModule: true,
@@ -22,18 +29,23 @@ jest.mock('../../src/lib/prisma', () => ({
   },
 }));
 
-// Mock auth middleware: short-circuit to ADMIN.
+// Mock auth middleware: short-circuit to ADMIN; requirePermission always passes.
 jest.mock('../../src/middleware/auth.middleware', () => ({
   authenticate: (req: any, _res: any, next: any) => {
     req.user = { id: 'admin-1', role: 'ADMIN' };
     next();
   },
   authorize: () => (_req: any, _res: any, next: any) => next(),
+  requirePermission: () => (_req: any, _res: any, next: any) => next(),
 }));
 
 // Mock heavy services pulled in transitively to keep the unit test cheap.
 jest.mock('../../src/services/sticker.service', () => ({
-  stickerService: { getAdminStats: jest.fn() },
+  stickerService: {
+    getAdminStats: jest.fn(),
+    markStickerProcessing: (...args: any[]) => mockMarkStickerProcessing(...args),
+    replaceSticker: (...args: any[]) => mockReplaceSticker(...args),
+  },
 }));
 jest.mock('../../src/services/imageUpload.service', () => ({
   imageUploadService: {},
@@ -279,5 +291,129 @@ describe('GET /api/stickers/admin/pending-review query params', () => {
       .get('/api/stickers/admin/pending-review?dateFromHours=abc')
       .expect(200);
     expect(res.body.meta.appliedDateFromHours).toBeUndefined();
+  });
+});
+
+// ── §5.4 admin sticker management routes ─────────────────────────────────────
+
+describe('PATCH /api/stickers/:stickerId/processing — §5.4 admin sticker management', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns 200 and sticker data on success', async () => {
+    const sticker = { id: 'db-1', stickerId: 'ACME-001', status: 'PROCESSING' };
+    mockMarkStickerProcessing.mockResolvedValueOnce(sticker);
+
+    const res = await request(app)
+      .patch('/api/stickers/ACME-001/processing')
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toMatchObject({ stickerId: 'ACME-001', status: 'PROCESSING' });
+    expect(mockMarkStickerProcessing).toHaveBeenCalledWith('ACME-001', 'admin-1');
+  });
+
+  it('passes actorUserId from req.user to the service', async () => {
+    mockMarkStickerProcessing.mockResolvedValueOnce({ id: 'db-1', stickerId: 'ACME-001', status: 'PROCESSING' });
+
+    await request(app).patch('/api/stickers/ACME-001/processing').send({});
+
+    expect(mockMarkStickerProcessing).toHaveBeenCalledWith('ACME-001', 'admin-1');
+  });
+
+  it('returns 404 when service throws "not found"', async () => {
+    mockMarkStickerProcessing.mockRejectedValueOnce(new Error('Sticker ACME-001 not found'));
+
+    const res = await request(app)
+      .patch('/api/stickers/ACME-001/processing')
+      .send({});
+
+    expect(res.status).toBe(404);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('returns 400 when service throws a non-not-found error', async () => {
+    mockMarkStickerProcessing.mockRejectedValueOnce(
+      new Error('Sticker ACME-001 must be in PENDING state to mark as processing (current: ACTIVE)')
+    );
+
+    const res = await request(app)
+      .patch('/api/stickers/ACME-001/processing')
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toMatch(/PENDING/);
+  });
+});
+
+describe('PATCH /api/stickers/:stickerId/replace — §5.4 admin sticker management', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns 200 with old and new sticker data on success', async () => {
+    const oldSticker = { id: 'db-1', stickerId: 'ACME-001', status: 'REPLACED' };
+    const newSticker = { id: 'db-2', stickerId: 'ACME-001-V2', status: 'PENDING' };
+    mockReplaceSticker.mockResolvedValueOnce({ oldSticker, newSticker });
+
+    const res = await request(app)
+      .patch('/api/stickers/ACME-001/replace')
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.oldSticker).toMatchObject({ stickerId: 'ACME-001', status: 'REPLACED' });
+    expect(res.body.data.newSticker).toMatchObject({ stickerId: 'ACME-001-V2', status: 'PENDING' });
+  });
+
+  it('passes actorUserId from req.user to the service', async () => {
+    mockReplaceSticker.mockResolvedValueOnce({
+      oldSticker: { id: 'db-1', stickerId: 'ACME-001', status: 'REPLACED' },
+      newSticker: { id: 'db-2', stickerId: 'ACME-001-V2', status: 'PENDING' },
+    });
+
+    await request(app).patch('/api/stickers/ACME-001/replace').send({});
+
+    expect(mockReplaceSticker).toHaveBeenCalledWith('ACME-001', 'admin-1');
+  });
+
+  it('returns 404 when service throws "not found"', async () => {
+    mockReplaceSticker.mockRejectedValueOnce(new Error('Sticker ACME-999 not found'));
+
+    const res = await request(app)
+      .patch('/api/stickers/ACME-999/replace')
+      .send({});
+
+    expect(res.status).toBe(404);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('returns 400 when sticker is already replaced', async () => {
+    mockReplaceSticker.mockRejectedValueOnce(new Error('Sticker ACME-001 is already replaced'));
+
+    const res = await request(app)
+      .patch('/api/stickers/ACME-001/replace')
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toMatch(/already replaced/i);
+  });
+
+  it('returns 400 when concurrent replacement is in progress', async () => {
+    mockReplaceSticker.mockRejectedValueOnce(
+      new Error('Cannot replace ACME-001: concurrent replacement in progress (ACME-001-V2 was just claimed). Please retry.')
+    );
+
+    const res = await request(app)
+      .patch('/api/stickers/ACME-001/replace')
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toMatch(/concurrent/i);
   });
 });

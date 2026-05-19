@@ -249,8 +249,10 @@ router.get('/pending-all', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requ
 });
 
 // GET /api/admin/admins/critical-actions — list critical action requests (§10.3)
+// Accessible with admins.read (full admin management) OR admins.actions.read (PARTNER_MANAGER:
+// lets them see the pending partner changes queue without exposing admin user listings).
 const CRITICAL_ACTION_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'ALL'] as const;
-router.get('/critical-actions', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.read'), async (req, res, next) => {
+router.get('/critical-actions', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission(['admins.read', 'admins.actions.read']), async (req, res, next) => {
   try {
     const rawStatus = typeof req.query.status === 'string' ? req.query.status : 'PENDING';
     if (!(CRITICAL_ACTION_STATUSES as readonly string[]).includes(rawStatus)) {

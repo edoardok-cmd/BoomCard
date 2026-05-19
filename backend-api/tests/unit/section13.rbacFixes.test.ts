@@ -38,6 +38,16 @@ jest.mock('../../src/lib/prisma', () => {
     },
     // Needed by resolveAdminName used in some settings handlers
     user: { findUnique: jest.fn(async () => null) },
+    // Needed by adminAdmins critical-actions endpoint
+    criticalActionRequest: {
+      findMany: jest.fn(async () => []),
+      count: jest.fn(async () => 0),
+    },
+    // Needed by adminHelp all-tickets endpoint
+    helpTicket: {
+      findMany: jest.fn(async () => []),
+      count: jest.fn(async () => 0),
+    },
   };
   return { __esModule: true, default: client, prisma: client };
 });
@@ -59,7 +69,10 @@ jest.mock('../../src/services/partnerActivation.service', () => ({
   stampEmailOutcome: jest.fn(),
 }));
 jest.mock('../../src/services/email.service', () => ({
-  emailService: { sendPartnerStatusChangeEmail: jest.fn() },
+  emailService: {
+    sendPartnerStatusChangeEmail: jest.fn(),
+    sendEmail: jest.fn(async () => undefined),
+  },
 }));
 jest.mock('../../src/services/partner.service', () => ({
   partnerService: { setPartnerStatus: jest.fn() },
@@ -74,6 +87,22 @@ jest.mock('../../src/services/partnerVenueCountBucket.helper', () => ({
   parseVenueCountBucket: jest.fn(),
   formatVenueCountBucket: jest.fn(),
   VENUE_COUNT_BUCKET_DISPLAY_VALUES: {},
+}));
+
+// Stubs for adminHelp.routes.ts transitive imports
+jest.mock('../../src/services/notification.service', () => ({
+  notificationService: { notifyAdminOps: jest.fn(async () => undefined) },
+}));
+jest.mock('../../src/services/ticketEmail.service', () => ({
+  buildTicketSubject: jest.fn((_id: string, suffix: string) => `[#abc1234] ${suffix}`),
+  buildTicketHeaders: jest.fn(() => ({ messageId: '<mid@test>', headers: {} })),
+  computeShortRef: jest.fn(() => '#abc1234'),
+}));
+
+// Stub for adminAlerts.routes.ts
+jest.mock('../../src/services/adminAlerts.service', () => ({
+  getAlerts: jest.fn(async () => ({ alerts: [], counts: {} })),
+  ACTIVE_SCAN_STATUSES: ['PENDING_REVIEW'],
 }));
 
 // ─── Auth middleware mock (role + permission check controlled per-test) ───────
@@ -129,6 +158,8 @@ const m = prisma as unknown as {
   fraudRule: { findMany: AnyMock; findUnique: AnyMock; create: AnyMock; update: AnyMock };
   fraudRuleOverride: { findMany: AnyMock; findFirst: AnyMock; create: AnyMock; delete: AnyMock };
   user: { findUnique: AnyMock };
+  criticalActionRequest: { findMany: AnyMock; count: AnyMock };
+  helpTicket: { findMany: AnyMock; count: AnyMock };
 };
 
 // Build a mini Express app wiring only the adminPartners router at /partners
@@ -151,6 +182,45 @@ function buildSettingsApp() {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const router = require('../../src/routes/adminSettings.routes').default;
   app.use('/settings', router);
+  app.use((err: any, _req: any, res: any, _next: any) => {
+    res.status(err.status ?? err.statusCode ?? 500).json({ error: err.message ?? 'Internal error' });
+  });
+  return supertest(app);
+}
+
+// Build a mini Express app wiring only the adminHelp router at /help
+function buildHelpApp() {
+  const app = express();
+  app.use(express.json());
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const router = require('../../src/routes/adminHelp.routes').default;
+  app.use('/help', router);
+  app.use((err: any, _req: any, res: any, _next: any) => {
+    res.status(err.status ?? err.statusCode ?? 500).json({ error: err.message ?? 'Internal error' });
+  });
+  return supertest(app);
+}
+
+// Build a mini Express app wiring only the adminAdmins router at /admins
+function buildAdminsApp() {
+  const app = express();
+  app.use(express.json());
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const router = require('../../src/routes/adminAdmins.routes').default;
+  app.use('/admins', router);
+  app.use((err: any, _req: any, res: any, _next: any) => {
+    res.status(err.status ?? err.statusCode ?? 500).json({ error: err.message ?? 'Internal error' });
+  });
+  return supertest(app);
+}
+
+// Build a mini Express app wiring only the adminAlerts router at /alerts
+function buildAlertsApp() {
+  const app = express();
+  app.use(express.json());
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const router = require('../../src/routes/adminAlerts.routes').default;
+  app.use('/alerts', router);
   app.use((err: any, _req: any, res: any, _next: any) => {
     res.status(err.status ?? err.statusCode ?? 500).json({ error: err.message ?? 'Internal error' });
   });
@@ -568,5 +638,192 @@ describe('§13 Fix 3 — PATCH /partners/:id/discount-rate', () => {
 
   it('CASHBACK_MATRIX_STEPS contains exactly [5, 10, 15, 20, 25]', () => {
     expect([...CASHBACK_MATRIX_STEPS]).toEqual([5, 10, 15, 20, 25]);
+  });
+});
+
+// ─── §13 Audit Fix A — SUPPORT must not have control.disputes.write ───────────
+// Approving a dispute triggers wallet credit; §13 says Support cannot do payments.
+
+describe('§13 Audit Fix A — SUPPORT lacks control.disputes.write', () => {
+  it('SUPPORT does NOT include control.disputes.write', () => {
+    expect(ROLE_DEFAULT_ALLOWS['SUPPORT']).not.toContain('control.disputes.write');
+  });
+
+  it('SUPPORT retains control.disputes.read (can still view disputes)', () => {
+    expect(ROLE_DEFAULT_ALLOWS['SUPPORT']).toContain('control.disputes.read');
+  });
+
+  it('RISK_REVIEW retains control.disputes.write (making decisions is their mandate)', () => {
+    expect(ROLE_DEFAULT_ALLOWS['RISK_REVIEW']).toContain('control.disputes.write');
+  });
+});
+
+// ─── §13 Audit Fix B — SUPPORT can view all help tickets via help.read.all ────
+// §13 says Support handles "помощни заявки" — they need full ticket visibility.
+
+describe('§13 Audit Fix B — help.read.all in catalog and SUPPORT defaults', () => {
+  it('help.read.all is in the PERMISSION_CATALOG', () => {
+    const keys = PERMISSION_CATALOG.map((p) => p.key);
+    expect(keys).toContain('help.read.all');
+  });
+
+  it('help.read.all is in the help category', () => {
+    const perm = PERMISSION_CATALOG.find((p) => p.key === 'help.read.all');
+    expect(perm?.category).toBe('help');
+  });
+
+  it('SUPPORT includes help.read.all', () => {
+    expect(ROLE_DEFAULT_ALLOWS['SUPPORT']).toContain('help.read.all');
+  });
+
+  it('ADMIN inherits help.read.all from the full catalog', () => {
+    expect(ROLE_DEFAULT_ALLOWS['ADMIN']).toContain('help.read.all');
+  });
+});
+
+describe('§13 Audit Fix B — GET /help/ accessible with help.read.all', () => {
+  let api: ReturnType<typeof buildHelpApp>;
+
+  beforeAll(() => { api = buildHelpApp(); });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    m.helpTicket.findMany.mockResolvedValue([]);
+    m.helpTicket.count.mockResolvedValue(0);
+  });
+
+  it('200 for ADMIN with help.read.all (SUPPORT permission profile)', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['help.read.all'] });
+    const res = await api.get('/help/');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('tickets');
+  });
+
+  it('403 for ADMIN without help.read.all (e.g. PARTNER_MANAGER profile)', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['dashboard.read', 'partners.read'] });
+    const res = await api.get('/help/');
+    expect(res.status).toBe(403);
+  });
+
+  it('200 for SUPER_ADMIN (bypasses requirePermission)', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+    const res = await api.get('/help/');
+    expect(res.status).toBe(200);
+  });
+});
+
+// ─── §13 Audit Fix C — partners.receipts.* removed from catalog ──────────────
+// These permissions protected no routes; removing them keeps the catalog accurate.
+
+describe('§13 Audit Fix C — partners.receipts.* removed from catalog', () => {
+  it('partners.receipts.read is NOT in the PERMISSION_CATALOG', () => {
+    const keys = PERMISSION_CATALOG.map((p) => p.key);
+    expect(keys).not.toContain('partners.receipts.read');
+  });
+
+  it('partners.receipts.write is NOT in the PERMISSION_CATALOG', () => {
+    const keys = PERMISSION_CATALOG.map((p) => p.key);
+    expect(keys).not.toContain('partners.receipts.write');
+  });
+
+  it('PARTNER_MANAGER does NOT include partners.receipts.read', () => {
+    expect(ROLE_DEFAULT_ALLOWS['PARTNER_MANAGER']).not.toContain('partners.receipts.read');
+  });
+});
+
+// ─── §13 Audit Fix D — PARTNER_MANAGER can view critical-action queue ─────────
+// §13 says PARTNER_MANAGER can access "Partner changes queue" (pending approvals).
+// admins.actions.read gates GET /critical-actions without exposing admin listings.
+
+describe('§13 Audit Fix D — admins.actions.read in catalog and PARTNER_MANAGER defaults', () => {
+  it('admins.actions.read is in the PERMISSION_CATALOG', () => {
+    const keys = PERMISSION_CATALOG.map((p) => p.key);
+    expect(keys).toContain('admins.actions.read');
+  });
+
+  it('admins.actions.read is in the admins category', () => {
+    const perm = PERMISSION_CATALOG.find((p) => p.key === 'admins.actions.read');
+    expect(perm?.category).toBe('admins');
+  });
+
+  it('PARTNER_MANAGER includes admins.actions.read', () => {
+    expect(ROLE_DEFAULT_ALLOWS['PARTNER_MANAGER']).toContain('admins.actions.read');
+  });
+
+  it('PARTNER_MANAGER does NOT include admins.read (cannot see admin user listing)', () => {
+    expect(ROLE_DEFAULT_ALLOWS['PARTNER_MANAGER']).not.toContain('admins.read');
+  });
+});
+
+describe('§13 Audit Fix D — GET /admins/critical-actions accepts admins.actions.read', () => {
+  let api: ReturnType<typeof buildAdminsApp>;
+
+  beforeAll(() => { api = buildAdminsApp(); });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    m.criticalActionRequest.findMany.mockResolvedValue([]);
+    m.criticalActionRequest.count.mockResolvedValue(0);
+  });
+
+  it('200 for ADMIN with admins.actions.read (PARTNER_MANAGER permission profile)', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['admins.actions.read'] });
+    const res = await api.get('/admins/critical-actions');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('items');
+  });
+
+  it('200 for ADMIN with admins.read (full admin management profile)', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['admins.read'] });
+    const res = await api.get('/admins/critical-actions');
+    expect(res.status).toBe(200);
+  });
+
+  it('403 for ADMIN with neither admins.read nor admins.actions.read', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['dashboard.read', 'partners.read'] });
+    const res = await api.get('/admins/critical-actions');
+    expect(res.status).toBe(403);
+  });
+
+  it('200 for SUPER_ADMIN (bypasses requirePermission)', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+    const res = await api.get('/admins/critical-actions');
+    expect(res.status).toBe(200);
+  });
+});
+
+// ─── §13 Audit Fix E — Alerts gated on control.risk.read, not dashboard.read ──
+// dashboard.read is held by every delegated role including PARTNER_MANAGER;
+// alerts expose fraud-queue counts and must be restricted to risk-aware roles.
+
+describe('§13 Audit Fix E — GET /alerts/ requires control.risk.read', () => {
+  let api: ReturnType<typeof buildAlertsApp>;
+
+  beforeAll(() => { api = buildAlertsApp(); });
+
+  beforeEach(() => { jest.clearAllMocks(); });
+
+  it('200 for ADMIN with control.risk.read (RISK_REVIEW permission profile)', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['control.risk.read'] });
+    const res = await api.get('/alerts/');
+    expect(res.status).toBe(200);
+  });
+
+  it('403 for ADMIN with only dashboard.read (PARTNER_MANAGER / SUPPORT profile)', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['dashboard.read'] });
+    const res = await api.get('/alerts/');
+    expect(res.status).toBe(403);
+  });
+
+  it('403 for ADMIN with dashboard.read + partners.read but not control.risk.read', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['dashboard.read', 'partners.read', 'help.read.all'] });
+    const res = await api.get('/alerts/');
+    expect(res.status).toBe(403);
+  });
+
+  it('200 for SUPER_ADMIN (bypasses requirePermission)', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+    const res = await api.get('/alerts/');
+    expect(res.status).toBe(200);
   });
 });
