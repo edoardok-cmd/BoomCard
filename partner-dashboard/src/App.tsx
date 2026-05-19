@@ -43,6 +43,7 @@ const CreateOfferPage = lazy(() => import('./pages/CreateOfferPage'));
 const EditOfferPage = lazy(() => import('./pages/EditOfferPage'));
 const PartnerMenusPage = lazy(() => import('./pages/PartnerMenusPage'));
 const PartnerStickersPage = lazy(() => import('./pages/PartnerStickersPage'));
+const PartnerHelpPage = lazy(() => import('./pages/PartnerHelpPage'));
 const NearbyOffersPage = lazy(() => import('./pages/NearbyOffersPage'));
 const RewardsPage = lazy(() => import('./pages/RewardsPage'));
 const PromotionsPage = lazy(() => import('./pages/PromotionsPage'));
@@ -347,6 +348,15 @@ function App() {
                       element={
                         <ProtectedRoute>
                           <PartnerStickersPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    {/* Spec §11.1 v1.1 — partner-side help / ticketing */}
+                    <Route
+                      path="partners/help"
+                      element={
+                        <ProtectedRoute requiredRole="partner">
+                          <PartnerHelpPage />
                         </ProtectedRoute>
                       }
                     />

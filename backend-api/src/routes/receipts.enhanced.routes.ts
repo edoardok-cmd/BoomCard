@@ -656,13 +656,30 @@ router.post(
   validateMagicBytes,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { venueId } = req.params;
-    const { merchantName, description, expectedKeywords } = req.body;
+    const { merchantName, merchantNameVariations, description, expectedKeywords } = req.body;
 
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'Template image is required' });
     }
     if (!merchantName) {
       return res.status(400).json({ success: false, message: 'merchantName is required' });
+    }
+
+    // Parse merchantNameVariations — sent as a JSON string in multipart form data
+    let variations: string[] = [];
+    if (merchantNameVariations) {
+      try {
+        const parsed = typeof merchantNameVariations === 'string'
+          ? JSON.parse(merchantNameVariations)
+          : merchantNameVariations;
+        if (!Array.isArray(parsed)) throw new Error('not an array');
+        variations = parsed.map(String);
+      } catch {
+        return res.status(400).json({
+          success: false,
+          message: 'merchantNameVariations must be a JSON array of strings',
+        });
+      }
     }
 
     // Parse expectedKeywords — sent as a JSON string in multipart form data
@@ -703,12 +720,13 @@ router.post(
     const template = await receiptTemplateService.createTemplate({
       venueId,
       merchantName,
+      merchantNameVariations: variations,
       description,
-      expectedKeywords: keywords,
-      imageUrl:         upload.url,
-      imageKey:         upload.key,
+      expectedKeywords:       keywords,
+      imageUrl:               upload.url,
+      imageKey:               upload.key,
       perceptualHash,
-      uploadedBy:       req.user!.id,
+      uploadedBy:             req.user!.id,
     });
 
     res.status(201).json({ success: true, data: template });
@@ -742,7 +760,23 @@ router.patch(
   authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { merchantName, description, expectedKeywords, isActive } = req.body;
+    const { merchantName, merchantNameVariations, description, expectedKeywords, isActive } = req.body;
+
+    let variations: string[] | undefined;
+    if (merchantNameVariations !== undefined) {
+      try {
+        const parsed = typeof merchantNameVariations === 'string'
+          ? JSON.parse(merchantNameVariations)
+          : merchantNameVariations;
+        if (!Array.isArray(parsed)) throw new Error('not an array');
+        variations = parsed.map(String);
+      } catch {
+        return res.status(400).json({
+          success: false,
+          message: 'merchantNameVariations must be a JSON array of strings',
+        });
+      }
+    }
 
     let keywords: string[] | undefined;
     if (expectedKeywords !== undefined) {
@@ -762,6 +796,7 @@ router.patch(
 
     const template = await receiptTemplateService.updateTemplate(id, {
       merchantName,
+      merchantNameVariations: variations,
       description,
       expectedKeywords: keywords,
       isActive:         typeof isActive === 'boolean' ? isActive : undefined,

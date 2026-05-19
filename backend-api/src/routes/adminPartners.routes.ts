@@ -24,6 +24,7 @@
  *   §5.3 Active-partner controls (partners.*)
  *   ─────────────────────────────────────────
  *   PATCH  /:id/partner-status            partners.write           (post-onboarding status transitions)
+ *   PATCH  /:id/discount-rate             partners.write           (spec §13 — ADMIN only, not PARTNER_MANAGER)
  *   GET    /:id/status-history            partners.read            (paired with /partner-status write)
  *
  * The split is deliberate: §5.1/§5.2 model the *application pipeline* and use
@@ -31,26 +32,30 @@
  * an already-active partner and uses the partners.* namespace. Roles can be
  * granted one without the other (a partner-onboarding admin doesn't
  * automatically get permission to suspend live partners).
+ *
+ * §13 note: PARTNER_MANAGER does NOT hold partners.write. That is intentional —
+ * rate negotiation and live-partner suspension require ADMIN authority.
  */
 
 import { Router } from 'express';
 import { PartnerStatus, PartnerRequestStatus, ActivationLinkReason } from '@prisma/client';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
-import { auditMiddleware } from '../middleware/audit.middleware';
+import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { fireAutomation } from '../lib/automationDispatcher';
 import { issueActivationLink, sendActivationEmail, stampEmailOutcome } from '../services/partnerActivation.service';
 import { emailService } from '../services/email.service';
 import { partnerService } from '../services/partner.service';
-import { writeAudit } from '../middleware/audit.middleware';
 import { computePartnerSla } from '../services/partnerSla.helper';
+import { getClientIp } from '../utils/requestIp';
 import {
   parseVenueCountBucket,
   formatVenueCountBucket,
   VENUE_COUNT_BUCKET_DISPLAY_VALUES,
 } from '../services/partnerVenueCountBucket.helper';
+import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -479,6 +484,58 @@ router.patch(
   })
 );
 
+// ─── Contracted discount-rate (spec §13) ──────────────────────────────────────
+// Allows ADMIN+ to adjust a partner's individual cashback discount rate post-approval.
+// Partners cannot call this endpoint (no ADMIN/SUPER_ADMIN role). PARTNER_MANAGER is
+// also excluded — they do not hold partners.write per the §13 permission matrix.
+router.patch(
+  '/:id/discount-rate',
+  requirePermission('partners.write'),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const { rate } = req.body as { rate?: number | null };
+
+    // null clears the override — partner falls back to partnerType default
+    if (rate !== null && rate !== undefined) {
+      if (!CASHBACK_MATRIX_STEPS.includes(rate as (typeof CASHBACK_MATRIX_STEPS)[number])) {
+        return res.status(400).json({
+          error: `rate must be one of: ${CASHBACK_MATRIX_STEPS.join(', ')}, or null to clear`,
+        });
+      }
+    }
+
+    const partner = await prisma.partner.findUnique({
+      where: { id: req.params.id },
+      include: { partnerType: { select: { maxDiscountRate: true } } },
+    });
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+
+    if (rate !== null && rate !== undefined && partner.partnerType?.maxDiscountRate != null) {
+      if (rate > partner.partnerType.maxDiscountRate) {
+        return res.status(400).json({
+          error: `rate (${rate}%) exceeds the maximum for this partner type (${partner.partnerType.maxDiscountRate}%)`,
+        });
+      }
+    }
+
+    const updated = await prisma.partner.update({
+      where: { id: req.params.id },
+      data: { discountRate: rate ?? null },
+      select: PARTNER_SELECT,
+    });
+
+    writeAudit({
+      actorUserId: req.user!.id,
+      action: 'partner.discount-rate.update',
+      objectType: 'partner',
+      objectId: req.params.id,
+      before: { discountRate: partner.discountRate },
+      after: { discountRate: rate ?? null },
+    }).catch((err) => logger.error('[adminPartners] writeAudit failed:', err));
+
+    res.json({ partner: updated });
+  })
+);
+
 // ─── Approve → ACTIVE ─────────────────────────────────────────────────────────
 
 router.post(
@@ -673,6 +730,20 @@ router.post(
         logger.error('[partner-activation] resend email failed:', err);
         stampEmailOutcome(linkId, { sent: false, error: String((err as Error)?.message ?? err) });
       });
+
+    // Spec §10.4 — record an explicit AuditLog entry with useful context.
+    // auditMiddleware would write after:{} (empty body) for this endpoint;
+    // suppress it and write a richer entry instead.
+    req.skipAudit = true;
+    writeAudit({
+      actorUserId: req.user!.id,
+      action: 'partner.activation-link.resend',
+      objectType: 'partner',
+      objectId: partner.id,
+      after: { linkId, expiresAt: expiresAt.toISOString(), sentTo: partner.email ?? partner.user.email },
+      ip: getClientIp(req) ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    }).catch((err) => logger.error('[adminPartners] resend writeAudit failed:', err));
 
     res.json({ success: true, expiresAt });
   })

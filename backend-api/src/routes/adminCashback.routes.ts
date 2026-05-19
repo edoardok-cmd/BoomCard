@@ -20,12 +20,7 @@ import {
   adminCashbackService, getSubscriberCashbackEntries, getAllCashbackEntries,
   CashbackEntryStatus, approveEntry, lockEntry, expireEntry, payEntry, voidEntry, backfillCashbackExpiry,
 } from '../services/adminCashback.service';
-import {
-  PAYOUT_THRESHOLD_BASIC_EUR,
-  PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR,
-  PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR,
-  EUR_TO_BGN_RATE,
-} from '../constants/receipt.constants';
+import { getPayoutThresholdBGN } from '../utils/payoutThreshold';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 
@@ -239,26 +234,14 @@ router.delete('/rates/snapshot/:iso', requirePermission('cashback.write'), async
 // Returns per-plan payout thresholds from DB; falls back to constants.
 // ------------------------------------------------------------------
 router.get('/payout-thresholds', requirePermission('cashback.read'), async (_req: AuthRequest, res: Response) => {
-  const fallback = {
-    BASIC:   Math.round(PAYOUT_THRESHOLD_BASIC_EUR * EUR_TO_BGN_RATE * 100) / 100,
-    PREMIUM_WEEKLY: Math.round(PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR * EUR_TO_BGN_RATE * 100) / 100,
-    PREMIUM: Math.round(PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR * EUR_TO_BGN_RATE * 100) / 100,
-  };
   try {
     const plans = ['BASIC', 'PREMIUM_WEEKLY', 'PREMIUM'] as const;
-    const rows = await Promise.all(
-      plans.map((plan) =>
-        prisma.payoutThreshold.findFirst({ where: { plan }, orderBy: { createdAt: 'desc' } })
-      )
-    );
-    const data: Record<string, number> = { ...fallback };
-    for (let i = 0; i < plans.length; i++) {
-      const row = rows[i];
-      if (row) data[plans[i]] = row.minAmount;
-    }
+    const amounts = await Promise.all(plans.map((plan) => getPayoutThresholdBGN(plan)));
+    const data: Record<string, number> = {};
+    for (let i = 0; i < plans.length; i++) data[plans[i]] = amounts[i];
     res.json({ success: true, data });
   } catch {
-    res.json({ success: true, data: fallback });
+    res.status(500).json({ success: false, error: 'Failed to fetch payout thresholds' });
   }
 });
 

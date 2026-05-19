@@ -1,5 +1,6 @@
 import { ScanStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { getPayoutThresholdBGN } from '../utils/payoutThreshold';
 
 // Spec 3.2: Критични / Оперативни / Информационни
 // Lowercase matches the frontend type and the wire values emitted below so that
@@ -107,16 +108,21 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
   // Read thresholds from settings, fall back to safe defaults.
   // Guard against malformed values: parseFloat can yield NaN, which would
   // silently break the Prisma `gte` comparisons below.
-  const [payoutThresholdSetting, largeTxThresholdSetting] = await Promise.all([
-    prisma.systemSetting.findUnique({ where: { key: 'payout_threshold' } }),
+  const [largeTxThresholdSetting, basicThreshold, weeklyThreshold, monthlyThreshold] = await Promise.all([
     prisma.systemSetting.findUnique({ where: { key: 'large_tx_threshold' } }),
+    getPayoutThresholdBGN('BASIC'),
+    getPayoutThresholdBGN('PREMIUM_WEEKLY'),
+    getPayoutThresholdBGN('PREMIUM'),
   ]);
   const parseSetting = (raw: string | undefined, fallback: number): number => {
     if (!raw) return fallback;
     const n = parseFloat(raw);
     return Number.isFinite(n) ? n : fallback;
   };
-  const PAYOUT_THRESHOLD = parseSetting(payoutThresholdSetting?.value, 50);
+  // Use the lowest plan threshold so the alert badge includes ALL potentially
+  // eligible users regardless of plan. The badge is intentionally inclusive —
+  // the admin payout page applies per-plan thresholds for precise eligibility.
+  const PAYOUT_THRESHOLD = Math.min(basicThreshold, weeklyThreshold, monthlyThreshold);
   const LARGE_TX_THRESHOLD = parseSetting(largeTxThresholdSetting?.value, 500);
 
   // Suspicious activity probe runs against StickerScan with mixed exact-match

@@ -470,7 +470,9 @@ router.post(
   requirePermission('control.risk.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const verifiedAmount = typeof req.body?.verifiedAmount === 'number' ? req.body.verifiedAmount : undefined;
-    const notes = typeof req.body?.notes === 'string' && req.body.notes.trim() ? req.body.notes.trim() : undefined;
+    const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : '';
+    // Spec §10.4: all risk-review decisions must be recorded with a reason.
+    if (!notes) return res.status(400).json({ error: 'notes (reason for approval) is required' });
 
     const scanBefore = await prisma.stickerScan.findUnique({
       where: { id: req.params.id },
@@ -490,7 +492,7 @@ router.post(
       objectType: 'risk',
       objectId: req.params.id,
       before: scanBefore ? { status: scanBefore.status, fraudScore: scanBefore.fraudScore, fraudReasons: scanBefore.fraudReasons, billAmount: scanBefore.billAmount } : null,
-      after: { status: scan.status, verifiedAmount: verifiedAmount ?? null, notes: notes ?? null },
+      after: { status: scan.status, verifiedAmount: verifiedAmount ?? null, notes },
     }).catch(() => {});
 
     let fraudWarning: string | undefined;
@@ -1039,10 +1041,11 @@ router.post(
   '/receipt-templates',
   requirePermission('control.risk.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { venueId, merchantName, imageUrl, imageKey, perceptualHash, description, expectedKeywords } =
+    const { venueId, merchantName, merchantNameVariations, imageUrl, imageKey, perceptualHash, description, expectedKeywords } =
       req.body as {
         venueId?: string;
         merchantName?: string;
+        merchantNameVariations?: string[];
         imageUrl?: string;
         imageKey?: string;
         perceptualHash?: string;
@@ -1062,13 +1065,14 @@ router.post(
     const template = await prisma.venueReceiptTemplate.create({
       data: {
         venueId,
-        merchantName: merchantName.trim(),
-        imageUrl: imageUrl.trim(),
-        imageKey: imageKey.trim(),
-        perceptualHash: perceptualHash.trim(),
-        description: description?.trim() ?? null,
-        expectedKeywords: expectedKeywords ?? [],
-        uploadedBy: req.user!.id,
+        merchantName:           merchantName.trim(),
+        merchantNameVariations: merchantNameVariations ?? [],
+        imageUrl:               imageUrl.trim(),
+        imageKey:               imageKey.trim(),
+        perceptualHash:         perceptualHash.trim(),
+        description:            description?.trim() ?? null,
+        expectedKeywords:       expectedKeywords ?? [],
+        uploadedBy:             req.user!.id,
       },
     });
 
@@ -1085,8 +1089,9 @@ router.patch(
   '/receipt-templates/:id',
   requirePermission('control.risk.write'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { merchantName, description, expectedKeywords, isActive } = req.body as {
+    const { merchantName, merchantNameVariations, description, expectedKeywords, isActive } = req.body as {
       merchantName?: string;
+      merchantNameVariations?: string[] | null;
       description?: string | null;
       expectedKeywords?: string[] | null;
       isActive?: boolean;
@@ -1097,6 +1102,7 @@ router.patch(
 
     const data: Parameters<typeof prisma.venueReceiptTemplate.update>[0]['data'] = {};
     if (merchantName !== undefined) data.merchantName = merchantName.trim();
+    if (merchantNameVariations !== undefined) data.merchantNameVariations = merchantNameVariations ?? [];
     if (description !== undefined) data.description = description;
     if (expectedKeywords !== undefined) data.expectedKeywords = expectedKeywords ?? [];
     if (isActive !== undefined) data.isActive = isActive;

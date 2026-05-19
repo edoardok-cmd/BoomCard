@@ -432,14 +432,16 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
             },
           },
           // CASHBACK_CREDIT walletTransaction is the source of truth for the
-          // §4.4 lifecycle (Pending/Cleared/Locked/Paid/Expired). Receipt.status
-          // only describes OCR/admin approval — not payout state — so deriving
-          // from WalletTransaction avoids the "approved-but-already-paid-out"
-          // conflation.
+          // §4.4 lifecycle (Pending/Cleared/Locked/Paid/Expired/Voided).
+          // cashbackStatus is the authoritative new-world lifecycle column —
+          // it must be fetched so deriveCashbackEntryStatus uses it instead of
+          // falling through to the legacy raw-status derivation for every row.
           walletTransaction: {
             select: {
               status: true,
+              cashbackStatus: true,
               cashbackExpiresAt: true,
+              cashbackPaidAt: true,
               createdAt: true,
               walletId: true,
             },
@@ -520,7 +522,9 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
         ? deriveCashbackEntryStatus(
             {
               status: tx.walletTransaction.status,
+              cashbackStatus: tx.walletTransaction.cashbackStatus,
               cashbackExpiresAt: tx.walletTransaction.cashbackExpiresAt,
+              cashbackPaidAt: tx.walletTransaction.cashbackPaidAt,
               createdAt: tx.walletTransaction.createdAt,
             },
             latestWithdrawalAt,
@@ -558,7 +562,10 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
         cashbackStatus,
         // receiptApplicable distinguishes "no receipt uploaded yet" (true + null date)
         // from "receipt not part of this transaction type" (false + null date).
-        receiptApplicable: tx.stickerScan != null || tx.receipt != null,
+        // Also check tx.type directly: a PURCHASE transaction that exists before its
+        // StickerScan record is linked (narrow creation window) would otherwise
+        // report false — misleading the UI into hiding the "upload receipt" prompt.
+        receiptApplicable: tx.type === 'PURCHASE' || tx.stickerScan != null || tx.receipt != null,
         receiptUploadedAt: tx.receipt?.createdAt ?? null,
         sessionStartedAt: tx.stickerScan?.sessionStartedAt ?? null,
         userRiskScore: tx.user.riskScore,
@@ -634,24 +641,30 @@ router.get('/business/stats', requirePermission('transactions.read'), async (req
       // omits the walletTransaction-evidence branch and undercounts a row
       // whose receipt was reverted from APPROVED but already credited.
       //
-      // Composition: build the inner filter as an explicit AND of (base where,
-      // cashbackAmount=null, trustworthy-OR). Spreading `where` at the same
-      // level as a new top-level `OR` would silently lose any future top-level
-      // OR clause buildBusinessWhere might emit. Wrapping each constraint as a
-      // separate AND[] entry composes regardless of the shape of `where`.
+      // The APPROVED check is placed at the receipt level directly (not via
+      // receipt→transaction→receipt) to avoid a circular self-join for a 1:1
+      // relation. The walletTransaction check stays at the transaction level.
       prisma.receipt.aggregate({
         where: {
-          transaction: {
-            AND: [
-              where as BusinessTxWhere,
-              { cashbackAmount: null },
-              { OR: [
-                  { receipt: { status: 'APPROVED' } },
-                  { walletTransaction: { isNot: null } },
+          AND: [
+            // Transaction-level base filters (active filter window + no persisted cashback)
+            { transaction: {
+                AND: [
+                  where as BusinessTxWhere,
+                  { cashbackAmount: null },
                 ],
               },
-            ],
-          },
+            },
+            // Trustworthiness: receipt is APPROVED (checked directly on the
+            // Receipt row — no circular join) OR the transaction already has a
+            // CASHBACK_CREDIT walletTransaction confirming the credit happened.
+            {
+              OR: [
+                { status: 'APPROVED' },
+                { transaction: { walletTransaction: { isNot: null } } },
+              ],
+            },
+          ],
         },
         _sum: { cashbackAmount: true },
       }),

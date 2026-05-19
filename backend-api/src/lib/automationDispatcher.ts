@@ -16,6 +16,13 @@ interface AutomationContext {
   recipientEmail?: string;
   /** Pre-resolved display name — skips the DB lookup when already known. */
   recipientName?: string;
+  /**
+   * When true, suppress the EMAIL channel dispatch for this fire.
+   * Use when the call-site already sends a richer transactional email
+   * (e.g. adminHelp reply sends the actual reply body directly).
+   * The in-app Notification is still created so the user sees the bell icon.
+   */
+  skipEmail?: boolean;
 }
 
 /**
@@ -121,6 +128,16 @@ export async function fireAutomation(trigger: string, context: AutomationContext
     }
   }
 
+  // When skipEmail is set but we have no userId, the in-app notification
+  // can't fire either (Notification.userId is required). Warn so the caller
+  // knows both channels are dead — otherwise the function silently no-ops.
+  if (context.skipEmail && !resolvedUserId) {
+    logger.warn(
+      `[automation] fireAutomation("${trigger}") called with skipEmail=true but no userId resolved ` +
+      `— in-app notifications require a userId and will be skipped. Pass userId or partnerId.`,
+    );
+  }
+
   // ── Fire each automation ───────────────────────────────────────────────────
   for (const automation of automations) {
     try {
@@ -133,7 +150,9 @@ export async function fireAutomation(trigger: string, context: AutomationContext
       let dispatched = false;
 
       if (template.type === 'EMAIL') {
-        if (email && emailConsentGranted) {
+        if (context.skipEmail) {
+          logger.info(`[automation] "${automation.name}" email skipped — caller set skipEmail=true`);
+        } else if (email && emailConsentGranted) {
           const useEn = preferredLanguage === 'en';
           const subject = (useEn && template.subjectEn) ? template.subjectEn : (template.subject ?? template.name);
           let html = (useEn && template.bodyEn) ? template.bodyEn : (template.body?.trim() || `<p>${template.name}</p>`);

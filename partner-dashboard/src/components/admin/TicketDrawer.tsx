@@ -53,7 +53,7 @@ const copy = {
     ticketClosed: 'This ticket is closed — replies are disabled.',
     opened: 'Opened',
     statuses: {
-      NEW: 'New', OPEN: 'Open', IN_REVIEW: 'In Review', WAITING: 'Waiting', RESOLVED: 'Resolved', CLOSED: 'Closed', REJECTED: 'Rejected',
+      NEW: 'Open', OPEN: 'Open', IN_REVIEW: 'In Review', WAITING: 'Waiting for reply', RESOLVED: 'Resolved', CLOSED: 'Closed', REJECTED: 'Rejected',
     } as Record<TicketStatus, string>,
     priorities: {
       LOW: 'Low', MEDIUM: 'Medium', HIGH: 'High', URGENT: 'Urgent',
@@ -90,7 +90,7 @@ const copy = {
     ticketClosed: 'Заявката е затворена — отговорите са забранени.',
     opened: 'Подадена',
     statuses: {
-      NEW: 'Нова', OPEN: 'Отворена', IN_REVIEW: 'В преглед', WAITING: 'Изчакване', RESOLVED: 'Решена', CLOSED: 'Затворена', REJECTED: 'Отказана',
+      NEW: 'Отворена', OPEN: 'Отворена', IN_REVIEW: 'В преглед', WAITING: 'Чака отговор', RESOLVED: 'Решена', CLOSED: 'Затворена', REJECTED: 'Отказана',
     } as Record<TicketStatus, string>,
     priorities: {
       LOW: 'Нисък', MEDIUM: 'Среден', HIGH: 'Висок', URGENT: 'Спешен',
@@ -336,6 +336,14 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
                     <MetaValue style={{ fontSize: '0.8125rem', fontWeight: 500 }}>{(ticket as any).externalEmail}</MetaValue>
                   </MetaItem>
                 )}
+                {ticket.bounceCount > 0 && (
+                  <MetaItem>
+                    <MetaLabel>{language === 'bg' ? 'Bounce-и (30 дни)' : 'Bounces (30d)'}</MetaLabel>
+                    <MetaValue style={{ fontSize: '0.8125rem', color: ticket.bounceCount >= 3 ? palette.danger : palette.warning }}>
+                      {ticket.bounceCount}
+                    </MetaValue>
+                  </MetaItem>
+                )}
               </MetaGrid>
 
               {/* Controls */}
@@ -345,9 +353,15 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
                   <ControlSelect
                     value={ticket.status}
                     onChange={(e) => statusMutation.mutate(e.target.value as TicketStatus)}
-                    disabled={statusMutation.isPending || (isClosed && !isSuperAdmin)}
+                    disabled={statusMutation.isPending || isClosed}
                   >
-                    {((['NEW', 'OPEN', 'IN_REVIEW', 'WAITING', 'RESOLVED', 'CLOSED', 'REJECTED'] as TicketStatus[])
+                    {((['OPEN', 'IN_REVIEW', 'WAITING', 'RESOLVED', 'CLOSED'] as TicketStatus[])
+                      // Always include the current status in the list so the select has a valid value,
+                      // even for tickets that still carry the legacy NEW or REJECTED status.
+                      // REJECTED is excluded from normal options — use the Reject button which
+                      // enforces the required reason. Current status is always included as a fallback.
+                      .concat(['NEW', 'REJECTED'].includes(ticket.status) ? [ticket.status as TicketStatus] : [])
+                      .filter((s, i, arr) => arr.indexOf(s) === i) // dedupe
                       .filter((s) => !isCreatorOnly || s === ticket.status || s === 'RESOLVED')
                     ).map((s) => (
                       <option key={s} value={s}>{t.statuses[s]}</option>
@@ -362,7 +376,7 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
                   <ControlSelect
                     value={ticket.priority}
                     onChange={(e) => priorityMutation.mutate(e.target.value as TicketPriority)}
-                    disabled={priorityMutation.isPending || isCreatorOnly || (isClosed && !isSuperAdmin)}
+                    disabled={priorityMutation.isPending || isCreatorOnly || isClosed}
                     title={isCreatorOnly ? (language === 'bg' ? 'Само отговорникът може да променя приоритета' : 'Only the assignee can change the priority') : undefined}
                   >
                     {(['URGENT', 'HIGH', 'MEDIUM', 'LOW'] as TicketPriority[]).map((p) => (
@@ -441,13 +455,6 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
               {ticket?.status === 'REJECTED'
                 ? (language === 'bg' ? 'Заявката е отказана — отговорите са забранени.' : 'This ticket is rejected — replies are disabled.')
                 : t.ticketClosed}
-              {isSuperAdmin && (
-                <ReopenHint>
-                  {language === 'bg'
-                    ? ' Сменете статуса по-горе, за да отговорите отново.'
-                    : ' Change the status above to re-enable replies.'}
-                </ReopenHint>
-              )}
             </ClosedNote>
           ) : (
             <>
@@ -663,10 +670,6 @@ const ClosedNote = styled.p`
   text-align: center; font-size: 0.8125rem; color: ${palette.textMuted};
   margin: 0; padding: 0.5rem;
   background: ${palette.border}; border-radius: 0.5rem;
-`;
-
-const ReopenHint = styled.span`
-  font-style: italic;
 `;
 
 const RejectBtn = styled.button`

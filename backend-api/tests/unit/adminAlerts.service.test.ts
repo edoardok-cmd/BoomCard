@@ -14,6 +14,7 @@
 jest.mock('../../src/lib/prisma', () => ({
   prisma: {
     systemSetting: { findUnique: jest.fn() },
+    payoutThreshold: { findFirst: jest.fn() },
     partner: { count: jest.fn() },
     stickerScan: { count: jest.fn() },
     partnerCashbackPayment: { count: jest.fn() },
@@ -36,10 +37,12 @@ import {
   SUSPICIOUS_PREFIX_CODES,
   SUSPICIOUS_ACTIVITY_WINDOW_HOURS,
 } from '../../src/services/adminAlerts.service';
+import { invalidatePayoutThresholdCache } from '../../src/utils/payoutThreshold';
 
 type AnyMock = jest.Mock;
 const m = prisma as unknown as {
   systemSetting: { findUnique: AnyMock };
+  payoutThreshold: { findFirst: AnyMock };
   partner: { count: AnyMock };
   stickerScan: { count: AnyMock };
   partnerCashbackPayment: { count: AnyMock };
@@ -60,6 +63,7 @@ const FAILED_TX_WINDOW_HOURS = 24;
 
 function resetAllToZero() {
   m.systemSetting.findUnique.mockResolvedValue(null);
+  m.payoutThreshold.findFirst.mockResolvedValue(null); // → utility falls back to compile-time constants
   m.partner.count.mockResolvedValue(0);
   m.stickerScan.count.mockResolvedValue(0);
   m.partnerCashbackPayment.count.mockResolvedValue(0);
@@ -94,6 +98,7 @@ describe('adminAlerts.service constants', () => {
 describe('adminAlerts.service.getAlerts query shape', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    invalidatePayoutThresholdCache(); // ensure each test starts with a fresh threshold lookup
     resetAllToZero();
   });
 
@@ -257,10 +262,12 @@ describe('adminAlerts.service.getAlerts emitted links (B1, B2, B3, B5 fixes)', (
     expect(ageMs).toBeLessThan((FAILED_TX_WINDOW_HOURS + 0.1) * 60 * 60 * 1000);
   });
 
-  it('payout_threshold carries threshold in meta (MEDIUM#5 fix)', async () => {
+  it('payout_threshold carries min-plan threshold in meta (MEDIUM#5 fix)', async () => {
+    // No DB rows → utility falls back to compile-time constants.
+    // Min across plans: PREMIUM_WEEKLY 19.56 < PREMIUM 29.34 < BASIC 39.12.
     const result = await getAlerts();
     const pt = result.operational.find((a) => a.id === 'payout_threshold');
-    expect(pt?.meta).toEqual({ threshold: 50 });
+    expect(pt?.meta).toEqual({ threshold: 19.56 });
     // Title is now static — the threshold is rendered by the frontend from meta.
     expect(pt?.title).toBe('Абонати достигнали праг за изплащане');
   });
@@ -286,9 +293,12 @@ describe('adminAlerts.service.getAlerts emitted links (B1, B2, B3, B5 fixes)', (
     expect(inOperational?.tier).toBe('operational');
   });
 
-  it('parseSetting falls back to defaults when systemSetting.value is non-numeric', async () => {
+  it('parseSetting falls back to defaults when large_tx_threshold systemSetting is non-numeric', async () => {
     // Simulate a corrupted/manually-edited row: parseFloat returns NaN → must fall back
-    // (otherwise the gte: NaN comparison would silently return zero rows).
+    // (otherwise the gte/lte comparisons would silently return zero rows).
+    //
+    // Note: payout_threshold is no longer read from SystemSetting — it comes from the
+    // PayoutThreshold DB table via getPayoutThresholdBGN (min across plan thresholds).
     //
     // jest.clearAllMocks() (called in beforeEach) clears call history but NOT
     // implementations, so a mockImplementation set here would leak into the next
@@ -296,15 +306,15 @@ describe('adminAlerts.service.getAlerts emitted links (B1, B2, B3, B5 fixes)', (
     // defensively so test isolation doesn't depend on that contract.
     try {
       m.systemSetting.findUnique.mockImplementation(({ where }: { where: { key: string } }) => {
-        if (where.key === 'payout_threshold') return Promise.resolve({ value: 'not-a-number' });
         if (where.key === 'large_tx_threshold') return Promise.resolve({ value: '' });
         return Promise.resolve(null);
       });
       const result = await getAlerts();
       const pt = result.operational.find((a) => a.id === 'payout_threshold');
       const lpp = result.operational.find((a) => a.id === 'large_pending_payouts');
-      // Defaults: 50 and 500.
-      expect(pt?.meta).toEqual({ threshold: 50 });
+      // payout_threshold uses min plan threshold (PREMIUM_WEEKLY fallback = 19.56 BGN).
+      expect(pt?.meta).toEqual({ threshold: 19.56 });
+      // large_tx_threshold falls back to 500 when value is empty string.
       expect(lpp?.meta).toEqual({ threshold: 500 });
       expect(lpp?.link).toBe('/admin/subscribers/transactions?view=wallet&status=PENDING&minAmount=500');
     } finally {

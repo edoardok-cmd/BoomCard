@@ -47,7 +47,7 @@ const NewTicketBtn = styled(Link)`
 `;
 
 const STATUS_BG_LABELS: Record<TicketStatus, string> = {
-  NEW: 'Нова', OPEN: 'Отворена', IN_REVIEW: 'В преглед', WAITING: 'Изчакване',
+  NEW: 'Отворена', OPEN: 'Отворена', IN_REVIEW: 'В преглед', WAITING: 'Чака отговор',
   RESOLVED: 'Решена', CLOSED: 'Затворена', REJECTED: 'Отказана',
 };
 
@@ -131,6 +131,7 @@ export default function AdminHelpAllPage() {
   const [statusFilter, setStatusFilter] = useState<TicketStatus | ''>('');
   const [priorityFilter, setPriorityFilter] = useState<TicketPriority | ''>('');
   const [categoryFilter, setCategoryFilter] = useState<TicketCategory | ''>('');
+  const [requestTypeFilter, setRequestTypeFilter] = useState('');
   const [page, setPage] = useState(1);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstSearch = useRef(true);
@@ -161,7 +162,7 @@ export default function AdminHelpAllPage() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-help-all', page, search, statusFilter, priorityFilter, categoryFilter],
+    queryKey: ['admin-help-all', page, search, statusFilter, priorityFilter, categoryFilter, requestTypeFilter],
     queryFn: () => adminHelpService.listAll({
       page,
       limit: PAGE_SIZE,
@@ -169,6 +170,7 @@ export default function AdminHelpAllPage() {
       status: statusFilter || undefined,
       priority: priorityFilter || undefined,
       category: categoryFilter || undefined,
+      requestType: requestTypeFilter || undefined,
     }),
     enabled: isSuperAdmin,
   });
@@ -267,10 +269,9 @@ export default function AdminHelpAllPage() {
           />
           <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value as TicketStatus | ''); setPage(1); }}>
             <option value="">Всички статуси</option>
-            <option value="NEW">Нова</option>
             <option value="OPEN">Отворена</option>
             <option value="IN_REVIEW">В преглед</option>
-            <option value="WAITING">Изчакване</option>
+            <option value="WAITING">Чака отговор</option>
             <option value="RESOLVED">Решена</option>
             <option value="CLOSED">Затворена</option>
             <option value="REJECTED">Отказана</option>
@@ -289,6 +290,15 @@ export default function AdminHelpAllPage() {
             <option value="PAYMENT">Плащане</option>
             <option value="TECHNICAL">Техническо</option>
             <option value="OTHER">Друго</option>
+          </Select>
+          <Select value={requestTypeFilter} onChange={(e) => { setRequestTypeFilter(e.target.value); setPage(1); }}>
+            <option value="">Всички типове</option>
+            <option value="SUPPORT">Поддръжка</option>
+            <option value="DATA_CHANGE">Промяна на данни</option>
+            <option value="LOCATION_CHANGE">Промяна на локация</option>
+            <option value="CONTRACT_CHANGE">Промяна на договор</option>
+            <option value="DISPUTE">Спор</option>
+            <option value="OTHER">Други</option>
           </Select>
         </FilterRow>
 

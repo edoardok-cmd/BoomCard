@@ -29,6 +29,7 @@ export interface TemplateComparisonResult {
 export interface CreateTemplateParams {
   venueId: string;
   merchantName: string;
+  merchantNameVariations?: string[];
   description?: string;
   expectedKeywords?: string[];
   imageUrl: string;
@@ -39,6 +40,7 @@ export interface CreateTemplateParams {
 
 export interface UpdateTemplateParams {
   merchantName?: string;
+  merchantNameVariations?: string[];
   description?: string;
   expectedKeywords?: string[];
   isActive?: boolean;
@@ -178,10 +180,23 @@ class ReceiptTemplateService {
       // 1. Visual similarity via dHash
       const visualScore = this.visualSimilarity(perceptualHash, template.perceptualHash);
 
-      // 2. Merchant name similarity (neutral 0.5 when not provided)
-      const merchantScore = merchantName
-        ? this.merchantSimilarity(merchantName, template.merchantName)
+      // 2. Merchant name similarity — check canonical name and all variations,
+      //    take the highest score so alternate spellings are treated as matches.
+      //    If the best score falls below templateMerchantThreshold the merchant
+      //    dimension contributes 0, preventing a visually-identical receipt from
+      //    a different merchant from passing the template check.
+      const rawMerchantScore = merchantName
+        ? Math.max(
+            this.merchantSimilarity(merchantName, template.merchantName),
+            ...(template.merchantNameVariations ?? []).map(v =>
+              this.merchantSimilarity(merchantName, v)
+            )
+          )
         : 0.5;
+      const merchantScore =
+        merchantName && rawMerchantScore < config.templateMerchantThreshold
+          ? 0
+          : rawMerchantScore;
 
       // 3. Keyword presence (full score when no keywords or no OCR text)
       const keywords: string[] = Array.isArray(template.expectedKeywords)
@@ -218,14 +233,15 @@ class ReceiptTemplateService {
   async createTemplate(params: CreateTemplateParams) {
     return prisma.venueReceiptTemplate.create({
       data: {
-        venueId:          params.venueId,
-        merchantName:     params.merchantName,
-        description:      params.description,
-        expectedKeywords: params.expectedKeywords ?? [],
-        imageUrl:         params.imageUrl,
-        imageKey:         params.imageKey,
-        perceptualHash:   params.perceptualHash,
-        uploadedBy:       params.uploadedBy,
+        venueId:                 params.venueId,
+        merchantName:            params.merchantName,
+        merchantNameVariations:  params.merchantNameVariations ?? [],
+        description:             params.description,
+        expectedKeywords:        params.expectedKeywords ?? [],
+        imageUrl:                params.imageUrl,
+        imageKey:                params.imageKey,
+        perceptualHash:          params.perceptualHash,
+        uploadedBy:              params.uploadedBy,
       },
     });
   }
@@ -245,12 +261,11 @@ class ReceiptTemplateService {
     return prisma.venueReceiptTemplate.update({
       where: { id },
       data: {
-        ...(params.merchantName !== undefined && { merchantName: params.merchantName }),
-        ...(params.description  !== undefined && { description:  params.description }),
-        ...(params.isActive     !== undefined && { isActive:     params.isActive }),
-        ...(params.expectedKeywords !== undefined && {
-          expectedKeywords: params.expectedKeywords,
-        }),
+        ...(params.merchantName           !== undefined && { merchantName:           params.merchantName }),
+        ...(params.merchantNameVariations !== undefined && { merchantNameVariations: params.merchantNameVariations }),
+        ...(params.description            !== undefined && { description:            params.description }),
+        ...(params.isActive               !== undefined && { isActive:               params.isActive }),
+        ...(params.expectedKeywords       !== undefined && { expectedKeywords:       params.expectedKeywords }),
       },
     });
   }

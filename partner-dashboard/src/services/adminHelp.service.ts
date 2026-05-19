@@ -30,6 +30,9 @@ export interface HelpTicketFull extends HelpTicket {
   externalEmail: string | null;
   linkedTicketId: string | null;
   reopenedAt: string | null;
+  resolvedAt: string | null;
+  /** Number of bounce notifications logged for the ticket's externalEmail (0 for web-form tickets). */
+  bounceCount: number;
 }
 
 export interface TicketListResult<T> {
@@ -69,12 +72,14 @@ export const adminHelpService = {
     status?: TicketStatus | '';
     priority?: TicketPriority | '';
     category?: TicketCategory | '';
+    requestType?: string;
   }): Promise<TicketListResult<HelpTicket>> {
     const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
     if (params.search) clean.search = params.search;
     if (params.status) clean.status = params.status;
     if (params.priority) clean.priority = params.priority;
     if (params.category) clean.category = params.category;
+    if (params.requestType) clean.requestType = params.requestType;
     return apiService.get('/admin/help', clean);
   },
 
@@ -85,12 +90,14 @@ export const adminHelpService = {
     status?: TicketStatus | '';
     priority?: TicketPriority | '';
     category?: TicketCategory | '';
+    requestType?: string;
   }): Promise<TicketListResult<HelpTicket>> {
     const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
     if (params.search) clean.search = params.search;
     if (params.status) clean.status = params.status;
     if (params.priority) clean.priority = params.priority;
     if (params.category) clean.category = params.category;
+    if (params.requestType) clean.requestType = params.requestType;
     return apiService.get('/admin/help/mine', clean);
   },
 

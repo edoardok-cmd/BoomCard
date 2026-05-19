@@ -16,7 +16,7 @@ primary_region = 'fra'
   FRONTEND_URL = 'https://boomcard.bg'
 
 [processes]
-  app = "sh -c 'node_modules/.bin/prisma migrate resolve --rolled-back 20260321_simplify_partner_tiers 2>&1 || true && node_modules/.bin/prisma migrate deploy && node dist/server.js'"
+  app = "sh -c 'node_modules/.bin/prisma migrate resolve --rolled-back 20260321_simplify_partner_tiers 2>&1 || true && node_modules/.bin/prisma migrate resolve --rolled-back 20260518_audit_pass_v11_followups 2>&1 || true && node_modules/.bin/prisma migrate deploy && node dist/server.js'"
   worker = "node dist/worker.js"
 
 [http_service]

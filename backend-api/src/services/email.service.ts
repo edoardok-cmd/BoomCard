@@ -344,11 +344,16 @@ export class EmailService {
       const fromEmail = await getSystemSettingStr('from_email', this.fromEmail);
       const fromName = await getSystemSettingStr('sender_name', this.fromName);
       // Spec §9.5 — per-audience reply-to:
-      //   partner emails → partner_reply_to_email (office@boomcard.bg)
-      //   subscriber/generic emails → reply_to_email (support@boomcard.bg)
+      //   partner emails → partner_reply_to_email; if absent, fall back to office_email
+      //   subscriber/generic emails → reply_to_email; if absent, header is omitted
       // An explicit options.replyTo always takes precedence over the DB setting.
-      const replyToKey = options.audience === 'partner' ? 'partner_reply_to_email' : 'reply_to_email';
-      const dbReplyTo = await getSystemSettingStr(replyToKey, '');
+      let dbReplyTo: string;
+      if (options.audience === 'partner') {
+        const partnerReplyTo = await getSystemSettingStr('partner_reply_to_email', '');
+        dbReplyTo = partnerReplyTo || await getSystemSettingStr('office_email', 'office@boomcard.bg');
+      } else {
+        dbReplyTo = await getSystemSettingStr('reply_to_email', '');
+      }
       const { data, error } = await this.resend.emails.send({
         from: `${fromName} <${fromEmail}>`,
         to: Array.isArray(options.to) ? options.to : [options.to],

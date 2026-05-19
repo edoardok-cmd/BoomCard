@@ -1,0 +1,4 @@
+-- Manual migration applied directly via SQL before prisma db push.
+-- This file is intentionally empty so prisma migrate deploy does not
+-- re-run the DDL from 001_audit_fixes.sql (which was applied once manually
+-- and is not idempotent).

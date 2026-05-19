@@ -1,1 +1,4 @@
 .vercel
+*.tsbuildinfo
+vitest.config.js
+vitest.config.d.ts

@@ -15,6 +15,22 @@ import prisma from '../lib/prisma';
 import { validateAmount, validateGPSCoordinates, ValidationError } from '../utils/validation';
 import { checkLivePhoto } from '../utils/exifLivePhoto';
 
+// Spec §5.4 — QR/location management is admin-only. For GET endpoints that
+// remain accessible to partners (venue stickers, scans, analytics, config),
+// this helper enforces ownership so a partner cannot read another partner's data.
+async function assertPartnerOwnsVenue(req: AuthRequest, venueId: string, res: Response): Promise<boolean> {
+  if (req.user!.role !== 'PARTNER') return true;
+  const venue = await prisma.venue.findUnique({
+    where: { id: venueId },
+    select: { partner: { select: { userId: true } } },
+  });
+  if (!venue || venue.partner?.userId !== req.user!.id) {
+    res.status(403).json({ success: false, error: 'You do not have access to this venue' });
+    return false;
+  }
+  return true;
+}
+
 const router = Router();
 
 // ============================================
@@ -347,9 +363,9 @@ router.get('/validate/:stickerId', async (req: Request, res: Response) => {
 /**
  * POST /api/stickers/locations
  * Create a new sticker location for a venue
- * Requires authentication (Partner role)
+ * Spec §5.4 — admin-only management; partners have read-only visibility.
  */
-router.post('/locations', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: Request, res: Response) => {
+router.post('/locations', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
     const { venueId, name, nameBg, locationType, locationNumber, capacity, floor, section } = req.body;
 
@@ -387,9 +403,9 @@ router.post('/locations', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADM
 /**
  * POST /api/stickers/locations/bulk
  * Create multiple sticker locations at once
- * Requires authentication (Partner role)
+ * Spec §5.4 — admin-only management; partners have read-only visibility.
  */
-router.post('/locations/bulk', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: Request, res: Response) => {
+router.post('/locations/bulk', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
     const { locations } = req.body;
 
@@ -417,35 +433,13 @@ router.post('/locations/bulk', authenticate, authorize('PARTNER', 'ADMIN', 'SUPE
 });
 
 /**
- * POST /api/stickers/generate/:locationId
- * Generate a sticker with QR code for a location
- * Requires authentication (Partner role)
- */
-router.post('/generate/:locationId', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: Request, res: Response) => {
-  try {
-    const { locationId } = req.params;
-
-    const sticker = await stickerService.generateSticker(locationId);
-
-    res.status(201).json({
-      success: true,
-      data: sticker,
-      message: 'Sticker generated successfully. Ready to print.',
-    });
-  } catch (error: any) {
-    res.status(400).json({
-      success: false,
-      error: error.message || 'Failed to generate sticker',
-    });
-  }
-});
-
-/**
  * POST /api/stickers/generate/bulk
  * Generate multiple stickers at once
- * Requires authentication (Partner role)
+ * Spec §5.4 — admin-only management; partners have read-only visibility.
+ * NOTE: must be registered BEFORE /generate/:locationId so Express does not
+ * greedily match the literal "bulk" as a locationId parameter value.
  */
-router.post('/generate/bulk', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: Request, res: Response) => {
+router.post('/generate/bulk', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
     const { locationIds } = req.body;
 
@@ -473,11 +467,35 @@ router.post('/generate/bulk', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER
 });
 
 /**
+ * POST /api/stickers/generate/:locationId
+ * Generate a sticker with QR code for a location
+ * Spec §5.4 — admin-only management; partners have read-only visibility.
+ */
+router.post('/generate/:locationId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+  try {
+    const { locationId } = req.params;
+
+    const sticker = await stickerService.generateSticker(locationId);
+
+    res.status(201).json({
+      success: true,
+      data: sticker,
+      message: 'Sticker generated successfully. Ready to print.',
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      error: error.message || 'Failed to generate sticker',
+    });
+  }
+});
+
+/**
  * POST /api/stickers/activate/:stickerId
  * Mark sticker as printed and active
- * Requires authentication (Partner role)
+ * Spec §5.4 — admin-only management; partners have read-only visibility.
  */
-router.post('/activate/:stickerId', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: Request, res: Response) => {
+router.post('/activate/:stickerId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
     const { stickerId } = req.params;
 
@@ -498,12 +516,12 @@ router.post('/activate/:stickerId', authenticate, authorize('PARTNER', 'ADMIN', 
 
 /**
  * GET /api/stickers/venue/:venueId
- * Get all stickers for a venue
- * Requires authentication (Partner role)
+ * Get all stickers for a venue — read-only; partners limited to own venues.
  */
-router.get('/venue/:venueId', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: Request, res: Response) => {
+router.get('/venue/:venueId', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
     const { venueId } = req.params;
+    if (!await assertPartnerOwnsVenue(req, venueId, res)) return;
 
     const stickers = await stickerService.getStickersByVenue(venueId);
 
@@ -523,12 +541,12 @@ router.get('/venue/:venueId', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER
 
 /**
  * GET /api/stickers/venue/:venueId/scans
- * Get all scans for a venue
- * Requires authentication (Partner role)
+ * Get all scans for a venue — read-only; partners limited to own venues.
  */
-router.get('/venue/:venueId/scans', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: Request, res: Response) => {
+router.get('/venue/:venueId/scans', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
     const { venueId } = req.params;
+    if (!await assertPartnerOwnsVenue(req, venueId, res)) return;
     const limit = parseInt(req.query.limit as string) || 100;
 
     const scans = await stickerService.getScansByVenue(venueId, limit);
@@ -549,12 +567,12 @@ router.get('/venue/:venueId/scans', authenticate, authorize('PARTNER', 'ADMIN', 
 
 /**
  * GET /api/stickers/venue/:venueId/analytics
- * Get analytics for venue sticker scans
- * Requires authentication (Partner role)
+ * Get analytics for venue sticker scans — read-only; partners limited to own venues.
  */
-router.get('/venue/:venueId/analytics', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: Request, res: Response) => {
+router.get('/venue/:venueId/analytics', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
     const { venueId } = req.params;
+    if (!await assertPartnerOwnsVenue(req, venueId, res)) return;
     const days = parseInt(req.query.days as string) || 30;
 
     const analytics = await stickerService.getVenueAnalytics(venueId, days);
@@ -574,12 +592,12 @@ router.get('/venue/:venueId/analytics', authenticate, authorize('PARTNER', 'ADMI
 
 /**
  * GET /api/stickers/venue/:venueId/config
- * Get venue sticker configuration
- * Requires authentication (Partner role)
+ * Get venue sticker configuration — read-only; partners limited to own venues.
  */
-router.get('/venue/:venueId/config', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: Request, res: Response) => {
+router.get('/venue/:venueId/config', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
     const { venueId } = req.params;
+    if (!await assertPartnerOwnsVenue(req, venueId, res)) return;
 
     const config = await stickerService.getOrCreateVenueConfig(venueId);
 
@@ -599,26 +617,12 @@ router.get('/venue/:venueId/config', authenticate, authorize('PARTNER', 'ADMIN',
 /**
  * PUT /api/stickers/venue/:venueId/config
  * Update venue sticker configuration
- * Requires authentication (Partner role)
+ * Spec §5.4 — admin-only management; partners have read-only visibility.
  */
-router.put('/venue/:venueId/config', authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'), requireActivePartnerForWrites, async (req: AuthRequest, res: Response) => {
+router.put('/venue/:venueId/config', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
     const { venueId } = req.params;
     const config = req.body;
-
-    // PARTNER role: verify they own this venue
-    if (req.user!.role === 'PARTNER') {
-      const venue = await prisma.venue.findUnique({
-        where: { id: venueId },
-        include: { partner: { select: { userId: true } } },
-      });
-      if (!venue || venue.partner?.userId !== req.user!.id) {
-        return res.status(403).json({
-          success: false,
-          error: 'You do not have permission to update this venue configuration',
-        });
-      }
-    }
 
     const updated = await stickerService.updateVenueConfig(venueId, config);
 

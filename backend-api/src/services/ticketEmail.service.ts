@@ -72,6 +72,10 @@ export function buildTicketHeaders(args: {
   references?: string[];  // full chain of prior Message-IDs, oldest first
 }): TicketEmailHeaders {
   const messageId = newMessageId(args.ticketId);
+  // Threading headers only — Reply-To is resolved audience-aware by email.service.ts
+  // (partner → partner_reply_to_email / subscriber → reply_to_email) so callers
+  // must pass `audience` to emailService.sendEmail() rather than relying on this
+  // function to hard-code an inbound address.
   const headers: Record<string, string> = {
     'X-BoomCard-Ticket-ID': args.ticketId,
     'Message-ID': messageId,

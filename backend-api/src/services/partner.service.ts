@@ -22,14 +22,15 @@
  *      timeouts inside the status transition, so a single failed UPDATE
  *      blocks the suspend.
  *   3. The scan gate already covers the user-visible behaviour (scans fail
- *      while suspended). Reporting that filters on Sticker.status='ACTIVE'
- *      may need to join Partner.status — see Open Questions in the audit
- *      report; a v_active_stickers view is the cleanest follow-up if needed.
+ *      while suspended). No current code filters on Sticker.status='ACTIVE'
+ *      alone — all scan-path queries go through sticker.service which calls
+ *      isPartnerOperationallyActive(). If a future reporting query needs
+ *      "operationally active stickers", add a partner join; do NOT filter
+ *      on Sticker.status='ACTIVE' alone.
  *
  * Any future "operationally active stickers" query MUST also gate on the
  * owning partner — use isPartnerOperationallyActive(partner) exported from
- * this module. No current reporting code filters on Sticker.status='ACTIVE'
- * alone, so no regression today, but the helper is now the authoritative check.
+ * this module.
  *
  * NB: This service deliberately does NOT call writeAudit() — the AuditLog row
  * with the action label "partner.status.update" is written by the caller so

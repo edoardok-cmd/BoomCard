@@ -386,6 +386,8 @@ router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
             canceledAt: true,
             createdAt: true,
             metadata: true,
+            failedPaymentAt: true,
+            failedPaymentClearedAt: true,
           },
         },
       },

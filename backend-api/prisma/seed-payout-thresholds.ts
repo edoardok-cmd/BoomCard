@@ -30,7 +30,7 @@ const prisma = new PrismaClient({ adapter } as any);
 // Source of truth: receipt.constants.ts — PAYOUT_THRESHOLD_*_EUR × EUR_TO_BGN_RATE (1.95583)
 const INITIAL_THRESHOLDS = [
   { plan: 'BASIC'   as const, minAmount: 39.12 }, // 20 EUR × 1.95583
-  { plan: 'LIGHT'   as const, minAmount: 19.56 }, // 10 EUR × 1.95583
+  { plan: 'PREMIUM_WEEKLY' as const, minAmount: 19.56 }, // 10 EUR × 1.95583
   { plan: 'PREMIUM' as const, minAmount: 29.34 }, // 15 EUR × 1.95583
 ];
 

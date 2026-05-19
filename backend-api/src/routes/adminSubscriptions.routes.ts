@@ -139,6 +139,8 @@ async function enrichSubscriptions(
     stripeSubscriptionId: string | null;
     payseraOrderId: string | null;
     createdAt: Date;
+    failedPaymentAt: Date | null;
+    failedPaymentClearedAt: Date | null;
     user: { id: string; firstName: string | null; lastName: string | null; email: string; phone: string | null };
   }>,
 ) {
@@ -187,6 +189,8 @@ async function enrichSubscriptions(
       stripeSubscriptionId: s.stripeSubscriptionId,
       payseraOrderId: s.payseraOrderId,
       createdAt: s.createdAt,
+      failedPaymentAt: s.failedPaymentAt,
+      failedPaymentClearedAt: s.failedPaymentClearedAt,
       user: { ...s.user, isTest: isTestEmail(s.user.email) },
       planDisplayName: planDisplayName(s.plan),
       userSubscriptionCount: countByUser.get(s.user.id) ?? 1,
@@ -211,6 +215,11 @@ const SUBSCRIPTION_LIST_SELECT = {
   stripeSubscriptionId: true,
   payseraOrderId: true,
   createdAt: true,
+  // Spec §4.2 v1.1 — surface when the single renewal attempt failed and when
+  // a subsequent active subscription cleared the failed-payment state. Both
+  // fields are audit-only; they drive the detail drawer's timeline display.
+  failedPaymentAt: true,
+  failedPaymentClearedAt: true,
   user: {
     select: { id: true, firstName: true, lastName: true, email: true, phone: true },
   },
@@ -343,6 +352,8 @@ router.get('/user/:userId/history', requirePermission('subscriptions.read'), asy
       stripeSubscriptionId: s.stripeSubscriptionId,
       payseraOrderId: s.payseraOrderId,
       createdAt: s.createdAt,
+      failedPaymentAt: s.failedPaymentAt,
+      failedPaymentClearedAt: s.failedPaymentClearedAt,
       billingCycle: billingCycleFromPeriod(s.currentPeriodStart, s.currentPeriodEnd),
       planDisplayName: planDisplayName(s.plan),
     }));
@@ -650,22 +661,56 @@ router.patch('/:id/auto-renewal', requirePermission('subscriptions.write'), asyn
       return res.status(400).json({ error: 'Cannot modify auto-renewal for a terminated subscription' });
     }
 
-    // For Stripe subs the toggle still corresponds to cancel_at_period_end —
-    // that's how Stripe models "do not renew." But our DB row distinguishes
-    // the cases: cancelAtPeriodEnd is set ONLY when the user explicitly
-    // cancels via /cancel. Toggling auto-renewal off here just records the
-    // preference; the ensuing period-end behaviour is handled by the renewal
-    // cron (Paysera) or by Stripe itself once the user runs out of funds.
+    // For Stripe subscriptions we must tell Stripe about the period-end
+    // cancellation preference and keep our DB in sync.
+    //
+    // Disable (autoRenewal=false):
+    //   Schedule cancellation in Stripe and mirror cancelAtPeriodEnd=true in
+    //   the DB so the admin list shows the "scheduled for cancellation" badge.
+    //
+    // Enable (autoRenewal=true):
+    //   Only unschedule if the existing cancelAtPeriodEnd was set by a
+    //   *preference toggle* (canceledAt is null), NOT by an explicit admin
+    //   cancel (which always stamps canceledAt via the /cancel route). That
+    //   prevents the toggle from silently undoing a deliberate cancellation —
+    //   admins who want that must use /reactivate explicitly.
     if (subscription.stripeSubscriptionId) {
-      await stripeService.stripe.subscriptions.update(subscription.stripeSubscriptionId, {
-        cancel_at_period_end: !autoRenewal,
+      if (!autoRenewal) {
+        // Disable: schedule in Stripe + sync DB.
+        await stripeService.stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+          cancel_at_period_end: true,
+        });
+        await prisma.subscription.update({
+          where: { id: req.params.id },
+          data: { autoRenewal, cancelAtPeriodEnd: true, cancelAt: subscription.currentPeriodEnd },
+        });
+      } else {
+        // Enable: only clear the scheduled cancellation if it was not an
+        // explicit admin cancel (canceledAt non-null = /cancel route was used).
+        if (!subscription.canceledAt) {
+          await stripeService.stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+            cancel_at_period_end: false,
+          });
+          await prisma.subscription.update({
+            where: { id: req.params.id },
+            data: { autoRenewal, cancelAtPeriodEnd: false, cancelAt: null },
+          });
+        } else {
+          // Explicit cancel is in place — just record the preference, leave
+          // Stripe and cancelAtPeriodEnd untouched.
+          await prisma.subscription.update({
+            where: { id: req.params.id },
+            data: { autoRenewal },
+          });
+        }
+      }
+    } else {
+      // Paysera: renewal cron reads autoRenewal directly — no API call needed.
+      await prisma.subscription.update({
+        where: { id: req.params.id },
+        data: { autoRenewal },
       });
     }
-
-    await prisma.subscription.update({
-      where: { id: req.params.id },
-      data: { autoRenewal },
-    });
     res.json({ ok: true });
   } catch (error) {
     next(error);

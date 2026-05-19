@@ -43,6 +43,8 @@ import { fireAutomation } from '../lib/automationDispatcher';
 import { getPayoutThresholdBGN } from '../utils/payoutThreshold';
 import { getSystemSettingInt } from '../utils/systemSettings';
 import { CASHBACK_VALIDITY_DAYS } from '../constants/receipt.constants';
+import { writeAudit } from '../middleware/audit.middleware';
+import { buildTicketSubject, buildTicketHeaders } from '../services/ticketEmail.service';
 
 const CASHBACK_EXPIRY_BATCH = 10;
 
@@ -1245,19 +1247,40 @@ async function escalateOverduePartnerSla(): Promise<void> {
 // "Затворена: Заявителят е потвърдил или 7 дни без отговор след 'Решена'."
 // Runs at 11 PM nightly: auto-close RESOLVED tickets with no activity for 7+ days.
 
-async function autoCloseResolvedTickets(): Promise<void> {
+export async function autoCloseResolvedTickets(): Promise<void> {
   const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  // Use resolvedAt (set when status → RESOLVED) so the 7-day clock is anchored
+  // to when resolution happened, not to any subsequent field edit (updatedAt).
+  // Fall back to updatedAt for rows that existed before resolvedAt was added.
   const tickets = await prisma.helpTicket.findMany({
-    where: { status: 'RESOLVED', updatedAt: { lte: cutoff } },
-    select: { id: true, subject: true, userId: true, user: { select: { email: true, firstName: true } } },
+    where: {
+      status: 'RESOLVED',
+      OR: [
+        { resolvedAt: { lte: cutoff } },
+        { resolvedAt: null, updatedAt: { lte: cutoff } },
+      ],
+    },
+    select: { id: true, subject: true, userId: true, rootMessageId: true, user: { select: { email: true, firstName: true } } },
     take: 200,
   });
   if (!tickets.length) return;
 
   await prisma.helpTicket.updateMany({
     where: { id: { in: tickets.map((t) => t.id) } },
-    data: { status: 'CLOSED' },
+    data: { status: 'CLOSED', resolvedAt: null },
   });
+
+  // Write audit rows — one per ticket so the history is clear.
+  for (const t of tickets) {
+    writeAudit({
+      actorUserId: null,
+      action: 'ticket.auto_close',
+      objectType: 'ticket',
+      objectId: t.id,
+      before: { status: 'RESOLVED' },
+      after: { status: 'CLOSED', reason: 'auto-close: 7 days without reply after RESOLVED' },
+    }).catch(() => {});
+  }
 
   // Notify each creator — fire-and-forget per ticket
   for (const t of tickets) {
@@ -1265,7 +1288,12 @@ async function autoCloseResolvedTickets(): Promise<void> {
       emailService
         .sendEmail({
           to: t.user.email,
-          subject: `[Заявката затворена] ${t.subject}`,
+          subject: buildTicketSubject(t.id, `[Заявката затворена] ${t.subject}`),
+          headers: buildTicketHeaders({
+            ticketId: t.id,
+            inReplyTo: t.rootMessageId ?? null,
+            references: t.rootMessageId ? [t.rootMessageId] : [],
+          }).headers,
           html: `<p>Здравей, ${t.user.firstName || t.user.email},</p><p>Вашата заявка беше затворена автоматично, тъй като 7 дни са изминали след маркирането й като решена без допълнителна комуникация.</p><p style="color:#999;font-size:12px;">Ticket ID: ${t.id}</p>`,
           text: `Здравей, ${t.user.firstName || t.user.email},\n\nВашата заявка беше затворена автоматично след 7 дни без активност след маркиране като решена.\n\nTicket ID: ${t.id}`,
         })

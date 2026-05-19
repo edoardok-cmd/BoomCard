@@ -1405,12 +1405,14 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
         templateId: tplPartnerMonthlySummary.id,
         status: 'DRAFT',
       },
-      // Spec §8.2 — support.reply: DRAFT until §11 ticketing fires this trigger on staff reply.
+      // Spec §8.2 — support.reply: ACTIVE. Fires from adminHelp.routes.ts POST /:id/reply
+      // when a staff member replies to any ticket. Creates an in-app notification for
+      // the creator and sends the template email (consent-gated).
       {
         trigger: 'support.reply',
         name: 'Support Reply Notification',
         templateId: tplSupportReply.id,
-        status: 'DRAFT',
+        status: 'ACTIVE',
       },
       // Spec §8.3 / scheduler notifyInactiveUsers() — 30-day inactivity re-engagement.
       {

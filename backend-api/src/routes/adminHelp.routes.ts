@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma';
 import { notificationService } from '../services/notification.service';
 import { emailService } from '../services/email.service';
 import { buildTicketSubject, buildTicketHeaders } from '../services/ticketEmail.service';
+import { fireAutomation } from '../lib/automationDispatcher';
 import { logger } from '../utils/logger';
 import type { AuthRequest } from '../middleware/auth.middleware';
 
@@ -82,7 +83,10 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
         category: category as TicketCategory,
         priority: resolvedPriority,
         userId: req.user!.id,
-        status: 'NEW',
+        source: 'WEB',
+        // Spec §11.4: initial status is OPEN ("Отворена"). NEW is kept in the
+        // enum for existing rows but new tickets use OPEN directly.
+        status: 'OPEN',
       },
       select: {
         id: true,
@@ -107,6 +111,28 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
         ],
       })
       .catch((err) => logger.error('[adminHelp] Failed to notify on admin ticket creation:', err));
+
+    // Spec §11.6: send auto-reply confirmation to the admin who created the ticket
+    // (same pattern as partner and user web-form tickets).
+    ;(async () => {
+      try {
+        // Generate threading headers first so rootMessageId matches the actual
+        // Message-ID sent in the email (a second newMessageId() call would
+        // produce a different value, breaking Priority-2 In-Reply-To threading).
+        const threading = buildTicketHeaders({ ticketId: ticket.id });
+        await prisma.helpTicket.update({ where: { id: ticket.id }, data: { rootMessageId: threading.messageId } });
+        const ref = buildTicketSubject(ticket.id, '').match(/\[#[a-f0-9]+\]/i)?.[0] ?? `#${ticket.id.slice(0, 8)}`;
+        await emailService.sendEmail({
+          to: req.user!.email,
+          subject: buildTicketSubject(ticket.id, 'Вашата заявка е получена'),
+          headers: threading.headers,
+          html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:'Helvetica Neue',Arial,sans-serif;background:#f5f5f5;margin:0;padding:0"><table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px"><table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.06)"><tr><td style="padding:28px"><p style="margin:0 0 16px;color:#111;font-size:16px">Здравейте,</p><p style="margin:0 0 16px;color:#444;font-size:15px;line-height:1.6">Вашата вътрешна заявка е регистрирана с референция <strong style="font-family:monospace">${ref}</strong>.</p><p style="margin:0 0 16px;color:#444;font-size:15px;line-height:1.6">Можете да я следите на адрес: <a href="${FRONTEND_URL}/admin/help/mine?ticket=${ticket.id}">Моите заявки</a>.</p><p style="margin:24px 0 0;color:#999;font-size:13px">— Екипът на BoomCard</p></td></tr></table></td></tr></table></body></html>`,
+          text: `Здравейте,\n\nВашата вътрешна заявка е регистрирана с референция ${ref}.\n\nМоже да я следите тук: ${FRONTEND_URL}/admin/help/mine?ticket=${ticket.id}\n\n— Екипът на BoomCard`,
+        });
+      } catch (err) {
+        logger.error('[adminHelp] Failed to send auto-reply to ticket creator:', err);
+      }
+    })();
 
     const adminEmail = req.user!.email;
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -141,13 +167,20 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
 });
 
 // GET /api/admin/help/count — pending ticket counts for the nav badge
-//   Regular admin: count of their own NEW tickets
-//   SUPER_ADMIN:   count of all NEW tickets in the system
+//   Regular admin: count of their own open tickets (owner or assignee)
+//   SUPER_ADMIN:   count of all open tickets in the system
+// NEW is included for legacy rows; OPEN is the initial status for all new tickets.
 router.get('/count', requirePermission('help.read'), async (req: AuthRequest, res, next) => {
   try {
+    const openFilter = { status: { in: ['NEW', 'OPEN'] as TicketStatus[] } };
     const count = hasFullAccess(req)
-      ? await prisma.helpTicket.count({ where: { status: 'NEW' } })
-      : await prisma.helpTicket.count({ where: { status: 'NEW', userId: req.user!.id } });
+      ? await prisma.helpTicket.count({ where: openFilter })
+      : await prisma.helpTicket.count({
+          where: {
+            ...openFilter,
+            OR: [{ userId: req.user!.id }, { assigneeId: req.user!.id }],
+          },
+        });
     res.json({ count });
   } catch (error) {
     next(error);
@@ -204,8 +237,11 @@ router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res
     const take = limitNum;
 
     // Build where as AND conditions so status + search can coexist without clobbering each other.
+    // Spec §11.5 "Моите заявки": tickets where the current admin is owner OR assignee.
     type WhereClause = Parameters<typeof prisma.helpTicket.findMany>[0]['where'];
-    const conditions: NonNullable<WhereClause>[] = [{ userId: req.user!.id }];
+    const conditions: NonNullable<WhereClause>[] = [
+      { OR: [{ userId: req.user!.id }, { assigneeId: req.user!.id }] },
+    ];
 
     if (status && Object.values(TicketStatus).includes(status as TicketStatus)) {
       conditions.push({ status: status as TicketStatus });
@@ -256,6 +292,7 @@ router.get('/:id', requirePermission('help.read'), async (req: AuthRequest, res,
         externalEmail: true,
         linkedTicketId: true,
         reopenedAt: true,
+        resolvedAt: true,
         createdAt: true,
         updatedAt: true,
         user: { select: { id: true, firstName: true, lastName: true, email: true } },
@@ -266,7 +303,17 @@ router.get('/:id', requirePermission('help.read'), async (req: AuthRequest, res,
     if (!hasFullAccess(req) && ticket.user.id !== req.user!.id && ticket.assignee?.id !== req.user!.id) {
       return res.status(403).json({ error: 'Отказан достъп' });
     }
-    res.json({ ticket });
+
+    // For email-originated tickets, surface how many bounces have been logged
+    // from the same sender address so the admin can see if the address is invalid.
+    let bounceCount = 0;
+    if (ticket.externalEmail) {
+      bounceCount = await prisma.inboundBounce.count({
+        where: { fromEmail: ticket.externalEmail },
+      });
+    }
+
+    res.json({ ticket: { ...ticket, bounceCount } });
   } catch (error) {
     next(error);
   }
@@ -371,7 +418,7 @@ router.post('/:id/reject', requirePermission('help.write'), async (req: AuthRequ
 
     const ticket = await prisma.helpTicket.findUnique({
       where: { id: req.params.id },
-      include: { user: { select: { email: true, firstName: true } } },
+      include: { user: { select: { email: true, firstName: true, role: true } } },
     });
     if (!ticket) return res.status(404).json({ error: 'Заявката не е намерена' });
     // Policy (confirmed audit-fix [7]): only the assignee or SUPER_ADMIN can reject.
@@ -419,11 +466,28 @@ router.post('/:id/reject', requirePermission('help.write'), async (req: AuthRequ
 
     // Notify the creator (non-fatal; do not block the response).
     if (ticket.user.email) {
+      // Build the RFC 5322 reference chain so the rejection email threads under
+      // the existing ticket conversation in the user's mail client.
+      const rejectPriorMsgs = await prisma.ticketReply.findMany({
+        where: { ticketId: req.params.id, messageId: { not: null } },
+        orderBy: { createdAt: 'asc' },
+        select: { messageId: true },
+      });
+      const rejectRefChain: string[] = [
+        ticket.rootMessageId,
+        ...rejectPriorMsgs.map((r) => r.messageId),
+      ].filter((id): id is string => !!id);
       const escR = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       emailService
         .sendEmail({
           to: ticket.user.email,
-          subject: `[Заявката отказана] ${ticket.subject}`,
+          audience: ticket.user.role === 'PARTNER' ? 'partner' : undefined,
+          subject: buildTicketSubject(ticket.id, `[Заявката отказана] ${ticket.subject}`),
+          headers: buildTicketHeaders({
+            ticketId: req.params.id,
+            inReplyTo: rejectRefChain.at(-1) ?? null,
+            references: rejectRefChain,
+          }).headers,
           html: `<p>Здравей, ${escR(ticket.user.firstName || ticket.user.email)},</p>
 <p>Вашата заявка беше отказана от администратор.</p>
 <p><strong>Причина:</strong></p>
@@ -447,14 +511,23 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
 
     const ticket = await prisma.helpTicket.findUnique({
       where: { id: req.params.id },
-      include: { user: { select: { email: true, firstName: true } } },
+      include: { user: { select: { email: true, firstName: true, role: true } } },
     });
     if (!ticket) return res.status(404).json({ error: 'Заявката не е намерена' });
     if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
       return res.status(403).json({ error: 'Отказан достъп' });
     }
-    if ((ticket.status === 'CLOSED' || ticket.status === 'REJECTED') && !hasFullAccess(req)) {
+    // Both CLOSED and REJECTED are terminal — no further status or priority
+    // changes are allowed for any role (spec §11.4). Use the dedicated reject
+    // endpoint to create a REJECTED ticket; use the reopen flow (POST /:id/reply
+    // from the ticket owner) to reopen a CLOSED ticket.
+    if (ticket.status === 'CLOSED' || ticket.status === 'REJECTED') {
       return res.status(400).json({ error: 'Не може да се променя заявка в крайно състояние' });
+    }
+    // Spec §11.4: REJECTED requires a reason (enforced by POST /:id/reject).
+    // Reject via PATCH is blocked so callers cannot bypass the reason requirement.
+    if (status === 'REJECTED') {
+      return res.status(400).json({ error: 'Използвайте endpoint /reject за отказване на заявки — изисква се причина' });
     }
 
     // Creators who are not also the assignee may only mark their own ticket as RESOLVED;
@@ -471,9 +544,17 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
       }
     }
 
-    const data: { status?: TicketStatus; priority?: TicketPriority } = {};
+    const data: { status?: TicketStatus; priority?: TicketPriority; resolvedAt?: Date | null } = {};
     if (status && Object.values(TicketStatus).includes(status as TicketStatus)) {
       data.status = status as TicketStatus;
+      // Stamp resolvedAt so auto-close can use a stable timestamp (not updatedAt,
+      // which bumps on any field change, including priority or assignment edits).
+      if (status === 'RESOLVED' && ticket.status !== 'RESOLVED') {
+        data.resolvedAt = new Date();
+      } else if (status !== 'RESOLVED') {
+        // Clear resolvedAt if the ticket is moved away from RESOLVED (e.g. re-opened).
+        data.resolvedAt = null;
+      }
     }
     if (priority && Object.values(TicketPriority).includes(priority as TicketPriority)) {
       data.priority = priority as TicketPriority;
@@ -498,28 +579,53 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
       after: data as object,
     }).catch(() => {});
 
-    // Notify the creator when SUPER_ADMIN closes their ticket — terminal state with no further replies.
-    // Guard ticket.status !== 'CLOSED' to prevent duplicate emails when a SUPER_ADMIN re-saves
-    // an already-closed ticket (the DB update is a no-op but the email would fire again without this).
-    if (data.status === 'CLOSED' && ticket.status !== 'CLOSED' && ticket.user.email) {
+    // Spec §11.6: notify the ticket creator on every status change.
+    // Guard old-status !== new-status to avoid duplicate emails if an admin
+    // re-saves without changing the status value.
+    if (data.status && data.status !== ticket.status && ticket.user.email) {
       const escCl = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const CATEGORY_BG_CLOSED: Record<string, string> = {
+      const CATEGORY_BG_NOTIFY: Record<string, string> = {
         CASHBACK: 'Кешбек', ACCOUNT: 'Акаунт', PAYMENT: 'Плащане', TECHNICAL: 'Техническо', OTHER: 'Друго',
       };
+      const STATUS_BG_NOTIFY: Record<string, string> = {
+        OPEN: 'Отворена', IN_REVIEW: 'В преглед', WAITING: 'Чака отговор',
+        RESOLVED: 'Решена', CLOSED: 'Затворена', REJECTED: 'Отказана',
+      };
+      const newStatusLabel = STATUS_BG_NOTIFY[data.status] ?? data.status;
+      const baseSubject = data.status === 'CLOSED'
+        ? `[Заявката затворена] ${ticket.subject}`
+        : `[Статус обновен: ${newStatusLabel}] ${ticket.subject}`;
+      // Build the RFC 5322 reference chain so the status-change notification
+      // threads under the existing ticket conversation in the user's mail client.
+      const patchPriorMsgs = await prisma.ticketReply.findMany({
+        where: { ticketId: req.params.id, messageId: { not: null } },
+        orderBy: { createdAt: 'asc' },
+        select: { messageId: true },
+      });
+      const patchRefChain: string[] = [
+        ticket.rootMessageId,
+        ...patchPriorMsgs.map((r) => r.messageId),
+      ].filter((id): id is string => !!id);
       emailService
         .sendEmail({
           to: ticket.user.email,
-          subject: `[Заявката затворена] ${ticket.subject}`,
+          audience: ticket.user.role === 'PARTNER' ? 'partner' : undefined,
+          subject: buildTicketSubject(ticket.id, baseSubject),
+          headers: buildTicketHeaders({
+            ticketId: req.params.id,
+            inReplyTo: patchRefChain.at(-1) ?? null,
+            references: patchRefChain,
+          }).headers,
           html: `<p><strong>Здравей, ${escCl(ticket.user.firstName || ticket.user.email)},</strong></p>
-<p>Вашата вътрешна заявка беше затворена от администратор.</p>
+<p>Статусът на вашата заявка беше обновен на <strong>${newStatusLabel}</strong>.</p>
 <table cellpadding="4">
   <tr><td><strong>Тема:</strong></td><td>${escCl(ticket.subject)}</td></tr>
-  <tr><td><strong>Категория:</strong></td><td>${CATEGORY_BG_CLOSED[ticket.category] ?? ticket.category}</td></tr>
+  <tr><td><strong>Категория:</strong></td><td>${CATEGORY_BG_NOTIFY[ticket.category] ?? ticket.category}</td></tr>
 </table>
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id} &middot; <a href="${FRONTEND_URL}/admin/help/mine?ticket=${ticket.id}">Преглед</a></p>`,
-          text: `Здравей, ${ticket.user.firstName || ticket.user.email},\n\nВашата вътрешна заявка беше затворена от администратор.\n\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG_CLOSED[ticket.category] ?? ticket.category}\n\nTicket ID: ${ticket.id}`,
+          text: `Здравей, ${ticket.user.firstName || ticket.user.email},\n\nСтатусът на вашата заявка беше обновен на: ${newStatusLabel}\n\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG_NOTIFY[ticket.category] ?? ticket.category}\n\nTicket ID: ${ticket.id}`,
         })
-        .catch((err) => logger.error('[adminHelp] Failed to send closed notification to creator:', err));
+        .catch((err) => logger.error('[adminHelp] Failed to send status-change notification to creator:', err));
     }
 
     res.json({ ok: true });
@@ -543,7 +649,7 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
     const ticket = await prisma.helpTicket.findUnique({
       where: { id: req.params.id },
       include: {
-        user: { select: { email: true, firstName: true } },
+        user: { select: { id: true, email: true, firstName: true, role: true } },
         assignee: { select: { email: true, firstName: true } },
       },
     });
@@ -623,7 +729,17 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
     // Note: REJECTED is a terminal state — creator/support replies do not
     // transition out of it. Admins must explicitly re-open via PATCH /:id.
     if (newStatus) {
-      await prisma.helpTicket.update({ where: { id: req.params.id }, data: { status: newStatus } });
+      await prisma.helpTicket.update({
+        where: { id: req.params.id },
+        data: {
+          status: newStatus,
+          // Clear resolvedAt whenever the ticket moves away from RESOLVED.
+          // Without this, a ticket re-resolved after a creator-reply reopen would
+          // retain the stale resolvedAt from the first resolution, causing auto-close
+          // to fire immediately on the next nightly run.
+          ...(ticket.status === 'RESOLVED' ? { resolvedAt: null } : {}),
+        },
+      });
     }
 
     req.skipAudit = true;
@@ -640,6 +756,16 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
       },
     }).catch(() => {});
 
+    // Spec §8.2 / §11 — fire support.reply automation when staff replies to a ticket.
+    // skipEmail=true: the direct rich email below always carries the reply body,
+    // so the automation must NOT also send the generic template email — that would
+    // produce two emails for any user with marketingConsentEmail=true. The
+    // automation still creates the in-app bell notification unconditionally.
+    if (!isCreator && ticket.userId) {
+      fireAutomation('support.reply', { userId: ticket.userId, skipEmail: true })
+        .catch((err) => logger.error('[automation] support.reply fire failed:', err));
+    }
+
     // Shared helpers for reply notification emails
     const CATEGORY_BG: Record<string, string> = {
       CASHBACK: 'Кешбек', ACCOUNT: 'Акаунт', PAYMENT: 'Плащане', TECHNICAL: 'Техническо', OTHER: 'Друго',
@@ -651,6 +777,7 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
       emailService
         .sendEmail({
           to: ticket.user.email,
+          audience: ticket.user.role === 'PARTNER' ? 'partner' : undefined,
           subject: buildTicketSubject(ticket.id, `[Отговор на заявка] ${ticket.subject}`),
           headers: threading.headers,
           html: `<p><strong>Здравей, ${escR(ticket.user.firstName || ticket.user.email)},</strong></p>

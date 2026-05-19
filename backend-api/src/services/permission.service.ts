@@ -71,16 +71,23 @@ export const PERMISSION_CATALOG: Array<{ key: string; label: string; category: s
 
 // Default allow-sets per role (deny rows are explicit RolePermission rows with allow=false).
 // SUPER_ADMIN is bypassed in requirePermission; no seeding needed for it.
-const ROLE_DEFAULT_ALLOWS: Record<string, string[]> = {
+// Exported for unit-testing the permission matrix.
+export const ROLE_DEFAULT_ALLOWS: Record<string, string[]> = {
   ADMIN: PERMISSION_CATALOG.map((p) => p.key),
   SUPPORT: ['dashboard.read', 'subscribers.read', 'partners.read', 'control.disputes.read', 'control.disputes.write', 'help.read', 'help.write'],
-  FINANCE: ['dashboard.read', 'subscribers.read', 'transactions.read', 'transactions.write', 'cashback.read', 'finance.payouts.read', 'finance.payouts.write', 'finance.invoices.read', 'finance.invoices.write', 'finance.periods.read', 'finance.periods.write', 'finance.reports.read'],
+  // transactions.write (balance adjustments) is intentionally excluded: Finance can read and process
+  // payouts/invoices but must not create arbitrary wallet adjustments — that stays with ADMIN.
+  FINANCE: ['dashboard.read', 'subscribers.read', 'transactions.read', 'cashback.read', 'finance.payouts.read', 'finance.payouts.write', 'finance.invoices.read', 'finance.invoices.write', 'finance.periods.read', 'finance.periods.write', 'finance.reports.read'],
+  // control.rules.read gives read-only visibility into fraud rules (GET /admin/settings/fraud-rules).
   RISK_REVIEW: ['dashboard.read', 'subscribers.read', 'transactions.read', 'control.risk.read', 'control.risk.write', 'control.disputes.read', 'control.disputes.write', 'control.rules.read'],
-  PARTNER_MANAGER: ['dashboard.read', 'partners.read', 'partners.write', 'partners.requests.read', 'partners.requests.write', 'partners.onboarding.read', 'partners.onboarding.write', 'partners.locations.read', 'partners.locations.write', 'partners.receipts.read'],
+  // partners.write (live-partner status changes) is intentionally excluded: PARTNER_MANAGER works the
+  // application pipeline and onboarding only; suspending/archiving live partners requires ADMIN.
+  PARTNER_MANAGER: ['dashboard.read', 'partners.read', 'partners.requests.read', 'partners.requests.write', 'partners.onboarding.read', 'partners.onboarding.write', 'partners.locations.read', 'partners.locations.write', 'partners.receipts.read'],
 };
 
 // Upserts the full permission catalog and default role allow-sets.
-// Safe to run multiple times (idempotent).
+// Bidirectional: grants permissions added to the allow-set AND revokes any that were
+// removed from it. Safe to run multiple times (fully idempotent).
 export async function seedPermissions() {
   for (const perm of PERMISSION_CATALOG) {
     await prisma.permission.upsert({
@@ -98,6 +105,19 @@ export async function seedPermissions() {
       create: { key: roleKey as any, label: roleKey.replace(/_/g, ' ') },
     });
 
+    // Resolve the Permission IDs for the current allow-set so we can delete stale grants.
+    const allowedPerms = await prisma.permission.findMany({
+      where: { key: { in: ROLE_DEFAULT_ALLOWS[roleKey] } },
+      select: { id: true },
+    });
+    const allowedPermIds = allowedPerms.map((p) => p.id);
+
+    // Remove any RolePermission rows for this role that are no longer in the allow-set.
+    await prisma.rolePermission.deleteMany({
+      where: { roleId: role.id, permissionId: { notIn: allowedPermIds } },
+    });
+
+    // Grant every permission in the current allow-set.
     for (const permKey of ROLE_DEFAULT_ALLOWS[roleKey]) {
       const perm = await prisma.permission.findUnique({ where: { key: permKey } });
       if (!perm) continue;

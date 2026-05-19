@@ -24,13 +24,7 @@
 
 import { Router, Response } from 'express';
 import { FraudRuleTier, SubscriptionPlan } from '@prisma/client';
-import {
-  PAYOUT_THRESHOLD_BASIC_EUR,
-  PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR,
-  PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR,
-  EUR_TO_BGN_RATE,
-} from '../constants/receipt.constants';
-import { invalidatePayoutThresholdCache } from '../utils/payoutThreshold';
+import { invalidatePayoutThresholdCache, getPayoutThresholdBGNSync } from '../utils/payoutThreshold';
 import { invalidateSystemSettingCache } from '../utils/systemSettings';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { auditMiddleware } from '../middleware/audit.middleware';
@@ -55,12 +49,6 @@ async function resolveAdminName(userId: string): Promise<string | null> {
 
 /* ─── Payout Thresholds ───────────────────────────────────────────────────── */
 
-const PLAN_FALLBACK_BGN: Record<SubscriptionPlan, number> = {
-  BASIC:   Math.round(PAYOUT_THRESHOLD_BASIC_EUR * EUR_TO_BGN_RATE * 100) / 100,
-  PREMIUM_WEEKLY: Math.round(PAYOUT_THRESHOLD_PREMIUM_WEEKLY_EUR * EUR_TO_BGN_RATE * 100) / 100,
-  PREMIUM: Math.round(PAYOUT_THRESHOLD_PREMIUM_MONTHLY_EUR * EUR_TO_BGN_RATE * 100) / 100,
-};
-
 /**
  * GET /api/admin/settings/payout-thresholds
  * Returns the latest payout threshold for each plan.
@@ -82,7 +70,7 @@ router.get(
       const plan = plans[i];
       const row = rows[i];
       current[plan] = {
-        minAmount: row ? row.minAmount : PLAN_FALLBACK_BGN[plan],
+        minAmount: row ? row.minAmount : getPayoutThresholdBGNSync(plan),
         notes: row?.notes ?? null,
         updatedAt: row?.createdAt?.toISOString() ?? null,
       };
@@ -268,6 +256,16 @@ router.put(
     for (const [key] of entries) {
       if (!ALLOWED_KEYS.has(key)) {
         return res.status(400).json({ success: false, error: `Unknown setting key: ${key}` });
+      }
+    }
+
+    // Spec §9.5: mandatory keys cannot be cleared — sending "" returns 400.
+    // (reply_to_email and partner_reply_to_email are optional and may be cleared
+    // to remove the Reply-To header or fall back to office_email respectively.)
+    const REQUIRED_KEYS = new Set(['from_email', 'office_email', 'support_email']);
+    for (const [key, value] of entries) {
+      if (REQUIRED_KEYS.has(key) && value === '') {
+        return res.status(400).json({ success: false, error: `${key} is required and cannot be cleared` });
       }
     }
 
@@ -676,10 +674,11 @@ const VALID_TIERS = new Set(Object.values(FraudRuleTier));
 /**
  * GET /api/admin/settings/fraud-rules
  * Query: tier, targetId, active (true|false)
+ * Accessible to RISK_REVIEW admins (control.rules.read) as well as ADMIN (settings.read).
  */
 router.get(
   '/fraud-rules',
-  requirePermission('settings.read'),
+  requirePermission(['settings.read', 'control.rules.read']),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { tier, targetId, active } = req.query as Record<string, string>;
 
@@ -706,7 +705,7 @@ router.get(
 router.post(
   '/fraud-rules',
   authorize('SUPER_ADMIN'),
-  requirePermission('settings.write'),
+  requirePermission(['settings.write', 'control.rules.write']),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { tier, targetId, dailyScanLimit, minTransactionValue, maxTransactionValue, autoApproveThreshold, notes } =
       req.body as {
@@ -750,7 +749,7 @@ router.post(
 router.patch(
   '/fraud-rules/:id',
   authorize('SUPER_ADMIN'),
-  requirePermission('settings.write'),
+  requirePermission(['settings.write', 'control.rules.write']),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { dailyScanLimit, minTransactionValue, maxTransactionValue, autoApproveThreshold, notes, isActive } =
       req.body as {
@@ -789,7 +788,7 @@ router.patch(
 router.delete(
   '/fraud-rules/:id',
   authorize('SUPER_ADMIN'),
-  requirePermission('settings.write'),
+  requirePermission(['settings.write', 'control.rules.write']),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const rule = await prisma.fraudRule.findUnique({ where: { id: req.params.id } });
     if (!rule) return res.status(404).json({ success: false, error: 'Fraud rule not found' });
@@ -807,7 +806,7 @@ router.delete(
 router.get(
   '/fraud-rules/:id/overrides',
   authorize('SUPER_ADMIN'),
-  requirePermission('settings.read'),
+  requirePermission(['settings.read', 'control.rules.read']),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const rule = await prisma.fraudRule.findUnique({ where: { id: req.params.id } });
     if (!rule) return res.status(404).json({ success: false, error: 'Fraud rule not found' });
@@ -829,7 +828,7 @@ router.get(
 router.post(
   '/fraud-rules/:id/overrides',
   authorize('SUPER_ADMIN'),
-  requirePermission('settings.write'),
+  requirePermission(['settings.write', 'control.rules.write']),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { targetType, targetId, override, reason, expiresAt } = req.body as {
       targetType?: string;
@@ -873,7 +872,7 @@ router.post(
 router.delete(
   '/fraud-rules/:id/overrides/:overId',
   authorize('SUPER_ADMIN'),
-  requirePermission('settings.write'),
+  requirePermission(['settings.write', 'control.rules.write']),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const ov = await prisma.fraudRuleOverride.findFirst({
       where: { id: req.params.overId, ruleId: req.params.id },

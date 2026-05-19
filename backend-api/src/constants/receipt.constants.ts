@@ -58,7 +58,7 @@ export const UNUSUAL_HOUR_END = 6;
 // ── Cashback Matrix (partner discount % → user cashback %) ────────────────────
 // Source of truth: BOOM_Card_Master_Functionality.docx — Section 2
 // Basic plan has a hard 10% cap regardless of partner discount.
-// Premium/Light plans scale up to 20% at 25% partner discount.
+// PREMIUM and PREMIUM_WEEKLY plans scale up to 20% at 25% partner discount.
 export const CASHBACK_MATRIX: Record<number, { basic: number; premium: number }> = {
   5:  { basic: 5,  premium: 5  },
   10: { basic: 5,  premium: 8  },

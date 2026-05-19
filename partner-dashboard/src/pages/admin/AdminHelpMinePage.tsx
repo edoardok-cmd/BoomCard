@@ -39,7 +39,7 @@ const PrimaryLine = styled.div`font-weight: 600; color: ${palette.text};`;
 const MetaLine = styled.div`font-size: 0.75rem; color: ${palette.textSubtle}; margin-top: 0.125rem;`;
 
 const STATUS_BG_LABELS: Record<TicketStatus, string> = {
-  NEW: 'Нова', OPEN: 'Отворена', IN_REVIEW: 'В преглед', WAITING: 'Изчакване',
+  NEW: 'Отворена', OPEN: 'Отворена', IN_REVIEW: 'В преглед', WAITING: 'Чака отговор',
   RESOLVED: 'Решена', CLOSED: 'Затворена', REJECTED: 'Отказана',
 };
 
@@ -124,6 +124,7 @@ export default function AdminHelpMinePage() {
   const [statusFilter, setStatusFilter] = useState<TicketStatus | ''>('');
   const [priorityFilter, setPriorityFilter] = useState<TicketPriority | ''>('');
   const [categoryFilter, setCategoryFilter] = useState<TicketCategory | ''>('');
+  const [requestTypeFilter, setRequestTypeFilter] = useState('');
   const [page, setPage] = useState(1);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstSearch = useRef(true);
@@ -154,7 +155,7 @@ export default function AdminHelpMinePage() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-help-mine', page, search, statusFilter, priorityFilter, categoryFilter],
+    queryKey: ['admin-help-mine', page, search, statusFilter, priorityFilter, categoryFilter, requestTypeFilter],
     queryFn: () => adminHelpService.listMine({
       page,
       limit: PAGE_SIZE,
@@ -162,6 +163,7 @@ export default function AdminHelpMinePage() {
       status: statusFilter || undefined,
       priority: priorityFilter || undefined,
       category: categoryFilter || undefined,
+      requestType: requestTypeFilter || undefined,
     }),
   });
 
@@ -237,7 +239,7 @@ export default function AdminHelpMinePage() {
             Моите заявки
             {data && data.total > 0 && <TotalBadge>{data.total}</TotalBadge>}
           </PageTitle>
-          <PageSubtitle>Заявки, създадени от мен</PageSubtitle>
+          <PageSubtitle>Заявки, в които съм заявител или отговорник</PageSubtitle>
         </TitleBlock>
         <NewTicketBtn to="/admin/help/new">+ Нова заявка</NewTicketBtn>
       </PageHeader>
@@ -253,10 +255,9 @@ export default function AdminHelpMinePage() {
           />
           <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value as TicketStatus | ''); setPage(1); }}>
             <option value="">Всички статуси</option>
-            <option value="NEW">Нова</option>
             <option value="OPEN">Отворена</option>
             <option value="IN_REVIEW">В преглед</option>
-            <option value="WAITING">Изчакване</option>
+            <option value="WAITING">Чака отговор</option>
             <option value="RESOLVED">Решена</option>
             <option value="CLOSED">Затворена</option>
             <option value="REJECTED">Отказана</option>
@@ -276,6 +277,15 @@ export default function AdminHelpMinePage() {
             <option value="TECHNICAL">Техническо</option>
             <option value="OTHER">Друго</option>
           </Select>
+          <Select value={requestTypeFilter} onChange={(e) => { setRequestTypeFilter(e.target.value); setPage(1); }}>
+            <option value="">Всички типове</option>
+            <option value="SUPPORT">Поддръжка</option>
+            <option value="DATA_CHANGE">Промяна на данни</option>
+            <option value="LOCATION_CHANGE">Промяна на локация</option>
+            <option value="CONTRACT_CHANGE">Промяна на договор</option>
+            <option value="DISPUTE">Спор</option>
+            <option value="OTHER">Други</option>
+          </Select>
         </FilterRow>
 
         <DataTable
@@ -285,7 +295,7 @@ export default function AdminHelpMinePage() {
           onRowClick={(row) => openTicket(row.id)}
           loading={isLoading}
           emptyMessage={
-            !search && !statusFilter && !priorityFilter && !categoryFilter
+            !search && !statusFilter && !priorityFilter && !categoryFilter && !requestTypeFilter
               ? <span>Нямате подадени заявки. <EmptyLink to="/admin/help/new">Подайте нова заявка →</EmptyLink></span>
               : 'Няма заявки, отговарящи на критериите'
           }

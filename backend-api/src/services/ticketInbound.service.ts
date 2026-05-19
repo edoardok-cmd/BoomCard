@@ -175,20 +175,41 @@ export async function ingestInboundEmail(
   if (isBounce(payload)) {
     logger.warn(`[ticketInbound] bounce/DSN from=${payload.from} subject="${payload.subject}" — dropped`);
 
-    // Persist for multi-bounce tracking
+    // Persist for multi-bounce tracking. Try to associate the bounce with a
+    // ticket by extracting a [#XXXX] reference from the bounce subject — the
+    // original outbound email (which bounced) carried this in its subject.
     try {
+      // Attempt to resolve the ticket the bounce relates to.
+      let relatedTicketId: string | null = null;
+      const subjectMatch = (payload.subject || '').match(SUBJECT_REF_RE);
+      if (subjectMatch) {
+        const ref = subjectMatch[1].toLowerCase();
+        if (ref.length === 32 || ref.includes('-')) {
+          const t = await prisma.helpTicket.findUnique({ where: { id: ref }, select: { id: true } });
+          relatedTicketId = t?.id ?? null;
+        }
+        if (!relatedTicketId) {
+          const recent = await prisma.helpTicket.findMany({ select: { id: true }, orderBy: { createdAt: 'desc' }, take: 200 });
+          const hit = recent.find((t) => t.id.replace(/-/g, '').toLowerCase().startsWith(ref));
+          relatedTicketId = hit?.id ?? null;
+        }
+      }
+
       await prisma.inboundBounce.create({
         data: {
           fromEmail: normalizeAddress(payload.from),
           toEmail: payload.to || null,
           subject: payload.subject || null,
           messageId: payload.messageId || null,
+          ticketId: relatedTicketId,
         },
       });
-      // Alert assignee if 3+ bounces from same address in last 30 days
+
+      // Alert the assignee if we matched a ticket, otherwise fall back to ops.
+      // Threshold: 3+ unalerted bounces in the last 30 days.
       const bounceCount = await prisma.inboundBounce.count({
         where: {
-          fromEmail: normalizeAddress(payload.from),
+          ...(relatedTicketId ? { ticketId: relatedTicketId } : { fromEmail: normalizeAddress(payload.from) }),
           alerted: false,
           createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
         },
@@ -196,20 +217,49 @@ export async function ingestInboundEmail(
       if (bounceCount >= 3) {
         await prisma.inboundBounce.updateMany({
           where: {
-            fromEmail: normalizeAddress(payload.from),
+            ...(relatedTicketId ? { ticketId: relatedTicketId } : { fromEmail: normalizeAddress(payload.from) }),
             alerted: false,
           },
           data: { alerted: true },
         });
-        notificationService
-          .notifyAdminOps({
-            opsType: `bounce_alert_${normalizeAddress(payload.from)}`,
-            title: 'Многократни bounce-и от имейл адрес',
-            message: `${bounceCount} bounce-а от ${normalizeAddress(payload.from)} за последните 30 дни`,
-            severity: 'warning',
-            fields: [{ label: 'Адрес', value: normalizeAddress(payload.from) }],
-          })
-          .catch(() => {});
+
+        // If we resolved a ticket, alert the assignee (spec §11.2 "alert assignee").
+        let alertedAssignee = false;
+        if (relatedTicketId) {
+          try {
+            const ticket = await prisma.helpTicket.findUnique({
+              where: { id: relatedTicketId },
+              include: { assignee: { select: { email: true, firstName: true } } },
+            });
+            if (ticket?.assignee?.email) {
+              await emailService.sendEmail({
+                to: ticket.assignee.email,
+                subject: `[Bounce Alert] Неуспешна доставка за заявка #${relatedTicketId.slice(0, 8)}`,
+                html: `<p>Здравей, ${ticket.assignee.firstName || ticket.assignee.email},</p><p>${bounceCount} bounce-а бяха засечени за заявка <strong>${ticket.subject}</strong>. Адресът на подателя може да е невалиден.</p><p>Ticket ID: ${relatedTicketId}</p>`,
+                text: `${bounceCount} bounce-а за заявка ${ticket.subject}. Адресът може да е невалиден. Ticket ID: ${relatedTicketId}`,
+              });
+              alertedAssignee = true;
+            }
+          } catch (alertErr) {
+            logger.error('[ticketInbound] failed to alert assignee of bounces:', alertErr);
+          }
+        }
+
+        // Fall back to ops notification if no assignee or no ticket resolved.
+        if (!alertedAssignee) {
+          notificationService
+            .notifyAdminOps({
+              opsType: `bounce_alert_${relatedTicketId ?? normalizeAddress(payload.from)}`,
+              title: 'Многократни bounce-и',
+              message: `${bounceCount} bounce-а${relatedTicketId ? ` за заявка ${relatedTicketId.slice(0, 8)}` : ` от ${normalizeAddress(payload.from)}`} за последните 30 дни`,
+              severity: 'warning',
+              fields: [
+                { label: 'Адрес', value: normalizeAddress(payload.from) },
+                ...(relatedTicketId ? [{ label: 'Ticket ID', value: relatedTicketId }] : []),
+              ],
+            })
+            .catch(() => {});
+        }
       }
     } catch (err) {
       logger.error('[ticketInbound] failed to persist bounce record:', err);
@@ -434,6 +484,60 @@ export async function ingestInboundEmail(
       objectId: t.id,
       after: { replyId: reply.id, from: fromEmail },
     }).catch(() => {});
+  }
+
+  // §11 gap: notify the assignee when an inbound email reply arrives. Without
+  // this, replies through email are invisible to the assigned admin until they
+  // next open the ticket list. Skip self-assigned tickets to avoid an admin
+  // emailing themselves.
+  if (t.assigneeId && t.assigneeId !== t.userId) {
+    try {
+      const assignee = await prisma.user.findUnique({
+        where: { id: t.assigneeId },
+        select: { email: true, firstName: true },
+      });
+      if (assignee?.email) {
+        // Build the full RFC 5322 threading chain from the ticket's prior
+        // system-sent messages — same approach as adminHelp.routes.ts reply handler.
+        // Using the inbound's own messageId as In-Reply-To was wrong: it would
+        // make the notification appear as a child of the customer's email in mail
+        // clients rather than continuing the ticket's existing thread.
+        // Query is deferred until here so it's skipped when assignee has no email.
+        const priorMessages = await prisma.ticketReply.findMany({
+          where: { ticketId: t.id, messageId: { not: null } },
+          orderBy: { createdAt: 'asc' },
+          select: { messageId: true },
+        });
+        const refChain: string[] = [
+          t.rootMessageId,
+          ...priorMessages.map((r) => r.messageId as string),
+        ].filter((id): id is string => !!id);
+
+        const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const threading = buildTicketHeaders({
+          ticketId: t.id,
+          inReplyTo: refChain.at(-1) ?? null,
+          references: refChain,
+        });
+        emailService
+          .sendEmail({
+            to: assignee.email,
+            subject: buildTicketSubject(t.id, `[Нов отговор от заявител] ${t.subject}`),
+            headers: threading.headers,
+            html: `<p><strong>Здравей, ${esc(assignee.firstName || assignee.email)},</strong></p>
+<p>Заявителят отговори на заявка, назначена на вас, чрез имейл.</p>
+<table cellpadding="4">
+  <tr><td><strong>От:</strong></td><td>${esc(fromEmail)}</td></tr>
+  <tr><td><strong>Тема:</strong></td><td>${esc(t.subject)}</td></tr>
+</table>
+<p style="color:#999;font-size:12px;">Ticket ID: ${t.id}</p>`,
+            text: `Здравей, ${assignee.firstName || assignee.email},\n\nЗаявителят отговори на заявка, назначена на вас.\n\nОт: ${fromEmail}\nТема: ${t.subject}\n\nTicket ID: ${t.id}`,
+          })
+          .catch((err) => logger.error('[ticketInbound] failed to notify assignee of inbound reply:', err));
+      }
+    } catch (err) {
+      logger.error('[ticketInbound] failed to look up assignee for inbound reply notification:', err);
+    }
   }
 
   return { ticketId: t.id, replyId: reply.id, created: false };

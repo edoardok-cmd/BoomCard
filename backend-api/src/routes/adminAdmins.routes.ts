@@ -6,6 +6,7 @@ import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import type { AuthRequest } from '../middleware/auth.middleware';
 import { getClientIp } from '../utils/requestIp';
+import { emailService } from '../services/email.service';
 
 const router = Router();
 router.use(auditMiddleware);
@@ -248,9 +249,14 @@ router.get('/pending-all', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requ
 });
 
 // GET /api/admin/admins/critical-actions — list critical action requests (§10.3)
+const CRITICAL_ACTION_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'ALL'] as const;
 router.get('/critical-actions', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.read'), async (req, res, next) => {
   try {
-    const status = typeof req.query.status === 'string' ? req.query.status : 'PENDING';
+    const rawStatus = typeof req.query.status === 'string' ? req.query.status : 'PENDING';
+    if (!(CRITICAL_ACTION_STATUSES as readonly string[]).includes(rawStatus)) {
+      return res.status(400).json({ error: `status must be one of: ${CRITICAL_ACTION_STATUSES.join(', ')}` });
+    }
+    const status = rawStatus;
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
     const skip = (page - 1) * limit;
@@ -352,6 +358,7 @@ router.post('/critical-actions/:id/reject', authenticate, authorize('SUPER_ADMIN
     const item = await prisma.criticalActionRequest.findUnique({ where: { id: req.params.id } });
     if (!item) return res.status(404).json({ error: 'Critical action request not found' });
     if (item.status !== 'PENDING') return res.status(400).json({ error: 'Request is no longer pending' });
+    if (item.requestedById === req.user!.id) return res.status(400).json({ error: 'Cannot reject your own critical action request' });
 
     const updated = await prisma.criticalActionRequest.update({
       where: { id: req.params.id },
@@ -418,7 +425,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
           status: true,
           lastLoginAt: true,
           createdAt: true,
-          // #2 fix: expose whether 2FA is enabled
+          mustChangePassword: true,
           totpEnabledAt: true,
           adminRoles: {
             select: {
@@ -433,7 +440,6 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
       prisma.user.count({ where }),
     ]);
 
-    // Normalise totpEnabledAt → twoFactorEnabled boolean for the client
     const result = admins.map(({ totpEnabledAt, ...a }) => ({
       ...a,
       twoFactorEnabled: totpEnabledAt !== null,
@@ -506,42 +512,43 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
     const adminRole = await prisma.adminRole.findUnique({ where: { key: roleKey } });
     if (!adminRole) return res.status(400).json({ error: 'Role not found in DB — run seed-permissions first' });
 
+    // Explicit pre-check: User.email is not unique in the schema (multiple accounts may
+    // share contact info by design), so P2002 would never fire for a duplicate email.
+    // Guard here instead so the error message is accurate and deterministic.
+    const existingAdmin = await prisma.user.findFirst({
+      where: { email, role: { in: ['ADMIN', 'SUPER_ADMIN'] as UserRole[] } },
+    });
+    if (existingAdmin) {
+      return res.status(409).json({ error: 'An admin with this email already exists' });
+    }
+
     const passwordHash = await bcrypt.hash(password, 12);
 
-    let user: { id: string; email: string; firstName: string | null; lastName: string | null; role: UserRole; status: UserStatus; createdAt: Date };
-    try {
-      user = await prisma.user.create({
-        data: {
-          email,
-          passwordHash,
-          firstName: firstName ?? null,
-          lastName: lastName ?? null,
-          phone: phone ?? null,
-          role: 'ADMIN',
-          status: 'ACTIVE',
-          emailVerified: true,
-          mustChangePassword: true,
-          adminRoles: {
-            create: { roleId: adminRole.id, grantedById: req.user!.id },
-          },
+    const user = await prisma.user.create({
+      data: {
+        email,
+        passwordHash,
+        firstName: firstName ?? null,
+        lastName: lastName ?? null,
+        phone: phone ?? null,
+        role: 'ADMIN',
+        status: 'ACTIVE',
+        emailVerified: true,
+        mustChangePassword: true,
+        adminRoles: {
+          create: { roleId: adminRole.id, grantedById: req.user!.id },
         },
-        select: {
-          id: true,
-          email: true,
-          firstName: true,
-          lastName: true,
-          role: true,
-          status: true,
-          createdAt: true,
-        },
-      });
-    } catch (err: unknown) {
-      const isPrismaConflict = typeof err === 'object' && err !== null && (err as { code?: string }).code === 'P2002';
-      if (isPrismaConflict) {
-        return res.status(409).json({ error: 'An admin with this email already exists' });
-      }
-      throw err;
-    }
+      },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        status: true,
+        createdAt: true,
+      },
+    });
 
     req.auditObjectId = user.id;
     res.status(201).json({ ok: true, user });
@@ -557,7 +564,10 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
   try {
     const { id } = req.params;
 
-    const request = await prisma.pendingSuperAdminRequest.findUnique({ where: { id } });
+    const request = await prisma.pendingSuperAdminRequest.findUnique({
+      where: { id },
+      include: { requestedBy: { select: { email: true, firstName: true, lastName: true } } },
+    });
     if (!request) return res.status(404).json({ error: 'Pending request not found' });
 
     if (request.requestedById === req.user!.id) {
@@ -608,6 +618,18 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
       ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
     });
+
+    // Notify the requester so they know their request was approved.
+    if (request.requestedBy.email) {
+      const requesterName = request.requestedBy.firstName || request.requestedBy.email;
+      emailService.sendEmail({
+        to: request.requestedBy.email,
+        subject: 'SUPER_ADMIN creation request approved — BoomCard',
+        html: `<p>Здравей, ${requesterName},</p><p>Вашата заявка за нов SUPER_ADMIN акаунт (<strong>${request.email}</strong>) беше одобрена. Акаунтът е създаден.</p>`,
+        text: `Здравей, ${requesterName},\n\nВашата заявка за нов SUPER_ADMIN акаунт (${request.email}) беше одобрена. Акаунтът е създаден.`,
+      }).catch(() => {});
+    }
+
     res.status(201).json({ ok: true, user });
   } catch (error) {
     next(error);
@@ -620,7 +642,10 @@ router.delete('/pending-super/:id', authenticate, authorize('SUPER_ADMIN'), requ
   try {
     const { id } = req.params;
 
-    const request = await prisma.pendingSuperAdminRequest.findUnique({ where: { id } });
+    const request = await prisma.pendingSuperAdminRequest.findUnique({
+      where: { id },
+      include: { requestedBy: { select: { email: true, firstName: true, lastName: true } } },
+    });
     if (!request) return res.status(404).json({ error: 'Pending request not found' });
 
     await prisma.pendingSuperAdminRequest.delete({ where: { id } });
@@ -635,6 +660,18 @@ router.delete('/pending-super/:id', authenticate, authorize('SUPER_ADMIN'), requ
       ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
     });
+
+    // Notify the requester so they know their request was rejected/cancelled.
+    if (request.requestedBy.email) {
+      const requesterName = request.requestedBy.firstName || request.requestedBy.email;
+      emailService.sendEmail({
+        to: request.requestedBy.email,
+        subject: 'SUPER_ADMIN creation request rejected — BoomCard',
+        html: `<p>Здравей, ${requesterName},</p><p>Вашата заявка за нов SUPER_ADMIN акаунт (<strong>${request.email}</strong>) беше отказана или анулирана.</p>`,
+        text: `Здравей, ${requesterName},\n\nВашата заявка за нов SUPER_ADMIN акаунт (${request.email}) беше отказана или анулирана.`,
+      }).catch(() => {});
+    }
+
     res.json({ ok: true });
   } catch (error) {
     next(error);
@@ -656,6 +693,7 @@ router.get('/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermi
         status: true,
         lastLoginAt: true,
         createdAt: true,
+        mustChangePassword: true,
         totpEnabledAt: true,
         adminRoles: {
           select: {
@@ -688,6 +726,9 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
     if (status !== 'ACTIVE' && status !== 'SUSPENDED') {
       return res.status(400).json({ error: 'status must be ACTIVE or SUSPENDED' });
     }
+    if (status === 'SUSPENDED' && !reason?.trim()) {
+      return res.status(400).json({ error: 'reason is required when suspending an admin account' });
+    }
 
     // Prevent self-suspension
     if (id === req.user!.id) {
@@ -697,6 +738,12 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
     const target = await prisma.user.findUnique({ where: { id } });
     if (!target || (target.role !== 'ADMIN' && target.role !== 'SUPER_ADMIN')) {
       return res.status(404).json({ error: 'Admin not found' });
+    }
+
+    // Only a SUPER_ADMIN may change the status of another SUPER_ADMIN.
+    // An ADMIN with admins.write cannot demote or suspend a higher-privilege account.
+    if (target.role === 'SUPER_ADMIN' && req.user!.role !== 'SUPER_ADMIN') {
+      return res.status(403).json({ error: 'Only a SUPER_ADMIN can change another SUPER_ADMIN\'s status' });
     }
 
     // #3-adjacent: prevent suspending the last active SUPER_ADMIN
@@ -742,6 +789,14 @@ router.post('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
 
     if (!roleKey || !Object.values(AdminRoleKey).includes(roleKey)) {
       return res.status(400).json({ error: 'Valid roleKey is required' });
+    }
+    // Assigning SUPER_ADMIN via this endpoint would create a split state:
+    // UserAdminRole=SUPER_ADMIN but user.role=ADMIN (auth middleware checks user.role).
+    // SUPER_ADMIN creation must go through the double-approval flow.
+    if (roleKey === AdminRoleKey.SUPER_ADMIN) {
+      return res.status(400).json({
+        error: 'SUPER_ADMIN role cannot be assigned via this endpoint. Use the creation flow: POST /api/admin/admins with roleKey=SUPER_ADMIN.',
+      });
     }
 
     const [user, adminRole] = await Promise.all([

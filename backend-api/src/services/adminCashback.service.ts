@@ -1116,6 +1116,12 @@ export async function approveEntry(entryId: string, adminUserId: string): Promis
     throw new AppError(`Cannot approve entry — not in Pending state`, 400);
   }
 
+  // Fetch expiry setting before entering the transaction — getSystemSettingInt
+  // uses the shared prisma client (not tx), so calling it inside the interactive
+  // transaction would consume a second pool connection while the transaction
+  // already holds one, creating pool pressure under concurrent approvals.
+  const validityDays = await getSystemSettingInt('cashback_expiry_days', 60);
+
   // Atomicity: flipping raw status to COMPLETED and writing the lifecycle
   // transition must happen as one unit. If markCleared fails after the status
   // update is committed, the row would be stuck with status=COMPLETED but
@@ -1141,7 +1147,6 @@ export async function approveEntry(entryId: string, adminUserId: string): Promis
     // (rather than calling markCleared) so an audit-write failure outside the
     // tx cannot leave a half-applied state. We replicate markCleared's behaviour
     // with the idempotency guarantee.
-    const validityDays = await getSystemSettingInt('cashback_expiry_days', 60);
     const clearedAt = new Date();
     const expiresAt = new Date(clearedAt.getTime() + validityDays * 24 * 60 * 60 * 1000);
     // Precondition: only transition if still in an approvable state.
@@ -1205,12 +1210,23 @@ export async function voidEntry(entryId: string, adminUserId: string, reason: st
 export async function lockEntry(entryId: string, adminUserId: string): Promise<void> {
   const entry = await prisma.walletTransaction.findUnique({
     where: { id: entryId },
-    select: { id: true, type: true, status: true, cashbackExpiresAt: true, createdAt: true, walletId: true },
+    select: {
+      id: true, type: true, status: true, cashbackExpiresAt: true,
+      createdAt: true, walletId: true,
+      cashbackStatus: true, cashbackPaidAt: true,
+    },
   });
   if (!entry) throw new AppError('Entry not found', 404);
   if (entry.type !== 'CASHBACK_CREDIT') throw new AppError('Not a cashback entry', 400);
   if (entry.status !== 'COMPLETED') {
     throw new AppError(`Cannot lock entry with status ${entry.status}`, 400);
+  }
+  // Guard against re-locking a Paid entry. The lifecycle service sets
+  // cashbackStatus='PAID' (keeping status='COMPLETED') when markPaid runs;
+  // the legacy path sets cashbackPaidAt. Neither is caught by the withdrawal-date
+  // check below, which only covers entries paid out via a WITHDRAWAL transaction.
+  if (entry.cashbackStatus === 'PAID' || entry.cashbackPaidAt != null) {
+    throw new AppError('Cannot lock a paid entry', 400);
   }
   // Guard against locking a "Paid" entry — one that predates the wallet's latest completed payout.
   // Only "Cleared" (COMPLETED, not yet covered by a payout) entries may be locked.
@@ -1228,7 +1244,7 @@ export async function lockEntry(entryId: string, adminUserId: string): Promise<v
     : new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
   await prisma.walletTransaction.update({
     where: { id: entryId },
-    data: { status: 'CANCELLED', cashbackExpiresAt: keepExpiresAt },
+    data: { status: 'CANCELLED', cashbackStatus: 'LOCKED', cashbackExpiresAt: keepExpiresAt },
   });
   logger.info(`Admin ${adminUserId} locked cashback entry ${entryId}`);
 }
@@ -1239,16 +1255,45 @@ export async function lockEntry(entryId: string, adminUserId: string): Promise<v
 export async function expireEntry(entryId: string, adminUserId: string): Promise<void> {
   const entry = await prisma.walletTransaction.findUnique({
     where: { id: entryId },
-    select: { id: true, type: true, status: true },
+    select: {
+      id: true, type: true, status: true, cashbackStatus: true,
+      walletId: true, amount: true, cashbackExpiresAt: true,
+    },
   });
   if (!entry) throw new AppError('Entry not found', 404);
   if (entry.type !== 'CASHBACK_CREDIT') throw new AppError('Not a cashback entry', 400);
-  if (['ANNULLED', 'FAILED'].includes(entry.status)) {
+  // Block terminal states that cannot be expired.
+  if (['VOIDED', 'PAID', 'EXPIRED'].includes(entry.cashbackStatus ?? '')) {
+    throw new AppError(`Cannot expire entry with cashback status ${entry.cashbackStatus}`, 400);
+  }
+  if (['ANNULLED', 'FAILED'].includes(entry.status) && !entry.cashbackStatus) {
     throw new AppError(`Cannot expire entry with status ${entry.status}`, 400);
   }
-  await prisma.walletTransaction.update({
-    where: { id: entryId },
-    data: { status: 'CANCELLED', cashbackExpiresAt: new Date() },
+  const now = new Date();
+  // Was the balance already credited? True for CLEARED and LOCKED states.
+  // PENDING entries have no wallet credit yet; expiring them needs no decrement.
+  const wasCleared =
+    entry.cashbackStatus === 'CLEARED' ||
+    entry.cashbackStatus === 'LOCKED' ||
+    (entry.cashbackStatus == null && (
+      entry.status === 'COMPLETED' ||
+      (entry.status === 'CANCELLED' && entry.cashbackExpiresAt != null && entry.cashbackExpiresAt > now)
+    ));
+  await prisma.$transaction(async (tx) => {
+    const result = await tx.walletTransaction.updateMany({
+      where: { id: entryId, NOT: { cashbackStatus: { in: ['EXPIRED', 'PAID', 'VOIDED'] } } },
+      data: { status: 'CANCELLED', cashbackStatus: 'EXPIRED', cashbackExpiresAt: now },
+    });
+    if (result.count === 0) return; // concurrent expire already ran — skip wallet debit
+    if (wasCleared) {
+      await tx.wallet.update({
+        where: { id: entry.walletId },
+        data: {
+          balance: { decrement: entry.amount },
+          availableBalance: { decrement: entry.amount },
+        },
+      });
+    }
   });
   logger.info(`Admin ${adminUserId} force-expired cashback entry ${entryId}`);
 }
@@ -1260,25 +1305,35 @@ export async function expireEntry(entryId: string, adminUserId: string): Promise
 export async function payEntry(entryId: string, adminUserId: string): Promise<void> {
   const entry = await prisma.walletTransaction.findUnique({
     where: { id: entryId },
-    select: { id: true, type: true, status: true, cashbackExpiresAt: true, cashbackPaidAt: true },
+    select: {
+      id: true, type: true, status: true, cashbackStatus: true,
+      cashbackExpiresAt: true, cashbackPaidAt: true,
+    },
   });
   if (!entry) throw new AppError('Entry not found', 404);
   if (entry.type !== 'CASHBACK_CREDIT') throw new AppError('Not a cashback entry', 400);
-  if (entry.cashbackPaidAt) throw new AppError('Entry is already marked as paid', 400);
-  const now = new Date();
-  // Must be derived-Locked: CANCELLED (with future expiresAt), ANNULLED, or FAILED.
-  // ANNULLED/FAILED are permanently Locked (no expiry check needed).
-  const LOCKED_STATUSES = ['CANCELLED', 'ANNULLED', 'FAILED'] as const;
-  if (!(LOCKED_STATUSES as readonly string[]).includes(entry.status)) {
-    throw new AppError(`Only Locked entries can be marked as paid (current status: ${entry.status})`, 400);
+  if (entry.cashbackPaidAt || entry.cashbackStatus === 'PAID') {
+    throw new AppError('Entry is already marked as paid', 400);
   }
-  // For CANCELLED: verify it hasn't already expired (expired CANCELLED = Expired, not Locked)
-  if (entry.status === 'CANCELLED' && (!entry.cashbackExpiresAt || entry.cashbackExpiresAt <= now)) {
+  const now = new Date();
+  // New-world: cashbackStatus === LOCKED is the authoritative locked state.
+  // Legacy: raw status is CANCELLED (with future expiresAt) or FAILED.
+  // ANNULLED is excluded — deriveCashbackEntryStatus maps ANNULLED → 'Voided', not 'Locked'.
+  const isNewWorldLocked = entry.cashbackStatus === 'LOCKED';
+  const LEGACY_LOCKED_STATUSES = ['CANCELLED', 'FAILED'] as const;
+  const isLegacyLocked = !entry.cashbackStatus &&
+    (LEGACY_LOCKED_STATUSES as readonly string[]).includes(entry.status);
+  if (!isNewWorldLocked && !isLegacyLocked) {
+    throw new AppError(`Only Locked entries can be marked as paid (current status: ${entry.cashbackStatus ?? entry.status})`, 400);
+  }
+  // For legacy CANCELLED: verify it hasn't already expired (expired CANCELLED = Expired, not Locked)
+  if (!entry.cashbackStatus && entry.status === 'CANCELLED' &&
+      (!entry.cashbackExpiresAt || entry.cashbackExpiresAt <= now)) {
     throw new AppError('Entry has already expired and cannot be marked as paid', 400);
   }
   await prisma.walletTransaction.update({
     where: { id: entryId },
-    data: { cashbackPaidAt: now },
+    data: { cashbackStatus: 'PAID', cashbackPaidAt: now },
   });
   logger.info(`Admin ${adminUserId} marked cashback entry ${entryId} as paid`);
 }
@@ -1290,8 +1345,29 @@ export async function payEntry(entryId: string, adminUserId: string): Promise<vo
  * Idempotent — only touches rows where cashbackExpiresAt IS NULL.
  */
 export async function backfillCashbackExpiry(): Promise<number> {
+  // Exclude entries that are still pending — their 60-day window must start
+  // from the cleared date, not from createdAt. Including them would write a
+  // premature cashbackExpiresAt that misrepresents the lifecycle and could
+  // cause the admin dashboard to show stale expiry dates until approval
+  // overwrites the value. Both new-world (cashbackStatus) and legacy
+  // (raw status) pending signals are excluded.
+  const PENDING_RAW = ['PENDING', 'TRIAL_PENDING', 'PROCESSING', 'RISK_HOLD'] as const;
+  // Terminal states must not receive a backfilled expiry — deriveCashbackEntryStatus
+  // ignores cashbackExpiresAt for these states, but writing a future date would
+  // corrupt future queries that filter on cashbackExpiresAt without a state guard.
+  const TERMINAL_STATUSES = ['VOIDED', 'PAID', 'EXPIRED'] as const;
   const rows = await prisma.walletTransaction.findMany({
-    where: { type: 'CASHBACK_CREDIT', cashbackExpiresAt: null },
+    where: {
+      type: 'CASHBACK_CREDIT',
+      cashbackExpiresAt: null,
+      NOT: {
+        OR: [
+          { cashbackStatus: { in: [...TERMINAL_STATUSES, 'PENDING'] } },
+          { status: { in: [...PENDING_RAW, 'ANNULLED'] } },
+          { cashbackPaidAt: { not: null } },
+        ],
+      },
+    },
     select: { id: true, createdAt: true, clearedAt: true },
   });
   if (rows.length === 0) return 0;

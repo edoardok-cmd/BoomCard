@@ -119,9 +119,10 @@ model PendingSuperAdminRequest {
 // row and then executes or discards the underlying operation.
 //
 // Supported actionTypes (extend as needed):
-//   BULK_PAYOUT_OVERRIDE   — bulk payout amount override above the safety cap
-//   PARTNER_ARCHIVE        — irreversible archive of an active partner
-//   ADMIN_PERMISSION_GRANT — granting a sensitive permission outside normal flow
+//   BULK_PAYOUT_OVERRIDE        — bulk payout amount override above the safety cap
+//   PARTNER_ARCHIVE             — irreversible archive of an active partner
+//   ADMIN_PERMISSION_GRANT      — granting a sensitive permission outside normal flow
+//   PARTNER_DISCOUNT_RATE_CHANGE — renegotiating a partner's contracted cashback rate (future)
 model CriticalActionRequest {
   id             String    @id @default(uuid())
   actionType     String    // e.g. "BULK_PAYOUT_OVERRIDE", "PARTNER_ARCHIVE"
@@ -850,18 +851,19 @@ model VenueFraudConfig {
 }
 
 model VenueReceiptTemplate {
-  id               String   @id @default(uuid())
-  venueId          String
-  merchantName     String
-  description      String?
-  expectedKeywords String[]
-  imageUrl         String
-  imageKey         String
-  perceptualHash   String
-  isActive         Boolean  @default(true)
-  uploadedBy       String
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                     String   @id @default(uuid())
+  venueId                String
+  merchantName           String
+  merchantNameVariations String[]
+  description            String?
+  expectedKeywords       String[]
+  imageUrl               String
+  imageKey               String
+  perceptualHash         String
+  isActive               Boolean  @default(true)
+  uploadedBy             String
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   @@index([venueId])
   @@index([venueId, isActive])
@@ -1191,10 +1193,13 @@ model Sticker {
   lastScannedAt DateTime?
   metadata      String?
   // Spec §5.4 — when a QR label is physically replaced, the new sticker's row
-  // links back to the superseded one so the replacement chain is queryable.
-  replacedById  String?
-  replacedBy    Sticker?        @relation("StickerReplacement", fields: [replacedById], references: [id])
-  replacedByOf  Sticker[]       @relation("StickerReplacement")
+  // links to the superseded one so the replacement chain is queryable.
+  // replacesId: set on the NEW sticker, pointing to the OLD sticker it supersedes.
+  // Use newSticker.replaces to navigate to the predecessor; oldSticker.replacedBy[]
+  // gives all successors (should be at most one in practice).
+  replacesId    String?
+  replaces      Sticker?        @relation("StickerReplacement", fields: [replacesId], references: [id])
+  replacedBy    Sticker[]       @relation("StickerReplacement")
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   location      StickerLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
@@ -1457,6 +1462,9 @@ model HelpTicket {
   // Auto re-open watermark (§11.4): when an inbound reply hits a CLOSED ticket
   // we re-open and stamp this for the audit log.
   reopenedAt     DateTime?
+  // Set when status transitions to RESOLVED so auto-close uses a stable
+  // timestamp rather than updatedAt (which bumps on any field change).
+  resolvedAt     DateTime?
   linkedTicketId String?
   assignee       User?          @relation("TicketAssignee", fields: [assigneeId], references: [id])
   user           User           @relation("TicketUser", fields: [userId], references: [id])

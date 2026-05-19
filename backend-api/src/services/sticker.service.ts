@@ -12,6 +12,7 @@ import { enqueueMerchantVerification } from '../queues/merchantVerification.queu
 import { cashbackLifecycleService } from './cashbackLifecycle.service';
 import { writeAudit } from '../middleware/audit.middleware';
 import { getSystemSettingStr } from '../utils/systemSettings';
+import { isPartnerOperationallyActive } from './partner.service';
 
 /**
  * Convert a wall-clock date/time in a named IANA timezone to a UTC Date.
@@ -373,16 +374,25 @@ class StickerService {
    * but not yet confirmed deployed at the venue. Admins advance PROCESSING → ACTIVE
    * once the sticker is confirmed live.
    */
-  async markStickerProcessing(stickerId: string): Promise<Sticker> {
-    const sticker = await prisma.sticker.findUnique({ where: { stickerId }, select: { status: true } });
+  async markStickerProcessing(stickerId: string, actorUserId?: string | null): Promise<Sticker> {
+    const sticker = await prisma.sticker.findUnique({ where: { stickerId }, select: { id: true, status: true } });
     if (!sticker) throw new Error(`Sticker ${stickerId} not found`);
     if (sticker.status !== StickerStatus.PENDING) {
       throw new Error(`Sticker ${stickerId} must be in PENDING state to mark as processing (current: ${sticker.status})`);
     }
-    return prisma.sticker.update({
+    const updated = await prisma.sticker.update({
       where: { stickerId },
       data: { status: StickerStatus.PROCESSING, printedAt: new Date() },
     });
+    writeAudit({
+      actorUserId: actorUserId ?? null,
+      action: 'STICKER_PROCESSING',
+      objectType: 'Sticker',
+      objectId: sticker.id,
+      before: { status: StickerStatus.PENDING },
+      after: { status: StickerStatus.PROCESSING },
+    }).catch((err) => logger.error('[sticker.markStickerProcessing] audit write failed:', err));
+    return updated;
   }
 
   /**
@@ -406,15 +416,24 @@ class StickerService {
   }
 
   /**
-   * Spec §5.4 — replace a sticker with a new one. Atomically:
+   * Spec §5.4 — atomically replace a sticker with a new one:
    *   1. Marks the old sticker REPLACED + stamps deactivatedAt.
-   *   2. Generates a new sticker on the same location (starts as PENDING).
-   *   3. Sets newSticker.replacedById = oldSticker.id so the chain is queryable.
+   *   2. Creates a new sticker on the same location (starts as PENDING) with
+   *      replacesId = old sticker's internal id (so the chain is queryable via
+   *      newSticker.replaces / oldSticker.replacedBy[]).
    *
-   * The new sticker must be separately activated (markStickerProcessing + activateSticker)
-   * once the physical label is confirmed deployed.
+   * The two writes happen inside a single $transaction so a failure in step 2
+   * rolls back the REPLACED stamp on the old sticker — no orphaned state.
+   *
+   * The new sticker must be separately advanced to ACTIVE via
+   * markStickerProcessing + activateSticker once the physical label is deployed.
    */
-  async replaceSticker(oldStickerId: string): Promise<{ oldSticker: Sticker; newSticker: Sticker }> {
+  async replaceSticker(
+    oldStickerId: string,
+    actorUserId?: string | null,
+  ): Promise<{ oldSticker: Sticker; newSticker: Sticker }> {
+    // Pre-flight reads (outside tx — read-only; a concurrent replace would race
+    // on the unique newStickerId constraint inside the tx and get a clean error).
     const old = await prisma.sticker.findUnique({
       where: { stickerId: oldStickerId },
       select: { id: true, locationId: true, status: true },
@@ -424,22 +443,68 @@ class StickerService {
       throw new Error(`Sticker ${oldStickerId} is already replaced`);
     }
 
-    // Mark old sticker as REPLACED
-    const oldSticker = await prisma.sticker.update({
-      where: { stickerId: oldStickerId },
-      data: { status: StickerStatus.REPLACED, deactivatedAt: new Date() },
+    // Derive the new sticker ID and QR payload before opening the transaction
+    // (getVenueCode / location lookup are reads with no side effects).
+    const location = await prisma.stickerLocation.findUnique({
+      where: { id: old.locationId },
+      include: { venue: true },
+    });
+    if (!location) throw new Error(`Location ${old.locationId} not found`);
+
+    const venueCode = await this.getVenueCode(location.venueId);
+    const newStickerId = `${venueCode}-${location.locationNumber}`;
+
+    const existingNew = await prisma.sticker.findUnique({ where: { stickerId: newStickerId } });
+    if (existingNew) {
+      throw new Error(
+        `Cannot replace ${oldStickerId}: a sticker with the generated ID ${newStickerId} already exists. ` +
+        `If the old label was previously replaced, use the successor sticker ID.`,
+      );
+    }
+
+    const qrData: StickerQRData = {
+      type: 'BOOM_STICKER',
+      venueId: location.venueId,
+      locationId: location.id,
+      stickerId: newStickerId,
+      locationType: location.locationType,
+      version: '1.0',
+    };
+
+    // Atomic: mark old REPLACED + create new with replacesId in one transaction.
+    const { oldSticker, newSticker } = await prisma.$transaction(async (tx) => {
+      const updatedOld = await tx.sticker.update({
+        where: { stickerId: oldStickerId },
+        data: { status: StickerStatus.REPLACED, deactivatedAt: new Date() },
+      });
+
+      const created = await tx.sticker.create({
+        data: {
+          venueId: location.venueId,
+          locationId: location.id,
+          stickerId: newStickerId,
+          qrCode: JSON.stringify(qrData),
+          locationType: location.locationType,
+          status: StickerStatus.PENDING,
+          metadata: JSON.stringify({ stickerId: newStickerId }),
+          replacesId: old.id, // new sticker → old sticker (correct direction)
+        },
+        include: { venue: true, location: true },
+      });
+
+      return { oldSticker: updatedOld, newSticker: created };
     });
 
-    // Generate a new sticker on the same location
-    const newSticker = await this.generateSticker(old.locationId);
+    writeAudit({
+      actorUserId: actorUserId ?? null,
+      action: 'STICKER_REPLACED',
+      objectType: 'Sticker',
+      objectId: old.id,
+      before: { stickerId: oldStickerId, status: old.status },
+      after: { status: StickerStatus.REPLACED, newStickerId, newStickerDbId: newSticker.id },
+    }).catch((err) => logger.error('[sticker.replaceSticker] audit write failed:', err));
 
-    // Link the new sticker back to the old one
-    await prisma.sticker.update({
-      where: { id: newSticker.id },
-      data: { replacedById: old.id },
-    });
-
-    return { oldSticker, newSticker: { ...newSticker, replacedById: old.id } as Sticker };
+    return { oldSticker, newSticker };
   }
 
   /**
@@ -516,10 +581,7 @@ class StickerService {
     // + verifiedAt gates whether the QR is operationally active. Mirror the
     // createSession / scanSticker gates so the mobile app gets a consistent
     // answer during pre-scan validation.
-    if (
-      sticker.venue.partner &&
-      (sticker.venue.partner.status !== 'ACTIVE' || !sticker.venue.partner.verifiedAt)
-    ) {
+    if (sticker.venue.partner && !isPartnerOperationallyActive(sticker.venue.partner)) {
       return {
         valid: false,
         message: 'PARTNER_NOT_ACCEPTING: Този обект временно не приема BoomCard транзакции.',
@@ -620,7 +682,7 @@ class StickerService {
     // not null — a partner technically status=ACTIVE but with verifiedAt null
     // means the admin approved but the activation link was never consumed,
     // which the spec treats as not operational.
-    if (partner && (partner.status !== 'ACTIVE' || !partner.verifiedAt)) {
+    if (partner && !isPartnerOperationallyActive(partner)) {
       throw new Error('PARTNER_NOT_ACCEPTING: Този обект временно не приема BoomCard транзакции.');
     }
 
@@ -732,10 +794,7 @@ class StickerService {
       // Spec §5.3 — mirror the createSession / validateStickerById gate.
       // verifiedAt cleared between session open and receipt upload (admin
       // re-onboarding) means the partner is no longer operationally active.
-      if (
-        sessionPartner &&
-        (sessionPartner.status !== 'ACTIVE' || !sessionPartner.verifiedAt)
-      ) {
+      if (sessionPartner && !isPartnerOperationallyActive(sessionPartner)) {
         throw new Error('PARTNER_NOT_ACCEPTING: Този обект временно не приема BoomCard транзакции.');
       }
 
@@ -892,7 +951,7 @@ class StickerService {
     });
 
     // Spec §5.3 — partner status + verifiedAt gate (see createSession for full note).
-    if (partner && (partner.status !== 'ACTIVE' || !partner.verifiedAt)) {
+    if (partner && !isPartnerOperationallyActive(partner)) {
       throw new Error('PARTNER_NOT_ACCEPTING: Този обект временно не приема BoomCard транзакции.');
     }
 
@@ -1057,10 +1116,7 @@ class StickerService {
     // could complete a SESSION_ACTIVE scan and then upload the receipt after
     // their partner was deactivated, reaching PENDING cashback at a venue
     // that no longer accepts BoomCard. Mirrors the createSession gate exactly.
-    if (
-      scan.venue?.partner &&
-      (scan.venue.partner.status !== 'ACTIVE' || !scan.venue.partner.verifiedAt)
-    ) {
+    if (scan.venue?.partner && !isPartnerOperationallyActive(scan.venue.partner)) {
       throw new Error('PARTNER_NOT_ACCEPTING: Този обект временно не приема BoomCard транзакции.');
     }
 
