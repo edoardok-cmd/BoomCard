@@ -669,6 +669,7 @@ interface DashboardData {
   subscription: DashboardSubscription;
   wallet: DashboardWallet;
   receipts: DashboardReceipt[];
+  showUpgradePrompt?: boolean;
 }
 
 /* ── Component ── */
@@ -751,9 +752,7 @@ const DashboardPage: React.FC = () => {
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   })();
 
-  const showUpgradeBanner =
-    dashboardData?.subscription.plan === 'LIGHT' ||
-    dashboardData?.subscription.plan === 'BASIC';
+  const showUpgradeBanner = dashboardData?.showUpgradePrompt ?? false;
 
   return (
     <PageContainer>

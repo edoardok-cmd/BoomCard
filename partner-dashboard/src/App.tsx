@@ -710,7 +710,14 @@ function App() {
                     {/* Other routes */}
                     <Route path="favorites" element={<FavoritesPage />} />
                     <Route path="upload-receipt" element={<UploadReceiptInfoPage />} />
-                    <Route path="subscription" element={<SubscriptionPage />} />
+                    <Route
+                      path="subscription"
+                      element={
+                        <ProtectedRoute>
+                          <SubscriptionPage />
+                        </ProtectedRoute>
+                      }
+                    />
                     <Route path="integrations" element={<IntegrationsPage />} />
                     <Route path="*" element={<NotFoundPage />} />
                   </Route>
