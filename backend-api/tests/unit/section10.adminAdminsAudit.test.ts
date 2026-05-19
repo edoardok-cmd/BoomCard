@@ -400,7 +400,7 @@ describe('Gap 2 — POST /:id/resend-activation writes explicit AuditLog entry',
 
     const auditEntry = auditCreateCalls.find((c) => c.action === 'partner.activation-link.resend');
     expect(auditEntry).toBeDefined();
-    expect(auditEntry.objectType).toBe('partner');
+    expect(auditEntry.objectType).toBe('Partner');
     expect(auditEntry.objectId).toBe('p-1');
     expect(auditEntry.after).toMatchObject({ linkId: 'link-1', sentTo: 'partner@test.com' });
   });

@@ -515,6 +515,11 @@ router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
           canceledAt: now,
           cancelAt: now,
           autoRenewal: false,
+          // Mark the payment failure as resolved-by-cancellation so that
+          // list-view projections (which surface failedPaymentAt /
+          // failedPaymentClearedAt) don't show an open failure on a subscription
+          // that has already been administratively terminated.
+          failedPaymentClearedAt: now,
         },
       });
     } else if (!subscription.stripeSubscriptionId) {
@@ -542,6 +547,21 @@ router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
         },
       });
     }
+
+    // Spec §10.4 — audit every admin subscription mutation.
+    writeAudit({
+      actorUserId: (req as AuthRequest).user?.id ?? null,
+      action: 'subscription.cancel',
+      objectType: 'subscription',
+      objectId: subscription.id,
+      before: { status: subscription.status, userId },
+      after: {
+        cancelType: subscription.status === 'FAILED_PAYMENT' ? 'immediate' : 'at_period_end',
+        initiatedBy: 'admin',
+      },
+      ip: getClientIp(req) ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    }).catch(() => {});
 
     res.json({ ok: true });
   } catch (error) {

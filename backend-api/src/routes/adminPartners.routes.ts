@@ -363,7 +363,7 @@ router.patch(
     writeAudit({
       actorUserId: req.user!.id,
       action: 'partner.request.status',
-      objectType: 'partner',
+      objectType: 'Partner',
       objectId: req.params.id,
       before: { requestStatus: current },
       after: {
@@ -398,6 +398,15 @@ router.patch(
       select: PARTNER_SELECT,
     });
 
+    writeAudit({
+      actorUserId: req.user!.id,
+      action: 'partner.assign',
+      objectType: 'Partner',
+      objectId: req.params.id,
+      before: { assignedAdminId: partner.assignedAdminId },
+      after: { assignedAdminId: adminId ?? null },
+    }).catch((err) => logger.error('[adminPartners] assign writeAudit failed:', err));
+
     res.json({ partner: updated });
   })
 );
@@ -415,18 +424,27 @@ router.post(
     const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
     if (!partner) return res.status(404).json({ error: 'Partner not found' });
 
-    if (!partner.requestStatus) {
-      await prisma.partner.update({ where: { id: req.params.id }, data: { requestStatus: 'NOVA' } });
-    }
+    // Bug-fix: initialise requestStatus and create the note atomically so a
+    // failed note-create can't leave requestStatus=NOVA without a note, and so
+    // two concurrent first-notes on the same partner don't race.
+    // Scope guard: only set NOVA for PENDING partners; never touch an already-
+    // active/inactive partner's requestStatus (the pipeline field is irrelevant
+    // for post-onboarding records and NOVA would be misleading).
+    const needsInit = !partner.requestStatus && partner.status === 'PENDING';
 
-    const note = await prisma.partnerRequestNote.create({
-      data: {
-        partnerId: req.params.id,
-        authorId: req.user!.id,
-        body: body.trim(),
-        isInternal: Boolean(isInternal),
-      },
-      include: { author: { select: { id: true, firstName: true, lastName: true, email: true } } },
+    const note = await prisma.$transaction(async (tx) => {
+      if (needsInit) {
+        await tx.partner.update({ where: { id: req.params.id }, data: { requestStatus: 'NOVA' } });
+      }
+      return tx.partnerRequestNote.create({
+        data: {
+          partnerId: req.params.id,
+          authorId: req.user!.id,
+          body: body.trim(),
+          isInternal: Boolean(isInternal),
+        },
+        include: { author: { select: { id: true, firstName: true, lastName: true, email: true } } },
+      });
     });
 
     res.status(201).json({ note });
@@ -480,6 +498,16 @@ router.patch(
     });
     let parsedFeatures: Record<string, unknown> | null = null;
     if (updated.features) { try { parsedFeatures = JSON.parse(updated.features); } catch { /* ignore */ } }
+
+    writeAudit({
+      actorUserId: req.user!.id,
+      action: 'partner.contract.update',
+      objectType: 'Partner',
+      objectId: req.params.id,
+      before: { contractSigned: existingFeatures.contractSigned ?? null },
+      after: { contractSigned: signed },
+    }).catch((err) => logger.error('[adminPartners] contract writeAudit failed:', err));
+
     res.json({ partner: { ...updated, features: parsedFeatures } });
   })
 );
@@ -532,7 +560,7 @@ router.patch(
     writeAudit({
       actorUserId: req.user!.id,
       action: 'partner.discount-rate.update',
-      objectType: 'partner',
+      objectType: 'Partner',
       objectId: req.params.id,
       before: { discountRate: partner.discountRate },
       after: { discountRate: rate ?? null },
@@ -553,7 +581,18 @@ router.post(
     if (partner.status === PartnerStatus.ACTIVE) {
       return res.status(400).json({ error: 'Partner is already ACTIVE' });
     }
-    const NON_APPROVABLE_STATUSES: PartnerStatus[] = [PartnerStatus.REJECTED, PartnerStatus.PAUSED, PartnerStatus.SUSPENDED, PartnerStatus.ARCHIVED];
+    // Bug-fix: INACTIVE is a post-onboarding status — re-activating must go
+    // through /partner-status, not through the onboarding approve endpoint.
+    // Without this guard, an INACTIVE partner (requestStatus=ODOBRENA, verifiedAt
+    // set) would receive a stale "Onboarding approved" email + a superfluous
+    // activation link, and the PartnerStatusChange row would carry the wrong label.
+    const NON_APPROVABLE_STATUSES: PartnerStatus[] = [
+      PartnerStatus.INACTIVE,
+      PartnerStatus.REJECTED,
+      PartnerStatus.PAUSED,
+      PartnerStatus.SUSPENDED,
+      PartnerStatus.ARCHIVED,
+    ];
     if (NON_APPROVABLE_STATUSES.includes(partner.status)) {
       return res.status(400).json({ error: 'Cannot approve a partner in this state. Use /partner-status to manage post-onboarding partner statuses.' });
     }
@@ -563,6 +602,19 @@ router.post(
       return res.status(400).json({
         error: `Partner must reach the ONBOARDING stage before approval. Current stage: ${partner.requestStatus ?? 'NOVA'}`,
         currentStatus: partner.requestStatus ?? 'NOVA',
+      });
+    }
+    // Belt-and-braces: if requestStatus is already ODOBRENA but partner.status is
+    // not PENDING, the pipeline was manually advanced (via PATCH /status) without
+    // consuming an activation link. PENDING is the only status where a manual
+    // ODOBRENA advance + approve makes sense. Any other status is post-onboarding.
+    if (
+      partner.requestStatus === PartnerRequestStatus.ODOBRENA &&
+      partner.status !== PartnerStatus.PENDING
+    ) {
+      return res.status(400).json({
+        error: 'Partner pipeline shows ODOBRENA but operational status is not PENDING. Use /partner-status for post-onboarding transitions.',
+        currentStatus: partner.status,
       });
     }
 
@@ -744,7 +796,7 @@ router.post(
     writeAudit({
       actorUserId: req.user!.id,
       action: 'partner.activation-link.resend',
-      objectType: 'partner',
+      objectType: 'Partner',
       objectId: partner.id,
       after: { linkId, expiresAt: expiresAt.toISOString(), sentTo: partner.email ?? partner.user.email },
       ip: getClientIp(req) ?? null,
@@ -827,7 +879,7 @@ router.post(
 router.patch(
   '/:id/visibility',
   requirePermission('partners.requests.write'),
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (req: AuthRequest, res) => {
     const { isVisible } = req.body as { isVisible?: boolean };
     if (typeof isVisible !== 'boolean') return res.status(400).json({ error: 'isVisible (boolean) is required' });
 
@@ -839,6 +891,15 @@ router.patch(
       data: { isVisible },
       select: { id: true, businessName: true, isVisible: true },
     });
+
+    writeAudit({
+      actorUserId: req.user!.id,
+      action: 'partner.visibility.update',
+      objectType: 'Partner',
+      objectId: req.params.id,
+      before: { isVisible: partner.isVisible },
+      after: { isVisible },
+    }).catch((err) => logger.error('[adminPartners] visibility writeAudit failed:', err));
 
     res.json({ partner: updated });
   })
@@ -900,7 +961,7 @@ router.patch(
     writeAudit({
       actorUserId: req.user!.id,
       action: 'partner.status.update',
-      objectType: 'partner',
+      objectType: 'Partner',
       objectId: req.params.id,
       before: { status: change.fromStatus },
       after: {
@@ -984,7 +1045,7 @@ router.get(
     if (!partner) return res.status(404).json({ error: 'Partner not found' });
 
     const entries = await prisma.auditLog.findMany({
-      where: { objectType: 'Partner', objectId: req.params.id },
+      where: { objectType: { in: ['Partner', 'partner'] }, objectId: req.params.id },
       orderBy: { createdAt: 'desc' },
       take: 50,
       include: { actor: { select: { id: true, firstName: true, lastName: true, email: true } } },

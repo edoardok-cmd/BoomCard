@@ -228,7 +228,8 @@ describe('§13 Fix 1c — seedPermissions revokes removed grants', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    // permission.findMany returns IDs for the keys in the allow-list
+    // permission.findMany returns key-scoped IDs matching what seedPermissions maps to allowedPermIds.
+    // Using perm-${key} makes the notIn content verifiable without a real DB.
     m.permission.findMany.mockImplementation(async (args: any) => {
       const keys: string[] = args?.where?.key?.in ?? [];
       return keys.map((k: string) => ({ id: `perm-${k}` }));
@@ -237,7 +238,9 @@ describe('§13 Fix 1c — seedPermissions revokes removed grants', () => {
       if (!args?.where?.key) return null;
       return { id: `perm-${args.where.key}`, key: args.where.key, label: args.where.key, category: 'x' };
     });
-    m.adminRole.upsert.mockResolvedValue({ id: 'role-1' });
+    // Return a role ID derived from the role key so each deleteMany call can be
+    // correlated back to its role and its expected allow-list.
+    m.adminRole.upsert.mockImplementation(async (args: any) => ({ id: `role-${args?.where?.key ?? 'x'}` }));
     m.rolePermission.upsert.mockResolvedValue({});
     m.permission.upsert.mockResolvedValue({});
     m.rolePermission.deleteMany.mockResolvedValue({ count: 0 });
@@ -257,6 +260,17 @@ describe('§13 Fix 1c — seedPermissions revokes removed grants', () => {
       expect(args.where).toHaveProperty('roleId');
       expect(args.where.permissionId).toHaveProperty('notIn');
       expect(Array.isArray(args.where.permissionId.notIn)).toBe(true);
+    }
+  });
+
+  it('each deleteMany notIn contains exactly the permission IDs for that role allow-list', async () => {
+    await seedPermissions();
+    const calls: any[] = m.rolePermission.deleteMany.mock.calls;
+    for (const [roleKey, allowedKeys] of Object.entries(ROLE_DEFAULT_ALLOWS)) {
+      const call = calls.find((c: any) => c[0].where.roleId === `role-${roleKey}`);
+      expect(call).toBeDefined();
+      const expectedIds = allowedKeys.map((k: string) => `perm-${k}`);
+      expect(new Set(call[0].where.permissionId.notIn)).toEqual(new Set(expectedIds));
     }
   });
 });
@@ -309,7 +323,15 @@ describe('§13 Fix 2 — fraud-rules HTTP permission gates', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // clearAllMocks clears call history but NOT unconsumed mockResolvedValueOnce queues.
+    // mockReset + explicit return value ensures stale Once values from a prior test can
+    // never bleed into a subsequent test that relies on the factory default.
+    m.fraudRule.findMany.mockReset();
     m.fraudRule.findMany.mockResolvedValue([]);
+    m.fraudRule.findUnique.mockReset();
+    m.fraudRule.findUnique.mockResolvedValue(null);
+    m.fraudRuleOverride.findMany.mockReset();
+    m.fraudRuleOverride.findMany.mockResolvedValue([]);
   });
 
   // ── GET /fraud-rules (requirePermission OR: settings.read | control.rules.read) ─
@@ -376,13 +398,15 @@ describe('§13 Fix 2 — fraud-rules HTTP permission gates', () => {
     expect(res.status).toBe(403);
   });
 
-  it('GET /fraud-rules/:id/overrides — 200 for SUPER_ADMIN', async () => {
+  it('GET /fraud-rules/:id/overrides — 200 for SUPER_ADMIN with correct response shape', async () => {
     setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
     m.fraudRule.findUnique.mockResolvedValueOnce({ id: 'rule-1', tier: 'SYSTEM', isActive: true });
     m.fraudRuleOverride.findMany.mockResolvedValueOnce([]);
     const res = await api.get('/settings/fraud-rules/rule-1/overrides');
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data).toHaveLength(0);
   });
 
   // ── POST /fraud-rules/:id/overrides (authorize('SUPER_ADMIN') hard gate) ─────
@@ -435,8 +459,13 @@ describe('§13 Fix 3 — PATCH /partners/:id/discount-rate', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    // Use mockClear not mockReset — reset strips the async implementation and
-    // the route calls writeAudit().catch(...), which would throw on undefined.
+    // mockReset on partner mocks ensures mockResolvedValue set by a prior test doesn't
+    // persist into a subsequent test — clearAllMocks only clears call history, not
+    // base implementations. Each test that reaches the DB sets these explicitly.
+    m.partner.findUnique.mockReset();
+    m.partner.update.mockReset();
+    // Use mockClear not mockReset on writeAuditSpy — reset strips the async impl and
+    // the route calls writeAudit().catch(...), which would throw on a bare jest.fn().
     writeAuditSpy.mockClear();
   });
 
@@ -520,7 +549,7 @@ describe('§13 Fix 3 — PATCH /partners/:id/discount-rate', () => {
     expect(writeAuditSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'partner.discount-rate.update',
-        objectType: 'partner',
+        objectType: 'Partner',
         objectId: PARTNER_ID,
         before: { discountRate: 10 },
         after: { discountRate: 15 },

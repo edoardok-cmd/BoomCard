@@ -333,13 +333,16 @@ export async function markPaid(params: {
 }
 
 /**
- * Sweep CLEARED entries past their cashbackExpiresAt and mark them EXPIRED.
- * Returns the count of expired rows. Run nightly from the scheduler.
+ * @deprecated NOT wired to the production scheduler. The scheduler uses
+ * expireWallet() (jobs/scheduler.ts:runCashbackExpiry) which handles the same
+ * sweep via a raw SQL UPDATE…RETURNING for per-wallet atomic balance adjustments.
+ * Wiring both in would cause double-processing and double-decrements.
  *
- * IMPORTANT: also decrements the user's wallet balance so the expired
- * amount is no longer spendable, matching pre-existing behavior in
- * wallet.service.ts:expireOverdueCashback (which was status-based; this
- * is the lifecycle-aware replacement).
+ * Retained for testing. If you intend to change production expiry behaviour,
+ * edit expireWallet() in jobs/scheduler.ts instead.
+ *
+ * Sweep CLEARED entries past their cashbackExpiresAt and mark them EXPIRED.
+ * Returns the count of expired rows.
  */
 export async function expireOverdueCashback(actorUserId: string | null = null) {
   const now = new Date();
@@ -639,9 +642,15 @@ export async function promotePendingToCleared(params: {
  * The spec says Pending cashback "stays Pending until subscription recovery
  * OR natural expiry by the 60-day rule". Because PENDING entries never reach
  * CLEARED they have no clearedAt / cashbackExpiresAt. We use createdAt as the
- * baseline — after validityDays from creation the entry can never be useful
- * (even if approved at that point, it would expire immediately or very soon
- * after clearing). Balance is unaffected: PENDING entries are never credited.
+ * baseline — after validityDays from creation the entry is stale enough that
+ * administrative cleanup is appropriate, matching the 60-day window applied to
+ * CLEARED entries. Balance is unaffected: PENDING entries are never credited.
+ *
+ * NOTE: TRIAL_PENDING entries are excluded. Although they share
+ * cashbackStatus=PENDING, they carry status=TRIAL_PENDING and are owned by
+ * resolveTrialPendingCashback() (scheduler 5:30 AM). Including them here would
+ * set cashbackStatus=EXPIRED while leaving status=TRIAL_PENDING unchanged, so
+ * the 5:30 AM job would still match on status and overwrite the transition.
  *
  * Returns the count of entries transitioned to EXPIRED.
  */
@@ -653,6 +662,8 @@ export async function expireStalePendingCashback(actorUserId: string | null = nu
     where: {
       type: WalletTransactionType.CASHBACK_CREDIT,
       cashbackStatus: CashbackEntryStatus.PENDING,
+      // Exclude TRIAL_PENDING entries — see JSDoc above.
+      status: { not: WalletTransactionStatus.TRIAL_PENDING },
       createdAt: { lt: cutoff },
     },
     select: { id: true },
@@ -673,12 +684,17 @@ export async function expireStalePendingCashback(actorUserId: string | null = nu
   });
 
   if (result.count > 0) {
+    // `staleIds` = all candidates found by findMany. `count` = entries actually
+    // transitioned by updateMany (may be less if a concurrent approve/void won
+    // the CAS race for some entries). Prisma updateMany has no RETURNING, so we
+    // cannot cheaply recover the exact subset; labelling the field `staleIds`
+    // (not `ids`) makes the distinction explicit in the audit trail.
     await writeAudit({
       actorUserId,
       action: 'CASHBACK_PENDING_EXPIRED_BATCH',
       objectType: 'WalletTransaction',
       objectId: null,
-      after: { count: result.count, ids, cutoffDays: validityDays },
+      after: { count: result.count, staleIds: ids, cutoffDays: validityDays },
     }).catch((err) => logger.error('[cashbackLifecycle] audit write failed (expireStalePending):', err));
   }
 

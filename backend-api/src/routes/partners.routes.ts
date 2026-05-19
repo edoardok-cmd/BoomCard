@@ -904,7 +904,19 @@ router.put(
       amenities,
     };
 
-    // PARTNER role: save changes as pending, await admin approval
+    // PARTNER role: save changes as pending, await admin approval.
+    //
+    // Spec §5.5 post-contract change control: the `features` column is the
+    // contract/legal metadata blob (contractSigned, contractSignedAt, etc.) and
+    // is managed exclusively by admins via PATCH /admin/partners/:id/contract.
+    // Partners MUST NOT be able to propose changes to it — not even via the
+    // pending-changes approval flow — because a careless admin approval could
+    // silently unset contractSigned or alter the contract date. For the same
+    // reason, discountRate / partnerTypeId / status are already omitted from
+    // this block (they are admin-only fields). Profile info and public-facing
+    // content (description, contact, amenities) are the only partner-editable
+    // fields here. Rate / type / location / contract changes must go through
+    // §11 Help tickets (DATA_CHANGE / CONTRACT_CHANGE / LOCATION_CHANGE).
     if (!isAdmin) {
       const partnerUpdates: Record<string, unknown> = {};
       if (businessName !== undefined) partnerUpdates.businessName = businessName;
@@ -920,7 +932,8 @@ router.put(
       if (email !== undefined) partnerUpdates.email = email;
       if (website !== undefined) partnerUpdates.website = website;
       if (openingHours !== undefined) partnerUpdates.openingHours = openingHours;
-      if (features !== undefined) partnerUpdates.features = features;
+      // `features` intentionally excluded: it is the contract/legal metadata
+      // blob and is admin-managed only (PATCH /admin/partners/:id/contract).
       if (amenities !== undefined) partnerUpdates.amenities = amenities;
 
       await prisma.partner.update({

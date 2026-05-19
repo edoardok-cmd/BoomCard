@@ -771,7 +771,12 @@ export async function getSubscriberCashbackEntries(
   const data: SubscriberCashbackEntry[] = entries.map((e) => {
     const status = deriveCashbackEntryStatus(e, latestWithdrawal?.createdAt ?? null, now);
 
-    const daysUntilExpiry = e.cashbackExpiresAt
+    // Do not show a positive countdown for entries that are already Expired —
+    // cashbackExpiresAt is preserved by expireEntry (Fix 6) as historical context,
+    // so it may still be in the future for force-expired entries. Using the
+    // authoritative derived `status` here prevents the UI from showing
+    // e.g. "Expired — 30 days remaining", which is contradictory.
+    const daysUntilExpiry = (e.cashbackExpiresAt && status !== 'Expired')
       ? Math.max(0, Math.ceil((e.cashbackExpiresAt.getTime() - now.getTime()) / 86_400_000))
       : null;
 
@@ -1060,7 +1065,9 @@ export async function getAllCashbackEntries(
       now,
     );
 
-    const daysUntilExpiry = e.cashbackExpiresAt
+    // Mirror the same guard as getSubscriberCashbackEntries: null when Expired
+    // so force-expired entries don't show a positive countdown alongside "Expired".
+    const daysUntilExpiry = (e.cashbackExpiresAt && status !== 'Expired')
       ? Math.max(0, Math.ceil((e.cashbackExpiresAt.getTime() - now.getTime()) / 86_400_000))
       : null;
 

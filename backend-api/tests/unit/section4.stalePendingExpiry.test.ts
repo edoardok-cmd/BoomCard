@@ -112,7 +112,7 @@ describe('expireStalePendingCashback — §4.4 audit finding #4', () => {
     // (wallet mock has no update delegate, so any wallet call would throw)
   });
 
-  it('happy path — writes an audit entry on success', async () => {
+  it('happy path — writes an audit entry on success with staleIds field', async () => {
     staleRows = [makePendingRow(), makePendingRow()];
     updateManyCount = 2; // mock returns the number of rows actually updated
 
@@ -124,7 +124,10 @@ describe('expireStalePendingCashback — §4.4 audit finding #4', () => {
       action: 'CASHBACK_PENDING_EXPIRED_BATCH',
     });
     expect(auditCalls[0].after.count).toBe(2);
-    expect(auditCalls[0].after.ids).toHaveLength(2);
+    // Field is `staleIds` (all candidates) not `ids`, to distinguish from
+    // confirmed transitions when count < staleIds.length under CAS races.
+    expect(auditCalls[0].after.staleIds).toHaveLength(2);
+    expect(auditCalls[0].after.ids).toBeUndefined();
   });
 
   it('no candidates — returns count=0 and writes no audit', async () => {
@@ -181,5 +184,35 @@ describe('expireStalePendingCashback — §4.4 audit finding #4', () => {
 
     // Function processes whatever findMany returns — no client-side age filter
     expect(result.count).toBe(1);
+  });
+
+  it('findMany WHERE excludes TRIAL_PENDING status to avoid racing resolveTrialPendingCashback', async () => {
+    // TRIAL_PENDING entries share cashbackStatus=PENDING but their status field
+    // is TRIAL_PENDING. expireStalePendingCashback must exclude them so the
+    // 5:30 AM resolveTrialPendingCashback job (which queries by status) cannot
+    // overwrite cashbackStatus=EXPIRED back to CLEARED/VOIDED on the same night.
+    staleRows = [];
+
+    await expireStalePendingCashback(null);
+
+    expect(mp.walletTransaction.findMany).toHaveBeenCalledTimes(1);
+    const findManyWhere = mp.walletTransaction.findMany.mock.calls[0][0]?.where;
+    expect(findManyWhere).toMatchObject({
+      status: { not: 'TRIAL_PENDING' },
+    });
+  });
+
+  it('partial CAS race — staleIds contains all candidates while count reflects actual transitions', async () => {
+    // 3 candidates found, only 2 actually transitioned (1 was concurrently approved).
+    staleRows = [makePendingRow(), makePendingRow(), makePendingRow()];
+    updateManyCount = 2;
+
+    await expireStalePendingCashback(null);
+
+    expect(auditCalls).toHaveLength(1);
+    // count = actual transitions
+    expect(auditCalls[0].after.count).toBe(2);
+    // staleIds = all 3 candidates — makes the discrepancy visible in the audit trail
+    expect(auditCalls[0].after.staleIds).toHaveLength(3);
   });
 });
