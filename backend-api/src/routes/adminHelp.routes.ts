@@ -65,14 +65,20 @@ function hasFullAccess(req: AuthRequest): boolean {
   return req.user!.role === 'SUPER_ADMIN' || (req.user!.permissions ?? []).includes('help.read.all');
 }
 
+// Spec §11.3: valid requestTypes for admin internal tickets.
+// DATA_CHANGE / LOCATION_CHANGE are partner-facing; admins may still classify
+// an internal ticket with any type for flexibility.
+const ADMIN_VALID_REQUEST_TYPES = ['SUPPORT', 'DISPUTE', 'DATA_CHANGE', 'LOCATION_CHANGE', 'CONTRACT_CHANGE', 'OTHER'];
+
 // POST /api/admin/help — G8: admin creates a new help ticket (Spec §11 "Нова заявка")
 router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, next) => {
   try {
-    const { subject, body, category, priority } = req.body as {
+    const { subject, body, category, priority, requestType } = req.body as {
       subject?: string;
       body?: string;
       category?: string;
       priority?: string;
+      requestType?: string;
     };
 
     if (!subject?.trim() || subject.trim().length < 5) {
@@ -90,11 +96,18 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
     if (!category || !Object.values(TicketCategory).includes(category as TicketCategory)) {
       return res.status(400).json({ error: 'Невалидна категория' });
     }
+    if (requestType && !ADMIN_VALID_REQUEST_TYPES.includes(requestType)) {
+      return res.status(400).json({ error: 'Невалиден тип заявка' });
+    }
 
     const resolvedPriority: TicketPriority =
       priority && Object.values(TicketPriority).includes(priority as TicketPriority)
         ? (priority as TicketPriority)
         : 'MEDIUM';
+
+    const resolvedRequestType = requestType && ADMIN_VALID_REQUEST_TYPES.includes(requestType)
+      ? requestType
+      : 'SUPPORT';
 
     const ticket = await prisma.helpTicket.create({
       data: {
@@ -102,6 +115,7 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
         body: body.trim(),
         category: category as TicketCategory,
         priority: resolvedPriority,
+        requestType: resolvedRequestType,
         userId: req.user!.id,
         source: 'WEB',
         // Spec §11.4: initial status is OPEN ("Отворена"). NEW is kept in the
@@ -251,6 +265,9 @@ router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
       where.category = category as TicketCategory;
     }
     if (req.query.requestType && typeof req.query.requestType === 'string') {
+      if (!ADMIN_VALID_REQUEST_TYPES.includes(req.query.requestType)) {
+        return res.status(400).json({ error: 'Невалиден тип заявка' });
+      }
       where.requestType = req.query.requestType;
     }
     // Spec §11.5 "период" — date range filter on createdAt.
@@ -313,6 +330,9 @@ router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res
       conditions.push({ category: category as TicketCategory });
     }
     if (req.query.requestType && typeof req.query.requestType === 'string') {
+      if (!ADMIN_VALID_REQUEST_TYPES.includes(req.query.requestType)) {
+        return res.status(400).json({ error: 'Невалиден тип заявка' });
+      }
       conditions.push({ requestType: req.query.requestType });
     }
     if (search) {
