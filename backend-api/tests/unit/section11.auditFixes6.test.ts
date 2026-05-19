@@ -337,3 +337,124 @@ describe('GAP-3 — autoCloseResolvedTickets warns when batch limit is reached',
     expect(fnSrc).toMatch(/logger\.warn/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GAP-4 — adminHelp PATCH /:id preserves resolvedAt when patching to CLOSED
+// ─────────────────────────────────────────────────────────────────────────────
+// When an admin manually patches a RESOLVED ticket to CLOSED, resolvedAt must
+// NOT be cleared. CLOSED is terminal; preserving resolvedAt keeps the audit
+// record of when the ticket was resolved (vs. when it was closed, captured
+// by updatedAt). This parallels the autoCloseResolvedTickets scheduler fix
+// (BUG-4 in auditFixes5) that prevents the same erasure in the bulk job.
+
+describe('GAP-4 — adminHelp PATCH /:id preserves resolvedAt on RESOLVED → CLOSED', () => {
+  const src = readSource('../../src/routes/adminHelp.routes.ts');
+
+  it('else-if condition excludes CLOSED: status !== RESOLVED && status !== CLOSED', () => {
+    const patchStart = src.indexOf("PATCH /api/admin/help/:id — update status");
+    const patchEnd   = src.indexOf('\n// POST /api/admin/help/:id/reply', patchStart);
+    const patchSrc   = src.slice(patchStart, patchEnd > patchStart ? patchEnd : src.length);
+
+    // The resolvedAt-clearing else-if must gate on both conditions:
+    //   status !== 'RESOLVED' AND status !== 'CLOSED'
+    expect(patchSrc).toMatch(/status !== 'RESOLVED'[\s\S]{0,30}status !== 'CLOSED'/);
+  });
+
+  it('resolvedAt is NOT cleared when target status is CLOSED (source check)', () => {
+    const patchStart = src.indexOf("PATCH /api/admin/help/:id — update status");
+    const patchEnd   = src.indexOf('\n// POST /api/admin/help/:id/reply', patchStart);
+    const patchSrc   = src.slice(patchStart, patchEnd > patchStart ? patchEnd : src.length);
+
+    // The resolvedAt-clearing else-if condition must reference 'CLOSED' to exclude it.
+    // Use the full status-change block to avoid a fragile window-size assumption.
+    const statusBlockStart = patchSrc.indexOf("data.status = status as TicketStatus");
+    const statusBlockEnd   = patchSrc.indexOf("if (priority &&", statusBlockStart);
+    const statusBlock      = patchSrc.slice(statusBlockStart, statusBlockEnd > statusBlockStart ? statusBlockEnd : patchSrc.length);
+
+    // Confirm the else-if condition mentions 'CLOSED' AND the null assignment follows.
+    // Use two separate assertions to avoid a window-size dependency on comment length.
+    expect(statusBlock).toMatch(/status !== 'CLOSED'/);
+    expect(statusBlock).toMatch(/data\.resolvedAt = null/);
+  });
+
+  it('resolvedAt IS still cleared when target status is OPEN (re-open path)', () => {
+    const patchStart = src.indexOf("PATCH /api/admin/help/:id — update status");
+    const patchEnd   = src.indexOf('\n// POST /api/admin/help/:id/reply', patchStart);
+    const patchSrc   = src.slice(patchStart, patchEnd > patchStart ? patchEnd : src.length);
+
+    // OPEN is not RESOLVED and not CLOSED — so the else-if should still fire and
+    // clear resolvedAt. Verify the condition does NOT exclude OPEN.
+    expect(patchSrc).not.toMatch(/status !== 'RESOLVED'[\s\S]{0,50}status !== 'OPEN'/);
+  });
+
+  it('resolvedAt IS still set when target status is RESOLVED (forward path)', () => {
+    const patchStart = src.indexOf("PATCH /api/admin/help/:id — update status");
+    const patchEnd   = src.indexOf('\n// POST /api/admin/help/:id/reply', patchStart);
+    const patchSrc   = src.slice(patchStart, patchEnd > patchStart ? patchEnd : src.length);
+
+    // The first branch (status === 'RESOLVED' && ticket.status !== 'RESOLVED') must still exist.
+    expect(patchSrc).toMatch(/status === 'RESOLVED'[\s\S]{0,50}ticket\.status !== 'RESOLVED'/);
+    expect(patchSrc).toMatch(/data\.resolvedAt = new Date\(\)/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GAP-5 — partnerHelp GET /tickets/:id/replies collapses to single-query ownership
+// ─────────────────────────────────────────────────────────────────────────────
+// The /replies endpoint previously used findUnique (no userId filter) followed
+// by a separate ownership check, returning 404 vs 403 depending on existence.
+// That differential allowed any partner to enumerate ticket IDs of other partners.
+// Fixed to findFirst({ where: { id, userId } }) with a single unified 404.
+
+describe('GAP-5 — partnerHelp GET /tickets/:id/replies single-query ownership', () => {
+  const src = readSource('../../src/routes/partnerHelp.routes.ts');
+
+  it('replies handler uses findFirst not findUnique + separate check', () => {
+    const handlerStart = src.indexOf('// GET /api/partner/help/tickets/:id/replies');
+    const handlerEnd   = src.indexOf('\nexport default', handlerStart);
+    const handlerSrc   = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : src.length);
+
+    const findFirstCount  = (handlerSrc.match(/prisma\.helpTicket\.findFirst/g)  ?? []).length;
+    const findUniqueCount = (handlerSrc.match(/prisma\.helpTicket\.findUnique/g) ?? []).length;
+    expect(findFirstCount).toBe(1);
+    expect(findUniqueCount).toBe(0);
+  });
+
+  it('the replies query filters by both id and userId simultaneously', () => {
+    const handlerStart = src.indexOf('// GET /api/partner/help/tickets/:id/replies');
+    const handlerEnd   = src.indexOf('\nexport default', handlerStart);
+    const handlerSrc   = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : src.length);
+
+    expect(handlerSrc).toMatch(/where:\s*\{[^}]*id:[^}]*userId/s);
+  });
+
+  it('replies handler returns 404 for both not-found and unauthorized (no 403)', () => {
+    const handlerStart = src.indexOf('// GET /api/partner/help/tickets/:id/replies');
+    const handlerEnd   = src.indexOf('\nexport default', handlerStart);
+    const handlerSrc   = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : src.length);
+
+    expect(handlerSrc).toMatch(/status\(404\)/);
+    expect(handlerSrc).not.toMatch(/status\(403\)/);
+  });
+
+  it('parity: both ticket-detail routes in partnerHelp use the same ownership pattern', () => {
+    // GET /tickets/:id was fixed in pass 5 (GAP-6 of auditFixes5).
+    // GET /tickets/:id/replies is fixed in this pass.
+    // Both must now use findFirst with userId filter and a single 404.
+    const detailStart  = src.indexOf('// GET /api/partner/help/tickets/:id — full ticket');
+    const detailEnd    = src.indexOf('\n// POST /api/partner', detailStart + 1);
+    const detailSrc    = src.slice(detailStart, detailEnd > detailStart ? detailEnd : src.length);
+
+    const repliesStart = src.indexOf('// GET /api/partner/help/tickets/:id/replies');
+    const repliesEnd   = src.indexOf('\nexport default', repliesStart);
+    const repliesSrc   = src.slice(repliesStart, repliesEnd > repliesStart ? repliesEnd : src.length);
+
+    // Both handlers must use findFirst (not findUnique).
+    expect(detailSrc).toMatch(/prisma\.helpTicket\.findFirst/);
+    expect(repliesSrc).toMatch(/prisma\.helpTicket\.findFirst/);
+
+    // Neither should contain a standalone 403.
+    expect(detailSrc).not.toMatch(/status\(403\)/);
+    expect(repliesSrc).not.toMatch(/status\(403\)/);
+  });
+});
