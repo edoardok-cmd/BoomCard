@@ -712,14 +712,19 @@ describe('Bug 1 fix — DISCOUNT_RATE_CHANGE approval uses $transaction for atom
   });
 });
 
-// ─── Bug 3: Malformed DISCOUNT_RATE_CHANGE payload returns 422 ───────────────
-// A malformed payload must now BLOCK the approval (422) rather than silently
-// mark the request APPROVED while leaving the partner rate unchanged.  That old
-// policy created a silent data inconsistency: APPROVED with no actual effect,
-// and the request could not be re-approved because it was no longer PENDING.
+// ─── Bug 3: Malformed DISCOUNT_RATE_CHANGE payload auto-rejects and returns 422 ─
+// A malformed payload must block the approval (422) AND auto-reject the request
+// (status → REJECTED).  Leaving the request PENDING created two operational gaps:
+//   Lock   — a payload with partnerId but no proposedRate matched the 409
+//            duplicate-guard in propose-discount-rate, blocking new proposals
+//            until a second SUPER_ADMIN manually rejected the stuck request.
+//   Orphan — a payload without partnerId skipped the 409 guard entirely but
+//            was stuck in PENDING with no path to resolution.
+// Auto-rejecting resolves both: the request leaves the PENDING queue immediately
+// so a corrected proposal can be re-submitted without SUPER_ADMIN intervention.
 
-describe('Bug 3 fix — malformed DISCOUNT_RATE_CHANGE payload returns 422 and blocks approval', () => {
-  it('returns 422 and logs error when payload lacks partnerId', async () => {
+describe('Bug 3 fix — malformed DISCOUNT_RATE_CHANGE payload returns 422 and auto-rejects', () => {
+  it('returns 422, auto-rejects, and logs error when payload lacks partnerId', async () => {
     setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
 
     m.criticalActionRequest.findUnique.mockResolvedValueOnce({
@@ -737,20 +742,33 @@ describe('Bug 3 fix — malformed DISCOUNT_RATE_CHANGE payload returns 422 and b
       .post('/admins/critical-actions/car-bad/approve')
       .send({});
 
-    // Request must be rejected — approval is NOT recorded
     expect(res.status).toBe(422);
-    expect(res.body.error).toMatch(/malformed.*payload.*approval blocked/i);
-    // No DB write must have occurred — request remains PENDING
-    expect(m.criticalActionRequest.update).not.toHaveBeenCalled();
+    expect(res.body.error).toMatch(/automatically rejected/i);
+    expect(res.body.autoRejected).toBe(true);
+    // Request must be set to REJECTED — no longer blocks new proposals
+    expect(m.criticalActionRequest.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'car-bad' },
+        data: expect.objectContaining({
+          status: 'REJECTED',
+          resolvedById: 'admin-1',
+          resolvedAt: expect.any(Date),
+          resolvedNote: expect.any(String),
+        }),
+      })
+    );
+    // partner.update must NOT be called
     expect(m.partner.update).not.toHaveBeenCalled();
-    // Error must still be logged for ops visibility
+    // auto-reject exits before $transaction — the REJECTED update is a direct call
+    expect(m.$transaction).not.toHaveBeenCalled();
+    // Error logged for ops visibility
     expect(mockLogger.error).toHaveBeenCalledWith(
-      expect.stringContaining('DISCOUNT_RATE_CHANGE payload missing'),
+      expect.stringContaining('malformed — auto-rejecting'),
       expect.objectContaining({ requestId: 'car-bad' })
     );
   });
 
-  it('returns 422 when payload lacks proposedRate', async () => {
+  it('returns 422 and auto-rejects when payload lacks proposedRate', async () => {
     setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
 
     m.criticalActionRequest.findUnique.mockResolvedValueOnce({
@@ -761,13 +779,221 @@ describe('Bug 3 fix — malformed DISCOUNT_RATE_CHANGE payload returns 422 and b
       payload: { partnerId: 'p-1' }, // proposedRate key absent
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { logger: mockLogger } = require('../../src/utils/logger') as { logger: { error: jest.Mock } };
+
     const res = await buildAdminsApp()
       .post('/admins/critical-actions/car-bad2/approve')
       .send({});
 
     expect(res.status).toBe(422);
-    expect(m.criticalActionRequest.update).not.toHaveBeenCalled();
+    expect(res.body.autoRejected).toBe(true);
+    expect(m.criticalActionRequest.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'car-bad2' },
+        data: expect.objectContaining({
+          status: 'REJECTED',
+          resolvedById: 'admin-1',
+          resolvedAt: expect.any(Date),
+          resolvedNote: expect.any(String),
+        }),
+      })
+    );
     expect(m.partner.update).not.toHaveBeenCalled();
+    expect(m.$transaction).not.toHaveBeenCalled();
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      expect.stringContaining('malformed — auto-rejecting'),
+      expect.objectContaining({ requestId: 'car-bad2' })
+    );
+  });
+
+  it('returns 422 and auto-rejects when payload is null (TypeError-safe path)', async () => {
+    // Old code: `'partnerId' in null` would throw TypeError → unhandled 500.
+    // New code: isPlainObject gate catches null before reaching `in`, then auto-rejects.
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+
+    m.criticalActionRequest.findUnique.mockResolvedValueOnce({
+      id: 'car-null',
+      actionType: 'DISCOUNT_RATE_CHANGE',
+      status: 'PENDING',
+      requestedById: 'other-admin',
+      payload: null,
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { logger: mockLogger } = require('../../src/utils/logger') as { logger: { error: jest.Mock } };
+
+    const res = await buildAdminsApp()
+      .post('/admins/critical-actions/car-null/approve')
+      .send({});
+
+    expect(res.status).toBe(422);
+    expect(res.body.autoRejected).toBe(true);
+    expect(m.criticalActionRequest.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'car-null' },
+        data: expect.objectContaining({
+          status: 'REJECTED',
+          resolvedById: 'admin-1',
+          resolvedAt: expect.any(Date),
+          resolvedNote: expect.any(String),
+        }),
+      })
+    );
+    expect(m.partner.update).not.toHaveBeenCalled();
+    expect(m.$transaction).not.toHaveBeenCalled();
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      expect.stringContaining('malformed — auto-rejecting'),
+      expect.objectContaining({ requestId: 'car-null' })
+    );
+  });
+
+  it('returns 422 and auto-rejects when payload is an array (not a plain object)', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+
+    m.criticalActionRequest.findUnique.mockResolvedValueOnce({
+      id: 'car-array',
+      actionType: 'DISCOUNT_RATE_CHANGE',
+      status: 'PENDING',
+      requestedById: 'other-admin',
+      payload: [{ partnerId: 'p-1', proposedRate: 15 }],
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { logger: mockLogger } = require('../../src/utils/logger') as { logger: { error: jest.Mock } };
+
+    const res = await buildAdminsApp()
+      .post('/admins/critical-actions/car-array/approve')
+      .send({});
+
+    expect(res.status).toBe(422);
+    expect(res.body.autoRejected).toBe(true);
+    expect(m.criticalActionRequest.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'car-array' },
+        data: expect.objectContaining({
+          status: 'REJECTED',
+          resolvedById: 'admin-1',
+          resolvedAt: expect.any(Date),
+          resolvedNote: expect.any(String),
+        }),
+      })
+    );
+    expect(m.partner.update).not.toHaveBeenCalled();
+    expect(m.$transaction).not.toHaveBeenCalled();
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      expect.stringContaining('malformed — auto-rejecting'),
+      expect.objectContaining({ requestId: 'car-array' })
+    );
+  });
+
+  it('422 response body includes autoRejected: true and self-service message', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+
+    m.criticalActionRequest.findUnique.mockResolvedValueOnce({
+      id: 'car-msg',
+      actionType: 'DISCOUNT_RATE_CHANGE',
+      status: 'PENDING',
+      requestedById: 'other-admin',
+      payload: { proposedRate: 15 }, // missing partnerId
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { logger: mockLogger } = require('../../src/utils/logger') as { logger: { error: jest.Mock } };
+
+    const res = await buildAdminsApp()
+      .post('/admins/critical-actions/car-msg/approve')
+      .send({});
+
+    expect(res.status).toBe(422);
+    expect(res.body.autoRejected).toBe(true);
+    // Message must confirm auto-rejection (not instruct the approver to manually reject)
+    // and guide towards re-submission — no SUPER_ADMIN intervention needed.
+    expect(res.body.error).toMatch(/automatically rejected/i);
+    expect(res.body.error).toMatch(/re-submit/i);
+    expect(res.body.error).toMatch(/corrected payload/i);
+    expect(m.$transaction).not.toHaveBeenCalled();
+    // DB update must include accountability fields, not just the status flip
+    expect(m.criticalActionRequest.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'car-msg' },
+        data: expect.objectContaining({
+          status: 'REJECTED',
+          resolvedById: 'admin-1',
+          resolvedAt: expect.any(Date),
+          resolvedNote: expect.any(String),
+        }),
+      })
+    );
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      expect.stringContaining('malformed — auto-rejecting'),
+      expect.objectContaining({ requestId: 'car-msg' })
+    );
+  });
+
+  it('auto-rejection writes an audit entry with action admin.critical-action.auto-reject', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+
+    m.criticalActionRequest.findUnique.mockResolvedValueOnce({
+      id: 'car-audit-ar',
+      actionType: 'DISCOUNT_RATE_CHANGE',
+      status: 'PENDING',
+      requestedById: 'other-admin',
+      payload: { partnerId: 'p-1' }, // proposedRate absent
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { writeAudit: mockWriteAudit } = require('../../src/middleware/audit.middleware') as { writeAudit: jest.Mock };
+
+    const res = await buildAdminsApp()
+      .post('/admins/critical-actions/car-audit-ar/approve')
+      .send({});
+
+    expect(res.status).toBe(422);
+    expect(m.$transaction).not.toHaveBeenCalled();
+    // writeAudit mock is synchronous — call is recorded before response is sent
+    const autoRejectCall = mockWriteAudit.mock.calls.find(
+      (args: any[]) => args[0]?.action === 'admin.critical-action.auto-reject'
+    );
+    expect(autoRejectCall).toBeDefined();
+    expect(autoRejectCall![0]).toMatchObject({
+      objectId: 'car-audit-ar',
+      before: { status: 'PENDING', actionType: 'DISCOUNT_RATE_CHANGE' },
+      after: expect.objectContaining({
+        status: 'REJECTED',
+        resolvedById: 'admin-1',
+        resolvedAt: expect.any(String),
+      }),
+    });
+  });
+
+  it('non-DISCOUNT_RATE_CHANGE action with malformed payload is not auto-rejected', async () => {
+    // The isPlainObject gate is conditional on actionType === 'DISCOUNT_RATE_CHANGE'.
+    // A different actionType must never trigger the 422 auto-reject path, even if its
+    // payload is null or missing expected keys.
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+
+    m.criticalActionRequest.findUnique.mockResolvedValueOnce({
+      id: 'car-other-type',
+      actionType: 'USER_INVITE',
+      status: 'PENDING',
+      requestedById: 'other-admin',
+      payload: null, // would trigger auto-reject if the gate ignored actionType
+    });
+    // $transaction must resolve so the approval can proceed past the gate
+    m.$transaction.mockResolvedValueOnce({
+      id: 'car-other-type',
+      status: 'APPROVED',
+    });
+
+    const res = await buildAdminsApp()
+      .post('/admins/critical-actions/car-other-type/approve')
+      .send({});
+
+    // Must not be 422 — the auto-reject gate is not for this actionType
+    expect(res.status).not.toBe(422);
+    expect(res.body.autoRejected).toBeUndefined();
+    expect(m.$transaction).toHaveBeenCalled();
   });
 });
 

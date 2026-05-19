@@ -330,19 +330,65 @@ router.post('/critical-actions/:id/approve', authenticate, authorize('SUPER_ADMI
     if (item.status !== 'PENDING') return res.status(400).json({ error: 'Request is no longer pending' });
     if (item.requestedById === req.user!.id) return res.status(400).json({ error: 'Cannot approve your own critical action request' });
 
-    // Reject early if a DISCOUNT_RATE_CHANGE payload is malformed. Silently
-    // approving with no rate effect would leave the request APPROVED while the
-    // partner rate is unchanged — a silent data inconsistency that can't be
-    // re-approved because the request is no longer PENDING.
+    // Block approval if a DISCOUNT_RATE_CHANGE payload is malformed.  The old
+    // approach (silent-continue + 200) left the request APPROVED with no actual
+    // rate change — an undetectable data inconsistency.  The previous pass
+    // hardened this to a 422 but left the request PENDING, creating two
+    // operational gaps:
+    //   Lock   — a payload with partnerId but no proposedRate matches the 409
+    //            duplicate-guard in propose-discount-rate, blocking new proposals
+    //            until a second SUPER_ADMIN manually rejects the stuck request.
+    //   Orphan — a payload without partnerId skips the 409 duplicate-guard
+    //            entirely, leaving the malformed request in PENDING forever.
+    // Fix: auto-reject (status → REJECTED) before returning 422.  The request
+    // leaves the PENDING queue immediately so a corrected proposal can be
+    // re-submitted without manual SUPER_ADMIN intervention.
+    //
+    // The two checks (non-object payload and missing keys) are merged into a
+    // single isPlainObject gate that is evaluated before using the `in` operator.
+    // `in` throws TypeError on null/primitive values; `typeof null === 'object'`
+    // in JS, so null must be checked explicitly.
     if (item.actionType === 'DISCOUNT_RATE_CHANGE') {
-      const p = item.payload as { partnerId?: string; proposedRate?: number | null; currentRate?: number | null };
-      if (!('partnerId' in p) || !('proposedRate' in p)) {
-        logger.error('[critical-action] DISCOUNT_RATE_CHANGE payload missing partnerId or proposedRate — approval blocked', {
+      const raw = item.payload;
+      const isPlainObject = raw !== null && typeof raw === 'object' && !Array.isArray(raw);
+      if (!isPlainObject || !('partnerId' in (raw as Record<string, unknown>)) || !('proposedRate' in (raw as Record<string, unknown>))) {
+        logger.error('[critical-action] DISCOUNT_RATE_CHANGE payload malformed — auto-rejecting', {
           requestId: item.id,
           payload: item.payload,
         });
-        return res.status(422).json({ error: 'Malformed DISCOUNT_RATE_CHANGE payload — approval blocked. Check server logs.' });
+        const systemNote = 'Auto-rejected: malformed payload (missing partnerId or proposedRate)';
+        // Capture a single timestamp so the DB row and the audit log record the
+        // identical resolvedAt — two separate new Date() calls across an await
+        // would produce millisecond-skewed values that cannot be correlated exactly.
+        const now = new Date();
+        await prisma.criticalActionRequest.update({
+          where: { id: req.params.id },
+          data: { status: 'REJECTED', resolvedById: req.user!.id, resolvedAt: now, resolvedNote: systemNote },
+        });
+        // skipAudit suppresses auditMiddleware's automatic entry for this request.
+        // Set synchronously before res.json() so the monkey-patched res.json() in
+        // auditMiddleware always observes it — no race is possible in the
+        // single-threaded Node.js model.
+        req.skipAudit = true;
+        // Audit write is fire-and-forget — the REJECTED status flip above is the
+        // durable state change; the audit trail is best-effort, consistent with
+        // all other writeAudit call sites in this handler.
+        writeAudit({
+          actorUserId: req.user!.id,
+          action: 'admin.critical-action.auto-reject',
+          objectType: 'admin',
+          objectId: item.id,
+          before: { status: 'PENDING', actionType: item.actionType },
+          after: { status: 'REJECTED', resolvedById: req.user!.id, resolvedAt: now.toISOString(), resolvedNote: systemNote },
+          ip: getClientIp(req) ?? null,
+          userAgent: req.headers['user-agent'] ?? null,
+        }).catch((err) => logger.error('[critical-action] auto-reject audit write failed:', err));
+        return res.status(422).json({
+          error: 'Malformed DISCOUNT_RATE_CHANGE payload — request automatically rejected. Re-submit with a corrected payload.',
+          autoRejected: true,
+        });
       }
+      const p = raw as { partnerId?: string; proposedRate?: number | null; currentRate?: number | null };
       if (!('currentRate' in p)) {
         logger.warn('[critical-action] DISCOUNT_RATE_CHANGE payload missing currentRate — audit before will be null', {
           requestId: item.id,
@@ -355,10 +401,13 @@ router.post('/critical-actions/:id/approve', authenticate, authorize('SUPER_ADMI
     // applied (or vice-versa) due to a mid-flight error.
     let discountRateAudit: { partnerId: string; previousRate: number | null; newRate: number | null } | null = null;
 
+    // Capture a single timestamp so the DB row and audit log record the identical
+    // resolvedAt — consistent with the same pattern used in the auto-reject path above.
+    const approvedAt = new Date();
     const updated = await prisma.$transaction(async (tx) => {
       const result = await tx.criticalActionRequest.update({
         where: { id: req.params.id },
-        data: { status: 'APPROVED', resolvedById: req.user!.id, resolvedAt: new Date(), resolvedNote: note?.trim() || null },
+        data: { status: 'APPROVED', resolvedById: req.user!.id, resolvedAt: approvedAt, resolvedNote: note?.trim() || null },
       });
 
       if (item.actionType === 'DISCOUNT_RATE_CHANGE') {
