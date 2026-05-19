@@ -515,6 +515,60 @@ router.post('/activate/:stickerId', authenticate, authorize('ADMIN', 'SUPER_ADMI
 });
 
 /**
+ * PATCH /api/stickers/:stickerId/processing
+ * Advance a PENDING sticker to PROCESSING (label printed, awaiting deployment).
+ * Spec §5.4 — admin-only management.
+ */
+router.patch('/:stickerId/processing', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { stickerId } = req.params;
+    const actorUserId = req.user?.id ?? null;
+
+    const sticker = await stickerService.markStickerProcessing(stickerId, actorUserId);
+
+    res.json({
+      success: true,
+      data: sticker,
+      message: 'Sticker marked as processing',
+    });
+  } catch (error: any) {
+    const status = error.message?.includes('not found') ? 404 : 400;
+    res.status(status).json({
+      success: false,
+      error: error.message || 'Failed to mark sticker as processing',
+    });
+  }
+});
+
+/**
+ * PATCH /api/stickers/:stickerId/replace
+ * Atomically replace a damaged/lost sticker with a new PENDING one on the same location.
+ * The old sticker is marked REPLACED; the new sticker must be advanced to ACTIVE via
+ * PATCH /processing then POST /activate.
+ * Spec §5.4 — admin-only management.
+ */
+router.patch('/:stickerId/replace', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { stickerId } = req.params;
+    const actorUserId = req.user?.id ?? null;
+
+    const result = await stickerService.replaceSticker(stickerId, actorUserId);
+
+    res.json({
+      success: true,
+      data: result,
+      message: 'Sticker replaced successfully',
+    });
+  } catch (error: any) {
+    const status = error.message?.includes('not found') ? 404 : 400;
+    res.status(status).json({
+      success: false,
+      error: error.message || 'Failed to replace sticker',
+    });
+  }
+});
+
+/**
  * GET /api/stickers/venue/:venueId
  * Get all stickers for a venue — read-only; partners limited to own venues.
  */
