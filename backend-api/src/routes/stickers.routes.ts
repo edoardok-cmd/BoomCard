@@ -7,7 +7,6 @@ import {
   SUSPICIOUS_PREFIX_CODES,
 } from '../services/adminAlerts.service';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
-import { requireActivePartnerForWrites } from '../middleware/partnerStatus.middleware';
 import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
 import { imageUploadService } from '../services/imageUpload.service';
 import { LocationType, ScanStatus } from '@prisma/client';
