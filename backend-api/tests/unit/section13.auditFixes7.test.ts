@@ -688,7 +688,7 @@ describe('Bug 1 fix — DISCOUNT_RATE_CHANGE approval uses $transaction for atom
     );
   });
 
-  it('$transaction is NOT called when actionType is not DISCOUNT_RATE_CHANGE (still uses it, but no partner.update)', async () => {
+  it('non-DISCOUNT_RATE_CHANGE approval uses $transaction but skips partner.update', async () => {
     setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
 
     m.criticalActionRequest.findUnique.mockResolvedValueOnce({
@@ -712,22 +712,23 @@ describe('Bug 1 fix — DISCOUNT_RATE_CHANGE approval uses $transaction for atom
   });
 });
 
-// ─── Bug 3: Malformed DISCOUNT_RATE_CHANGE payload warning ───────────────────
+// ─── Bug 3: Malformed DISCOUNT_RATE_CHANGE payload returns 422 ───────────────
+// A malformed payload must now BLOCK the approval (422) rather than silently
+// mark the request APPROVED while leaving the partner rate unchanged.  That old
+// policy created a silent data inconsistency: APPROVED with no actual effect,
+// and the request could not be re-approved because it was no longer PENDING.
 
-describe('Bug 3 fix — malformed DISCOUNT_RATE_CHANGE payload logs a warning', () => {
-  it('logs logger.error when payload lacks partnerId, does not crash the endpoint', async () => {
+describe('Bug 3 fix — malformed DISCOUNT_RATE_CHANGE payload returns 422 and blocks approval', () => {
+  it('returns 422 and logs error when payload lacks partnerId', async () => {
     setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
 
-    // Payload missing partnerId — the guard (p.partnerId !== undefined) fails
-    const malformedItem = {
+    m.criticalActionRequest.findUnique.mockResolvedValueOnce({
       id: 'car-bad',
       actionType: 'DISCOUNT_RATE_CHANGE',
       status: 'PENDING',
       requestedById: 'other-admin',
       payload: { proposedRate: 15 }, // partnerId intentionally absent
-    };
-    m.criticalActionRequest.findUnique.mockResolvedValueOnce(malformedItem);
-    m.criticalActionRequest.update.mockResolvedValueOnce({ ...malformedItem, status: 'APPROVED' });
+    });
 
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { logger: mockLogger } = require('../../src/utils/logger') as { logger: { error: jest.Mock } };
@@ -736,15 +737,37 @@ describe('Bug 3 fix — malformed DISCOUNT_RATE_CHANGE payload logs a warning', 
       .post('/admins/critical-actions/car-bad/approve')
       .send({});
 
-    // Endpoint should still succeed (approval is recorded even if rate wasn't applied)
-    expect(res.status).toBe(200);
-    // partner.update must NOT have been called (guard correctly blocked it)
+    // Request must be rejected — approval is NOT recorded
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatch(/malformed.*payload.*approval blocked/i);
+    // No DB write must have occurred — request remains PENDING
+    expect(m.criticalActionRequest.update).not.toHaveBeenCalled();
     expect(m.partner.update).not.toHaveBeenCalled();
-    // logger.error must have been called to alert ops
+    // Error must still be logged for ops visibility
     expect(mockLogger.error).toHaveBeenCalledWith(
-      expect.stringContaining('DISCOUNT_RATE_CHANGE approved but payload missing'),
+      expect.stringContaining('DISCOUNT_RATE_CHANGE payload missing'),
       expect.objectContaining({ requestId: 'car-bad' })
     );
+  });
+
+  it('returns 422 when payload lacks proposedRate', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+
+    m.criticalActionRequest.findUnique.mockResolvedValueOnce({
+      id: 'car-bad2',
+      actionType: 'DISCOUNT_RATE_CHANGE',
+      status: 'PENDING',
+      requestedById: 'other-admin',
+      payload: { partnerId: 'p-1' }, // proposedRate key absent
+    });
+
+    const res = await buildAdminsApp()
+      .post('/admins/critical-actions/car-bad2/approve')
+      .send({});
+
+    expect(res.status).toBe(422);
+    expect(m.criticalActionRequest.update).not.toHaveBeenCalled();
+    expect(m.partner.update).not.toHaveBeenCalled();
   });
 });
 
@@ -815,5 +838,167 @@ describe('Bug 4 fix — partner.discount-rate.update audit uses currentRate from
     );
     expect(partnerAuditCall).toBeDefined();
     expect(partnerAuditCall![0].before).toEqual({ discountRate: null });
+  });
+});
+
+// ─── Audit quality — missing currentRate warns but does not block approval ────
+// currentRate is always written by propose-discount-rate (partner.discountRate),
+// but a manually-inserted or legacy payload might omit it.  The approval should
+// still proceed; the before field in the audit entry falls back to null and a
+// warn is emitted so ops can investigate.
+
+describe('Audit quality — missing currentRate key logs warn but approves successfully', () => {
+  it('returns 200, applies the rate change, and logs warn when currentRate key is absent', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+
+    m.criticalActionRequest.findUnique.mockResolvedValueOnce({
+      id: 'car-no-rate',
+      actionType: 'DISCOUNT_RATE_CHANGE',
+      status: 'PENDING',
+      requestedById: 'other-admin',
+      payload: { partnerId: 'p-1', proposedRate: 15 }, // currentRate key absent
+    });
+    m.criticalActionRequest.update.mockResolvedValueOnce({ id: 'car-no-rate', status: 'APPROVED' });
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { logger: mockLogger } = require('../../src/utils/logger') as { logger: { warn: jest.Mock } };
+
+    const res = await buildAdminsApp()
+      .post('/admins/critical-actions/car-no-rate/approve')
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(m.partner.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'p-1' }, data: { discountRate: 15 } })
+    );
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('missing currentRate'),
+      expect.objectContaining({ requestId: 'car-no-rate' })
+    );
+  });
+
+  it('writeAudit before.discountRate is null when currentRate key is absent from payload', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+
+    m.criticalActionRequest.findUnique.mockResolvedValueOnce({
+      id: 'car-no-rate2',
+      actionType: 'DISCOUNT_RATE_CHANGE',
+      status: 'PENDING',
+      requestedById: 'other-admin',
+      payload: { partnerId: 'p-1', proposedRate: 10 }, // no currentRate key
+    });
+    m.criticalActionRequest.update.mockResolvedValueOnce({ id: 'car-no-rate2', status: 'APPROVED' });
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { writeAudit: mockWriteAudit } = require('../../src/middleware/audit.middleware') as { writeAudit: jest.Mock };
+    mockWriteAudit.mockClear();
+
+    const res = await buildAdminsApp()
+      .post('/admins/critical-actions/car-no-rate2/approve')
+      .send({});
+
+    expect(res.status).toBe(200);
+    const partnerAuditCall = mockWriteAudit.mock.calls.find(
+      (args: any[]) => args[0]?.action === 'partner.discount-rate.update'
+    );
+    expect(partnerAuditCall).toBeDefined();
+    expect(partnerAuditCall![0].before).toEqual({ discountRate: null });
+  });
+});
+
+// ─── Fix 5 runtime — authenticate() actually blocks stale JWT requests ────────
+// The source-level Fix 5 checks above verify the guard is present in source.
+// These tests exercise the real authenticate() function end-to-end using the
+// _realAuthenticate hook exposed by the jest.mock factory, with the real
+// jsonwebtoken library and the mock prisma client.
+
+describe('Fix 5 runtime — authenticate() blocks stale ADMIN/SUPER_ADMIN JWT via real middleware call', () => {
+  const JWT_SECRET = 'test-stale-jwt-runtime';
+  let jwtLib: any;
+  let realAuthenticate: (req: any, res: any, next: any) => Promise<void>;
+
+  beforeAll(() => {
+    process.env.JWT_SECRET = JWT_SECRET;
+    jwtLib = require('jsonwebtoken');
+    realAuthenticate = (require('../../src/middleware/auth.middleware') as any)._realAuthenticate;
+  });
+
+  afterAll(() => {
+    delete process.env.JWT_SECRET;
+  });
+
+  beforeEach(() => {
+    // Fix 5b tests call mockResolvedValue (non-Once) which persists through
+    // clearAllMocks().  Re-bind findUnique to the closure-driven mockRolesUpdatedAt
+    // so each runtime test controls the DB response independently.
+    m.user.findUnique.mockImplementation(async () => ({ rolesUpdatedAt: mockRolesUpdatedAt }));
+  });
+
+  it('blocks ADMIN JWT when rolesUpdatedAt is after token iat', async () => {
+    const token = jwtLib.sign({ id: 'admin-rt-1', role: 'ADMIN', email: 'a@rt.com' }, JWT_SECRET, { expiresIn: '1h' });
+    mockRolesUpdatedAt = new Date(Date.now() + 2000); // 2 s after token issue
+    const next = jest.fn();
+
+    await realAuthenticate({ headers: { authorization: `Bearer ${token}` } }, {}, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0]).toMatchObject({ message: expect.stringMatching(/Permissions updated/i) });
+  });
+
+  it('blocks SUPER_ADMIN JWT when rolesUpdatedAt is after token iat', async () => {
+    const token = jwtLib.sign({ id: 'sa-rt-1', role: 'SUPER_ADMIN', email: 'sa@rt.com' }, JWT_SECRET, { expiresIn: '1h' });
+    mockRolesUpdatedAt = new Date(Date.now() + 2000);
+    const next = jest.fn();
+
+    await realAuthenticate({ headers: { authorization: `Bearer ${token}` } }, {}, next);
+
+    expect(next.mock.calls[0][0]).toMatchObject({ message: expect.stringMatching(/Permissions updated/i) });
+  });
+
+  it('passes ADMIN JWT through when rolesUpdatedAt is before token iat', async () => {
+    const token = jwtLib.sign({ id: 'admin-rt-2', role: 'ADMIN', email: 'a@rt.com' }, JWT_SECRET, { expiresIn: '1h' });
+    mockRolesUpdatedAt = new Date(Date.now() - 2000); // 2 s before token issue — not stale
+    const next = jest.fn();
+
+    await realAuthenticate({ headers: { authorization: `Bearer ${token}` } }, {}, next);
+
+    expect(next).toHaveBeenCalledWith(); // no error argument
+  });
+
+  it('passes ADMIN JWT through when rolesUpdatedAt is null', async () => {
+    const token = jwtLib.sign({ id: 'admin-rt-3', role: 'ADMIN', email: 'a@rt.com' }, JWT_SECRET, { expiresIn: '1h' });
+    mockRolesUpdatedAt = null;
+    const next = jest.fn();
+
+    await realAuthenticate({ headers: { authorization: `Bearer ${token}` } }, {}, next);
+
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  it('does NOT block USER JWT even when rolesUpdatedAt is after token iat', async () => {
+    const token = jwtLib.sign({ id: 'user-rt-1', role: 'USER', email: 'u@rt.com' }, JWT_SECRET, { expiresIn: '1h' });
+    mockRolesUpdatedAt = new Date(Date.now() + 2000); // guard must skip non-admin roles
+    const next = jest.fn();
+
+    await realAuthenticate({ headers: { authorization: `Bearer ${token}` } }, {}, next);
+
+    expect(next).toHaveBeenCalledWith(); // no error
+  });
+
+  it('ADMIN impersonation token (imp: true) is still subject to the stale-JWT guard', async () => {
+    // The guard keys on decoded.role and decoded.id — the impersonated account's
+    // values. Impersonation claims (imp, impBy) are additive and do not exempt
+    // the token from the rolesUpdatedAt check.
+    const token = jwtLib.sign(
+      { id: 'imp-admin-1', role: 'ADMIN', email: 'a@rt.com', imp: true, impBy: 'super-1' },
+      JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+    mockRolesUpdatedAt = new Date(Date.now() + 2000);
+    const next = jest.fn();
+
+    await realAuthenticate({ headers: { authorization: `Bearer ${token}` } }, {}, next);
+
+    expect(next.mock.calls[0][0]).toMatchObject({ message: expect.stringMatching(/Permissions updated/i) });
   });
 });

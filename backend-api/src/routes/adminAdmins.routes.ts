@@ -330,6 +330,26 @@ router.post('/critical-actions/:id/approve', authenticate, authorize('SUPER_ADMI
     if (item.status !== 'PENDING') return res.status(400).json({ error: 'Request is no longer pending' });
     if (item.requestedById === req.user!.id) return res.status(400).json({ error: 'Cannot approve your own critical action request' });
 
+    // Reject early if a DISCOUNT_RATE_CHANGE payload is malformed. Silently
+    // approving with no rate effect would leave the request APPROVED while the
+    // partner rate is unchanged — a silent data inconsistency that can't be
+    // re-approved because the request is no longer PENDING.
+    if (item.actionType === 'DISCOUNT_RATE_CHANGE') {
+      const p = item.payload as { partnerId?: string; proposedRate?: number | null; currentRate?: number | null };
+      if (!('partnerId' in p) || !('proposedRate' in p)) {
+        logger.error('[critical-action] DISCOUNT_RATE_CHANGE payload missing partnerId or proposedRate — approval blocked', {
+          requestId: item.id,
+          payload: item.payload,
+        });
+        return res.status(422).json({ error: 'Malformed DISCOUNT_RATE_CHANGE payload — approval blocked. Check server logs.' });
+      }
+      if (!('currentRate' in p)) {
+        logger.warn('[critical-action] DISCOUNT_RATE_CHANGE payload missing currentRate — audit before will be null', {
+          requestId: item.id,
+        });
+      }
+    }
+
     // Execute the status flip and any actionType side-effect atomically so we
     // never end up with a request marked APPROVED but the underlying change not
     // applied (or vice-versa) due to a mid-flight error.
@@ -342,25 +362,17 @@ router.post('/critical-actions/:id/approve', authenticate, authorize('SUPER_ADMI
       });
 
       if (item.actionType === 'DISCOUNT_RATE_CHANGE') {
-        const p = item.payload as { partnerId?: string; proposedRate?: number | null; currentRate?: number | null };
-        if (p.partnerId !== undefined && 'proposedRate' in p) {
-          await tx.partner.update({
-            where: { id: p.partnerId },
-            data: { discountRate: p.proposedRate ?? null },
-          });
-          discountRateAudit = {
-            partnerId: p.partnerId,
-            previousRate: p.currentRate ?? null,
-            newRate: p.proposedRate ?? null,
-          };
-        } else {
-          // Payload is malformed — log loudly but don't abort the approval.
-          // The SUPER_ADMIN action is still recorded; ops must fix the rate manually.
-          logger.error('[critical-action] DISCOUNT_RATE_CHANGE approved but payload missing partnerId or proposedRate', {
-            requestId: item.id,
-            payload: item.payload,
-          });
-        }
+        // Payload is pre-validated above; types are now narrowed.
+        const p = item.payload as { partnerId: string; proposedRate: number | null; currentRate?: number | null };
+        await tx.partner.update({
+          where: { id: p.partnerId },
+          data: { discountRate: p.proposedRate ?? null },
+        });
+        discountRateAudit = {
+          partnerId: p.partnerId,
+          previousRate: 'currentRate' in p ? (p.currentRate ?? null) : null,
+          newRate: p.proposedRate ?? null,
+        };
       }
 
       return result;
