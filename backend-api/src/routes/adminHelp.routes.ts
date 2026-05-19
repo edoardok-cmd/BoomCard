@@ -768,15 +768,19 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
     // Note: REJECTED is a terminal state — creator/support replies do not
     // transition out of it. Admins must explicitly re-open via PATCH /:id.
     if (newStatus) {
+      // Determine whether this transition counts as a "reopen" — i.e. the ticket
+      // was in a parked/resolved state and is now being moved back to active.
+      // Stamp reopenedAt so WEB-channel reopens are visible in the audit trail,
+      // matching the behaviour of the email-inbound path (ticketInbound.service.ts:516).
+      const isReopen = newStatus === 'OPEN' && (ticket.status === 'RESOLVED' || ticket.status === 'WAITING');
       await prisma.helpTicket.update({
         where: { id: req.params.id },
         data: {
           status: newStatus,
-          // Clear resolvedAt whenever the ticket moves away from RESOLVED.
-          // Without this, a ticket re-resolved after a creator-reply reopen would
-          // retain the stale resolvedAt from the first resolution, causing auto-close
-          // to fire immediately on the next nightly run.
+          // Clear resolvedAt whenever the ticket moves away from RESOLVED so
+          // auto-close doesn't fire immediately on re-resolution.
           ...(ticket.status === 'RESOLVED' ? { resolvedAt: null } : {}),
+          ...(isReopen ? { reopenedAt: new Date() } : {}),
         },
       });
     }
