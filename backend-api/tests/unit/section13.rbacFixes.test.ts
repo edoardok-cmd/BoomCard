@@ -236,7 +236,9 @@ describe('§13 Fix 3 — PATCH /partners/:id/discount-rate', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    writeAuditSpy.mockReset();
+    // Use mockClear not mockReset — reset strips the async implementation and
+    // the route calls writeAudit().catch(...), which would throw on undefined.
+    writeAuditSpy.mockClear();
   });
 
   const basePartner = {
