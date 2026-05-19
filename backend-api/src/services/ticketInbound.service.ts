@@ -53,7 +53,7 @@ const BOUNCE_SUBJECT_RE = /delivery (status|failure)|undeliverable|mailer[- ]dae
 // Spec §11.2 edge case: forwarded emails break header threading and must always
 // create a new ticket regardless of any [#ref] present in the subject. The
 // forward prefix (Fwd: / Fw: and their locale variants) is the canonical signal.
-const FWD_SUBJECT_RE = /^(fwd?|wg|vd|tr|fw|pf|enc|rv|i)\s*:/i;
+const FWD_SUBJECT_RE = /^(fwd?|wg|vd|tr|fw|pf|enc|rv|inoltrato)\s*:/i;
 
 /** Extract a bare lowercase email from a "Name <addr>" or plain `addr` value. */
 function normalizeAddress(raw: string): string {
