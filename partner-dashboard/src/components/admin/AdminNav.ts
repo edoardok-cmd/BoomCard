@@ -60,7 +60,9 @@ export const ADMIN_NAV: AdminNavCategory[] = [
       { labelBg: 'Комуникация и онбординг', labelEn: 'Communication & Onboarding', path: '/admin/partners/onboarding', permissionKey: 'partners.onboarding.read' },
       { labelBg: 'Активни партньори', labelEn: 'Active Partners', path: '/admin/partners/active', permissionKey: 'partners.read' },
       { labelBg: 'Локации и QR кодове', labelEn: 'Locations & QR Codes', path: '/admin/partners/locations', permissionKey: 'partners.locations.read' },
-      { labelBg: 'Касови бележки', labelEn: 'Receipt Profiles', path: '/admin/partners/receipt-profiles', permissionKey: 'partners.receipts.read' },
+      // BG label: receipt profile templates (partner-side config), not individual receipts.
+      // Individual receipt review lives in Контрол > Преглед на бележки.
+      { labelBg: 'Профили за бележки', labelEn: 'Receipt Profiles', path: '/admin/partners/receipt-profiles', permissionKey: 'partners.receipts.read' },
     ],
   },
   {
@@ -87,8 +89,10 @@ export const ADMIN_NAV: AdminNavCategory[] = [
     subItems: [
       { labelBg: 'Преглед на рискови транзакции', labelEn: 'Risk Transaction Review', path: '/admin/control/risk', permissionKey: 'control.risk.read' },
       { labelBg: 'Риск и сигурност', labelEn: 'Risk & Security', path: '/admin/control/risk-signals', permissionKey: 'control.risk.read' },
+      { labelBg: 'Преглед на бележки', labelEn: 'Receipt Review', path: '/admin/control/receipts', permissionKey: 'control.receipts.read' },
       { labelBg: 'Спорове', labelEn: 'Disputes', path: '/admin/control/disputes', permissionKey: 'control.disputes.read' },
       { labelBg: 'Лимити и правила', labelEn: 'Limits & Rules', path: '/admin/control/rules', permissionKey: 'control.rules.read' },
+      { labelBg: 'Конфигурация за измами', labelEn: 'Fraud Config', path: '/admin/control/venue-config', permissionKey: 'control.rules.read' },
     ],
   },
   {
@@ -117,6 +121,7 @@ export const ADMIN_NAV: AdminNavCategory[] = [
       { labelBg: 'Проценти', labelEn: 'Percentages', path: '/admin/settings/percentages', permissionKey: 'settings.read' },
       { labelBg: 'Валидност', labelEn: 'Validity', path: '/admin/settings/validity', permissionKey: 'settings.read' },
       { labelBg: 'Мобилно приложение', labelEn: 'Mobile App', path: '/admin/settings/mobile', permissionKey: 'settings.read' },
+      // settings.write intentionally more restrictive than the other tabs — system config is write-gated
       { labelBg: 'Системни настройки', labelEn: 'System Settings', path: '/admin/settings/system', permissionKey: 'settings.write' },
     ],
   },
@@ -131,6 +136,7 @@ export const ADMIN_NAV: AdminNavCategory[] = [
       { labelBg: 'Всички администратори', labelEn: 'All Admins', path: '/admin/admins/all', permissionKey: 'admins.read' },
       { labelBg: 'Създай администратор', labelEn: 'Create Admin', path: '/admin/admins/create', permissionKey: 'admins.write' },
       { labelBg: 'Чакащи одобрения', labelEn: 'Pending Approvals', path: '/admin/admins/pending', permissionKey: 'admins.read' },
+      { labelBg: 'Критични действия', labelEn: 'Critical Actions', path: '/admin/admins/critical-actions', permissionKey: 'admins.actions.read' },
       { labelBg: 'История на действията', labelEn: 'Action History', path: '/admin/admins/audit', permissionKey: 'admins.audit.read' },
     ],
   },
@@ -144,7 +150,8 @@ export const ADMIN_NAV: AdminNavCategory[] = [
     subItems: [
       { labelBg: 'Нова заявка', labelEn: 'New Request', path: '/admin/help/new', permissionKey: 'help.write' },
       { labelBg: 'Моите заявки', labelEn: 'My Requests', path: '/admin/help/mine', permissionKey: 'help.read' },
-      { labelBg: 'Всички заявки', labelEn: 'All Requests', path: '/admin/help/all', superAdminOnly: true },
+      // Visible to anyone with help.read.all (SUPPORT role) or SUPER_ADMIN (bypasses all checks)
+      { labelBg: 'Всички заявки', labelEn: 'All Requests', path: '/admin/help/all', permissionKey: 'help.read.all' },
     ],
   },
   {

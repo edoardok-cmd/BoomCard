@@ -77,6 +77,36 @@ export type CreateAdminResponse =
   | { ok: boolean; pending?: false; user: Pick<AdminUser, 'id' | 'email'> }
   | { ok: boolean; pending: true; request: Pick<PendingSuperAdminRequest, 'id' | 'email' | 'firstName' | 'lastName' | 'createdAt'> };
 
+export type CriticalActionStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface CriticalActionActor {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string;
+}
+
+export interface CriticalActionRequest {
+  id: string;
+  actionType: string;
+  payload: unknown;
+  note: string | null;
+  status: CriticalActionStatus;
+  createdAt: string;
+  requestedBy: CriticalActionActor;
+  resolvedBy: CriticalActionActor | null;
+  resolvedNote: string | null;
+  resolvedAt: string | null;
+}
+
+export interface CriticalActionsResult {
+  items: CriticalActionRequest[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
 export interface AuditActor {
   id: string;
   firstName: string | null;
@@ -173,6 +203,24 @@ export const adminAdminsService = {
 
   rejectPendingSuper(id: string): Promise<{ ok: boolean }> {
     return apiService.delete(`/admin/admins/pending-super/${id}`);
+  },
+
+  listCriticalActions(params?: {
+    page?: number;
+    limit?: number;
+    status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL';
+  }): Promise<CriticalActionsResult> {
+    const clean: Record<string, unknown> = { page: params?.page, limit: params?.limit };
+    if (params?.status) clean.status = params.status;
+    return apiService.get('/admin/admins/critical-actions', clean);
+  },
+
+  approveCriticalAction(id: string, note?: string): Promise<{ item: CriticalActionRequest }> {
+    return apiService.post(`/admin/admins/critical-actions/${id}/approve`, { note });
+  },
+
+  rejectCriticalAction(id: string, note: string): Promise<{ item: CriticalActionRequest }> {
+    return apiService.post(`/admin/admins/critical-actions/${id}/reject`, { note });
   },
 
   listAudit(params: {

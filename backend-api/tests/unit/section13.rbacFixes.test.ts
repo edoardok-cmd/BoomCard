@@ -28,13 +28,13 @@ jest.mock('../../src/lib/prisma', () => {
     fraudRule: {
       findMany: jest.fn(async () => []),
       findUnique: jest.fn(async () => null),
-      create: jest.fn(async (args: any) => ({ id: 'rule-1', ...args.data })),
-      update: jest.fn(async (args: any) => ({ id: args?.where?.id })),
+      create: jest.fn(async (args) => ({ id: 'rule-1', ...args.data })),
+      update: jest.fn(async (args) => ({ id: args?.where?.id })),
     },
     fraudRuleOverride: {
       findMany: jest.fn(async () => []),
       findFirst: jest.fn(async () => null),
-      create: jest.fn(async (args: any) => ({ id: 'override-1', ...args.data })),
+      create: jest.fn(async (args) => ({ id: 'override-1', ...args.data })),
       delete: jest.fn(async () => ({})),
     },
     // Needed by resolveAdminName used in some settings handlers
@@ -60,15 +60,15 @@ jest.mock('../../src/lib/prisma', () => {
     },
     // $transaction pass-through: calls the callback with the same client so
     // tx.helpTicket.update / tx.ticketReply.create hit the same mocked fns.
-    $transaction: jest.fn(async (fn: (tx: any) => Promise<unknown>) => fn(client)),
+    $transaction: jest.fn(async (fn) => fn(client)),
   };
   return { __esModule: true, default: client, prisma: client };
 });
 
 const writeAuditSpy: jest.Mock<Promise<void>, [any?]> = jest.fn(async (_arg?: any) => undefined);
 jest.mock('../../src/middleware/audit.middleware', () => ({
-  writeAudit: (arg?: any) => writeAuditSpy(arg),
-  auditMiddleware: (_req: any, _res: any, next: any) => next(),
+  writeAudit: (arg) => writeAuditSpy(arg),
+  auditMiddleware: (_req, _res, next) => next(),
 }));
 
 jest.mock('../../src/utils/logger', () => ({
@@ -107,7 +107,7 @@ jest.mock('../../src/services/notification.service', () => ({
   notificationService: { notifyAdminOps: jest.fn(async () => undefined) },
 }));
 jest.mock('../../src/services/ticketEmail.service', () => ({
-  buildTicketSubject: jest.fn((_id: string, suffix: string) => `[#abc1234] ${suffix}`),
+  buildTicketSubject: jest.fn((_id, suffix) => `[#abc1234] ${suffix}`),
   buildTicketHeaders: jest.fn(() => ({ messageId: '<mid@test>', headers: {} })),
   buildPlusReplyTo: jest.fn(() => 'support+abc1234@boomcard.bg'),
   computeShortRef: jest.fn(() => '#abc1234'),
@@ -129,22 +129,22 @@ jest.mock('../../src/middleware/auth.middleware', () => {
   const original = jest.requireActual('../../src/middleware/auth.middleware');
   return {
     ...original,
-    authenticate: (_req: any, _res: any, next: any) => {
-      if (mockUser) (_req as any).user = mockUser;
+    authenticate: (_req, _res, next) => {
+      if (mockUser) _req.user = mockUser;
       next();
     },
-    authorize: (...roles: string[]) => (req: any, res: any, next: any) => {
-      const user = (req as any).user as typeof mockUser;
+    authorize: (...roles) => (req, res, next) => {
+      const user = req.user;
       if (!user) return res.status(401).json({ error: 'Not authenticated' });
       if (!roles.includes(user.role)) return res.status(403).json({ error: 'Not authorized' });
       next();
     },
-    requirePermission: (keyOrKeys: string | string[]) => (req: any, res: any, next: any) => {
-      const user = (req as any).user as typeof mockUser;
+    requirePermission: (keyOrKeys) => (req, res, next) => {
+      const user = req.user;
       if (!user) return res.status(401).json({ error: 'Not authenticated' });
       if (user.role === 'SUPER_ADMIN') return next();
       const keys = Array.isArray(keyOrKeys) ? keyOrKeys : [keyOrKeys];
-      const hasAny = keys.some((k: string) => user.permissions.includes(k));
+      const hasAny = keys.some((k) => user.permissions.includes(k));
       if (!hasAny) return res.status(403).json({ error: 'Insufficient permissions' });
       next();
     },

@@ -173,6 +173,7 @@ const AdminMarketingListsPage = lazy(() => import('./pages/admin/AdminMarketingL
 const AdminHelpNewPage = lazy(() => import('./pages/admin/AdminHelpNewPage'));
 const AdminHelpMinePage = lazy(() => import('./pages/admin/AdminHelpMinePage'));
 const AdminHelpAllPage = lazy(() => import('./pages/admin/AdminHelpAllPage'));
+const AdminAdminsCriticalActionsPage = lazy(() => import('./pages/admin/AdminAdminsCriticalActionsPage'));
 const AdminProfileMyDataPage = lazy(() => import('./pages/admin/AdminProfileMyDataPage'));
 const AdminProfileSecurityPage = lazy(() => import('./pages/admin/AdminProfileSecurityPage'));
 const AdminProfileLogoutPage = lazy(() => import('./pages/admin/AdminProfileLogoutPage'));
@@ -196,14 +197,16 @@ function HelpIndexRedirect() {
   const { user, isLoading } = useAuth();
   if (isLoading) return null;
   if (!user) return <Navigate to="/login" replace />;
-  return <Navigate to={user.rawRole === 'SUPER_ADMIN' ? 'all' : 'mine'} replace />;
+  const canSeeAll = user.rawRole === 'SUPER_ADMIN' || (user.permissions ?? []).includes('help.read.all');
+  return <Navigate to={canSeeAll ? 'all' : 'mine'} replace />;
 }
 
-function SuperAdminHelpAll() {
+function HelpAllGuard() {
   const { user, isLoading } = useAuth();
   if (isLoading) return null;
   if (!user) return <Navigate to="/login" replace />;
-  if (user.rawRole !== 'SUPER_ADMIN') return <Navigate to="/admin/help/mine" replace />;
+  const canSeeAll = user.rawRole === 'SUPER_ADMIN' || (user.permissions ?? []).includes('help.read.all');
+  if (!canSeeAll) return <Navigate to="/admin/help/mine" replace />;
   return <AdminHelpAllPage />;
 }
 
@@ -500,15 +503,8 @@ function App() {
                         </ProtectedRoute>
                       }
                     />
-                    {/* /admin/receipts kept as a real route (not yet mapped to new IA category) */}
-                    <Route
-                      path="admin/receipts"
-                      element={
-                        <ProtectedRoute requiredRole="admin">
-                          <AdminReceiptsPage />
-                        </ProtectedRoute>
-                      }
-                    />
+                    {/* /admin/receipts → canonical location is now /admin/control/receipts */}
+                    <Route path="admin/receipts" element={<Navigate to="/admin/control/receipts" replace />} />
 
                     {/* ── New 10-category admin IA (Phase 0) ──────────────────────── */}
                     {/* /admin/dashboard */}
@@ -589,6 +585,7 @@ function App() {
                           location.pathname ('/risk' = review queue, '/risk-signals' = stats-only view). */}
                       <Route path="risk" element={<AdminControlSecurityPage />} />
                       <Route path="risk-signals" element={<AdminControlSecurityPage />} />
+                      <Route path="receipts" element={<AdminReceiptsPage />} />
                       {/* Audit log lives under /admin/admins/audit — redirect keeps old bookmarks working. */}
                       <Route path="audit" element={<Navigate to="/admin/admins/audit" replace />} />
                       <Route path="security" element={<Navigate to="/admin/control/risk-signals" replace />} />
@@ -644,6 +641,7 @@ function App() {
                       <Route path="all" element={<AdminAdminsAllPage />} />
                       <Route path="create" element={<AdminAdminsCreatePage />} />
                       <Route path="pending" element={<AdminAdminsPendingPage />} />
+                      <Route path="critical-actions" element={<AdminAdminsCriticalActionsPage />} />
                       <Route path="audit" element={<AdminAdminsAuditPage />} />
                       <Route path=":id" element={<AdminAdminDetailPage />} />
                     </Route>
@@ -660,7 +658,7 @@ function App() {
                       <Route index element={<HelpIndexRedirect />} />
                       <Route path="new" element={<AdminHelpNewPage />} />
                       <Route path="mine" element={<AdminHelpMinePage />} />
-                      <Route path="all" element={<SuperAdminHelpAll />} />
+                      <Route path="all" element={<HelpAllGuard />} />
                     </Route>
 
                     {/* /admin/profile */}

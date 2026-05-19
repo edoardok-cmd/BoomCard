@@ -193,4 +193,45 @@ describe('GET /admin/dashboard — spec §3.1 stats', () => {
     expect(res.body.data.transactions.todayAvg).toBe(0);
     expect(Number.isFinite(res.body.data.transactions.todayAvg)).toBe(true);
   });
+
+  it('cashback.accrued equals approved + pending (FAILED/REVERSED excluded from accrued)', async () => {
+    // The accrued query now filters to [COMPLETED, TRIAL_PENDING, PENDING, PROCESSING]
+    // so accrued = approved + pending always holds.
+    // Simulate: approved=100, pending=40, failed/reversed=25 (must not count)
+    m.$queryRaw.mockReset();
+    m.$queryRaw
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ cnt: 0n }]);
+
+    m.walletTransaction.aggregate.mockImplementation(({ where }) => {
+      if (where?.type === 'CASHBACK_CREDIT') {
+        const statuses: string[] = where?.status?.in ?? [];
+        // accrued: all non-terminal non-failure statuses — returns 140
+        if (
+          statuses.includes('COMPLETED') &&
+          statuses.includes('TRIAL_PENDING') &&
+          statuses.includes('PENDING') &&
+          statuses.includes('PROCESSING') &&
+          statuses.length === 4
+        ) {
+          return Promise.resolve({ _sum: { amount: 140 } }); // 100 approved + 40 pending
+        }
+        // approved: COMPLETED only — 100
+        if (statuses.length === 0 && where?.status === 'COMPLETED') {
+          return Promise.resolve({ _sum: { amount: 100 } });
+        }
+        // pending: TRIAL_PENDING, PENDING, PROCESSING — 40
+        if (statuses.includes('TRIAL_PENDING') && !statuses.includes('COMPLETED')) {
+          return Promise.resolve({ _sum: { amount: 40 } });
+        }
+      }
+      return Promise.resolve(ZERO_AGGREGATE);
+    });
+
+    const res = await request(app).get('/admin/dashboard').expect(200);
+    const { accrued, approved, pending } = res.body.data.cashback;
+    // accrued must not include FAILED/REVERSED amounts (25 BGN above)
+    expect(accrued).toBe(140);
+    expect(accrued).toBe(approved + pending);
+  });
 });

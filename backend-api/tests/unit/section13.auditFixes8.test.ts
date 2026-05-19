@@ -782,3 +782,94 @@ describe('Gap 3c fix — authenticate() blocks ADMIN JWT when a role assignment 
     });
   });
 });
+
+// ─── Gap 2 follow-up: requestedById scoping for admins.actions.read callers ───
+
+describe('Gap 2 follow-up — pendingCriticalActions scoped to own requests for PARTNER_MANAGER', () => {
+  const PM_PERMS = ROLE_DEFAULT_ALLOWS.PARTNER_MANAGER;
+
+  beforeEach(() => {
+    m.user.findMany.mockResolvedValue([]);
+    m.pendingSuperAdminRequest.findMany.mockResolvedValue([]);
+  });
+
+  it('PARTNER_MANAGER: criticalActionRequest.findMany is called with requestedById filter', async () => {
+    setMockUser({ id: 'pm-user-1', permissions: PM_PERMS });
+    m.criticalActionRequest.findMany.mockResolvedValueOnce([]);
+
+    await buildAdminsApp().get('/admins/pending-all');
+
+    const call = m.criticalActionRequest.findMany.mock.calls[0]?.[0];
+    expect(call?.where).toMatchObject({ requestedById: 'pm-user-1' });
+  });
+
+  it('ADMIN with admins.read: criticalActionRequest.findMany has no requestedById filter', async () => {
+    setMockUser({ id: 'admin-full', permissions: ['admins.read'] });
+    m.criticalActionRequest.findMany.mockResolvedValueOnce([]);
+
+    await buildAdminsApp().get('/admins/pending-all');
+
+    const call = m.criticalActionRequest.findMany.mock.calls[0]?.[0];
+    expect(call?.where).not.toHaveProperty('requestedById');
+  });
+
+  it('SUPER_ADMIN: criticalActionRequest.findMany has no requestedById filter', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', id: 'sa-1', permissions: [] });
+    m.criticalActionRequest.findMany.mockResolvedValueOnce([]);
+
+    await buildAdminsApp().get('/admins/pending-all');
+
+    const call = m.criticalActionRequest.findMany.mock.calls[0]?.[0];
+    expect(call?.where).not.toHaveProperty('requestedById');
+  });
+
+  it('PARTNER_MANAGER only receives their own pending actions in response body', async () => {
+    setMockUser({ id: 'pm-user-2', permissions: PM_PERMS });
+    const ownAction = { id: 'car-own', actionType: 'DISCOUNT_RATE_CHANGE', payload: {}, note: null, createdAt: new Date().toISOString(), requestedBy: { id: 'pm-user-2', firstName: 'P', lastName: 'M', email: 'pm@test.com' } };
+    m.criticalActionRequest.findMany.mockResolvedValueOnce([ownAction]);
+
+    const res = await buildAdminsApp().get('/admins/pending-all');
+
+    expect(res.status).toBe(200);
+    expect(res.body.pendingCriticalActions).toHaveLength(1);
+    expect(res.body.pendingCriticalActions[0].id).toBe('car-own');
+    expect(res.body.total).toBe(1);
+  });
+});
+
+describe('Gap 2 follow-up — GET /admins/critical-actions scoped for PARTNER_MANAGER', () => {
+  const PM_PERMS = ROLE_DEFAULT_ALLOWS.PARTNER_MANAGER;
+
+  it('PARTNER_MANAGER: findMany is called with requestedById filter', async () => {
+    setMockUser({ id: 'pm-ca-1', permissions: PM_PERMS });
+    m.criticalActionRequest.findMany.mockResolvedValueOnce([]);
+    m.criticalActionRequest.count.mockResolvedValueOnce(0);
+
+    await buildAdminsApp().get('/admins/critical-actions');
+
+    const call = m.criticalActionRequest.findMany.mock.calls[0]?.[0];
+    expect(call?.where).toMatchObject({ requestedById: 'pm-ca-1' });
+  });
+
+  it('ADMIN with admins.read: findMany has no requestedById filter', async () => {
+    setMockUser({ id: 'admin-ca-1', permissions: ['admins.read'] });
+    m.criticalActionRequest.findMany.mockResolvedValueOnce([]);
+    m.criticalActionRequest.count.mockResolvedValueOnce(0);
+
+    await buildAdminsApp().get('/admins/critical-actions');
+
+    const call = m.criticalActionRequest.findMany.mock.calls[0]?.[0];
+    expect(call?.where).not.toHaveProperty('requestedById');
+  });
+
+  it('SUPER_ADMIN: findMany has no requestedById filter', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', id: 'sa-ca-1', permissions: [] });
+    m.criticalActionRequest.findMany.mockResolvedValueOnce([]);
+    m.criticalActionRequest.count.mockResolvedValueOnce(0);
+
+    await buildAdminsApp().get('/admins/critical-actions');
+
+    const call = m.criticalActionRequest.findMany.mock.calls[0]?.[0];
+    expect(call?.where).not.toHaveProperty('requestedById');
+  });
+});

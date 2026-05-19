@@ -114,8 +114,16 @@ router.get(
       }),
 
       // Кешбек — 4 metrics per spec §3.1: начислен, одобрен, изчакващ, изтичащ
+      // "Начислен" = net committed cashback (approved + pending). Filtering to
+      // only non-terminal, non-failure statuses so that FAILED/REVERSED entries
+      // (which represent cancelled obligations) do not inflate the figure. This
+      // makes `accrued = approved + pending` a mathematical identity, letting the
+      // tile headline (accrued) serve as the sum of its two sub-metrics.
       prisma.walletTransaction.aggregate({
-        where: { type: 'CASHBACK_CREDIT' },
+        where: {
+          type: 'CASHBACK_CREDIT',
+          status: { in: ['COMPLETED', 'TRIAL_PENDING', 'PENDING', 'PROCESSING'] },
+        },
         _sum: { amount: true },
       }),
       prisma.walletTransaction.aggregate({

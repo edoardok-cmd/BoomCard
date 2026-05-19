@@ -9,6 +9,8 @@ import {
   CurrencyDollarIcon,
   CheckCircleIcon,
   UsersIcon,
+  ExclamationTriangleIcon,
+  LockClosedIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -435,6 +437,58 @@ const AllClearText = styled.p`
   margin: 0;
 `;
 
+const ForbiddenBanner = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 1rem 1.25rem;
+  background: ${palette.surfaceAlt};
+  border: 1px solid ${palette.border};
+  border-radius: 0.75rem;
+  color: ${palette.textMuted};
+
+  [data-theme='dark'] & {
+    background: #252320;
+    border-color: #3a3732;
+    color: #b8b0a3;
+  }
+
+  svg {
+    width: 1.125rem;
+    height: 1.125rem;
+    flex-shrink: 0;
+  }
+`;
+
+const ErrorBanner = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 1rem 1.25rem;
+  background: ${palette.warningSoft};
+  border: 1px solid #e8d8ad;
+  border-radius: 0.75rem;
+  color: ${palette.warning};
+
+  [data-theme='dark'] & {
+    background: rgba(181, 128, 58, 0.12);
+    border-color: rgba(181, 128, 58, 0.3);
+    color: #d4a165;
+  }
+
+  svg {
+    width: 1.125rem;
+    height: 1.125rem;
+    flex-shrink: 0;
+  }
+`;
+
+const BannerText = styled.p`
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin: 0;
+`;
+
 /* ─── Stats Grid ───────────────────────────────────────────────────────────── */
 const StatsSectionHead = styled.div`
   display: flex;
@@ -615,6 +669,12 @@ const AdminDashboardPage: React.FC = () => {
   // "Updated HH:MM" indicator so a mid-session failure doesn't silently
   // present stale counts as fresh.
   const [alertsStale, setAlertsStale] = useState<boolean>(false);
+  // alertsForbidden: first load returned 403 — admin lacks control.risk.read.
+  // alertsLoadError: first load failed for any other reason (network, 5xx, etc.).
+  // Both are reset to false when a subsequent auto-refresh succeeds so that a
+  // transient failure during later polls doesn't leave the panel permanently broken.
+  const [alertsForbidden, setAlertsForbidden] = useState<boolean>(false);
+  const [alertsLoadError, setAlertsLoadError] = useState<boolean>(false);
 
   const permissions: string[] = user?.permissions ?? [];
   const isSuperAdmin = user?.rawRole === 'SUPER_ADMIN';
@@ -691,9 +751,11 @@ const AdminDashboardPage: React.FC = () => {
           if (!mounted.current) return;
           setAlerts(result);
           setAlertsStale(false);
+          setAlertsForbidden(false);
+          setAlertsLoadError(false);
           isFirstLoad = false;
         })
-        .catch(() => {
+        .catch((err: unknown) => {
           // Only blank the panel on the very first load failure. Later transient
           // failures (network blip during a 60s auto-refresh tick) must NOT wipe
           // the previously-shown alerts — otherwise the user briefly sees an
@@ -701,7 +763,13 @@ const AdminDashboardPage: React.FC = () => {
           // chip flips to "Stale HH:MM" and the user knows counts aren't fresh.
           if (!mounted.current) return;
           if (isFirstLoad) {
+            const status = (err as { response?: { status?: number } })?.response?.status;
             setAlerts(emptyAlerts);
+            if (status === 403) {
+              setAlertsForbidden(true);
+            } else {
+              setAlertsLoadError(true);
+            }
             isFirstLoad = false;
           } else {
             setAlertsStale(true);
@@ -807,13 +875,33 @@ const AdminDashboardPage: React.FC = () => {
                       : `Updated ${alertsUpdatedAt}`}
                 </UpdatedAt>
               )}
-              <AlertSectionLink to="/admin/dashboard/alerts">
-                {bg ? 'Виж всички →' : 'View all →'}
-              </AlertSectionLink>
+              {!alertsForbidden && (
+                <AlertSectionLink to="/admin/dashboard/alerts">
+                  {bg ? 'Виж всички →' : 'View all →'}
+                </AlertSectionLink>
+              )}
             </AlertHeadRight>
           </AlertSectionHead>
 
-          {alerts === null ? null : (alerts.totalCount ?? 0) === 0 ? (
+          {alerts === null ? null : alertsForbidden ? (
+            <ForbiddenBanner>
+              <LockClosedIcon />
+              <BannerText>
+                {bg
+                  ? 'Нямате право за преглед на сигналите. Свържете се с администратор за достъп.'
+                  : 'You do not have permission to view alerts. Contact an administrator to request access.'}
+              </BannerText>
+            </ForbiddenBanner>
+          ) : alertsLoadError ? (
+            <ErrorBanner>
+              <ExclamationTriangleIcon />
+              <BannerText>
+                {bg
+                  ? 'Грешка при зареждане на сигналите. Опитайте да опресните страницата.'
+                  : 'Failed to load alerts. Try refreshing the page.'}
+              </BannerText>
+            </ErrorBanner>
+          ) : (alerts.totalCount ?? 0) === 0 ? (
             <AllClearBanner>
               <CheckCircleIcon />
               <AllClearText>
@@ -947,7 +1035,7 @@ const AdminDashboardPage: React.FC = () => {
                   </StatSub>
                   <StatSub>
                     <strong>{fmt2(dashStats?.transactions.totalVolume)}</strong>{' '}
-                    {bg ? 'общ оборот (за всички време)' : 'lifetime turnover'}
+                    {bg ? 'общ оборот (за всички времена)' : 'lifetime turnover'}
                   </StatSub>
                 </StatSubs>
               </div>
@@ -962,19 +1050,19 @@ const AdminDashboardPage: React.FC = () => {
               transition={{ delay: 0.15 }}
             >
               <StatTop>
-                <StatLabel>{bg ? 'Кешбек — одобрен' : 'Cashback — approved'}</StatLabel>
+                <StatLabel>{bg ? 'Кешбек — начислен' : 'Cashback — accrued'}</StatLabel>
                 <StatIconBox>
                   <BanknotesIcon />
                 </StatIconBox>
               </StatTop>
               <div>
                 <StatValue>
-                  {`${fmt2(dashStats?.cashback.approved)} ${bg ? 'лв.' : 'BGN'}`}
+                  {`${fmt2(dashStats?.cashback.accrued)} ${bg ? 'лв.' : 'BGN'}`}
                 </StatValue>
                 <StatSubs>
                   <StatSub>
-                    <strong>{fmt2(dashStats?.cashback.accrued)}</strong>{' '}
-                    {bg ? 'начислен' : 'accrued'}
+                    <strong>{fmt2(dashStats?.cashback.approved)}</strong>{' '}
+                    {bg ? 'одобрен' : 'approved'}
                   </StatSub>
                   <StatSub>
                     <strong>{fmt2(dashStats?.cashback.pending)}</strong>{' '}

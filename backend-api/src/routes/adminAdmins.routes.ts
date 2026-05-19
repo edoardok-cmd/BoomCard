@@ -233,7 +233,14 @@ router.get('/pending-all', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requ
           })
         : Promise.resolve([]),
       prisma.criticalActionRequest.findMany({
-        where: { status: 'PENDING' },
+        where: {
+          status: 'PENDING',
+          // Callers with only admins.actions.read (e.g. PARTNER_MANAGER) must see
+          // only their own submissions — they must not read other roles' payloads
+          // (BULK_PAYOUT_OVERRIDE amounts, PARTNER_ARCHIVE targets, etc.).
+          // Callers with admins.read (ADMIN) or SUPER_ADMIN see the full queue.
+          ...(hasAdminsRead ? {} : { requestedById: req.user!.id }),
+        },
         orderBy: { createdAt: 'desc' },
         select: {
           id: true,
@@ -261,7 +268,7 @@ router.get('/pending-all', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requ
 // Accessible with admins.read (full admin management) OR admins.actions.read (PARTNER_MANAGER:
 // lets them see the pending partner changes queue without exposing admin user listings).
 const CRITICAL_ACTION_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'ALL'] as const;
-router.get('/critical-actions', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission(['admins.read', 'admins.actions.read']), async (req, res, next) => {
+router.get('/critical-actions', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission(['admins.read', 'admins.actions.read']), async (req: AuthRequest, res, next) => {
   try {
     const rawStatus = typeof req.query.status === 'string' ? req.query.status : 'PENDING';
     if (!(CRITICAL_ACTION_STATUSES as readonly string[]).includes(rawStatus)) {
@@ -272,7 +279,11 @@ router.get('/critical-actions', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
     const skip = (page - 1) * limit;
 
-    const where = status !== 'ALL' ? { status } : {};
+    // Callers with only admins.actions.read (e.g. PARTNER_MANAGER) must see only
+    // their own submissions; admins.read callers and SUPER_ADMIN see the full queue.
+    const hasAdminsRead = req.user!.role === 'SUPER_ADMIN' || (req.user!.permissions ?? []).includes('admins.read');
+    const scopeFilter = hasAdminsRead ? {} : { requestedById: req.user!.id };
+    const where = { ...scopeFilter, ...(status !== 'ALL' ? { status } : {}) };
     const [items, total] = await Promise.all([
       prisma.criticalActionRequest.findMany({
         where,
@@ -379,9 +390,10 @@ router.post('/critical-actions/:id/approve', authenticate, authorize('SUPER_ADMI
         // single-threaded Node.js model.
         req.skipAudit = true;
         // Await the audit write — the auto-reject is a security-sensitive event and
-        // its audit record must be committed before responding.  A failure here is
-        // surfaced as a 500 rather than silently dropped, so ops can investigate
-        // rather than face an auto-rejection with no audit trail.
+        // its audit record must be committed before responding.  If the write fails,
+        // the error is caught, logged, and the 422 is still returned (the DB reject
+        // has already committed so the caller must be told).  Ops can investigate via
+        // the logger output rather than facing a silent audit gap.
         try {
           await writeAudit({
             actorUserId: req.user!.id,
