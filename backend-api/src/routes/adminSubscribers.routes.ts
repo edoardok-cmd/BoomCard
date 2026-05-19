@@ -554,7 +554,7 @@ router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
       action: 'subscription.cancel',
       objectType: 'subscription',
       objectId: subscription.id,
-      before: { status: subscription.status, userId },
+      before: { status: subscription.status, userId, failedPaymentAt: subscription.failedPaymentAt ?? null },
       after: {
         cancelType: subscription.status === 'FAILED_PAYMENT' ? 'immediate' : 'at_period_end',
         initiatedBy: 'admin',

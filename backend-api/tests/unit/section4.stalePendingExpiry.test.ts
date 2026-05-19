@@ -202,6 +202,50 @@ describe('expireStalePendingCashback — §4.4 audit finding #4', () => {
     });
   });
 
+  it('findMany WHERE excludes entries linked to a StickerScan in MANUAL_REVIEW', async () => {
+    // Spec §4.4: "Pending кешбек за транзакция, попаднала в риск преглед,
+    // трябва да остане видим за потребителя до финализиране на проверката."
+    // The sweep must not expire entries whose owning scan is still under review.
+    staleRows = [];
+
+    await expireStalePendingCashback(null);
+
+    const findManyWhere = mp.walletTransaction.findMany.mock.calls[0][0]?.where;
+    // NOT clause must include a stickerScan MANUAL_REVIEW guard
+    expect(findManyWhere?.NOT).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ stickerScan: { status: 'MANUAL_REVIEW' } }),
+      ]),
+    );
+  });
+
+  it('findMany WHERE excludes entries linked to a Receipt in MANUAL_REVIEW', async () => {
+    // Same spec guarantee applies to receipt-based risk reviews.
+    staleRows = [];
+
+    await expireStalePendingCashback(null);
+
+    const findManyWhere = mp.walletTransaction.findMany.mock.calls[0][0]?.where;
+    expect(findManyWhere?.NOT).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ receipt: { status: 'MANUAL_REVIEW' } }),
+      ]),
+    );
+  });
+
+  it('entries NOT in risk review are still expired even after MANUAL_REVIEW guard is added', async () => {
+    // Guard must not over-exclude: a stale PENDING entry with no linked scan/receipt
+    // (or one whose scan is APPROVED) should still be expired.
+    staleRows = [makePendingRow({ id: 'wt-no-scan' })];
+
+    const result = await expireStalePendingCashback(null);
+
+    // Whatever findMany returns is processed — the exclusion lives in the DB
+    // WHERE clause, not in client-side filtering after the fact.
+    expect(result.count).toBe(1);
+    expect(updateManyDataArgs[0]).toMatchObject({ cashbackStatus: 'EXPIRED' });
+  });
+
   it('partial CAS race — staleIds contains all candidates while count reflects actual transitions', async () => {
     // 3 candidates found, only 2 actually transitioned (1 was concurrently approved).
     staleRows = [makePendingRow(), makePendingRow(), makePendingRow()];

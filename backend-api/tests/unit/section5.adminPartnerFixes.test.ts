@@ -478,6 +478,84 @@ describe('Bug 4 — POST /notes requestStatus init', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// §5 audit — POST /approve and POST /reject write AuditLog entries
+// ─────────────────────────────────────────────────────────────────────────────
+describe('§5 audit — approve/reject write AuditLog entries', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    currentUser = { id: 'admin-1', role: 'ADMIN' };
+  });
+
+  it('POST /approve writes a partner.approve audit entry with before/after', async () => {
+    const p = partnerRow({ status: 'PENDING', requestStatus: 'ONBOARDING' });
+    mockPartnerFindUnique.mockResolvedValueOnce(p);
+    const updated = { ...p, status: 'ACTIVE', requestStatus: 'ODOBRENA' };
+    mockTxFn.mockResolvedValueOnce([updated, {}]);
+
+    await request(makeApp()).post('/api/admin/partners/p1/approve').send({});
+
+    const audit = findAuditCall('partner.approve');
+    expect(audit).toBeDefined();
+    expect(audit!.objectType).toBe('Partner');
+    expect(audit!.objectId).toBe('p1');
+    expect(audit!.before).toMatchObject({ status: 'PENDING', requestStatus: 'ONBOARDING' });
+    expect(audit!.after).toMatchObject({ status: 'ACTIVE', requestStatus: 'ODOBRENA' });
+  });
+
+  it('POST /reject writes a partner.reject audit entry with before/after', async () => {
+    mockPartnerFindUnique.mockResolvedValueOnce(
+      partnerRow({ status: 'PENDING', requestStatus: 'NOVA' })
+    );
+    const updated = partnerRow({ status: 'REJECTED', requestStatus: 'OTKAZANA' });
+    mockTxFn.mockResolvedValueOnce([updated, {}, {}]);
+
+    await request(makeApp())
+      .post('/api/admin/partners/p1/reject')
+      .send({ reason: 'Does not meet requirements' });
+
+    const audit = findAuditCall('partner.reject');
+    expect(audit).toBeDefined();
+    expect(audit!.objectType).toBe('Partner');
+    expect(audit!.before).toMatchObject({ status: 'PENDING' });
+    expect(audit!.after).toMatchObject({ status: 'REJECTED', requestStatus: 'OTKAZANA' });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §5 audit — POST /reject INACTIVE guard (mirrors NON_APPROVABLE_STATUSES in approve)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('§5 audit — POST /reject INACTIVE guard', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    currentUser = { id: 'admin-1', role: 'ADMIN' };
+  });
+
+  it('returns 400 when partner status is INACTIVE (post-onboarding)', async () => {
+    mockPartnerFindUnique.mockResolvedValueOnce(
+      partnerRow({ status: 'INACTIVE', requestStatus: 'ODOBRENA', verifiedAt: new Date() })
+    );
+    const res = await request(makeApp())
+      .post('/api/admin/partners/p1/reject')
+      .send({ reason: 'Closed' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/partner-status/i);
+  });
+
+  it('allows reject for a PENDING partner (onboarding pipeline)', async () => {
+    mockPartnerFindUnique.mockResolvedValueOnce(
+      partnerRow({ status: 'PENDING', requestStatus: 'NOVA' })
+    );
+    const updated = partnerRow({ status: 'REJECTED', requestStatus: 'OTKAZANA' });
+    mockTxFn.mockResolvedValueOnce([updated, {}, {}]);
+    const res = await request(makeApp())
+      .post('/api/admin/partners/p1/reject')
+      .send({ reason: 'Does not qualify' });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Gap 2 — features excluded from partner pendingChanges in PUT /:id
 // ─────────────────────────────────────────────────────────────────────────────
 describe('Gap 2 — features not included in partner pendingChanges', () => {

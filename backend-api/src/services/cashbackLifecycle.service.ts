@@ -22,7 +22,7 @@
  * Prisma updates should be avoided — every transition writes an AuditLog
  * row so §10.4 "История на действията" stays complete.
  */
-import { CashbackEntryStatus, WalletTransactionStatus, WalletTransactionType } from '@prisma/client';
+import { CashbackEntryStatus, ReceiptStatus, ScanStatus, WalletTransactionStatus, WalletTransactionType } from '@prisma/client';
 import type { WalletTransaction } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { writeAudit } from '../middleware/audit.middleware';
@@ -359,6 +359,7 @@ export async function expireOverdueCashback(actorUserId: string | null = null) {
 
   if (overdue.length === 0) return { count: 0 };
 
+  let actualCount = 0;
   for (const row of overdue) {
     try {
       await prisma.$transaction(async (tx) => {
@@ -371,6 +372,7 @@ export async function expireOverdueCashback(actorUserId: string | null = null) {
           data: { cashbackStatus: CashbackEntryStatus.EXPIRED },
         });
         if (result.count === 0) return; // already transitioned — skip wallet debit
+        actualCount += result.count;
         await tx.wallet.update({
           where: { id: row.walletId },
           data: {
@@ -389,10 +391,12 @@ export async function expireOverdueCashback(actorUserId: string | null = null) {
     action: 'CASHBACK_EXPIRED_BATCH',
     objectType: 'WalletTransaction',
     objectId: null,
-    after: { count: overdue.length, ids: overdue.map((r) => r.id) },
+    // `staleIds` = all candidates; `count` = confirmed transitions (may be less
+    // if a concurrent admin action won the CAS race for some entries).
+    after: { count: actualCount, staleIds: overdue.map((r) => r.id) },
   }).catch((err) => logger.error('[cashbackLifecycle] audit write failed (expireOverdue):', err));
 
-  return { count: overdue.length };
+  return { count: actualCount };
 }
 
 /**
@@ -652,6 +656,13 @@ export async function promotePendingToCleared(params: {
  * set cashbackStatus=EXPIRED while leaving status=TRIAL_PENDING unchanged, so
  * the 5:30 AM job would still match on status and overwrite the transition.
  *
+ * NOTE: entries linked to an active risk review (StickerScan or Receipt in
+ * MANUAL_REVIEW) are excluded. Spec §4.4: "Pending кешбек за транзакция,
+ * попаднала в риск преглед, трябва да остане видим за потребителя до
+ * финализиране на проверката." The review finalises via approveScan /
+ * rejectScan which call promotePendingToCleared / markVoided; expiring the
+ * entry here before that decision is made violates the spec guarantee.
+ *
  * Returns the count of entries transitioned to EXPIRED.
  */
 export async function expireStalePendingCashback(actorUserId: string | null = null): Promise<{ count: number }> {
@@ -665,6 +676,12 @@ export async function expireStalePendingCashback(actorUserId: string | null = nu
       // Exclude TRIAL_PENDING entries — see JSDoc above.
       status: { not: WalletTransactionStatus.TRIAL_PENDING },
       createdAt: { lt: cutoff },
+      // Spec §4.4 — entries linked to an active risk review must not be
+      // expired until the review is finalised (approve / reject).
+      NOT: [
+        { stickerScan: { status: ScanStatus.MANUAL_REVIEW } },
+        { receipt: { status: ReceiptStatus.MANUAL_REVIEW } },
+      ],
     },
     select: { id: true },
   });

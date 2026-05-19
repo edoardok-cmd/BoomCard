@@ -698,6 +698,15 @@ router.post(
     // partner.approved automation fires when the partner clicks the activation link
     // (POST /api/auth/partner/activate), not at admin-approval time. See auth.routes.ts.
 
+    writeAudit({
+      actorUserId: (req as AuthRequest).user!.id,
+      action: 'partner.approve',
+      objectType: 'Partner',
+      objectId: req.params.id,
+      before: { status: partner.status, requestStatus: partner.requestStatus },
+      after: { status: PartnerStatus.ACTIVE, requestStatus: PartnerRequestStatus.ODOBRENA },
+    }).catch((err) => logger.error('[adminPartners] approve writeAudit failed:', err));
+
     // Spec §5.2 v1.1 — H4 fix: response now reflects the actual outcome of
     // link issuance so the UI can warn the admin to resend (the drawer also
     // surfaces this from /activation-links, but the response is the
@@ -838,11 +847,13 @@ router.post(
     if (partner.status === PartnerStatus.REJECTED) {
       return res.status(400).json({ error: 'Partner is already rejected' });
     }
+    // Mirror NON_APPROVABLE_STATUSES from POST /approve — INACTIVE is post-onboarding
+    // (re-activation must go through /partner-status, not the onboarding pipeline).
     const POST_ONBOARDING_STATUSES: PartnerStatus[] = [
-      PartnerStatus.ACTIVE, PartnerStatus.PAUSED, PartnerStatus.SUSPENDED, PartnerStatus.ARCHIVED,
+      PartnerStatus.ACTIVE, PartnerStatus.INACTIVE, PartnerStatus.PAUSED, PartnerStatus.SUSPENDED, PartnerStatus.ARCHIVED,
     ];
     if (POST_ONBOARDING_STATUSES.includes(partner.status)) {
-      return res.status(400).json({ error: 'Cannot reject an active partner via this endpoint. Use /partner-status to manage active partner statuses.' });
+      return res.status(400).json({ error: 'Cannot reject a post-onboarding partner via this endpoint. Use /partner-status to manage post-onboarding partner statuses.' });
     }
 
     const [updated] = await prisma.$transaction([
@@ -869,6 +880,15 @@ router.post(
         },
       }),
     ]);
+
+    writeAudit({
+      actorUserId: req.user!.id,
+      action: 'partner.reject',
+      objectType: 'Partner',
+      objectId: req.params.id,
+      before: { status: partner.status, requestStatus: partner.requestStatus },
+      after: { status: PartnerStatus.REJECTED, requestStatus: PartnerRequestStatus.OTKAZANA, reason: reason.trim() },
+    }).catch((err) => logger.error('[adminPartners] reject writeAudit failed:', err));
 
     res.json({ success: true, partner: updated, reason });
   })
