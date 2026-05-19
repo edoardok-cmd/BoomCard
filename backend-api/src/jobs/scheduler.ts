@@ -1327,45 +1327,50 @@ export async function autoCloseResolvedTickets(): Promise<void> {
       }).catch(() => {});
     }
 
-    // Notify each creator — fire-and-forget per ticket.
+    // Notify each creator — all notifications in the batch start concurrently and
+    // are awaited together so callers (and tests) see a consistent view after return.
     // Build the full RFC 5322 reference chain (rootMessageId + all reply messageIds)
     // so the closure email threads under the last message in the conversation.
     // Include a plus-addressed replyTo so the user's reply routes back via
     // Priority 3 (plus-address) even if X-BoomCard-Ticket-ID is stripped.
+    const notifyPromises: Promise<void>[] = [];
     for (const t of closedTickets) {
       if (t.user.email) {
-        (async () => {
-          try {
-            const priorMsgs = await prisma.ticketReply.findMany({
-              where: { ticketId: t.id, messageId: { not: null } },
-              orderBy: { createdAt: 'asc' },
-              select: { messageId: true },
-            });
-            const refChain: string[] = [
-              t.rootMessageId,
-              ...priorMsgs.map((r) => r.messageId as string),
-            ].filter((id): id is string => !!id);
+        notifyPromises.push(
+          (async () => {
+            try {
+              const priorMsgs = await prisma.ticketReply.findMany({
+                where: { ticketId: t.id, messageId: { not: null } },
+                orderBy: { createdAt: 'asc' },
+                select: { messageId: true },
+              });
+              const refChain: string[] = [
+                t.rootMessageId,
+                ...priorMsgs.map((r) => r.messageId as string),
+              ].filter((id): id is string => !!id);
 
-            const audience = t.user.role === 'PARTNER' ? 'partner' : 'subscriber';
-            await emailService.sendEmail({
-              to: t.user.email,
-              audience: audience === 'partner' ? 'partner' : undefined,
-              subject: buildTicketSubject(t.id, `[Заявката затворена] ${t.subject}`),
-              headers: buildTicketHeaders({
-                ticketId: t.id,
-                inReplyTo: refChain.at(-1) ?? null,
-                references: refChain,
-              }).headers,
-              replyTo: buildPlusReplyTo(t.id, audience),
-              html: `<p>Здравей, ${t.user.firstName || t.user.email},</p><p>Вашата заявка беше затворена автоматично, тъй като 7 дни са изминали след маркирането й като решена без допълнителна комуникация.</p><p style="color:#999;font-size:12px;">Ticket ID: ${t.id}</p>`,
-              text: `Здравей, ${t.user.firstName || t.user.email},\n\nВашата заявка беше затворена автоматично след 7 дни без активност след маркиране като решена.\n\nTicket ID: ${t.id}`,
-            });
-          } catch (err) {
-            logger.error(`[ticket-auto-close] failed to send closure notification for ticket ${t.id}:`, err);
-          }
-        })();
+              const audience = t.user.role === 'PARTNER' ? 'partner' : 'subscriber';
+              await emailService.sendEmail({
+                to: t.user.email,
+                audience: audience === 'partner' ? 'partner' : undefined,
+                subject: buildTicketSubject(t.id, `[Заявката затворена] ${t.subject}`),
+                headers: buildTicketHeaders({
+                  ticketId: t.id,
+                  inReplyTo: refChain.at(-1) ?? null,
+                  references: refChain,
+                }).headers,
+                replyTo: buildPlusReplyTo(t.id, audience),
+                html: `<p>Здравей, ${t.user.firstName || t.user.email},</p><p>Вашата заявка беше затворена автоматично, тъй като 7 дни са изминали след маркирането й като решена без допълнителна комуникация.</p><p style="color:#999;font-size:12px;">Ticket ID: ${t.id}</p>`,
+                text: `Здравей, ${t.user.firstName || t.user.email},\n\nВашата заявка беше затворена автоматично след 7 дни без активност след маркиране като решена.\n\nTicket ID: ${t.id}`,
+              });
+            } catch (err) {
+              logger.error(`[ticket-auto-close] failed to send closure notification for ticket ${t.id}:`, err);
+            }
+          })()
+        );
       }
     }
+    await Promise.allSettled(notifyPromises);
 
     if (tickets.length < BATCH_SIZE) break; // last batch — no more eligible tickets
   }

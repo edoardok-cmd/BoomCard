@@ -485,10 +485,29 @@ describe('BUG-6 — autoCloseResolvedTickets builds full RFC 5322 reference chai
 
     const { prisma: mock } = jest.requireMock('../../src/lib/prisma');
 
-    // The auto-close job calls helpTicket.findMany to get RESOLVED tickets.
+    const closedIds = new Set<string>();
+
+    // The auto-close job calls helpTicket.findMany to get RESOLVED tickets, then
+    // again with status:'CLOSED' for the TOCTOU actuallyClosedIds guard.
     mock.helpTicket.findMany.mockImplementation(async (args: any) => {
-      if (args?.where?.status === 'RESOLVED') return autoCloseTickets;
+      if (args?.where?.status === 'RESOLVED') return autoCloseTickets.filter((t: any) => !closedIds.has(t.id));
+      if (args?.where?.status === 'CLOSED') {
+        const idFilter: string[] | undefined = args?.where?.id?.in;
+        return autoCloseTickets.filter((t: any) =>
+          closedIds.has(t.id) && (!idFilter || idFilter.includes(t.id)),
+        );
+      }
       return [];
+    });
+
+    // updateMany simulates the status mutation so the TOCTOU guard works.
+    mock.helpTicket.updateMany.mockImplementation(async (args: any) => {
+      if (args?.data?.status === 'CLOSED') {
+        const ids: string[] = args?.where?.id?.in ?? [];
+        ids.forEach((id) => closedIds.add(id));
+        return { count: ids.length };
+      }
+      return { count: 0 };
     });
 
     // ticketReply.findMany is called per-ticket for the ref chain.

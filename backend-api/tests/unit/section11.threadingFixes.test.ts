@@ -55,7 +55,21 @@ jest.mock('../../src/lib/prisma', () => {
         return true;
       });
     }),
-    updateMany: jest.fn(async () => ({ count: helpTicketRows.length })),
+    updateMany: jest.fn(async (args: any) => {
+      const idSet: Set<string> | null = args?.where?.id?.in ? new Set(args.where.id.in) : null;
+      const filterStatus: string | undefined = args?.where?.status;
+      const newStatus: string | undefined = args?.data?.status;
+      let count = 0;
+      if (newStatus) {
+        helpTicketRows.forEach((t) => {
+          if (idSet && !idSet.has(t.id)) return;
+          if (filterStatus && t.status !== filterStatus) return;
+          t.status = newStatus;
+          count++;
+        });
+      }
+      return { count };
+    }),
   };
   const ticketReply = {
     findMany: jest.fn(async (args: any) => {
