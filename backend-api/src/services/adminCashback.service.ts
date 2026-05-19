@@ -1288,7 +1288,10 @@ export async function expireEntry(entryId: string, adminUserId: string): Promise
           { NOT: { cashbackStatus: { in: ['EXPIRED', 'PAID', 'VOIDED'] } } },
         ],
       },
-      data: { status: 'CANCELLED', cashbackStatus: 'EXPIRED', cashbackExpiresAt: now },
+      // Do NOT overwrite cashbackExpiresAt — it holds the original deadline and
+      // is meaningful for audit/reconciliation queries. The cashbackStatus=EXPIRED
+      // transition is the authoritative expired signal; the deadline is historical context.
+      data: { status: 'CANCELLED', cashbackStatus: 'EXPIRED' },
     });
     if (result.count === 0) return; // concurrent expire already ran — skip wallet debit
     if (wasCleared) {

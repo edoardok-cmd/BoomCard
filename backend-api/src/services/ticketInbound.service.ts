@@ -149,11 +149,13 @@ async function getSystemOwnerId(): Promise<string | null> {
 
 /**
  * Heuristic mapping of the destination mailbox to a default `requestType`.
- * `office@boomcard.bg` is primarily used for partner/data-change traffic;
- * everything else defaults to SUPPORT. Admin can re-classify in the UI.
+ * Both support@ and office@ inbounds are support requests — the distinction
+ * between "User support" and "Partner support" queues (§11.6) is determined
+ * by the ticket owner's role, not by the destination address. The admin can
+ * re-classify to DATA_CHANGE / CONTRACT_CHANGE etc. once they've read the email.
  */
-function inferRequestType(toAddress: string): string {
-  return toAddress.toLowerCase().includes('office') ? 'OTHER' : 'SUPPORT';
+function inferRequestType(_toAddress: string): string {
+  return 'SUPPORT';
 }
 
 export interface IngestResult {
@@ -318,7 +320,8 @@ export async function ingestInboundEmail(
         body: payload.text || (payload.html ? payload.html.replace(/<[^>]+>/g, '') : ''),
         category: TicketCategory.OTHER,
         priority: TicketPriority.MEDIUM,
-        status: TicketStatus.NEW,
+        // Spec §11.4 initial status is "Отворена" (OPEN). NEW is legacy-only.
+        status: TicketStatus.OPEN,
         userId: ownerId,
         source: 'EMAIL',
         externalEmail: fromEmail,
@@ -367,20 +370,24 @@ export async function ingestInboundEmail(
   // ── Matched an existing ticket ────────────────────────────────────────
   const t = resolved.ticket;
 
-  // Spoof protection (§11.2): sender must be the ticket owner, the captured
-  // externalEmail, or any prior reply's externalFrom. Anyone else → create a
-  // NEW linked ticket so we never inject into someone else's conversation.
-  const ownerRecord = await prisma.user.findUnique({
-    where: { id: t.userId },
-    select: { email: true },
-  });
-  const priorExternal = await prisma.ticketReply.findMany({
-    where: { ticketId: t.id, externalFrom: { not: null } },
-    select: { externalFrom: true },
-  });
+  // Spoof protection (§11.2): sender must be the ticket owner, the assigned
+  // admin, the captured externalEmail, or any prior reply's externalFrom.
+  // Spec: "owner OR assignee OR cc-нати админи". Anyone else → create a
+  // linked ticket so we never inject into someone else's conversation.
+  const [ownerRecord, assigneeRecord, priorExternal] = await Promise.all([
+    prisma.user.findUnique({ where: { id: t.userId }, select: { email: true } }),
+    t.assigneeId
+      ? prisma.user.findUnique({ where: { id: t.assigneeId }, select: { email: true } })
+      : Promise.resolve(null),
+    prisma.ticketReply.findMany({
+      where: { ticketId: t.id, externalFrom: { not: null } },
+      select: { externalFrom: true },
+    }),
+  ]);
   const allowed = new Set<string>(
     [
       ownerRecord?.email,
+      assigneeRecord?.email,
       t.externalEmail,
       ...priorExternal.map((r) => r.externalFrom),
     ]
@@ -400,7 +407,7 @@ export async function ingestInboundEmail(
         body: payload.text || '',
         category: TicketCategory.OTHER,
         priority: TicketPriority.MEDIUM,
-        status: TicketStatus.NEW,
+        status: TicketStatus.OPEN,
         userId: t.userId,
         source: 'EMAIL',
         externalEmail: fromEmail,
@@ -470,26 +477,31 @@ export async function ingestInboundEmail(
     },
   });
 
-  // Reopen-on-reply (§11.4): a CLOSED ticket transitions back to OPEN when
-  // the customer replies, with a reopenedAt watermark for audit.
-  if (t.status === TicketStatus.CLOSED) {
+  // Reopen-on-reply (§11.4 + §11.2 edge cases): a CLOSED or RESOLVED ticket
+  // transitions back to OPEN when the customer replies via email.
+  // RESOLVED is included for symmetry with the WEB-channel handlers in
+  // adminHelp.routes.ts and partnerHelp.routes.ts (both handle RESOLVED→OPEN).
+  // resolvedAt is cleared so the auto-close job doesn't immediately re-fire.
+  // Capture previousStatus before the update — the in-memory object may be
+  // mutated by the ORM layer before writeAudit reads t.status.
+  const previousStatus = t.status;
+  if (previousStatus === TicketStatus.CLOSED || previousStatus === TicketStatus.RESOLVED) {
     await prisma.helpTicket.update({
       where: { id: t.id },
-      data: { status: TicketStatus.OPEN, reopenedAt: new Date() },
+      data: { status: TicketStatus.OPEN, reopenedAt: new Date(), resolvedAt: null },
     });
     await writeAudit({
       actorUserId: null,
       action: 'TICKET_REOPENED_VIA_EMAIL',
       objectType: 'HelpTicket',
       objectId: t.id,
-      after: { replyId: reply.id, from: fromEmail },
+      after: { replyId: reply.id, from: fromEmail, previousStatus },
     }).catch(() => {});
   }
 
-  // §11 gap: notify the assignee when an inbound email reply arrives. Without
-  // this, replies through email are invisible to the assigned admin until they
-  // next open the ticket list. Skip self-assigned tickets to avoid an admin
-  // emailing themselves.
+  // Notify the assignee when an inbound email reply arrives. Without this,
+  // email replies are invisible to the assigned admin until they open the list.
+  // Skip self-assigned tickets to avoid an admin emailing themselves.
   if (t.assigneeId && t.assigneeId !== t.userId) {
     try {
       const assignee = await prisma.user.findUnique({
@@ -538,6 +550,21 @@ export async function ingestInboundEmail(
     } catch (err) {
       logger.error('[ticketInbound] failed to look up assignee for inbound reply notification:', err);
     }
+  } else {
+    // No assignee (or self-assigned) — alert ops so the reply isn't silently
+    // missed. Mirrors the unassigned-reply fallback in adminHelp.routes.ts.
+    notificationService
+      .notifyAdminOps({
+        opsType: `help_ticket_inbound_unassigned_${t.id}`,
+        title: 'Нов имейл отговор на заявка без отговорник',
+        message: t.subject,
+        severity: 'info',
+        fields: [
+          { label: 'От', value: fromEmail },
+          { label: 'Ticket ID', value: t.id },
+        ],
+      })
+      .catch(() => {});
   }
 
   return { ticketId: t.id, replyId: reply.id, created: false };

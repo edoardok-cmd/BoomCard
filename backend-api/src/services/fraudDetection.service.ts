@@ -913,11 +913,18 @@ class FraudDetectionService {
       if (key in raw) config[key] = raw[key];
     }
 
-    // Validate template weight fields: each must be in [0, 1].
-    // When all three are supplied together they must also sum to 1.0 (±0.001) so
-    // the weighted score stays in [0, 1] and templateMinSimilarity remains meaningful.
+    // Validate template weight fields: each must be in [0, 1] and all three must
+    // be supplied together so the sum-to-1 invariant can be enforced atomically.
+    // Partial updates (1 or 2 weights) are rejected because the persisted weights
+    // could end up summing to ≠1, making compareAgainstTemplates produce scores
+    // outside [0, 1] and rendering templateMinSimilarity meaningless.
     const weightKeys = ['templateVisualWeight', 'templateMerchantWeight', 'templateKeywordWeight'] as const;
     const updatedWeights = weightKeys.filter(k => k in config);
+    if (updatedWeights.length > 0 && updatedWeights.length < 3) {
+      throw new Error(
+        'templateVisualWeight, templateMerchantWeight, and templateKeywordWeight must all be updated together'
+      );
+    }
     for (const k of updatedWeights) {
       const v = config[k];
       if (typeof v !== 'number' || !isFinite(v) || v < 0 || v > 1) {

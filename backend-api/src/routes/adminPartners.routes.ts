@@ -494,8 +494,14 @@ router.patch(
   asyncHandler(async (req: AuthRequest, res) => {
     const { rate } = req.body as { rate?: number | null };
 
+    // Reject missing field early — undefined would fall through both guards and silently
+    // set discountRate to null via the `?? null` coercion below.
+    if (rate === undefined) {
+      return res.status(400).json({ error: 'rate is required (pass null to clear the override)' });
+    }
+
     // null clears the override — partner falls back to partnerType default
-    if (rate !== null && rate !== undefined) {
+    if (rate !== null) {
       if (!CASHBACK_MATRIX_STEPS.includes(rate as (typeof CASHBACK_MATRIX_STEPS)[number])) {
         return res.status(400).json({
           error: `rate must be one of: ${CASHBACK_MATRIX_STEPS.join(', ')}, or null to clear`,

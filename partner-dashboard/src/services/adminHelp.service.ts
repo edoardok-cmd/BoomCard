@@ -73,6 +73,9 @@ export const adminHelpService = {
     priority?: TicketPriority | '';
     category?: TicketCategory | '';
     requestType?: string;
+    from?: string;
+    to?: string;
+    assigneeId?: string;
   }): Promise<TicketListResult<HelpTicket>> {
     const clean: Record<string, unknown> = { page: params.page, limit: params.limit };
     if (params.search) clean.search = params.search;
@@ -80,6 +83,9 @@ export const adminHelpService = {
     if (params.priority) clean.priority = params.priority;
     if (params.category) clean.category = params.category;
     if (params.requestType) clean.requestType = params.requestType;
+    if (params.from) clean.from = params.from;
+    if (params.to) clean.to = params.to;
+    if (params.assigneeId) clean.assigneeId = params.assigneeId;
     return apiService.get('/admin/help', clean);
   },
 

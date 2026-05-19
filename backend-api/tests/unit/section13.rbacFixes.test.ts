@@ -8,7 +8,7 @@
  *   Fix 2   — control.rules.read activates GET /admin/settings/fraud-rules
  *             for RISK_REVIEW; write ops remain SUPER_ADMIN-only
  *   Fix 3   — PATCH /:id/discount-rate enforces CASHBACK_MATRIX_STEPS,
- *             partnerType cap, and requires partners.write
+ *             partnerType cap, and requires partners.write; absent rate → 400
  *
  * All Prisma and external-service interactions are mocked — no DB required.
  */
@@ -23,6 +23,21 @@ jest.mock('../../src/lib/prisma', () => {
     rolePermission: { deleteMany: jest.fn(async () => ({ count: 0 })), upsert: jest.fn(async () => ({})) },
     permission: { findUnique: jest.fn(), findMany: jest.fn(async () => []), upsert: jest.fn(async () => ({})) },
     adminRole: { upsert: jest.fn(async () => ({ id: 'role-1' })) },
+    // Needed by adminSettings.routes.ts fraud-rules handlers
+    fraudRule: {
+      findMany: jest.fn(async () => []),
+      findUnique: jest.fn(async () => null),
+      create: jest.fn(async (args: any) => ({ id: 'rule-1', ...args.data })),
+      update: jest.fn(async (args: any) => ({ id: args?.where?.id })),
+    },
+    fraudRuleOverride: {
+      findMany: jest.fn(async () => []),
+      findFirst: jest.fn(async () => null),
+      create: jest.fn(async (args: any) => ({ id: 'override-1', ...args.data })),
+      delete: jest.fn(async () => ({})),
+    },
+    // Needed by resolveAdminName used in some settings handlers
+    user: { findUnique: jest.fn(async () => null) },
   };
   return { __esModule: true, default: client, prisma: client };
 });
@@ -61,7 +76,9 @@ jest.mock('../../src/services/partnerVenueCountBucket.helper', () => ({
   VENUE_COUNT_BUCKET_DISPLAY_VALUES: {},
 }));
 
-// ─── Auth middleware mock (permission check controlled per-test) ─────────────
+// ─── Auth middleware mock (role + permission check controlled per-test) ───────
+// authorize() actually enforces the role list so that SUPER_ADMIN-only guards on
+// fraud-rules write ops are testable without spinning up a real JWT stack.
 
 let mockUser: { id: string; role: string; permissions: string[] } | null = null;
 
@@ -73,7 +90,12 @@ jest.mock('../../src/middleware/auth.middleware', () => {
       if (mockUser) (_req as any).user = mockUser;
       next();
     },
-    authorize: (..._roles: string[]) => (_req: any, _res: any, next: any) => next(),
+    authorize: (...roles: string[]) => (req: any, res: any, next: any) => {
+      const user = (req as any).user as typeof mockUser;
+      if (!user) return res.status(401).json({ error: 'Not authenticated' });
+      if (!roles.includes(user.role)) return res.status(403).json({ error: 'Not authorized' });
+      next();
+    },
     requirePermission: (keyOrKeys: string | string[]) => (req: any, res: any, next: any) => {
       const user = (req as any).user as typeof mockUser;
       if (!user) return res.status(401).json({ error: 'Not authenticated' });
@@ -104,6 +126,9 @@ const m = prisma as unknown as {
   rolePermission: { deleteMany: AnyMock; upsert: AnyMock };
   permission: { findUnique: AnyMock; findMany: AnyMock; upsert: AnyMock };
   adminRole: { upsert: AnyMock };
+  fraudRule: { findMany: AnyMock; findUnique: AnyMock; create: AnyMock; update: AnyMock };
+  fraudRuleOverride: { findMany: AnyMock; findFirst: AnyMock; create: AnyMock; delete: AnyMock };
+  user: { findUnique: AnyMock };
 };
 
 // Build a mini Express app wiring only the adminPartners router at /partners
@@ -114,7 +139,20 @@ function buildApp() {
   const router = require('../../src/routes/adminPartners.routes').default;
   app.use('/partners', router);
   app.use((err: any, _req: any, res: any, _next: any) => {
-    res.status(err.status ?? 500).json({ error: err.message ?? 'Internal error' });
+    res.status(err.status ?? err.statusCode ?? 500).json({ error: err.message ?? 'Internal error' });
+  });
+  return supertest(app);
+}
+
+// Build a mini Express app wiring only the adminSettings router at /settings
+function buildSettingsApp() {
+  const app = express();
+  app.use(express.json());
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const router = require('../../src/routes/adminSettings.routes').default;
+  app.use('/settings', router);
+  app.use((err: any, _req: any, res: any, _next: any) => {
+    res.status(err.status ?? err.statusCode ?? 500).json({ error: err.message ?? 'Internal error' });
   });
   return supertest(app);
 }
@@ -193,7 +231,7 @@ describe('§13 Fix 1c — seedPermissions revokes removed grants', () => {
     // permission.findMany returns IDs for the keys in the allow-list
     m.permission.findMany.mockImplementation(async (args: any) => {
       const keys: string[] = args?.where?.key?.in ?? [];
-      return keys.map((_k: string, i: number) => ({ id: `perm-${i}` }));
+      return keys.map((k: string) => ({ id: `perm-${k}` }));
     });
     m.permission.findUnique.mockImplementation(async (args: any) => {
       if (!args?.where?.key) return null;
@@ -220,6 +258,167 @@ describe('§13 Fix 1c — seedPermissions revokes removed grants', () => {
       expect(args.where.permissionId).toHaveProperty('notIn');
       expect(Array.isArray(args.where.permissionId.notIn)).toBe(true);
     }
+  });
+});
+
+// ─── §13 Fix 2 — control.rules.* permission gates ────────────────────────────
+
+describe('§13 Fix 2 — fraud-rules permission gates (catalog checks)', () => {
+  it('RISK_REVIEW has control.rules.read', () => {
+    expect(ROLE_DEFAULT_ALLOWS['RISK_REVIEW']).toContain('control.rules.read');
+  });
+
+  it('RISK_REVIEW does NOT have settings.read (cannot view all system settings)', () => {
+    expect(ROLE_DEFAULT_ALLOWS['RISK_REVIEW']).not.toContain('settings.read');
+  });
+
+  it('RISK_REVIEW does NOT have control.rules.write (cannot change thresholds)', () => {
+    expect(ROLE_DEFAULT_ALLOWS['RISK_REVIEW']).not.toContain('control.rules.write');
+  });
+
+  it('ADMIN has both settings.read and control.rules.read', () => {
+    const admin = ROLE_DEFAULT_ALLOWS['ADMIN']!;
+    expect(admin).toContain('settings.read');
+    expect(admin).toContain('control.rules.read');
+  });
+
+  it('control.rules.read is in the PERMISSION_CATALOG', () => {
+    const keys = PERMISSION_CATALOG.map((p) => p.key);
+    expect(keys).toContain('control.rules.read');
+  });
+
+  it('control.rules.write is in the PERMISSION_CATALOG', () => {
+    const keys = PERMISSION_CATALOG.map((p) => p.key);
+    expect(keys).toContain('control.rules.write');
+  });
+
+  it('control.rules.read/write are in the control category', () => {
+    const readPerm = PERMISSION_CATALOG.find((p) => p.key === 'control.rules.read');
+    const writePerm = PERMISSION_CATALOG.find((p) => p.key === 'control.rules.write');
+    expect(readPerm?.category).toBe('control');
+    expect(writePerm?.category).toBe('control');
+  });
+});
+
+describe('§13 Fix 2 — fraud-rules HTTP permission gates', () => {
+  let api: ReturnType<typeof buildSettingsApp>;
+
+  beforeAll(() => {
+    api = buildSettingsApp();
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    m.fraudRule.findMany.mockResolvedValue([]);
+  });
+
+  // ── GET /fraud-rules (requirePermission OR: settings.read | control.rules.read) ─
+
+  it('GET /fraud-rules — 200 for ADMIN with control.rules.read (RISK_REVIEW permission profile)', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['control.rules.read'] });
+    const res = await api.get('/settings/fraud-rules');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  it('GET /fraud-rules — 200 for ADMIN with settings.read (full-ADMIN permission profile)', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['settings.read'] });
+    const res = await api.get('/settings/fraud-rules');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /fraud-rules — 403 when ADMIN holds neither settings.read nor control.rules.read', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['partners.read'] });
+    const res = await api.get('/settings/fraud-rules');
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /fraud-rules — 200 for SUPER_ADMIN (bypasses requirePermission)', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+    const res = await api.get('/settings/fraud-rules');
+    expect(res.status).toBe(200);
+  });
+
+  // ── POST /fraud-rules (authorize('SUPER_ADMIN') hard gate before requirePermission) ─
+
+  it('POST /fraud-rules — 403 for ADMIN role even when holding control.rules.write and settings.write', async () => {
+    // authorize('SUPER_ADMIN') must fire before requirePermission and return 403
+    setMockUser({ role: 'ADMIN', permissions: ['control.rules.write', 'settings.write'] });
+    const res = await api.post('/settings/fraud-rules').send({ tier: 'SYSTEM' });
+    expect(res.status).toBe(403);
+  });
+
+  it('POST /fraud-rules — SUPER_ADMIN is not blocked at the auth layer (passes authorize + requirePermission)', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+    // Missing tier → 400 from handler validation, NOT 403 from auth
+    const res = await api.post('/settings/fraud-rules').send({});
+    expect(res.status).not.toBe(403);
+    expect(res.status).toBe(400);
+  });
+
+  it('PATCH /fraud-rules/:id — 403 for ADMIN role (SUPER_ADMIN-only write gate)', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['settings.write', 'control.rules.write'] });
+    const res = await api.patch('/settings/fraud-rules/rule-1').send({ notes: 'test' });
+    expect(res.status).toBe(403);
+  });
+
+  it('DELETE /fraud-rules/:id — 403 for ADMIN role (SUPER_ADMIN-only write gate)', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['settings.write', 'control.rules.write'] });
+    const res = await api.delete('/settings/fraud-rules/rule-1');
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /fraud-rules/:id/overrides — 403 for ADMIN with control.rules.read (override list is SUPER_ADMIN-only)', async () => {
+    // Override list is intentionally more restrictive than the rule list itself:
+    // it exposes which specific users/partners have exceptions, which is more sensitive.
+    setMockUser({ role: 'ADMIN', permissions: ['control.rules.read', 'settings.read'] });
+    const res = await api.get('/settings/fraud-rules/rule-1/overrides');
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /fraud-rules/:id/overrides — 200 for SUPER_ADMIN', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+    m.fraudRule.findUnique.mockResolvedValueOnce({ id: 'rule-1', tier: 'SYSTEM', isActive: true });
+    m.fraudRuleOverride.findMany.mockResolvedValueOnce([]);
+    const res = await api.get('/settings/fraud-rules/rule-1/overrides');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  // ── POST /fraud-rules/:id/overrides (authorize('SUPER_ADMIN') hard gate) ─────
+
+  it('POST /fraud-rules/:id/overrides — 403 for ADMIN role (SUPER_ADMIN-only write gate)', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['settings.write', 'control.rules.write'] });
+    const res = await api.post('/settings/fraud-rules/rule-1/overrides').send({
+      targetType: 'user',
+      targetId: 'user-1',
+      override: { maxAmount: 100 },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('POST /fraud-rules/:id/overrides — SUPER_ADMIN passes auth layer (400 from body validation)', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+    // Empty body → handler validation fires, confirming auth was passed
+    const res = await api.post('/settings/fraud-rules/rule-1/overrides').send({});
+    expect(res.status).not.toBe(403);
+    expect(res.status).toBe(400);
+  });
+
+  // ── DELETE /fraud-rules/:id/overrides/:overId (authorize('SUPER_ADMIN') hard gate) ─
+
+  it('DELETE /fraud-rules/:id/overrides/:overId — 403 for ADMIN role (SUPER_ADMIN-only write gate)', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['settings.write', 'control.rules.write'] });
+    const res = await api.delete('/settings/fraud-rules/rule-1/overrides/override-1');
+    expect(res.status).toBe(403);
+  });
+
+  it('DELETE /fraud-rules/:id/overrides/:overId — SUPER_ADMIN passes auth layer (404 when override absent)', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
+    // findFirst returns null (default) → 404, confirming auth was passed
+    const res = await api.delete('/settings/fraud-rules/rule-1/overrides/override-1');
+    expect(res.status).not.toBe(403);
+    expect(res.status).toBe(404);
   });
 });
 
@@ -251,6 +450,13 @@ describe('§13 Fix 3 — PATCH /partners/:id/discount-rate', () => {
     setMockUser({ id: ADMIN_USER_ID, role: 'ADMIN', permissions: [] });
     const res = await api.patch(`/partners/${PARTNER_ID}/discount-rate`).send({ rate: 10 });
     expect(res.status).toBe(403);
+  });
+
+  it('400 when rate is absent from the request body (prevents silent null-clear)', async () => {
+    setMockUser({ id: ADMIN_USER_ID, role: 'ADMIN', permissions: ['partners.write'] });
+    const res = await api.patch(`/partners/${PARTNER_ID}/discount-rate`).send({});
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/required/i);
   });
 
   it('404 when partner does not exist', async () => {
@@ -333,44 +539,5 @@ describe('§13 Fix 3 — PATCH /partners/:id/discount-rate', () => {
 
   it('CASHBACK_MATRIX_STEPS contains exactly [5, 10, 15, 20, 25]', () => {
     expect([...CASHBACK_MATRIX_STEPS]).toEqual([5, 10, 15, 20, 25]);
-  });
-});
-
-// ─── §13 Fix 2 — control.rules.* permission gates ───────────────────────────
-
-describe('§13 Fix 2 — fraud-rules permission gates (static catalog checks)', () => {
-  it('RISK_REVIEW has control.rules.read', () => {
-    expect(ROLE_DEFAULT_ALLOWS['RISK_REVIEW']).toContain('control.rules.read');
-  });
-
-  it('RISK_REVIEW does NOT have settings.read (cannot view all system settings)', () => {
-    expect(ROLE_DEFAULT_ALLOWS['RISK_REVIEW']).not.toContain('settings.read');
-  });
-
-  it('RISK_REVIEW does NOT have control.rules.write (cannot change thresholds)', () => {
-    expect(ROLE_DEFAULT_ALLOWS['RISK_REVIEW']).not.toContain('control.rules.write');
-  });
-
-  it('ADMIN has both settings.read and control.rules.read', () => {
-    const admin = ROLE_DEFAULT_ALLOWS['ADMIN']!;
-    expect(admin).toContain('settings.read');
-    expect(admin).toContain('control.rules.read');
-  });
-
-  it('control.rules.read is in the PERMISSION_CATALOG', () => {
-    const keys = PERMISSION_CATALOG.map((p) => p.key);
-    expect(keys).toContain('control.rules.read');
-  });
-
-  it('control.rules.write is in the PERMISSION_CATALOG', () => {
-    const keys = PERMISSION_CATALOG.map((p) => p.key);
-    expect(keys).toContain('control.rules.write');
-  });
-
-  it('control.rules.read/write are in the control category', () => {
-    const readPerm = PERMISSION_CATALOG.find((p) => p.key === 'control.rules.read');
-    const writePerm = PERMISSION_CATALOG.find((p) => p.key === 'control.rules.write');
-    expect(readPerm?.category).toBe('control');
-    expect(writePerm?.category).toBe('control');
   });
 });

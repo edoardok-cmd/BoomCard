@@ -36,6 +36,7 @@ const Card = styled.div`background: ${palette.surface}; border: 1px solid ${pale
 const FilterRow = styled.div`display: flex; gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap; align-items: center;`;
 const SearchInput = styled.input`flex: 1; max-width: 18rem; padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; } &::placeholder { color: ${palette.textSubtle}; }`;
 const Select = styled.select`padding: 0.5rem 0.75rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; cursor: pointer; &:focus { border-color: ${palette.accent}; }`;
+const DateInput = styled.input`padding: 0.5rem 0.75rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; cursor: pointer; &:focus { border-color: ${palette.accent}; }`;
 const PrimaryLine = styled.div`font-weight: 600; color: ${palette.text};`;
 const MetaLine = styled.div`font-size: 0.75rem; color: ${palette.textSubtle}; margin-top: 0.125rem;`;
 const NewTicketBtn = styled(Link)`
@@ -132,6 +133,9 @@ export default function AdminHelpAllPage() {
   const [priorityFilter, setPriorityFilter] = useState<TicketPriority | ''>('');
   const [categoryFilter, setCategoryFilter] = useState<TicketCategory | ''>('');
   const [requestTypeFilter, setRequestTypeFilter] = useState('');
+  const [assigneeFilter, setAssigneeFilter] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [page, setPage] = useState(1);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstSearch = useRef(true);
@@ -162,7 +166,7 @@ export default function AdminHelpAllPage() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-help-all', page, search, statusFilter, priorityFilter, categoryFilter, requestTypeFilter],
+    queryKey: ['admin-help-all', page, search, statusFilter, priorityFilter, categoryFilter, requestTypeFilter, assigneeFilter, fromDate, toDate],
     queryFn: () => adminHelpService.listAll({
       page,
       limit: PAGE_SIZE,
@@ -171,6 +175,9 @@ export default function AdminHelpAllPage() {
       priority: priorityFilter || undefined,
       category: categoryFilter || undefined,
       requestType: requestTypeFilter || undefined,
+      assigneeId: assigneeFilter || undefined,
+      from: fromDate ? new Date(fromDate).toISOString() : undefined,
+      to: toDate ? new Date(`${toDate}T23:59:59.999Z`).toISOString() : undefined,
     }),
     enabled: isSuperAdmin,
   });
@@ -300,6 +307,22 @@ export default function AdminHelpAllPage() {
             <option value="DISPUTE">Спор</option>
             <option value="OTHER">Други</option>
           </Select>
+          <Select value={assigneeFilter} onChange={(e) => { setAssigneeFilter(e.target.value); setPage(1); }}>
+            <option value="">Всички отговорници</option>
+            <option value="unassigned">Неназначени</option>
+          </Select>
+          <DateInput
+            type="date"
+            title="От дата"
+            value={fromDate}
+            onChange={(e) => { setFromDate(e.target.value); setPage(1); }}
+          />
+          <DateInput
+            type="date"
+            title="До дата"
+            value={toDate}
+            onChange={(e) => { setToDate(e.target.value); setPage(1); }}
+          />
         </FilterRow>
 
         <DataTable

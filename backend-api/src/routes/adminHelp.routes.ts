@@ -188,9 +188,15 @@ router.get('/count', requirePermission('help.read'), async (req: AuthRequest, re
 });
 
 // GET /api/admin/help — all tickets with optional filters (SUPER_ADMIN only per spec §11)
+// Spec §11.5: filters by тип, статус, ownership, период.
+// Query params: status, priority, category, requestType, search, from, to, assigneeId, page, limit
 router.get('/', authorize('SUPER_ADMIN'), async (req, res, next) => {
   try {
-    const { status, priority, category, search, page = '1', limit = '25' } = req.query as Record<string, string>;
+    const {
+      status, priority, category, search,
+      from, to, assigneeId,
+      page = '1', limit = '25',
+    } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 25));
     const skip = (pageNum - 1) * limitNum;
@@ -208,6 +214,22 @@ router.get('/', authorize('SUPER_ADMIN'), async (req, res, next) => {
     }
     if (req.query.requestType && typeof req.query.requestType === 'string') {
       where.requestType = req.query.requestType;
+    }
+    // Spec §11.5 "период" — date range filter on createdAt.
+    // `from` and `to` are ISO-8601 strings; invalid values are silently ignored.
+    const fromDate = from ? new Date(from) : null;
+    const toDate = to ? new Date(to) : null;
+    if (fromDate && !isNaN(fromDate.getTime()) && toDate && !isNaN(toDate.getTime())) {
+      where.createdAt = { gte: fromDate, lte: toDate };
+    } else if (fromDate && !isNaN(fromDate.getTime())) {
+      where.createdAt = { gte: fromDate };
+    } else if (toDate && !isNaN(toDate.getTime())) {
+      where.createdAt = { lte: toDate };
+    }
+    // Spec §11.5 "ownership" — filter by assignee.
+    // assigneeId="unassigned" returns tickets with no assignee.
+    if (assigneeId) {
+      where.assigneeId = assigneeId === 'unassigned' ? null : assigneeId;
     }
     if (search) {
       where.OR = [

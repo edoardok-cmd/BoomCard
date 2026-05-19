@@ -1284,22 +1284,41 @@ export async function autoCloseResolvedTickets(): Promise<void> {
     }).catch(() => {});
   }
 
-  // Notify each creator — fire-and-forget per ticket
+  // Notify each creator — fire-and-forget per ticket.
+  // Build the full RFC 5322 reference chain (rootMessageId + all reply messageIds)
+  // so the closure email threads under the last message in the conversation,
+  // consistent with every other ticket notification (admin reply, status change,
+  // rejection). Using only rootMessageId causes the email to appear as an
+  // unrelated message in clients that group by References.
   for (const t of tickets) {
     if (t.user.email) {
-      emailService
-        .sendEmail({
-          to: t.user.email,
-          subject: buildTicketSubject(t.id, `[Заявката затворена] ${t.subject}`),
-          headers: buildTicketHeaders({
-            ticketId: t.id,
-            inReplyTo: t.rootMessageId ?? null,
-            references: t.rootMessageId ? [t.rootMessageId] : [],
-          }).headers,
-          html: `<p>Здравей, ${t.user.firstName || t.user.email},</p><p>Вашата заявка беше затворена автоматично, тъй като 7 дни са изминали след маркирането й като решена без допълнителна комуникация.</p><p style="color:#999;font-size:12px;">Ticket ID: ${t.id}</p>`,
-          text: `Здравей, ${t.user.firstName || t.user.email},\n\nВашата заявка беше затворена автоматично след 7 дни без активност след маркиране като решена.\n\nTicket ID: ${t.id}`,
-        })
-        .catch(() => {});
+      (async () => {
+        try {
+          const priorMsgs = await prisma.ticketReply.findMany({
+            where: { ticketId: t.id, messageId: { not: null } },
+            orderBy: { createdAt: 'asc' },
+            select: { messageId: true },
+          });
+          const refChain: string[] = [
+            t.rootMessageId,
+            ...priorMsgs.map((r) => r.messageId as string),
+          ].filter((id): id is string => !!id);
+
+          await emailService.sendEmail({
+            to: t.user.email,
+            subject: buildTicketSubject(t.id, `[Заявката затворена] ${t.subject}`),
+            headers: buildTicketHeaders({
+              ticketId: t.id,
+              inReplyTo: refChain.at(-1) ?? null,
+              references: refChain,
+            }).headers,
+            html: `<p>Здравей, ${t.user.firstName || t.user.email},</p><p>Вашата заявка беше затворена автоматично, тъй като 7 дни са изминали след маркирането й като решена без допълнителна комуникация.</p><p style="color:#999;font-size:12px;">Ticket ID: ${t.id}</p>`,
+            text: `Здравей, ${t.user.firstName || t.user.email},\n\nВашата заявка беше затворена автоматично след 7 дни без активност след маркиране като решена.\n\nTicket ID: ${t.id}`,
+          });
+        } catch (err) {
+          logger.error(`[ticket-auto-close] failed to send closure notification for ticket ${t.id}:`, err);
+        }
+      })();
     }
   }
 

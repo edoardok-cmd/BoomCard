@@ -454,19 +454,31 @@ describe('§5.5 — fraudDetectionService.updateVenueConfig weight/threshold val
 
   it('rejects templateVisualWeight < 0', async () => {
     await expect(
-      fraudDetectionService.updateVenueConfig('v1', { templateVisualWeight: -0.1 })
+      fraudDetectionService.updateVenueConfig('v1', {
+        templateVisualWeight:   -0.1,
+        templateMerchantWeight: 0.6,
+        templateKeywordWeight:  0.5,
+      })
     ).rejects.toThrow('templateVisualWeight must be a number between 0 and 1');
   });
 
   it('rejects templateMerchantWeight > 1', async () => {
     await expect(
-      fraudDetectionService.updateVenueConfig('v1', { templateMerchantWeight: 1.5 })
+      fraudDetectionService.updateVenueConfig('v1', {
+        templateVisualWeight:   0.3,
+        templateMerchantWeight: 1.5,
+        templateKeywordWeight:  0.2,
+      })
     ).rejects.toThrow('templateMerchantWeight must be a number between 0 and 1');
   });
 
   it('rejects non-numeric templateKeywordWeight', async () => {
     await expect(
-      fraudDetectionService.updateVenueConfig('v1', { templateKeywordWeight: 'high' as any })
+      fraudDetectionService.updateVenueConfig('v1', {
+        templateVisualWeight:   0.5,
+        templateMerchantWeight: 0.3,
+        templateKeywordWeight:  'high' as any,
+      })
     ).rejects.toThrow('templateKeywordWeight must be a number between 0 and 1');
   });
 
@@ -493,7 +505,7 @@ describe('§5.5 — fraudDetectionService.updateVenueConfig weight/threshold val
   });
 
   it('accepts three weights within the 0.001 tolerance', async () => {
-    // floating-point: 0.1 + 0.2 + 0.7 = 0.9999999... in JS — must not reject
+    // floating-point: code sums 0.7 + 0.2 + 0.1 = 0.9999999... (not exactly 1) — must not reject
     await expect(
       fraudDetectionService.updateVenueConfig('v1', {
         templateVisualWeight:   0.7,
@@ -503,11 +515,20 @@ describe('§5.5 — fraudDetectionService.updateVenueConfig weight/threshold val
     ).resolves.toBeDefined();
   });
 
-  it('does NOT check sum when only one weight is provided', async () => {
-    // Partial update — only visual weight supplied; sum check is skipped.
+  it('rejects partial weight update (one of three)', async () => {
+    // A single-weight update would break the sum-to-1 invariant in the DB.
     await expect(
       fraudDetectionService.updateVenueConfig('v1', { templateVisualWeight: 0.8 })
-    ).resolves.toBeDefined();
+    ).rejects.toThrow('must all be updated together');
+  });
+
+  it('rejects partial weight update (two of three)', async () => {
+    await expect(
+      fraudDetectionService.updateVenueConfig('v1', {
+        templateVisualWeight:   0.6,
+        templateMerchantWeight: 0.4,
+      })
+    ).rejects.toThrow('must all be updated together');
   });
 
   // ── Threshold fields ──────────────────────────────────────────────────────

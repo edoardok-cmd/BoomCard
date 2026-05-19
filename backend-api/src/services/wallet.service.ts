@@ -417,7 +417,8 @@ export class WalletService {
    *   1. Wallet is not locked
    *   2. No existing PENDING or PROCESSING withdrawal for this wallet
    *   3. Available balance >= plan payout threshold
-   *   4. Subscription is ACTIVE or TRIALING (PAST_DUE / UNPAID / PAUSED held)
+   *   4. Latest subscription is ACTIVE or TRIALING — PAST_DUE / UNPAID / PAUSED / FAILED_PAYMENT
+   *      all result in a hard 402/403 rejection (not a deferred hold)
    *
    * @param opts.iban  - Destination IBAN (optional; falls back to stored wallet IBAN)
    * @param opts.beneficiaryName - Account holder name (optional; falls back to stored name)
@@ -443,9 +444,9 @@ export class WalletService {
     }
 
     // §6.1 v1.1 subscription gate — payout requires an ACTIVE or TRIALING
-    // subscription at the moment of request. PAST_DUE / UNPAID / FAILED_PAYMENT
-    // ("неуспешно плащане") is held until the subscription is restored. PAUSED
-    // is no longer eligible — admin must reactivate first.
+    // subscription. FAILED_PAYMENT is a hard 403 (specific message below).
+    // PAST_DUE / UNPAID / PAUSED fall through to the 402 SUBSCRIPTION_INACTIVE
+    // check — all are hard rejections, not deferred holds.
     // Latest sub is FAILED_PAYMENT → hold payout. Older FAILED_PAYMENT rows
     // are ignored when the user has since recovered with a newer subscription.
     const latestSub = await prisma.subscription.findFirst({

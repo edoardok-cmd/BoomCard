@@ -665,7 +665,7 @@ describe('Gap 8 — new ticket creation from raw email (source=EMAIL)', () => {
     expect(result.ticketId).toBeTruthy();
   });
 
-  it('infers requestType=OTHER when destination is office@ address', async () => {
+  it('infers requestType=SUPPORT when destination is office@ address (role-based routing, not address-based)', async () => {
     const { prisma: mock } = jest.requireMock('../../src/lib/prisma');
 
     await ingestInboundEmail({
@@ -676,9 +676,12 @@ describe('Gap 8 — new ticket creation from raw email (source=EMAIL)', () => {
       messageId: '<office-msg@example.com>',
     });
 
+    // Implementation deliberately returns SUPPORT for all inbound addresses —
+    // the user/partner distinction is determined by the ticket owner's role, not by
+    // destination mailbox. Admin can reclassify after reading (§11.6).
     expect(mock.helpTicket.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ requestType: 'OTHER' }),
+        data: expect.objectContaining({ requestType: 'SUPPORT' }),
       })
     );
   });

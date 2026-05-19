@@ -191,6 +191,8 @@ function subscriptionInclude(hasSubFilter: boolean, subFilter: Record<string, un
       autoRenewal: true,
       canceledAt: true,
       createdAt: true,
+      failedPaymentAt: true,
+      failedPaymentClearedAt: true,
     },
   };
 }

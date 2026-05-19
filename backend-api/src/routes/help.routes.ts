@@ -4,7 +4,7 @@ import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
 import { notificationService } from '../services/notification.service';
 import { emailService } from '../services/email.service';
-import { buildTicketSubject, buildTicketHeaders, newMessageId } from '../services/ticketEmail.service';
+import { buildTicketSubject, buildTicketHeaders } from '../services/ticketEmail.service';
 import { logger } from '../utils/logger';
 import { z } from 'zod';
 
@@ -55,16 +55,18 @@ router.post(
       })
       .catch((err) => logger.error('[help] Failed to notify admin of new ticket:', err));
 
-    // After ticket creation, fire-and-forget: set rootMessageId + send confirmation
+    // After ticket creation, fire-and-forget: set rootMessageId + send confirmation.
+    // IMPORTANT: call buildTicketHeaders() once and use threading.messageId for
+    // rootMessageId. Two separate newMessageId() calls produce different IDs,
+    // which breaks Priority-2 In-Reply-To threading for any subsequent email reply.
     (async () => {
       try {
-        const rootMsgId = newMessageId(ticket.id);
-        await prisma.helpTicket.update({ where: { id: ticket.id }, data: { rootMessageId: rootMsgId } });
+        const threading = buildTicketHeaders({ ticketId: ticket.id });
+        await prisma.helpTicket.update({ where: { id: ticket.id }, data: { rootMessageId: threading.messageId } });
         const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, firstName: true } });
         if (user?.email) {
           const subject = buildTicketSubject(ticket.id, 'Вашата заявка е получена');
           const ref = subject.match(/\[#[a-f0-9]+\]/i)?.[0] ?? '';
-          const threading = buildTicketHeaders({ ticketId: ticket.id, references: [] });
           await emailService.sendEmail({
             to: user.email,
             subject,
