@@ -27,7 +27,6 @@ export const PERMISSION_CATALOG: Array<{ key: string; label: string; category: s
   { key: 'partners.onboarding.write', label: 'Manage onboarding pipeline', category: 'partners' },
   { key: 'partners.locations.read', label: 'View locations & QR', category: 'partners' },
   { key: 'partners.locations.write', label: 'Replace QR codes', category: 'partners' },
-  { key: 'partners.receipts.read', label: 'View receipt profiles', category: 'partners' },
   // Finance
   { key: 'finance.payouts.read', label: 'View subscriber payouts', category: 'finance' },
   { key: 'finance.payouts.write', label: 'Process payouts', category: 'finance' },
@@ -94,7 +93,7 @@ export const ROLE_DEFAULT_ALLOWS: Record<string, string[]> = {
   // without exposing the full admin user listing (admins.read).
   // Discount-rate change proposals are submitted via POST /admin/partners/:id/propose-discount-rate
   // (requires partners.requests.write) and are executed only on SUPER_ADMIN approval.
-  PARTNER_MANAGER: ['dashboard.read', 'partners.read', 'partners.requests.read', 'partners.requests.write', 'partners.onboarding.read', 'partners.onboarding.write', 'partners.locations.read', 'partners.locations.write', 'partners.receipts.read', 'admins.actions.read'],
+  PARTNER_MANAGER: ['dashboard.read', 'partners.read', 'partners.requests.read', 'partners.requests.write', 'partners.onboarding.read', 'partners.onboarding.write', 'partners.locations.read', 'partners.locations.write', 'admins.actions.read'],
 };
 
 // Upserts the full permission catalog and default role allow-sets.
