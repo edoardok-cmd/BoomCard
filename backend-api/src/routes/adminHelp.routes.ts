@@ -607,8 +607,10 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
       // which bumps on any field change, including priority or assignment edits).
       if (status === 'RESOLVED' && ticket.status !== 'RESOLVED') {
         data.resolvedAt = new Date();
-      } else if (status !== 'RESOLVED') {
-        // Clear resolvedAt if the ticket is moved away from RESOLVED (e.g. re-opened).
+      } else if (status !== 'RESOLVED' && status !== 'CLOSED') {
+        // Clear resolvedAt if the ticket moves away from RESOLVED but is NOT being closed.
+        // CLOSED is terminal and preserves resolvedAt for the same reason as
+        // autoCloseResolvedTickets — it's the audit record of when resolution happened.
         data.resolvedAt = null;
       }
       // Stamp reopenedAt whenever a manual admin PATCH transitions the ticket back

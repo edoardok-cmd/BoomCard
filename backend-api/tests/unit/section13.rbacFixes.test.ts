@@ -789,6 +789,16 @@ describe('§13 Audit Fix B — POST /help/:id/assign privilege gates', () => {
     const res = await api.post('/help/ticket-1/assign').send({});
     expect(res.status).toBe(200);
   });
+
+  it('200 for ADMIN with help.read.all self-assigning a third-party ticket (hasFullAccess bypasses the ownership gate)', async () => {
+    // SUPPORT can pick up any ticket via self-assign — the ownership gate at line 386
+    // uses hasFullAccess() so it must pass for a caller with help.read.all even when
+    // they are neither the creator nor the existing assignee.
+    setMockUser({ id: 'support-id', role: 'ADMIN', permissions: ['help.read.all', 'help.write'] });
+    m.helpTicket.findUnique.mockResolvedValue({ ...baseTicket, userId: 'someone-else', assigneeId: null });
+    const res = await api.post('/help/ticket-1/assign').send({});
+    expect(res.status).toBe(200);
+  });
 });
 
 // ─── §13 Audit Fix B — POST /help/:id/reject privilege gates ─────────────────
@@ -853,6 +863,39 @@ describe('§13 Audit Fix B — POST /help/:id/reject privilege gates', () => {
     m.helpTicket.findUnique.mockResolvedValue({ ...unassignedTicket, assigneeId: 'assignee-id' });
     const res = await api.post('/help/ticket-1/reject').send({ reason: validReason });
     expect(res.status).toBe(200);
+  });
+
+  it('200 for ADMIN with help.read.all who IS the assignee (assignee gate dominates role)', async () => {
+    // SUPPORT (help.read.all) who happens to be the assignee must be allowed to reject —
+    // the guard is "not SUPER_ADMIN AND not assignee", so being the assignee bypasses the
+    // role check regardless of whether the caller has help.read.all.
+    setMockUser({ id: 'support-id', role: 'ADMIN', permissions: ['help.read.all', 'help.write'] });
+    m.helpTicket.findUnique.mockResolvedValue({ ...unassignedTicket, assigneeId: 'support-id' });
+    const res = await api.post('/help/ticket-1/reject').send({ reason: validReason });
+    expect(res.status).toBe(200);
+  });
+
+  it('400 when ticket is already in a terminal state (CLOSED)', async () => {
+    setMockUser({ id: 'super-id', role: 'SUPER_ADMIN', permissions: [] });
+    m.helpTicket.findUnique.mockResolvedValue({ ...unassignedTicket, status: 'CLOSED' });
+    const res = await api.post('/help/ticket-1/reject').send({ reason: validReason });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/крайно състояние/i);
+  });
+
+  it('400 when ticket is already REJECTED (idempotent terminal guard)', async () => {
+    setMockUser({ id: 'super-id', role: 'SUPER_ADMIN', permissions: [] });
+    m.helpTicket.findUnique.mockResolvedValue({ ...unassignedTicket, status: 'REJECTED' });
+    const res = await api.post('/help/ticket-1/reject').send({ reason: validReason });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/крайно състояние/i);
+  });
+
+  it('400 when reason is shorter than 10 characters', async () => {
+    setMockUser({ id: 'super-id', role: 'SUPER_ADMIN', permissions: [] });
+    const res = await api.post('/help/ticket-1/reject').send({ reason: 'short' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/минимум 10/i);
   });
 });
 
