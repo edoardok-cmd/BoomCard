@@ -345,7 +345,7 @@ class ReviewsService {
       }
 
       // Validate new rating if provided
-      if (data.rating && (data.rating < 1 || data.rating > 5)) {
+      if (data.rating !== undefined && (data.rating < 1 || data.rating > 5)) {
         throw new AppError('Rating must be between 1 and 5', 400);
       }
 
