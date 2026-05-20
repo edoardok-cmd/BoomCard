@@ -47,12 +47,14 @@ const I18N = {
   colCreated:       { en: 'Created',           bg: 'Начислен' },
   // Entry status labels
   sPending:         { en: 'Pending',           bg: 'Изчакващ' },
+  sTrialPending:    { en: 'Trial pending',     bg: 'Пробен (изчакващ)' },
   sCleared:         { en: 'Cleared',           bg: 'Одобрен' },
   sLocked:          { en: 'Locked',            bg: 'Заключен' },
   sPaid:            { en: 'Paid',              bg: 'Платен' },
   sExpired:         { en: 'Expired',           bg: 'Изтекъл' },
   sVoided:          { en: 'Voided',            bg: 'Анулиран' },
   statVoided:       { en: 'Voided',            bg: 'Анулиран' },
+  statTrialPending: { en: 'Trial pending',     bg: 'Пробен (изчакващ)' },
   // Currency / unit
   bgn:              { en: 'BGN',               bg: 'лв.' },
   days:             { en: 'days',              bg: 'дни' },
@@ -314,13 +316,14 @@ const EntryStatusBadge = styled.span<{ $status: CashbackEntryStatus }>`
   white-space: nowrap;
   ${({ $status }) => {
     switch ($status) {
-      case 'Cleared': return `background: ${palette.successSoft}; color: ${palette.success};`;
-      case 'Paid':    return `background: ${palette.infoSoft}; color: ${palette.info};`;
-      case 'Pending': return `background: ${palette.warningSoft}; color: ${palette.warning};`;
-      case 'Locked':  return `background: ${palette.amberSoft}; color: ${palette.amber};`;
-      case 'Voided':  return `background: ${palette.dangerSoft}; color: ${palette.danger}; text-decoration: line-through;`;
+      case 'Cleared':      return `background: ${palette.successSoft}; color: ${palette.success};`;
+      case 'Paid':         return `background: ${palette.infoSoft}; color: ${palette.info};`;
+      case 'Pending':      return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+      case 'TrialPending': return `background: ${palette.warningSoft}; color: ${palette.warning}; font-style: italic;`;
+      case 'Locked':       return `background: ${palette.amberSoft}; color: ${palette.amber};`;
+      case 'Voided':       return `background: ${palette.dangerSoft}; color: ${palette.danger}; text-decoration: line-through;`;
       case 'Expired':
-      default:        return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
+      default:             return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
     }
   }}
 `;
@@ -465,7 +468,7 @@ export default function AdminCashbackPage() {
   };
 
   const statusLabels: Record<CashbackEntryStatus, I18NKey> = {
-    Pending: 'sPending', Cleared: 'sCleared', Locked: 'sLocked', Paid: 'sPaid', Expired: 'sExpired', Voided: 'sVoided',
+    Pending: 'sPending', TrialPending: 'sTrialPending', Cleared: 'sCleared', Locked: 'sLocked', Paid: 'sPaid', Expired: 'sExpired', Voided: 'sVoided',
   };
 
   const entryColumns: ColumnDef<CashbackEntry>[] = [
@@ -511,7 +514,7 @@ export default function AdminCashbackPage() {
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
           {row.cashbackExpiresAt ? fmtDate(row.cashbackExpiresAt) : '—'}
-          {/* Show countdown for Pending, Cleared, and Locked — all have rolling 60-day expiry (spec §4.4) */}
+          {/* Show countdown for Pending, Cleared, and Locked. TrialPending has no rolling expiry — resolved by scheduler. */}
           {row.daysUntilExpiry != null && (row.status === 'Cleared' || row.status === 'Pending' || row.status === 'Locked') && (
             <MetaLine>
               {row.daysUntilExpiry <= 7
@@ -638,6 +641,7 @@ export default function AdminCashbackPage() {
           >
             <option value="">{T('allStatuses')}</option>
             <option value="Pending">{T('sPending')}</option>
+            <option value="TrialPending">{T('sTrialPending')}</option>
             <option value="Cleared">{T('sCleared')}</option>
             <option value="Locked">{T('sLocked')}</option>
             <option value="Paid">{T('sPaid')}</option>
@@ -712,10 +716,10 @@ export default function AdminCashbackPage() {
               },
             },
             // Spec §4.4 v1.1 — Void requires a visible reason (audit + user-facing).
-            // Allowed from Pending, Cleared, or Locked. Paid/Expired/Voided are terminal.
+            // Allowed from Pending, TrialPending, Cleared, or Locked. Paid/Expired/Voided are terminal.
             {
               label: T('actionVoid'),
-              hidden: (row) => !['Pending', 'Cleared', 'Locked'].includes(row.status),
+              hidden: (row) => !['Pending', 'TrialPending', 'Cleared', 'Locked'].includes(row.status),
               onClick: (row) => {
                 const reason = window.prompt(T('promptVoidReason'));
                 if (!reason || !reason.trim()) return;

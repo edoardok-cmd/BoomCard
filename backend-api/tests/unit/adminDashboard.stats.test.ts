@@ -194,10 +194,13 @@ describe('GET /admin/dashboard — spec §3.1 stats', () => {
     expect(Number.isFinite(res.body.data.transactions.todayAvg)).toBe(true);
   });
 
-  it('cashback.accrued equals approved + pending (FAILED/REVERSED excluded from accrued)', async () => {
-    // The accrued query now filters to [COMPLETED, TRIAL_PENDING, PENDING, PROCESSING]
-    // so accrued = approved + pending always holds.
-    // Simulate: approved=100, pending=40, failed/reversed=25 (must not count)
+  it('cashback.accrued equals approved + pending (FAILED/REVERSED/PAID excluded from accrued)', async () => {
+    // accrued query: status.in=[COMPLETED,TRIAL_PENDING,PENDING,PROCESSING] + cashbackStatus.not=PAID
+    // approved query: status=COMPLETED + cashbackStatus.not=PAID (no cashbackExpiresAt)
+    // pending query:  status.in=[TRIAL_PENDING,PENDING,PROCESSING] (no cashbackStatus filter needed)
+    // expiringSoon:   status=COMPLETED + cashbackStatus.notIn=[PAID,LOCKED] + cashbackExpiresAt set
+    //
+    // Simulate: approved=100, pending=40, PAID cashback=25 (must not count in accrued/approved)
     m.$queryRaw.mockReset();
     m.$queryRaw
       .mockResolvedValueOnce([])
@@ -206,21 +209,26 @@ describe('GET /admin/dashboard — spec §3.1 stats', () => {
     m.walletTransaction.aggregate.mockImplementation(({ where }) => {
       if (where?.type === 'CASHBACK_CREDIT') {
         const statuses: string[] = where?.status?.in ?? [];
-        // accrued: all non-terminal non-failure statuses — returns 140
+        // accrued: 4-element in-array + cashbackStatus.not=PAID → 140 (25 PAID excluded)
         if (
           statuses.includes('COMPLETED') &&
           statuses.includes('TRIAL_PENDING') &&
           statuses.includes('PENDING') &&
           statuses.includes('PROCESSING') &&
-          statuses.length === 4
+          statuses.length === 4 &&
+          where?.cashbackStatus?.not === 'PAID'
         ) {
           return Promise.resolve({ _sum: { amount: 140 } }); // 100 approved + 40 pending
         }
-        // approved: COMPLETED only — 100
-        if (statuses.length === 0 && where?.status === 'COMPLETED') {
+        // approved: single COMPLETED + cashbackStatus.not=PAID + no cashbackExpiresAt → 100
+        if (
+          where?.status === 'COMPLETED' &&
+          where?.cashbackStatus?.not === 'PAID' &&
+          !where?.cashbackExpiresAt
+        ) {
           return Promise.resolve({ _sum: { amount: 100 } });
         }
-        // pending: TRIAL_PENDING, PENDING, PROCESSING — 40
+        // pending: 3-element in-array (TRIAL_PENDING, PENDING, PROCESSING) — 40
         if (statuses.includes('TRIAL_PENDING') && !statuses.includes('COMPLETED')) {
           return Promise.resolve({ _sum: { amount: 40 } });
         }
@@ -230,8 +238,96 @@ describe('GET /admin/dashboard — spec §3.1 stats', () => {
 
     const res = await request(app).get('/admin/dashboard').expect(200);
     const { accrued, approved, pending } = res.body.data.cashback;
-    // accrued must not include FAILED/REVERSED amounts (25 BGN above)
+    // PAID cashback (25 BGN) must not be counted
     expect(accrued).toBe(140);
     expect(accrued).toBe(approved + pending);
+  });
+
+  it('cashback.accrued and cashback.approved carry cashbackStatus.not=PAID filter (excludes settled payouts)', async () => {
+    // Captures the where-clause passed to walletTransaction.aggregate and asserts
+    // that both the accrued and approved queries include cashbackStatus: { not: 'PAID' }.
+    const capturedWheres: object[] = [];
+    m.walletTransaction.aggregate.mockImplementation(({ where }) => {
+      capturedWheres.push(where);
+      return Promise.resolve(ZERO_AGGREGATE);
+    });
+
+    await request(app).get('/admin/dashboard').expect(200);
+
+    const cashbackWheres = capturedWheres.filter(
+      (w: any) => w?.type === 'CASHBACK_CREDIT',
+    );
+
+    // accrued — has status.in (4 elements) + cashbackStatus.not='PAID'
+    const accruedWhere = cashbackWheres.find(
+      (w: any) => Array.isArray(w?.status?.in) && w.status.in.length === 4,
+    ) as any;
+    expect(accruedWhere).toBeDefined();
+    expect(accruedWhere.cashbackStatus).toEqual({ not: 'PAID' });
+
+    // approved — has status='COMPLETED' (string) + cashbackStatus.not='PAID' + no cashbackExpiresAt
+    const approvedWhere = cashbackWheres.find(
+      (w: any) =>
+        w?.status === 'COMPLETED' &&
+        w?.cashbackStatus?.not === 'PAID' &&
+        !w?.cashbackExpiresAt,
+    ) as any;
+    expect(approvedWhere).toBeDefined();
+    expect(approvedWhere.cashbackStatus).toEqual({ not: 'PAID' });
+  });
+
+  it('cashback.expiringSoon carries cashbackStatus.notIn=[PAID,LOCKED] filter (excludes settled and in-flight payouts)', async () => {
+    // markPaid() leaves cashbackExpiresAt intact, so without this guard PAID entries
+    // with a future expiry would inflate the "expiring soon" figure. LOCKED entries
+    // (in-flight payout) should also be excluded — they are being processed, not
+    // at risk of expiry.
+    const capturedWheres: object[] = [];
+    m.walletTransaction.aggregate.mockImplementation(({ where }) => {
+      capturedWheres.push(where);
+      return Promise.resolve(ZERO_AGGREGATE);
+    });
+
+    await request(app).get('/admin/dashboard').expect(200);
+
+    const expiringSoonWhere = capturedWheres.find(
+      (w: any) =>
+        w?.type === 'CASHBACK_CREDIT' &&
+        w?.status === 'COMPLETED' &&
+        w?.cashbackExpiresAt?.gte !== undefined &&
+        w?.cashbackExpiresAt?.lte !== undefined,
+    ) as any;
+
+    expect(expiringSoonWhere).toBeDefined();
+    // Must exclude both PAID (settled) and LOCKED (in-flight payout)
+    expect(expiringSoonWhere.cashbackStatus?.notIn).toEqual(
+      expect.arrayContaining(['PAID', 'LOCKED']),
+    );
+    expect(expiringSoonWhere.cashbackStatus.notIn).toHaveLength(2);
+  });
+
+  it('partners.locations counts only venueStatus=ACTIVE venues (spec §3.1 "активни локации")', async () => {
+    // Without this filter, SUSPENDED and REPLACED venues under active partners
+    // are counted as "active locations", over-reporting the operational footprint.
+    //
+    // venue.count shares the `cnt` mock with partner.count, user.count, etc., so
+    // we capture all count `where` objects and find the one that targets venues
+    // (identified by the presence of `partner.status` + `venueStatus`).
+    const allCountWheres: object[] = [];
+    m.venue.count.mockImplementation(({ where }) => {
+      allCountWheres.push(where);
+      return Promise.resolve(0);
+    });
+
+    await request(app).get('/admin/dashboard').expect(200);
+
+    // Locate the venue.count call — it's the only where clause that contains
+    // both `partner.status` and `venueStatus`.
+    const venueWhere = allCountWheres.find(
+      (w: any) => w?.partner?.status !== undefined && w?.venueStatus !== undefined,
+    ) as any;
+
+    expect(venueWhere).toBeDefined();
+    expect(venueWhere.partner.status).toBe('ACTIVE');
+    expect(venueWhere.venueStatus).toBe('ACTIVE');
   });
 });

@@ -62,7 +62,7 @@ export const ADMIN_NAV: AdminNavCategory[] = [
       { labelBg: 'Локации и QR кодове', labelEn: 'Locations & QR Codes', path: '/admin/partners/locations', permissionKey: 'partners.locations.read' },
       // BG label: receipt profile templates (partner-side config), not individual receipts.
       // Individual receipt review lives in Контрол > Преглед на бележки.
-      { labelBg: 'Профили за бележки', labelEn: 'Receipt Profiles', path: '/admin/partners/receipt-profiles', permissionKey: 'partners.receipts.read' },
+      { labelBg: 'Профили за бележки', labelEn: 'Receipt Profiles', path: '/admin/partners/receipt-profiles', permissionKey: 'partners.read' },
     ],
   },
   {

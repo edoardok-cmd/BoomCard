@@ -54,8 +54,8 @@ export interface CurrentCashbackRate {
   source: 'db' | 'default';
 }
 
-// Spec §4.4 v1.1 — entry-based cashback with 6 states (Voided added)
-export type CashbackEntryStatus = 'Pending' | 'Cleared' | 'Locked' | 'Paid' | 'Expired' | 'Voided';
+// Spec §4.4 v1.1 — entry-based cashback with 7 states (TrialPending + Voided added)
+export type CashbackEntryStatus = 'Pending' | 'TrialPending' | 'Cleared' | 'Locked' | 'Paid' | 'Expired' | 'Voided';
 
 export interface CashbackEntry {
   id: string;

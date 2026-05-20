@@ -247,8 +247,8 @@ router.get('/payout-thresholds', requirePermission('cashback.read'), async (_req
 
 // ------------------------------------------------------------------
 // GET /api/admin/cashback/entries
-// Spec §4.4 — global per-entry cashback listing with all 5 states
-// (Pending / Cleared / Locked / Paid / Expired). Filter by ?status=...
+// Spec §4.4 — global per-entry cashback listing with all 7 states
+// (Pending / TrialPending / Cleared / Locked / Paid / Expired / Voided). Filter by ?status=...
 // Optional: ?search=, ?dateFrom=, ?dateTo= for server-side filtering.
 // ------------------------------------------------------------------
 router.get('/entries', requirePermission('cashback.read'), async (req: AuthRequest, res: Response) => {
@@ -256,7 +256,7 @@ router.get('/entries', requirePermission('cashback.read'), async (req: AuthReque
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 20), 10000);
     const status = typeof req.query.status === 'string' ? req.query.status : undefined;
-    const validStatuses: CashbackEntryStatus[] = ['Pending', 'Cleared', 'Locked', 'Paid', 'Expired', 'Voided'];
+    const validStatuses: CashbackEntryStatus[] = ['Pending', 'TrialPending', 'Cleared', 'Locked', 'Paid', 'Expired', 'Voided'];
     const statusFilter = status && (validStatuses as string[]).includes(status)
       ? (status as CashbackEntryStatus)
       : undefined;

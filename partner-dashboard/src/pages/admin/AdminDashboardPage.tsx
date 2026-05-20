@@ -875,7 +875,7 @@ const AdminDashboardPage: React.FC = () => {
                       : `Updated ${alertsUpdatedAt}`}
                 </UpdatedAt>
               )}
-              {!alertsForbidden && (
+              {!alertsForbidden && !alertsLoadError && (
                 <AlertSectionLink to="/admin/dashboard/alerts">
                   {bg ? 'Виж всички →' : 'View all →'}
                 </AlertSectionLink>

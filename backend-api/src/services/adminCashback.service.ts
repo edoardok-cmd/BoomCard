@@ -644,7 +644,7 @@ export const adminCashbackService = new AdminCashbackService();
 
 // ─── Subscriber cashback entries (spec §4.4) ─────────────────────────────────
 
-export type CashbackEntryStatus = 'Pending' | 'Cleared' | 'Locked' | 'Paid' | 'Expired' | 'Voided';
+export type CashbackEntryStatus = 'Pending' | 'Cleared' | 'Locked' | 'Paid' | 'Expired' | 'Voided' | 'TrialPending';
 
 // Spec §4.4 — derived 6-state lifecycle. Single source of truth: any consumer
 // rendering a cashback entry's lifecycle state must call this helper. Inlining
@@ -830,13 +830,19 @@ async function buildStateWhere(
   };
   const expired: WTWhere = { cashbackExpiresAt: { lte: now } };
 
+  // TrialPending — wallet rows in the TRIAL_PENDING status (trial-period cashback
+  // that is resolved by the scheduler at trial end, not by the 60-day expiry rule).
+  if (state === 'TrialPending') {
+    return { status: 'TRIAL_PENDING' as const };
+  }
+
   // Voided is the only state that ONLY exists via the new lifecycle column.
   // No legacy fallback — pre-lifecycle rows can never be Voided.
   if (state === 'Voided') {
     return { cashbackStatus: 'VOIDED' as const };
   }
 
-  // For the other 5 states, prefer cashbackStatus when set and fall back to
+  // For the other 6 states, prefer cashbackStatus when set and fall back to
   // the legacy raw-status derivation so old rows still partition correctly.
   // Two sources of truth per state:
   //   (a) NEW: lifecycle column `cashbackStatus` is set (post-v1.1 writes)
@@ -950,7 +956,7 @@ export async function getAllCashbackEntries(
   dateFrom?: Date,
   dateTo?: Date,
 ): Promise<{ data: GlobalCashbackEntry[]; total: number; page: number; limit: number }> {
-  // Spec §4.4: 5 derived states (Pending / Cleared / Locked / Paid / Expired).
+  // Spec §4.4: 7 derived states (Pending / TrialPending / Cleared / Locked / Paid / Expired / Voided).
   // We push the filter to Prisma so true DB pagination + count work for all states,
   // including Paid/Cleared which need the per-wallet latest completed withdrawal.
   const now = new Date();

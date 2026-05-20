@@ -114,30 +114,45 @@ router.get(
       }),
 
       // Кешбек — 4 metrics per spec §3.1: начислен, одобрен, изчакващ, изтичащ
-      // "Начислен" = net committed cashback (approved + pending). Filtering to
-      // only non-terminal, non-failure statuses so that FAILED/REVERSED entries
-      // (which represent cancelled obligations) do not inflate the figure. This
-      // makes `accrued = approved + pending` a mathematical identity, letting the
-      // tile headline (accrued) serve as the sum of its two sub-metrics.
+      // "Начислен" = outstanding committed cashback (spec §3.1: "бъдещи задължения").
+      // • Excludes FAILED/ANNULLED (terminal failure — never an obligation).
+      // • Excludes cashbackStatus=PAID: payout completed; markPaid() does not clear
+      //   cashbackExpiresAt, so PAID rows with status=COMPLETED would otherwise inflate
+      //   the figure indefinitely. PAID is a past obligation, not a future one.
+      // • LOCKED entries (in-flight payout) are included — still an outstanding obligation.
+      // The identity `accrued = approved + pending` is preserved: TRIAL_PENDING/PENDING/
+      // PROCESSING rows cannot reach cashbackStatus=PAID by lifecycle invariants (PAID
+      // requires CLEARED→LOCKED→PAID, all via status=COMPLETED), so the pending sub-query
+      // need not repeat the cashbackStatus filter.
       prisma.walletTransaction.aggregate({
         where: {
           type: 'CASHBACK_CREDIT',
           status: { in: ['COMPLETED', 'TRIAL_PENDING', 'PENDING', 'PROCESSING'] },
+          cashbackStatus: { not: 'PAID' },
         },
-        _sum: { amount: true },
-      }),
-      prisma.walletTransaction.aggregate({
-        where: { type: 'CASHBACK_CREDIT', status: 'COMPLETED' },
-        _sum: { amount: true },
-      }),
-      prisma.walletTransaction.aggregate({
-        where: { type: 'CASHBACK_CREDIT', status: { in: ['TRIAL_PENDING', 'PENDING', 'PROCESSING'] } },
         _sum: { amount: true },
       }),
       prisma.walletTransaction.aggregate({
         where: {
           type: 'CASHBACK_CREDIT',
           status: 'COMPLETED',
+          cashbackStatus: { not: 'PAID' },
+        },
+        _sum: { amount: true },
+      }),
+      prisma.walletTransaction.aggregate({
+        where: { type: 'CASHBACK_CREDIT', status: { in: ['TRIAL_PENDING', 'PENDING', 'PROCESSING'] } },
+        _sum: { amount: true },
+      }),
+      // "Изтичащ" = CLEARED entries expiring within 7 days that are still actionable.
+      // Excludes LOCKED (in-flight payout — being processed, not at expiry risk) and
+      // PAID (already settled — markPaid() leaves cashbackExpiresAt intact, so without
+      // this guard paid entries with a future expiry date would inflate the figure).
+      prisma.walletTransaction.aggregate({
+        where: {
+          type: 'CASHBACK_CREDIT',
+          status: 'COMPLETED',
+          cashbackStatus: { notIn: ['PAID', 'LOCKED'] },
           cashbackExpiresAt: { gte: now, lte: sevenDaysLater },
         },
         _sum: { amount: true },
@@ -146,7 +161,9 @@ router.get(
       // Партньори
       prisma.partner.count({ where: { status: 'ACTIVE' } }),
       prisma.partner.count({ where: { status: 'PENDING' } }),
-      prisma.venue.count({ where: { partner: { status: 'ACTIVE' } } }),
+      // spec §3.1 "активни локации" — only venues with venueStatus=ACTIVE qualify;
+      // SUSPENDED/REPLACED venues under an active partner are not operationally active.
+      prisma.venue.count({ where: { partner: { status: 'ACTIVE' }, venueStatus: 'ACTIVE' } }),
 
       // Финанси §6.1 — subscriber payout queue.
       // WITHDRAWAL amounts are stored negative (wallet.service.ts:436), so we negate
