@@ -142,6 +142,7 @@ const AdminSubscriberDetailPage = lazy(() => import('./pages/admin/AdminSubscrib
 const AdminPayoutsPage = lazy(() => import('./pages/admin/AdminPayoutsPage'));
 const AdminTransactionsPage = lazy(() => import('./pages/admin/AdminTransactionsPage'));
 const AdminSubscriptionsPage = lazy(() => import('./pages/admin/AdminSubscriptionsPage'));
+const AdminPendingSubscriptionsPage = lazy(() => import('./pages/admin/AdminPendingSubscriptionsPage'));
 const AdminPartnersPage = lazy(() => import('./pages/AdminPartnersPage'));
 // AdminScanReviewPage retired — /admin/control/risk now uses AdminControlSecurityPage (spec §7.1)
 const AdminCashbackPage = lazy(() => import('./pages/admin/AdminCashbackPage'));
@@ -532,6 +533,7 @@ function App() {
                       <Route index element={<Navigate to="all" replace />} />
                       <Route path="all" element={<AdminSubscribersAllPage />} />
                       <Route path="subscriptions" element={<AdminSubscriptionsPage />} />
+                      <Route path="pending-checkout" element={<AdminPendingSubscriptionsPage />} />
                       <Route path="transactions" element={<AdminTransactionsPage />} />
                       <Route path="cashback" element={<AdminCashbackPage />} />
                       <Route path=":userId" element={<AdminSubscriberDetailPage />} />

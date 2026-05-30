@@ -95,7 +95,7 @@ export type RequestObjectCount = typeof ALLOWED_REQUEST_OBJECT_COUNTS[number];
 
 export interface RegisterInput {
   email: string;
-  password: string;
+  password?: string;
   firstName?: string;
   lastName?: string;
   phone: string;
@@ -218,8 +218,13 @@ export class AuthService {
     // Sanitize phone: convert empty string to null
     const sanitizedPhone = phone && phone.trim() !== '' ? phone.trim() : null;
 
-    // Hash password
-    const passwordHash = await bcrypt.hash(password, 12);
+    // Partners never submit a password at application time — they set one later
+    // via the activation link. Generate a random unusable hash so the column is
+    // non-null; mustChangePassword=true ensures the activation route enforces a
+    // real password before the partner can log in.
+    const passwordHash = isPartner
+      ? await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12)
+      : await bcrypt.hash(password!, 12);
 
     // Record consent timestamps when terms are accepted
     const consentData = acceptTerms
@@ -252,6 +257,7 @@ export class AuthService {
             data: {
               email: normalizedEmail,
               passwordHash,
+              mustChangePassword: true,
               firstName: firstName?.trim() || undefined,
               lastName: lastName?.trim() || undefined,
               phone: sanitizedPhone,

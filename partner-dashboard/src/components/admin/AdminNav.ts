@@ -44,6 +44,7 @@ export const ADMIN_NAV: AdminNavCategory[] = [
     subItems: [
       { labelBg: 'Всички абонати', labelEn: 'All Subscribers', path: '/admin/subscribers/all', permissionKey: 'subscribers.read' },
       { labelBg: 'Абонаменти', labelEn: 'Subscriptions', path: '/admin/subscribers/subscriptions', permissionKey: 'subscriptions.read' },
+      { labelBg: 'Незавършени регистрации', labelEn: 'Incomplete Registrations', path: '/admin/subscribers/pending-checkout', permissionKey: 'subscriptions.write' },
       { labelBg: 'Транзакции', labelEn: 'Transactions', path: '/admin/subscribers/transactions', permissionKey: 'transactions.read' },
       { labelBg: 'Кешбек', labelEn: 'Cashback', path: '/admin/subscribers/cashback', permissionKey: 'cashback.read' },
     ],

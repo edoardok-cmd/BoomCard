@@ -1,10 +1,14 @@
+import crypto from 'crypto';
 import { Router } from 'express';
-import { SubscriptionPlan, SubscriptionStatus, TransactionType, TransactionStatus, Prisma } from '@prisma/client';
+import { SubscriptionPlan, SubscriptionStatus, TransactionType, TransactionStatus, PendingSubscriptionStatus, Prisma } from '@prisma/client';
 import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
-import { auditMiddleware } from '../middleware/audit.middleware';
+import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { stripeService } from '../services/stripe.service';
 import { planDisplayName } from '../utils/planDisplayName';
+import { emailService } from '../services/email.service';
+
+const APP_URL = process.env.APP_URL || 'https://mobile.boomcard.bg';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -714,6 +718,103 @@ router.patch('/:id/auto-renewal', requirePermission('subscriptions.write'), asyn
     res.json({ ok: true });
   } catch (error) {
     next(error);
+  }
+});
+
+// ── Pending-subscription (pay-first checkout) support tooling — T14 ──────────
+
+/**
+ * GET /api/admin/subscriptions/pending
+ * Search pending checkout sessions by email, Paysera order ID, or status.
+ */
+router.get('/pending', requirePermission('subscriptions.read'), async (req, res, next) => {
+  try {
+    const { email, orderId, status, page = '1', limit = '20' } = req.query as Record<string, string>;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
+    const skip = (pageNum - 1) * limitNum;
+
+    const where: Prisma.PendingSubscriptionWhereInput = {};
+    if (email) where.email = { contains: email, mode: 'insensitive' };
+    if (orderId) where.payseraOrderId = { contains: orderId, mode: 'insensitive' };
+    if (status && Object.values(PendingSubscriptionStatus).includes(status as PendingSubscriptionStatus)) {
+      where.status = status as PendingSubscriptionStatus;
+    }
+
+    const [data, total] = await Promise.all([
+      prisma.pendingSubscription.findMany({
+        where,
+        include: { plan: { select: { displayName: true, displayNameBg: true } } },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limitNum,
+      }),
+      prisma.pendingSubscription.count({ where }),
+    ]);
+
+    res.json({ data, total, page: pageNum, limit: limitNum });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/admin/subscriptions/pending/:id/resend-token
+ * Regenerate the profile-completion token and re-send the email.
+ * Only valid for rows in PAID state that have not yet been completed or expired.
+ */
+router.post('/pending/:id/resend-token', requirePermission('subscriptions.write'), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const row = await prisma.pendingSubscription.findUnique({
+      where: { id },
+      include: { plan: { select: { displayName: true, displayNameBg: true } } },
+    });
+
+    if (!row) {
+      res.status(404).json({ error: 'Pending subscription not found' });
+      return;
+    }
+    if (row.status !== PendingSubscriptionStatus.PAID) {
+      res.status(400).json({ error: 'Subscription is not in PAID state' });
+      return;
+    }
+    if (row.completedAt) {
+      res.status(400).json({ error: 'Profile already completed' });
+      return;
+    }
+    if (row.expiresAt <= new Date()) {
+      res.status(400).json({ error: 'Checkout session has expired' });
+      return;
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenExpiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+    await prisma.pendingSubscription.update({
+      where: { id },
+      data: { token, tokenExpiresAt },
+    });
+
+    await emailService.sendCompleteProfileEmail(row.email, {
+      planName: row.plan?.displayName ?? row.planId,
+      planNameBg: row.plan?.displayNameBg,
+      completeProfileUrl: `${APP_URL}/complete-profile?token=${token}`,
+      language: (row.language === 'en' ? 'en' : 'bg') as 'bg' | 'en',
+    });
+
+    await writeAudit({
+      actorUserId: (req as any).user?.id ?? null,
+      action: 'pending_subscription.resend_token',
+      objectType: 'PendingSubscription',
+      objectId: id,
+      after: { email: row.email, tokenExpiresAt: tokenExpiresAt.toISOString() },
+    });
+
+    res.json({ sent: true, email: row.email });
+  } catch (err) {
+    next(err);
   }
 });
 

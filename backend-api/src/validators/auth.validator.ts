@@ -21,7 +21,10 @@ export const registerValidation = [
     .withMessage('Invalid email format')
     .normalizeEmail(),
 
+  // Partner applications do not submit a password — it is set later via the
+  // activation link. Only validate/require password for user (non-partner) registrations.
   body('password')
+    .if(body('accountType').not().equals('partner'))
     .notEmpty()
     .withMessage('Password is required')
     .isLength({ min: 8 })

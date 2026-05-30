@@ -350,8 +350,6 @@ interface FormErrors {
   lastName?: string;
   email?: string;
   phone?: string;
-  password?: string;
-  confirmPassword?: string;
   businessName?: string;
   businessCategory?: string;
   city?: string;
@@ -384,8 +382,6 @@ const RegisterPartnerPage: React.FC = () => {
     lastName: '',
     email: '',
     phone: '',
-    password: '',
-    confirmPassword: '',
     businessName: '',
     businessNameBg: '',
     businessCategory: '',
@@ -438,20 +434,6 @@ const RegisterPartnerPage: React.FC = () => {
         if (!/^(\+359|0)[0-9\s-]{8,}$/.test(strVal)) {
           return t('partnerRegistration.phoneInvalid');
         }
-        return undefined;
-
-      case 'password':
-        if (!value) return t('partnerRegistration.passwordRequired');
-        if (strVal.length < 8) return t('partnerRegistration.passwordMinLength');
-        if (!/[A-Z]/.test(strVal)) return t('partnerRegistration.passwordNeedsUppercase');
-        if (!/[a-z]/.test(strVal)) return t('partnerRegistration.passwordNeedsLowercase');
-        if (!/[0-9]/.test(strVal)) return t('partnerRegistration.passwordNeedsNumber');
-        if (!/[^A-Za-z0-9]/.test(strVal)) return t('partnerRegistration.passwordNeedsSpecial');
-        return undefined;
-
-      case 'confirmPassword':
-        if (!value) return t('partnerRegistration.confirmPasswordRequired');
-        if (value !== formData.password) return t('partnerRegistration.passwordsMismatch');
         return undefined;
 
       case 'businessName':
@@ -519,13 +501,6 @@ const RegisterPartnerPage: React.FC = () => {
       setErrors(prev => ({ ...prev, [name]: error }));
     }
 
-    // Also validate confirmPassword when password changes
-    if (name === 'password' && touched.confirmPassword) {
-      const confirmError = formData.confirmPassword !== value
-        ? t('partnerRegistration.passwordsMismatch')
-        : undefined;
-      setErrors(prev => ({ ...prev, confirmPassword: confirmError }));
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -535,8 +510,7 @@ const RegisterPartnerPage: React.FC = () => {
     const newErrors: FormErrors = {};
     const requiredFields = [
       'firstName', 'lastName', 'email', 'phone',
-      'password', 'confirmPassword', 'businessName',
-      'businessCategory', 'city', 'address',
+      'businessName', 'businessCategory', 'city', 'address',
       'requestObjectCount',
       'acceptTerms', 'confirmBusiness'
     ];
@@ -562,7 +536,6 @@ const RegisterPartnerPage: React.FC = () => {
     try {
       await register({
         email: formData.email,
-        password: formData.password,
         firstName: formData.firstName,
         lastName: formData.lastName,
         phone: formData.phone ? normalizePhone(formData.phone) : undefined,
@@ -951,67 +924,6 @@ const RegisterPartnerPage: React.FC = () => {
             </FormGroup>
           </Section>
 
-          {/* Security */}
-          <Section>
-            <SectionTitle>
-              🔒 {t('partnerRegistration.security')}
-            </SectionTitle>
-
-            <FormRow>
-              <FormGroup>
-                <Label htmlFor="password">
-                  {t('partnerRegistration.password')} *
-                </Label>
-                <Input
-                  id="password"
-                  type="password"
-                  name="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  onBlur={() => handleBlur('password')}
-                  placeholder={t('partnerRegistration.passwordPlaceholder')}
-                  $hasError={touched.password && !!errors.password}
-                  disabled={isLoading}
-                  autoComplete="new-password"
-                />
-                {touched.password && errors.password && (
-                  <ErrorMessage
-                    initial={{ opacity: 0, y: -5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                  >
-                    {errors.password}
-                  </ErrorMessage>
-                )}
-              </FormGroup>
-
-              <FormGroup>
-                <Label htmlFor="confirmPassword">
-                  {t('partnerRegistration.confirmPassword')} *
-                </Label>
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  name="confirmPassword"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  onBlur={() => handleBlur('confirmPassword')}
-                  placeholder={t('partnerRegistration.confirmPasswordPlaceholder')}
-                  $hasError={touched.confirmPassword && !!errors.confirmPassword}
-                  disabled={isLoading}
-                  autoComplete="new-password"
-                />
-                {touched.confirmPassword && errors.confirmPassword && (
-                  <ErrorMessage
-                    initial={{ opacity: 0, y: -5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                  >
-                    {errors.confirmPassword}
-                  </ErrorMessage>
-                )}
-              </FormGroup>
-            </FormRow>
-          </Section>
-
           <div>
             <CheckboxGroup>
               <Checkbox
@@ -1067,7 +979,10 @@ const RegisterPartnerPage: React.FC = () => {
           </div>
 
           <InfoBox>
-            <strong>📋 {t('partnerRegistration.note')}</strong> {t('partnerRegistration.noteText')}
+            <strong>📋 {t('partnerRegistration.note')}</strong>{' '}
+            {language === 'bg'
+              ? 'След изпращане на заявката, нашият екип ще се свърже с вас до 2 работни дни. При одобрение и завършен онбординг ще получите имейл с линк за активиране на акаунта и задаване на парола.'
+              : 'After submitting your application, our team will contact you within 2 business days. Once approved and onboarding is complete, you will receive an email with an activation link to set your password.'}
           </InfoBox>
 
           <SubmitButton
