@@ -22,8 +22,8 @@ Cross-referencing the Partner and User modules against the admin clash document 
 
 ### ✅ **2.3 (G) - Inactive User Account Status**
 **Clash:** Inactive status never explained for Users.  
-**Resolution:** User doc explicitly states Inactive is a valid account status alongside Active and Archived. However, the **semantics remain undefined** (can user log in? scan?) — still requires implementation detail.  
-**Status:** PARTIALLY RESOLVED (status exists; behavior undefined)
+**Resolution:** Inactive user can log in, view history and cashback balance, and submit support requests. Scanning and generating new cashback are blocked. Mirrors the partner Inactive model.  
+**Status:** RESOLVED ✓
 
 ---
 
@@ -72,9 +72,9 @@ Cross-referencing the Partner and User modules against the admin clash document 
 
 ### ✅ **5.1 (G) - Risk-Signal → Risk-Level Mapping Undefined**
 **Clash:** No combining function (boolean? weighted? matrix?) for risk signals.  
-**Resolution:** Admin doc (§7.2) enumerates four signals: User risk, Partner risk, Receipt match, Location match. User doc provides **no additional signal definitions**. The combining function remains **UNDEFINED** but the signal set is now canonical.
+**Resolution:** Additive score decided: IBAN changed in last 24h (+40), Receipt match confidence <60% (+30), QR location mismatch (+20), User has 3+ Voided records (+20), Partner has active risk flag (+10). Thresholds: 0–20 = Low, 21–50 = Medium, 51+ = High. Medium and High both trigger manual review.
 
-**Status:** PARTIALLY RESOLVED (signal set defined; formula still missing)
+**Status:** RESOLVED ✓
 
 ---
 
@@ -192,98 +192,91 @@ Partner doc (§1–4) consistently uses "заявка" for Partner Applications.
 
 ### ✅ **11.4 (G) - Admin Password-Reset Rate-Limit "Repeated" Undefined**
 **Clash:** TABLE 37 says "При повтарящи се reset-и – admin alert" but "repeated" is not quantified.  
-**Resolution:** Admin doc (§9.5) does not quantify. User and Partner docs do not reference admin password resets. **Implementation decision needed** (2/day? 3/hour?). Not a clash—a missing parameter.
+**Resolution:** Two-tier response decided: Alert at 3 resets in 24 hours; account suspension pending Super Admin review at 5 resets in 24 hours.
 
-**Status:** NEEDS IMPLEMENTATION RULE
+**Status:** RESOLVED ✓
 
 ---
 
 ### ✅ **12.1 (A) - BGN / EUR Transition**
 **Clash:** TABLE 39 mentions EUR support "efter въвеждане в България" with no transition rule.  
-**Resolution:** User and Partner docs make no mention of EUR. Admin doc provides no transition detail. **Scope for v1.2 is unclear** — implementation decision needed (dual-currency reporting? conversion rate?).
+**Resolution:** Dual-currency display during defined transition window: both BGN and EUR shown simultaneously. After the transition window closes, BGN is hidden.
 
-**Status:** NEEDS IMPLEMENTATION RULE
+**Status:** RESOLVED ✓
 
 ---
 
-## Unresolved Clashes (Require Additional Work)
+## Previously Unresolved Clashes — Now Resolved
 
-### ⚠️ **2.1 (G) - Subscription Status Table Missing Values**
+All 14 items below were open at the time of the cross-module analysis. Product owner decisions have been recorded and integrated into the unified specification.
+
+### ✅ **2.1 (G) - Subscription Status Table Missing Values**
 **Clash:** Body text references statuses; TABLE 5 only documents "Failed Payment."  
-**Resolution Attempt:** User doc (§6.6 "Абонамент и плащания") lists: "Текущ план, статус, следваща дата, auto-renew." Does NOT enumerate status values.  
-**Status:** STILL OPEN — must enumerate: Active, Expired, Cancelled (self-service?), Failed Payment
+**Resolution:** Status enum: Active, Expired, Cancelled, Failed Payment. Cancelled = user-initiated; scanning continues through last paid day, then transitions to Expired.  
+**Status:** RESOLVED ✓
 
 ---
 
-### ⚠️ **2.2 (G) - Cancelled Subscription Undefined**
-**Clash:** Implied by 2.1 — no trigger, no scanning effect, no relationship to Cleared cashback.  
-**Resolution:** User doc (§6.6) mentions "да откаже абонамент" (self-service cancellation) but no system behavior defined.  
-**Status:** STILL OPEN — define: trigger (self-service only?), scanning effect (immediate block?), cashback impact (Cleared records continue?)
+### ✅ **2.2 (G) - Cancelled Subscription Undefined**
+**Clash:** No trigger, scanning effect, or cashback impact defined.  
+**Resolution:** Access ends at period end (standard SaaS). Cancelled status allows scanning through last paid day. New cashback blocked once period ends. In-flight payouts continue (earned-rights model).  
+**Status:** RESOLVED ✓
 
 ---
 
-### ⚠️ **2.4 (G) - Archived Account Reactivation**
+### ✅ **2.4 (G) - Archived Account Reactivation**
 **Clash:** No rule for Archived → Active for either User or Partner.  
-**Resolution:** Partner doc (§1 "Архивиран" stage) says "Исторически запис без активна оперативна роля" — implies no reactivation path. User doc mentions Archived but no reactivation.  
-**Status:** STILL OPEN — must define: trigger (admin-only?), credential path (reset password?), partner-downstream effects (reactivate QR?)
+**Resolution:** Users: self-reactivate via password reset link + new subscription purchase; historical data preserved. Partners: admin action only; new onboarding review triggered; QR codes not auto-reactivated — admin must explicitly reactivate each one.  
+**Status:** RESOLVED ✓
 
 ---
 
-### ⚠️ **2.6 (G) - Admin Account Status Values Undefined**
+### ✅ **2.6 (G) - Admin Account Status Values Undefined**
 **Clash:** No enum for admin account status.  
-**Resolution:** None of the three modules reference admin account statuses. Only admin doc exists for this layer.  
-**Status:** STILL OPEN — enumerate: Active, Inactive, Suspended? (parallel to user/partner?)
+**Resolution:** Active / Inactive / Archived — mirrors User and Partner model. Inactive = login allowed, limited operational rights. Archived = no login.  
+**Status:** RESOLVED ✓
 
 ---
 
-### ⚠️ **2.7 (G) - User Registration Flow Never Described**
+### ✅ **2.7 (G) - User Registration Flow Never Described**
 **Clash:** User lifecycle between sign-up and first scan undefined.  
-**Resolution:** User doc (§1 "Избор на план" → "Плащане" → "Създаване на профил" → "Активиране") describes the flow!  
-**Full lifecycle now clear:**
-1. Plan selection (site)
-2. Payment (Paysera/Stripe)
-3. Profile creation (post-payment form)
-4. 24-hour test period begins (§1, row 4)
-5. Account becomes operational after test period
-
-**Status:** RESOLVED ✓ (full flow now documented)
+**Resolution:** User doc (§1) describes the full flow: Plan selection → Payment → Profile creation → 24-hour test period → Active.  
+**Status:** RESOLVED ✓ (full flow documented)
 
 ---
 
-### ⚠️ **4.3 (G) - Subscription-Status × Payout-Allowed Mapping**
+### ✅ **4.3 (G) - Subscription-Status × Payout-Allowed Mapping**
 **Clash:** Which subscription statuses permit payout?  
-**Resolution:** Admin doc prose states "Active subscription allows payout; recently-Cancelled within paid period also eligible." User doc does NOT define this matrix.  
-**Status:** PARTIALLY RESOLVED (Admin doc gives rule; formal matrix needed)
+**Resolution:** Earned-rights model. New payouts: Active and Cancelled-within-paid-period only. Cancelled-post-period, Failed Payment, and Expired block new payouts. In-flight payouts always continue regardless of status change.  
+**Status:** RESOLVED ✓
 
 ---
 
-### ⚠️ **5.4 (G) - Limits & Rules Table Disconnected from Risk Model**
+### ✅ **5.4 (G) - Limits & Rules Table Disconnected from Risk Model**
 **Clash:** TABLE 29 (limits) has no link to risk-level computation; no defaults.  
-**Resolution:** User and Partner docs make NO reference to limits. Admin doc (§7.4 TABLE 29) provides the only source.  
-**Status:** STILL OPEN — must define: defaults at install, WHO changes limits, whether breach feeds into risk computation
+**Resolution:** Engineering sets conservative defaults; product owner signs off as part of the go-live checklist. Risk Review role can adjust limits within predefined bounds; only Super Admin can exceed bounds.  
+**Status:** RESOLVED ✓
 
 ---
 
-### ⚠️ **7.1 (C) - Plus-Addressing Scope Ambiguous Across 4 Places**
+### ✅ **7.1 (C) - Plus-Addressing Scope Ambiguous Across 4 Places**
 **Clash:** §14 treats plus-addressing as shipped; TABLE 42/43 treat as conditional; TABLE 36 omits it.  
-**Resolution:** All three modules (Admin, Partner, User) focus on inbound/outbound request flow. None clarify plus-addressing scope for v1.2.  
-**Status:** STILL OPEN — decision needed: implement plus-addressing for v1.2 or defer?
+**Resolution:** Plus-addressing deferred to v1.3. v1.2 uses X-BoomCard-Request-ID header + [#XXXX] subject pattern only. No email-server changes required for v1.2.  
+**Status:** RESOLVED ✓
 
 ---
 
-### ⚠️ **7.2 (G) - Owner & Assignee Assignment Undefined for Most Channels**
-**Clash:** REQUEST TABLE 41 lists both fields but only forms specify owner.  
-**Resolution:** User doc (§8.5 "Помощ") confirms users can submit help forms. Partner doc (§8.5) confirms partner help forms. Admin doc (§11.1 TABLE 41) is the specification.  
-**Missing:** Assignee rules for ANY channel (who decides which admin owns a request?).
-
-**Status:** STILL OPEN — define assignee logic (auto-route by type? manual queue?)
+### ✅ **7.2 (G) - Owner & Assignee Assignment Undefined for Most Channels**
+**Clash:** No assignee rules defined for incoming requests.  
+**Resolution:** Fully manual assignment. All incoming requests go to shared "Unassigned" queue visible to all admins. Any admin can claim. Super Admin can reassign.  
+**Status:** RESOLVED ✓
 
 ---
 
-### ⚠️ **13.3 (G) - Dual-Approval Protocol for Super-Admin Creation Undefined**
+### ✅ **13.3 (G) - Dual-Approval Protocol for Super-Admin Creation Undefined**
 **Clash:** "Double approval" (двойно одобрение) required but no protocol.  
-**Resolution:** None of the three modules define the protocol (quorum, identity of second approver, expiry, revocation).  
-**Status:** STILL OPEN — must define: identity rules, voting (2-of-N vs exact 2?), expiry, revocation
+**Resolution:** 2-of-N protocol: any existing Super Admin can initiate; any other existing Super Admin can approve; 72-hour expiry; initiator can cancel before approval. Bootstrap exception: if only one Super Admin exists, single approval suffices for the first new Super Admin.  
+**Status:** RESOLVED ✓
 
 ---
 
@@ -291,32 +284,16 @@ Partner doc (§1–4) consistently uses "заявка" for Partner Applications.
 
 | Category | Count | Status |
 |----------|-------|--------|
-| **Fully Resolved** | 24 | ✅ Clash eliminated by cross-module clarification |
-| **Partially Resolved** | 5 | ⚠️ Clash clarified; implementation detail needed |
-| **Unresolved** | 14 | ❌ Requires decision or additional definition |
-| **Not in Scope** | 22 | 🔵 Implementation-level; not spec-level clashes |
+| **Fully Resolved** | 43 | ✅ All 24 original + 14 open gaps + 5 partial items now resolved |
+| **Unresolved** | 0 | All gaps decided by product owner |
+| **Not in Scope** | 22 | Implementation-level; not spec-level clashes |
 | **TOTAL** | 65 | — |
 
 ---
 
-## Recommended Next Steps
+## Next Steps
 
-1. **Tier 1 (Blocking Implementation)** — Resolve within 2 days:
-   - 2.1/2.2: Complete subscription status table + transitions
-   - 4.3: Write subscription×payout matrix
-   - 5.4: Specify limits defaults and change authority
-   - 7.1: Decide plus-addressing scope for v1.2
-   - 13.3: Write dual-approval protocol
-
-2. **Tier 2 (High Priority)** — Resolve within 1 week:
-   - 2.4: Define archived account reactivation (both user + partner)
-   - 2.6: Enumerate admin account statuses
-   - 7.2: Define assignee routing logic
-   - 5.1: Write risk-signal → risk-level combining function (matrix)
-
-3. **Tier 3 (Polish)** — Resolve in parallel with development:
-   - 12.1: BGN/EUR transition (defer to post-launch if v1.2 BGN-only)
-   - 11.4: Admin password reset rate-limit threshold
+All 14 open gaps are resolved. Implementation can proceed using the unified specification as the single source of truth. The go-live checklist must include product owner sign-off on the engineering-proposed anti-fraud limits defaults before launch.
 
 ---
 
@@ -335,6 +312,6 @@ Partner doc (§1–4) consistently uses "заявка" for Partner Applications.
 
 ## Conclusion
 
-The three-module cross-reference **reduced open clashes from 65 to 14** (78% resolved). The remaining 14 are genuine gaps requiring product/technical decisions, not conflicts between documents. The modules are now **logically consistent** as a system specification, though several implementation details remain to be decided.
+All 65 clashes and gaps are resolved. The three-module cross-reference originally reduced open clashes from 65 to 14 (78% resolved). The product owner has since decided all 14 remaining gaps, which are now integrated into the unified specification. The modules are fully logically consistent.
 
-**Recommendation:** Proceed with implementation using the resolved clash set as the authoritative reference. Flag the 14 unresolved items as decision points in the implementation sprint.
+**Status:** Implementation can proceed. The unified specification (05-consolidated-unified-spec.md) is the single source of truth.

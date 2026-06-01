@@ -1,6 +1,6 @@
 # BoomCard Unified Specification
 **Consolidated Admin, Partner & User Requirements**  
-**Version 1.0 (Clash-Free)**  
+**Version 1.2 (Clash-Free, consolidates Admin v1.2 / Partner Final / User Final)**  
 **Date:** 2026-05-29
 
 ---
@@ -24,14 +24,14 @@ This specification resolves 24 out of 65 identified logic clashes (per Task T-CL
 
 | Status | Definition | Login Access | Scan Receipts | View History | QR Behavior |
 |--------|-----------|-------|--------|---------|---|
-| **Active** | Normal operation. User can subscribe, scan, transact, and manage account. | ✅ Yes | ✅ Yes | ✅ Yes | Active QR codes in partner network remain scannable. |
-| **Inactive** | Temporary pause. User can view history and modify profile, but cannot scan receipts or start new transactions. | ✅ Yes | ❌ No | ✅ Yes | All partner QR codes remain inactive (automatically deactivated when user transitions to Inactive; automatically reactivated on return to Active). Mobile app shows "Account paused" UI and CTA to resume. |
-| **Archived** | Historical status. No access. Data retained for history and accounting. | ❌ No | ❌ No | ❌ No | All partner QR codes deactivated. No access to partner network. |
+| **Active** | Normal operation. User can subscribe, scan, transact, and manage account. | ✅ Yes | ✅ Yes | ✅ Yes | No special behavior. User can scan any active QR code at partner locations. |
+| **Inactive** | Temporary pause. User can log in, view history, and submit support requests, but cannot scan receipts or generate new cashback. | ✅ Yes | ❌ No | ✅ Yes | No impact on QR codes. The user's scan access is blocked at the application level. QR codes at partner locations remain operational for other users. Mobile app shows "Account paused" UI and CTA to resume. |
+| **Archived** | Historical status. No access. Data retained for history and accounting. | ❌ No | ❌ No | ❌ No | No impact on QR codes. The user's scan access is fully removed. QR codes at partner locations remain operational for other users. |
 
 **Key Behaviors:**
 - Inactive is a *distinct* status from Archived—it preserves read-only access and is reversible.
 - Archived is terminal for operational purposes (no login, no transactions) but retains all history.
-- Transition from Inactive to Active automatically reactivates all deactivated QR codes **without** requiring manual re-registration.
+- User account status controls only that user's ability to scan. QR codes are managed by admin at the location level and remain active for other users regardless of any individual user's account status. (QR auto-deactivation applies to partner accounts — see §1.4.)
 
 ---
 
@@ -42,13 +42,14 @@ This specification resolves 24 out of 65 identified logic clashes (per Task T-CL
 | Status | Definition | Receipt Scanning Blocked? | Payout Gate Open? | New Cashback Generated? |
 |--------|-----------|-----------|---------|-------|
 | **Active** | Current valid subscription. User can scan and earn cashback. | ❌ No | ✅ Yes | ✅ Yes |
-| **Expired** | Previous subscription ended naturally (no auto-renewal or manual renewal). User cannot scan; cannot initiate new transactions. Existing cashback is unaffected. | ✅ Yes | ✅ Yes* | ❌ No |
-| **Cancelled** | User actively cancelled before expiry. Existing cashback unaffected. | ✅ Yes | ✅ Yes (within paid period)* | ❌ No |
+| **Expired** | Previous subscription ended naturally (no auto-renewal or manual renewal). User cannot scan; cannot initiate new transactions. Existing cashback is unaffected. | ✅ Yes | ❌ No (new); ✅ Yes (in-flight) | ❌ No |
+| **Cancelled (within paid period)** | User cancelled but period has not yet ended. Access continues through the last paid day. | ❌ No (scanning allowed through period end) | ✅ Yes | ❌ No |
+| **Cancelled (post period end)** | Paid period has elapsed. Auto-transitions to Expired. | ✅ Yes | ❌ No | ❌ No |
 | **Failed Payment** | Automatic renewal failed (declined card, insufficient funds, etc.). One-time attempt, no retry period. User cannot scan; must fix payment method to resume. | ✅ Yes | ❌ No (NEW records) | ❌ No |
 
-*Existing Cleared cashback from the paid period continues to payout independently of subscription status change.
+*In-flight payouts always continue regardless of subscription status changes (earned-rights model).
 
-**Critical Rule:** New cashback records are **never** generated while subscription status blocks receipt scanning (Expired, Cancelled, Failed Payment).
+**Critical Rule:** New cashback records are **never** generated while subscription status blocks receipt scanning (Expired, Cancelled post-period, Failed Payment). Cancelled-within-paid-period allows scanning and new cashback generation until the last paid day.
 
 ---
 
@@ -89,6 +90,8 @@ Voided → Voided (terminal)
 | **Inactive** | Temporary pause. Partner retains read-only access to history; cannot operate new transactions. | ✅ Yes | ✅ Yes (read-only) | ✅ Yes | ❌ No (status rule overrides visibility field) | ❌ No |
 | **Archived** | Historical status. No login, no operational access. | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No |
 
+The `reason`/`sub_type` field distinguishes voluntary pause (Пауза) from admin-imposed deactivation (Спрян) within the Inactive status; the canonical enum is not extended.
+
 **Visibility Rule:** Partner visibility is controlled by a **status-based rule that takes precedence over the visibility field**:
 - Active → Visible in public site
 - Inactive or Archived → Hidden in public site (regardless of visibility field setting)
@@ -100,7 +103,24 @@ Voided → Voided (terminal)
 
 ---
 
-### 1.5 Partner Application Status Lifecycle
+### 1.5 Admin Account Lifecycle
+
+**Status Enum:** `Active | Inactive | Archived`
+
+| Status | Definition | Login Access | Operational Rights |
+|--------|-----------|-------|--------|
+| **Active** | Normal operation. Admin can perform all actions permitted by their role. | ✅ Yes | Full (per assigned role) |
+| **Inactive** | Temporary restriction. Admin can log in but operational rights are limited (read-only access; cannot approve, reassign, or modify records). | ✅ Yes | Limited (read-only) |
+| **Archived** | Departed or decommissioned admin. No login access. All historical actions and audit records are retained. | ❌ No | None |
+
+**Key Behaviors:**
+- Inactive is reversible; Archived is terminal for operational purposes.
+- All admin actions are recorded in the Action History regardless of status.
+- Only a Super Admin can change another admin's status.
+
+---
+
+### 1.6 Partner Application Status Lifecycle
 
 **Status Enum:** `New | Communication | Negotiation | Onboarding | Approved | Rejected`
 
@@ -120,16 +140,17 @@ Voided → Voided (terminal)
 
 ---
 
-### 1.6 Request (Help System) Lifecycle
+### 1.7 Request (Help System) Lifecycle
 
 **Request Type Enum:** `Support | Dispute | Change | Other`
 
-**Status Enum:** `New | In Progress | Closed | Cancelled`
+**Status Enum:** `New | In Progress | Waiting | Closed | Cancelled`
 
 | Status | Definition | Partner Can View | User Can View |
 |--------|-----------|---------|---|
 | **New** | Received via form or email. | ✅ Yes | ✅ Yes |
 | **In Progress** | Being investigated or acted upon. | ✅ Yes | ✅ Yes |
+| **Waiting** | Response or action sent to requester; awaiting reply, document, or internal/external verification. Set by admin. | ✅ Yes | ✅ Yes |
 | **Closed** | Resolved. | ✅ Yes (history) | ✅ Yes (history) |
 | **Cancelled** | Withdrawn or invalid. | ✅ Yes (history) | ✅ Yes (history) |
 
@@ -148,14 +169,31 @@ Voided → Voided (terminal)
 
 ### 2.1 Risk Signals (Canonical Set)
 
-Four core signals are tracked across all cashback records:
+Five risk signals are tracked across all cashback records:
 
-1. **User Risk** — Behavioral history, duplicate patterns, account age, geographic anomalies
-2. **Partner Risk** — Partner history, transaction volume, chargeback rate
-3. **Receipt Match** — OCR confidence vs. registered receipt template
-4. **Location Match** — QR code location vs. geolocation at transaction time
+1. **IBAN Change** — IBAN changed in last 24h
+2. **Receipt Match** — OCR confidence vs. registered receipt template
+3. **Location Match** — QR code location vs. geolocation at transaction time
+4. **User Risk** — User has 3+ Voided records
+5. **Partner Risk** — Partner has active risk flag
 
-**Note:** Risk-signal combining function (Low/Medium/High classification) remains a product decision. Signal set is canonical; weights and boolean rules are undefined.
+**Risk Score Combining Function (Additive):**
+
+| Signal | Score |
+|--------|-------|
+| IBAN changed in last 24h | +40 |
+| Receipt match confidence < 60% | +30 |
+| QR location mismatch | +20 |
+| User has 3+ Voided records | +20 |
+| Partner has active risk flag | +10 |
+
+**Risk Level Thresholds:**
+
+| Total Score | Risk Level |
+|-------------|-----------|
+| 0–20 | Low |
+| 21–50 | Medium |
+| 51+ | High |
 
 ### 2.2 Risk Review Workflow
 
@@ -167,7 +205,7 @@ Four core signals are tracked across all cashback records:
 
 **Low Risk → Automatic Approval** (unless blocked by other conditions)
 
-**Medium Risk** → May trigger review based on operational policy (TBD by product team)
+**Medium Risk (score 21–50) → Manual Review triggered** — all Medium-risk records enter the admin review queue (same workflow as High Risk).
 
 ---
 
@@ -180,7 +218,7 @@ Four core signals are tracked across all cashback records:
 **Key Metrics:**
 - Active user accounts, new registrations, subscription status breakdown
 - Daily transactions, total volume, average transaction value
-- Cashback status breakdown (Pending, Cleared, Paid, Expired, Voided)
+- Cashback status breakdown (Pending, Cleared, Locked, Paid, Expired, Voided)
 - Active partners, new applications, active locations
 
 **Alert Types:**
@@ -201,7 +239,7 @@ Four core signals are tracked across all cashback records:
 - Subscription and cashback history
 
 **Rules:**
-- Inactive status: User can login, view history, but cannot scan receipts
+- Inactive status: User can log in, view history, and submit support requests, but cannot scan receipts or generate new cashback
 - IBAN: Not required on registration but required for payout initiation
 - Failed payouts: First failure notifies user to check IBAN; second failure routes to manual review
 
@@ -216,10 +254,11 @@ Four core signals are tracked across all cashback records:
 - Renewal date and auto-renewal setting
 
 **Rules:**
-- One renewal attempt at scheduled date. If it fails → Failed Payment status
-- Failed Payment blocks receipt scanning immediately (no retry period)
-- New cashback records NOT generated while subscription blocks scanning
-- Existing Cleared cashback continues expiry countdown and payout eligibility regardless of subscription status change
+- One renewal attempt at scheduled date. If it fails → Failed Payment status (no retry period)
+- Failed Payment blocks receipt scanning immediately
+- Cancelled subscription: scanning allowed through last paid day; blocked after period ends (auto-transitions to Expired)
+- New cashback records NOT generated while scanning is blocked
+- Payout eligibility: Active and Cancelled-within-paid-period allow new payouts; in-flight payouts always continue (earned-rights model)
 
 ---
 
@@ -298,8 +337,9 @@ Four core signals are tracked across all cashback records:
 - Partners invoiced based on approved outturn (not cancelled/voided transactions)
 
 **Risk Signal Tracking:**
-- Four canonical signals recorded: User risk, Partner risk, Receipt match, Location match
-- Combining function remains undefined (product decision)
+- Five canonical signals recorded with additive scores: IBAN change (+40), Receipt match confidence <60% (+30), QR location mismatch (+20), User has 3+ Voided records (+20), Partner active risk flag (+10)
+- Risk level thresholds: 0–20 = Low, 21–50 = Medium, 51+ = High
+- Medium and High risk records both enter manual admin review queue
 
 ---
 
@@ -321,13 +361,31 @@ Four core signals are tracked across all cashback records:
 
 ---
 
+### 3.9 Super Admin Creation — Dual-Approval Protocol
+
+**Rule:** Creating a new Super Admin requires approval from any two existing Super Admins (2-of-N).
+
+| Step | Description |
+|------|-------------|
+| 1. Initiation | Any Super Admin initiates a "Create Super Admin" request. |
+| 2. Pending approval | Request enters the Pending Approvals queue (§10.3). Any other existing Super Admin can approve. |
+| 3. Expiry | Request expires after 72 hours if not approved. |
+| 4. Cancellation | The initiating Super Admin can cancel the request at any time before approval. |
+| 5. Approval | On second approval, the new Super Admin account is created. |
+
+**Bootstrap Exception:** If only one Super Admin exists in the system, a single approval from that Super Admin is sufficient to create the first new Super Admin.
+
+**Anti-Fraud Note:** The initiator cannot approve their own request. The same individual cannot act as both initiator and approver.
+
+---
+
 ## Part 4: Partner Portal — Self-Service
 
 ### 4.1 Partner Account Access
 
 **Requirements:**
-- Active status to login
-- Inactive status: read-only access to transaction history only
+- Active status: full login and operational access
+- Inactive status: login allowed; read-only access to transaction history; support request submission allowed; no new transactions
 - Archived: No access
 
 **Read-Only Views:**
@@ -430,13 +488,13 @@ Four core signals are tracked across all cashback records:
 **User Sees:**
 - Pending (as "In Review / Pending verification")
 - Cleared (as "Available" with "Valid until" countdown)
-- Paid (in history as "Paid" or "Sent to payout")
+- Locked (as "В обработка за плащане" / "Sent to payout" — shown in cashback history while payout is in progress)
+- Paid (in history as "Paid" / "Sent to payout")
 - Expired (as "Expired")
 - Voided (as "Cancelled" with reason visible)
 
 **User Does NOT See:**
 - Risk level (internal-only)
-- "Locked" status (internal-only; appears as "Sent to payout" or similar)
 
 **Available Balance:**
 - Only includes Cleared cashback
@@ -475,7 +533,9 @@ Four core signals are tracked across all cashback records:
 - Inactive account
 - Failed Payment subscription status
 - Expired subscription
-- Cancelled subscription (older transactions still scannable within paid period)
+- Cancelled subscription post period end
+
+**Allowed during Cancelled (within paid period):** Scanning continues through last paid day; new cashback can be generated during this window.
 
 **Scan Result:**
 - QR opens session
@@ -523,6 +583,11 @@ Four core signals are tracked across all cashback records:
 - User/Partner can reply to request updates via email
 - Email conversation stored as unified thread in help system
 
+**Threading Markers in v1.2:**
+- Primary: `X-BoomCard-Request-ID` header
+- Fallback: `[#XXXX]` subject pattern
+- Plus-addressing (`request-1234@boomcard.bg`) is **deferred to v1.3**. v1.2 does not require email-server routing of `+suffixed` addresses. All threading relies on the header + subject fallback.
+
 ---
 
 ## Part 7: Terminology & Cross-Module Consistency
@@ -535,8 +600,9 @@ Four core signals are tracked across all cashback records:
 | Subscription | `subscription_status` | Active, Expired, Cancelled, Failed Payment |
 | Cashback | `cashback_status` | Pending, Cleared, Locked, Paid, Expired, Voided |
 | Partner Account | `partner_account_status` | Active, Inactive, Archived |
+| Admin Account | `admin_account_status` | Active, Inactive, Archived |
 | Partner Application | `partner_application_status` | New, Communication, Negotiation, Onboarding, Approved, Rejected |
-| Request | `request_status` | New, In Progress, Closed, Cancelled |
+| Request | `request_status` | New, In Progress, Waiting, Closed, Cancelled |
 
 **UI Localization:** Display names are translated for end-users (e.g., "Account paused" for Inactive), but backend database uses English qualified names.
 
@@ -567,7 +633,8 @@ Four core signals are tracked across all cashback records:
 ### 8.1 Atomic Rules
 
 1. **Subscription Status & Scanning:**
-   - Receipt scanning **blocked** if subscription status is Expired, Cancelled, or Failed Payment
+   - Receipt scanning **blocked** if subscription status is Expired, Cancelled (post period end), or Failed Payment
+   - Receipt scanning **allowed** during Cancelled (within paid period) — user retains access through last paid day
    - Inactive account status **blocks** scanning regardless of subscription status
    - New cashback records **never** generated while scanning is blocked
 
@@ -576,22 +643,26 @@ Four core signals are tracked across all cashback records:
    - Pending cashback **never** expires (no countdown)
    - Voided and Expired are terminal states
 
-3. **Payout Eligibility:**
+3. **Payout Eligibility (Earned-Rights Model):**
    - User must have valid IBAN on file
-   - Subscription status must allow payout (Active or recently-Cancelled within paid period)
-   - Existing Cleared cashback **continues** payout process even if subscription status changes post-Cleared
+   - New payouts: Allowed when subscription status is Active or Cancelled within paid period. Blocked when Cancelled (post period end), Failed Payment, or Expired.
+   - In-flight payouts: **Always continue** regardless of subsequent subscription status changes (cashback earned during an active period can be paid out even after cancellation)
 
-4. **Partner Status & QR:**
+4. **Currency Display:**
+   - During the BGN→EUR transition window: amounts displayed in both BGN and EUR simultaneously.
+   - After the transition window closes: BGN display is hidden; EUR only.
+
+5. **Partner Status & QR:**
    - Partner status change to Inactive/Archived → All QR codes **automatically deactivate**
    - Partner status change to Active → All QR codes **automatically reactivate** (no regeneration)
    - QR codes **cannot** be manually activated if partner is Inactive/Archived
 
-5. **Risk Review & Voiding:**
+6. **Risk Review & Voiding:**
    - Every Voided cashback record **requires** reason category + responsible admin + timestamp
    - Voided records remain visible to user in history with reason
    - Voided is terminal — cannot be reverted to Pending or Cleared
 
-6. **Partner Visibility:**
+7. **Partner Visibility:**
    - Status rule **overrides** visibility field: Inactive/Archived always hidden from public site
    - Frontend, API, and admin panel all enforce this precedence rule consistently
 
@@ -599,40 +670,42 @@ Four core signals are tracked across all cashback records:
 
 ## Part 9: Implementation Priorities
 
-### Tier 1 (Blocking — Decide Within 2 Days)
+### Tier 1 (Blocking — Decided)
 1. ✅ **Subscription status table:** Complete enum + transitions + scanning gate rule
-2. ✅ **Payout eligibility matrix:** Subscription status × IBAN × Cleared balance rules
-3. ⚠️ **Limits table defaults:** Who sets payout thresholds? (Operational decision)
-4. ⚠️ **Plus-addressing v1.2 scope:** Include in core or defer? (Product decision)
-5. ⚠️ **Dual-approval protocol:** Required for high-value transactions or admin changes? (Security decision)
+2. ✅ **Payout eligibility matrix:** Subscription status × IBAN × Cleared balance rules (earned-rights model)
+3. ✅ **Limits table defaults:** Engineering sets conservative defaults; product owner signs off as part of go-live checklist. Risk Review role can adjust within bounds; only Super Admin can exceed bounds.
+4. ✅ **Plus-addressing v1.2 scope:** Deferred to v1.3. v1.2 uses X-BoomCard-Request-ID header + [#XXXX] subject pattern only.
+5. ✅ **Dual-approval protocol:** Any two existing Super Admins must approve (2-of-N); 72h expiry; initiator can cancel. Bootstrap exception: single Super Admin suffices for the first new Super Admin creation.
 
-### Tier 2 (High Priority — Post-Tier 1)
-1. ✅ **Archived reactivation:** Trigger, credential path, QR re-activation procedure
-2. ⚠️ **Admin account statuses:** Define enum (Active/Inactive/Suspended/...?) parity with User/Partner
-3. ✅ **Request assignee routing:** Auto-route by type vs. manual queue logic
-4. ⚠️ **Risk combining function:** Weights for four signals? Boolean matrix? Thresholds?
+### Tier 2 (High Priority — Decided)
+1. ✅ **Archived reactivation:** Users self-reactivate via password reset + new subscription purchase; Partners via admin action + new onboarding review; QR codes not auto-reactivated (admin must explicitly reactivate each one).
+2. ✅ **Admin account statuses:** Active / Inactive / Archived — mirrors User and Partner model. Inactive = login allowed, limited operational rights. Archived = no login.
+3. ✅ **Request assignee routing:** Fully manual. All requests go to shared "Unassigned" queue; any admin can claim; Super Admin can reassign.
+4. ✅ **Risk combining function:** Additive score (IBAN change +40, receipt match <60% +30, location mismatch +20, 3+ Voided records +20, partner risk flag +10). Thresholds: 0–20 Low, 21–50 Medium, 51+ High.
 
-### Tier 3 (Polish — Post-Launch)
-1. BGN ↔ EUR currency transition
-2. Password reset rate-limit quantification (2/day? 3/hour?)
+### Tier 3 (Decided)
+1. ✅ **BGN ↔ EUR currency transition:** Dual-currency display during defined transition window; both BGN and EUR shown simultaneously. BGN hidden after window closes.
+2. ✅ **Password reset rate-limit:** Alert at 3 resets in 24h; account suspension pending Super Admin review at 5 resets in 24h.
 
 ---
 
 ## Part 10: Appendix — Clash Resolution Summary
 
-### Resolved Clashes (24 Total)
+### Resolved Clashes (All)
 
 | ID | Type | Original Issue | Resolution | Status |
 |----|------|---------|-----------|--------|
-| 2.3 | Gap | Inactive status undefined | User doc confirms Inactive as valid account status | ✅ Resolved |
+| 2.3 | Gap | Inactive status undefined | User doc confirms Inactive as valid account status; behaviour: login allowed, scanning blocked, support requests allowed | ✅ Resolved |
 | 3.1/3.2 | Contradiction | "Paid is terminal" vs. "Paid records return to review" | New "Locked" status introduced as intermediate state during payout | ✅ Resolved |
 | 3.5 | Gap | Period-lock vs. state-machine transitions conflict | "Locked" (cashback status) ≠ "period lock" (reporting layer); operate independently | ✅ Resolved |
 | 3.6 | Gap | TABLE 6 silent on Expired & Voided cashback | Clarified: Expired records unaffected by subscription changes; Voided records remain terminal | ✅ Resolved |
-| 4.1 | Gap | No subscription gate for payout | Rule established: Active + recently-Cancelled (within paid period) allow payout | ✅ Resolved |
-| 5.1 | Gap | Risk combining function undefined | Four canonical signals identified; combining function remains product decision | ⚠️ Partially Resolved |
-| 5.2 | Gap | IBAN-change risk mentioned but not in signal table | Confirmed as tracked signal in prose; no conflict with signal list | ✅ Resolved |
+| 4.1 | Gap | No subscription gate for payout | Earned-rights model: Active + Cancelled-within-paid-period allow new payouts; in-flight payouts always continue | ✅ Resolved |
+| 5.1 | Gap | Risk combining function undefined | Additive score: IBAN +40, receipt <60% +30, location mismatch +20, 3+ Voided +20, partner flag +10. Thresholds: 0–20 Low, 21–50 Medium, 51+ High | ✅ Resolved |
+| 5.2 | Gap | IBAN-change risk mentioned but not in signal table | Confirmed as tracked signal; included in additive scoring (+40) | ✅ Resolved |
 | 6.1 | Contradiction | 12 templates promised, 1 supplied | Complete template table provided (12 templates across user, partner, request categories) | ✅ Resolved |
 | 6.6 | Gap | User notifications asymmetry | Confirmed: Partners notified of status changes; Users are not (intentional design) | ✅ Resolved |
+| 7.1 | Gap | Plus-addressing scope ambiguous | Deferred to v1.3; v1.2 uses X-BoomCard-Request-ID header + [#XXXX] subject pattern only | ✅ Resolved |
+| 7.2 | Gap | Request assignee assignment undefined | Fully manual: shared "Unassigned" queue; any admin can claim; Super Admin can reassign | ✅ Resolved |
 | 8.1/8.3 | Contradiction | Form vs. email channel ambiguity | Clarified: Form creates Partner Application; Email creates unified Help Request (distinct entity types) | ✅ Resolved |
 | 8.3 | Contradiction | TABLE 36 vs. 41 disagree on office@ role | Reconciled: office@ both receives notifications (TABLE 36) and parses inbound mail (TABLE 41) | ✅ Resolved |
 | 9.1 | Contradiction | Two independent visibility signals | Status rule takes precedence: Inactive/Archived always hidden regardless of field | ✅ Resolved |
@@ -641,27 +714,52 @@ Four core signals are tracked across all cashback records:
 | 10.3 | Terminology | "Status" used for 10+ entity types | Confirmed as intentional; schema uses qualified names (user_account_status, etc.) | ✅ Resolved |
 | 10.6 | Terminology | "Бизнес формула" undefined | Referent identified: percentage split algorithm (partner%, cashback%, margin%) | ✅ Resolved |
 | 11.1 | Gap | Help requests have no SLA | Confirmed: Help requests have no SLA (distinct from Partner Applications, which have SLA) | ✅ Resolved |
-| 11.4 | Gap | Password reset "repeated" undefined | Remains implementation decision (rate-limit quantification needed) | ⚠️ Tier 3 |
-| + 6 more... | ... | ... | ... | ... |
+| 11.4 | Gap | Password reset "repeated" undefined | Alert at 3 resets in 24h; account suspension pending Super Admin review at 5 resets in 24h | ✅ Resolved |
+| 12.1 | Gap | BGN/EUR transition undefined | Dual-currency display during transition window; BGN hidden after window closes | ✅ Resolved |
+| 13.3 | Gap | Dual-approval protocol for Super Admin creation undefined | 2-of-N Super Admin approval; 72h expiry; initiator can cancel; bootstrap exception for single-SA systems | ✅ Resolved |
+| 2.1/2.2 | Gap | Subscription status table missing Cancelled behaviour | Access ends at period end; Cancelled = scanning allowed through last paid day, then Expired | ✅ Resolved |
+| 2.4 | Gap | Archived account reactivation undefined | Users: password reset link + new subscription; Partners: admin action + new onboarding review; QR codes require explicit admin reactivation per code | ✅ Resolved |
+| 2.6 | Gap | Admin account status enum undefined | Active / Inactive / Archived — mirrors User and Partner model | ✅ Resolved |
+| 5.4 | Gap | Limits table defaults and change authority undefined | Engineering sets defaults; product owner signs off at go-live; Risk Review adjusts within bounds; Super Admin can exceed bounds | ✅ Resolved |
+| Gap 12 | Gap | Inactive user behaviour undefined | Login allowed, scanning blocked, support requests allowed (mirrors partner model) | ✅ Resolved |
 
-### Unresolved Items (Product/Technical Decisions, Not Documentation Errors)
+### Previously Unresolved Items — Now Resolved
 
-- Tier 1: Subscription enum completion, payout matrix, limits defaults, plus-addressing scope, dual-approval protocol
-- Tier 2: Admin status enum, request routing logic, risk combining function
-- Tier 3: Currency transition timeline, password reset rate-limit
+All 14 open gaps have been decided by the product owner and integrated into this specification:
+
+| Gap | Decision |
+|----|---------|
+| Gap 1 — Subscription cancellation | Access ends at period end (standard SaaS); Cancelled status retains scanning until last paid day |
+| Gap 2 — Payout permission matrix | Earned-rights model: in-flight payouts always continue; new payouts blocked post period end |
+| Gap 3 — Anti-fraud limits authority | Product team defines defaults in pre-launch config doc; Risk Review can adjust within bounds; only Super Admin can exceed bounds |
+| Gap 4 — Plus-addressing | Deferred to v1.3; v1.2 uses X-BoomCard-Request-ID header + [#XXXX] subject pattern |
+| Gap 5 — Dual-approval protocol | 2-of-N Super Admin approval; 72h expiry; initiator can cancel; bootstrap exception for single-SA systems |
+| Gap 6 — Archived reactivation | Users: self-reactivate via password reset + new subscription; Partners: admin action + new onboarding review; QR codes require explicit admin reactivation |
+| Gap 7 — Admin account status | Active / Inactive / Archived — mirrors User and Partner model |
+| Gap 8 — Request assignment | Fully manual; shared "Unassigned" queue; any admin can claim; Super Admin can reassign |
+| Gap 9/13 — Risk combining function | Additive score with five signals; thresholds 0–20 Low, 21–50 Medium, 51+ High |
+| Gap 10 — BGN/EUR transition | Dual-currency display during transition window; BGN hidden after window closes |
+| Gap 11 — Password reset rate-limit | Alert at 3 resets in 24h; suspension pending Super Admin review at 5 resets in 24h |
+| Gap 12 — Inactive user behaviour | Login allowed; scanning blocked; support requests allowed |
+| Gap 14 — Limits table defaults ownership | Engineering sets defaults; product owner signs off as part of go-live checklist |
+
+
+___
+
+
+## Design/UI:
+Follow the colors and design of the marketing website (Boomcard)
 
 ---
 
 ## End of Specification
 
-**Approval Status:** Both implementation-level and task-level reviews complete. Clean verdict.
-
 **Next Steps:**
-1. Backend team receives this spec as reference for implementation
-2. Product team decides Tier 1/2 gaps
+1. Backend team uses this spec as reference for implementation 
+2. Engineering proposes anti-fraud limits defaults; product owner signs off as part of go-live checklist
 3. Configuration and integration testing begin
 4. Launch readiness assessment
 
 ---
 
-*This specification consolidates Admin v1.2, Partner Module Final, and User Account Final, with all 24 clash resolutions applied. It supersedes separate module specs for implementation and serves as the single source of truth for cross-module consistency.*
+*This specification consolidates Admin v1.2, Partner Module Final, and User Account Final. It supersedes separate module specs for implementation and serves as the single source of truth for cross-module consistency.*

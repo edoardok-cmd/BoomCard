@@ -44,7 +44,7 @@ Dropdown менюто трябва да бъде кратко и да съдър
 | :---- | :---- | :---- |
 | Абонати | Активни User accounts, нови User accounts, accounts със subscription status, който не позволява сканиране на бележки | Бърз поглед върху потребителската база. |
 | Транзакции | Брой транзакции днес, общ оборот, средна стойност | Контрол върху реалната употреба на системата. |
-| Кешбек | Начислен, Cleared, Pending и Expired cashback | Контрол върху бъдещи задължения към абонати. |
+| Кешбек | Pending, Cleared, Locked, Paid, Expired, Voided cashback | Контрол върху бъдещи задължения към абонати. |
 | Партньори | Активни партньори, нови заявки, активни локации | Поглед върху партньорската мрежа. |
 | Финанси | Плащания за изпълнение, очаквани суми от партньори, марджин | Бърз финансов контрол. |
 
@@ -122,8 +122,9 @@ Cashback се управлява record-based, защото всяка сума 
 | Статус | Описание | Видимост за потребителя |
 | :---- | :---- | :---- |
 | Pending | Очаква automatic approval или manual review решение. | Да – като „Чакащ“ / „В процес на проверка“. |
-| Cleared | Одобрен и валиден cashback record. 60-дневният rolling срок започва от датата на Cleared. | Да – като „Наличен“ с „валиден до“. |
-| Paid | Payout process е стартиран. Това означава, че cashback е изпратен за изплащане, а не че банковото получаване е финално потвърдено. | Да – като „Изпратен за изплащане“ / „Изплатен“ в историята. |
+| Cleared | Одобрен и валиден cashback record. 60-дневният rolling срок започва от датата на Cleared. | Да – като „Наличен” с „валиден до”. |
+| Locked | В процес на payout обработка. Междинен статус. Не може да бъде сменен ръчно. Видим за admin (само информационно). | Да – видим за потребителя като „Изпратен за плащане / в обработка" („В обработка за плащане"). |
+| Paid | Payout process е стартиран. Това означава, че cashback е изпратен за изплащане, а не че банковото получаване е финално потвърдено. | Да – като „Изпратен за изплащане” / „Изплатен” в историята. |
 | Expired | Изтекъл Cleared cashback record, който не е преминал към Paid в рамките на валидността. | Да – като „Изтекъл“. |
 | Voided | Анулиран cashback record с причина. | Да – като „Анулиран“ с visible причина. |
 | Pending cashback при risk reviewPending cashback за транзакция, попаднала в risk review, остава видим за потребителя до финализиране на проверката. Ако транзакцията бъде одобрена, Pending record преминава към Cleared и 60-дневната валидност започва от датата на Cleared. Ако транзакцията бъде отхвърлена, Pending record преминава към Voided и остава видим в историята със статус „Анулиран“ и причина. Voided е terminal status. Решението се записва в history с отговорник, timestamp, reason category и internal note при нужда. |  |  |
@@ -283,7 +284,7 @@ User получава право на payout след достигане на м
 | Risk level | Поведение |
 | :---- | :---- |
 | Low | Автоматично одобрение, ако няма други blocking условия. |
-| Medium | Може да изисква review според правилата и натрупания operational опит. |
+| Medium | Задължителен manual review (same queue as High). |
 | High | Задължителен manual review. Няма automatic rejection само заради high risk. |
 | Решение по risk review и ефект върху cashbackВсеки cashback record в risk review има свързан Pending status, видим за User. Risk level е internal-only и не се показва на User. При решение: одобряване \-\> Pending \-\> Cleared, като 60-дневният rolling срок започва от датата на Cleared. Отхвърляне \-\> Pending \-\> Voided, като record остава видим за User със статус „Анулиран“ и причина. Всяко Voided решение изисква reason category и при нужда internal note. Решението се пази в history. |  |
 
@@ -291,12 +292,23 @@ User получава право на payout след достигане на м
 
 Следи се duplicate detection, несъответствие между QR сесия и бележка, много транзакции за кратко време, странни IBAN промени и подозрително поведение. Risk level е internal-only metadata.
 
-| Елемент | Обяснение |
-| :---- | :---- |
-| User risk | Риск на абонат. |
-| Partner risk | Риск при партньор. |
-| Receipt match | Съвпадение с шаблон. |
-| Location match | Съвпадение с QR локация. |
+**Risk Signal Additive Score:**
+
+| Signal | Score |
+|--------|-------|
+| IBAN changed in last 24h | +40 |
+| Receipt match confidence < 60% | +30 |
+| QR location mismatch | +20 |
+| User has 3+ Voided records | +20 |
+| Partner has active risk flag | +10 |
+
+**Risk Level Thresholds:**
+
+| Total Score | Risk Level | Action |
+|-------------|-----------|--------|
+| 0–20 | Low | Automatic approval |
+| 21–50 | Medium | Manual review required |
+| 51+ | High | Manual review required (mandatory) |
 
 ## **7.3 Спорове**
 
@@ -308,6 +320,7 @@ User получава право на payout след достигане на м
 | In Progress | В процес на преглед. |
 | Waiting | Очаква отговор, документ или вътрешна/външна проверка. |
 | Closed | Приключена заявка за спор. При нов проблем се създава нов request. |
+| Cancelled | Оттеглена или невалидна заявка за спор. При нов проблем се създава нов request. |
 
 ## **7.4 Лимити и правила**
 
@@ -319,6 +332,17 @@ User получава право на payout след достигане на м
 | Сума | Минимална или максимална стойност. |
 | Auto approve | Правила за автоматично одобрение. |
 | Manual override | Ръчна намеса от супер админ. |
+
+**Defaults and Change Authority:**
+- Engineering задава консервативни default стойности преди пускане в production.
+- Product owner одобрява тези стойности като част от go-live checklist преди launch.
+- Risk Review role може да коригира лимитите в рамките на предварително дефинирани граници.
+- Само Super Admin може да зададе стойности извън тези граници.
+
+**Request Assignment (Support Requests):**
+- Всички входящи заявки влизат в споделена "Unassigned" опашка, видима за всички администратори.
+- Всеки администратор може да поеме заявка.
+- Super Admin може да преназначи вече поета заявка.
 
 # **8\. Маркетинг**
 
@@ -417,7 +441,7 @@ Rolling валидност от 60 дни за всеки Cleared cashback recor
 | Email verification (user registration / email change) | 24 часа | Self-service от потребителя през Профил \> Смяна на имейл. | Новият линк автоматично инвалидира предходния. |
 | Password reset (user) | 24 часа | Self-service от login екрана. | Новият линк автоматично инвалидира предходния. |
 | Password reset (партньор) | 24 часа | Self-service от login екрана. | Новият линк автоматично инвалидира предходния. |
-| Password reset (админ) | 1 час | Self-service. При повтарящи се reset-и – admin alert. | Новият линк автоматично инвалидира предходния. |
+| Password reset (админ) | 1 час | Self-service. При 3 reset-а в 24 часа — admin alert. При 5 reset-а в 24 часа — account suspension pending Super Admin review. | Новият линк автоматично инвалидира предходния. |
 
 ### **Език и локализация**
 
@@ -426,7 +450,7 @@ Rolling валидност от 60 дни за всеки Cleared cashback recor
 
 | Параметър | Стойност |
 | :---- | :---- |
-| Валута | BGN (с поддръжка за EUR след въвеждане в България). |
+| Валута | По време на дефиниран BGN→EUR преходен период: сумите се показват едновременно в BGN и EUR. След края на преходния период: BGN се скрива; показва се само EUR. (Вижте Unified Spec §8.1 т.4 и Gap 10.) |
 | Timezone | Europe/Sofia. |
 | Date format | DD.MM.YYYY. |
 | Number format | 1 234,56 (запетая като десетичен разделител). |
@@ -437,9 +461,31 @@ Rolling валидност от 60 дни за всеки Cleared cashback recor
 
 Списък с Admin accounts, status, role label, последно влизане и 2FA.
 
+**Admin Account Status Enum:** `Active | Inactive | Archived`
+
+| Status | Login | Operational Rights |
+|--------|-------|-------------------|
+| Active | Yes | Full (per assigned role) |
+| Inactive | Yes | Limited — read-only; cannot approve, reassign, or modify records |
+| Archived | No | None; all historical actions retained |
+
+Само Super Admin може да сменя статуса на друг Admin account.
+
 ## **10.2 Създай администратор**
 
 Създаване на админ акаунти. Нов супер админ изисква двойно одобрение.
+
+**Dual-Approval Protocol (Super Admin creation):**
+
+1. Всеки Super Admin може да инициира заявка за нов Super Admin.
+2. Заявката влиза в Чакащи одобрения (§10.3). Всеки друг съществуващ Super Admin може да одобри.
+3. Заявката изтича след 72 часа, ако не е одобрена.
+4. Инициаторът може да отмени заявката преди одобрение.
+5. При второ одобрение новият Super Admin account се създава.
+
+**Bootstrap exception:** Ако в системата съществува само един Super Admin, неговото единично одобрение е достатъчно за създаване на първия нов Super Admin.
+
+**Anti-fraud:** Инициаторът не може да одобри собствената си заявка.
 
 ## **10.3 Чакащи одобрения**
 
@@ -483,7 +529,7 @@ Email parser-ът трябва коректно да разпознава нов
 | Request reference number в subject | Email subject line | Numeric-only reference number във формат \[\#1234\] преди оригиналното заглавие. Това е visible marker за получателя и fallback signal за parser-а. |
 | X-BoomCard-Request-ID header | Hidden email header | Технически идентификатор: X-BoomCard-Request-ID: 1234\. Primary signal за parser-а – по-надежден от subject parsing. |
 | Message-ID и In-Reply-To headers | Standard RFC 5322 headers | Стандартните email threading headers. Всеки изходящ имейл получава уникален Message-ID, всеки reply от системата ползва In-Reply-To със стойност на оригиналния Message-ID. |
-| Reply-To адрес | Reply-To header | Конкретен адрес за request във формат request-1234@boomcard.bg, ако се имплементира plus-addressing, или support@/office@ според configured inbound logic. |
+| Reply-To адрес | Reply-To header | В v1.2: support@/office@ според configured inbound logic. Plus-addressing (request-1234@boomcard.bg) е отложено за v1.3. |
 
 ### **Входящи имейли – логика за свързване**
 
@@ -493,7 +539,7 @@ Email parser-ът трябва коректно да разпознава нов
 | :---- | :---- | :---- |
 | 1 (highest) | X-BoomCard-Request-ID header присъства и е валиден. | Прикачи имейла към съответния request като нов message в историята. |
 | 2 | In-Reply-To или References header съвпада с Message-ID на изходящ системен имейл. | Прикачи имейла към request-а, който е генерирал оригиналния имейл. |
-| 3 | Reply-To адрес съдържа request marker, ако е имплементиран plus-addressing, напр. request-1234@. | Прикачи към съответния request. |
+| 3 | Reply-To адрес съдържа request marker (plus-addressing) — отложено за v1.3; не се прилага в v1.2. | N/A в v1.2. |
 | 4 | Subject съдържа \[\#XXXX\] pattern с валиден numeric request reference number. | Прикачи към съответния request. Fallback за случаи когато headers са филтрирани. |
 | 5 (fallback) | Никой от горните маркери не съответства на съществуващ request. | Създай нов request. Source \= email gateway. Subject на request-а \= subject на имейла без \[\#XXXX\] префикс. |
 | Защита срещу spoofing и грешни match-овеParser-ът трябва да валидира, че подателят на reply имейла е owner или assignee на request-а, или е в списъка с разрешени участници. Reply от непознат адрес НЕ се прикача автоматично – вместо това се създава нов request с reference към оригиналния. Това предотвратява опити за инжектиране на съобщение в чужд support диалог. |  |  |
@@ -531,6 +577,7 @@ Email parser-ът трябва коректно да разпознава нов
 | In Progress | Поет от админ, в процес на обработка. | Admin при assign. |
 | Waiting | Изпратен е отговор или въпрос; чака се обратна връзка, документ, вътрешна или външна проверка. | Admin. |
 | Closed | Request е приключен. При повторен проблем се създава нов request, вместо да се отваря старият. | Admin или система. |
+| Cancelled | Оттеглена или невалидна заявка. | Admin или подателят. |
 
 ## **11.5 Меню Помощ – подсекции в админ панела**
 
@@ -543,6 +590,8 @@ Email parser-ът трябва коректно да разпознава нов
 ## **11.6 Routing и notifications**
 
 Когато request постъпи, той влиза в unified request inbox и се категоризира по тип. Филтрирането и приоритизацията се правят по type/category, priority, status и assignee.
+
+**Assignment Logic (Manual):** Всички входящи заявки влизат автоматично в "Unassigned" статус и са видими в общата опашка за всички администратори. Няма автоматично routing по тип. Всеки администратор може да поеме заявка. Super Admin може да преназначи вече поета заявка.
 
 * Support от User → request type „Support“.
 
@@ -585,7 +634,7 @@ Email parser-ът трябва коректно да разпознава нов
 
 * Hybrid communication модел: email и forms са входящи канали; реалната обработка е през unified request system.
 
-* Email parser-ът thread-ва reply-та чрез X-BoomCard-Request-ID header, In-Reply-To header, plus-addressing и \[\#XXXX\] subject pattern. Spoofing protection чрез валидация на подател.
+* Email parser-ът thread-ва reply-та чрез X-BoomCard-Request-ID header (primary), In-Reply-To header и \[\#XXXX\] subject pattern (fallback). Plus-addressing е отложено за v1.3. Spoofing protection чрез валидация на подател.
 
 * Матрицата на правата за account statuses Active / Inactive / Archived е source of truth за access control.
 
