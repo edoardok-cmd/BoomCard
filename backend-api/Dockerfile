@@ -77,8 +77,10 @@ COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 COPY --from=builder --chown=nodejs:nodejs /app/prisma ./prisma
 
 # Copy Prisma CLI from builder (needed for migrate deploy on startup)
+# @prisma/engines is a devDep (bundled with prisma CLI) — must copy from builder explicitly.
 COPY --from=builder --chown=nodejs:nodejs /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
 COPY --from=builder --chown=nodejs:nodejs /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder --chown=nodejs:nodejs /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
 
 # Copy Prisma 7 config (required for migrate deploy to resolve DATABASE_URL)
 COPY --chown=nodejs:nodejs prisma.config.ts ./
