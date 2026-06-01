@@ -57,6 +57,7 @@ import {
   VENUE_COUNT_BUCKET_DISPLAY_VALUES,
 } from '../services/partnerVenueCountBucket.helper';
 import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
+import { fraudDetectionService } from '../services/fraudDetection.service';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -1165,6 +1166,51 @@ router.post(
     }).catch((err) => logger.error('[adminPartners] writeAudit failed:', err));
 
     res.status(201).json({ proposal });
+  })
+);
+
+// ─── Partner risk flag ────────────────────────────────────────────────────────
+
+/**
+ * PATCH /api/admin/partners/:id/risk-flag
+ *
+ * Set or clear the partner-level risk flag (spec §2.1 Signal 5 — +10 fraud points).
+ * Requires control.risk.write (RISK_REVIEW role). Inactive admins (aro=true) are
+ * blocked by requirePermission's write-suffix guard automatically.
+ *
+ * Body: { flagValue: boolean, reason: string }
+ * Response: { success: true, flagValue: boolean }
+ */
+router.patch(
+  '/:id/risk-flag',
+  requirePermission('control.risk.write'),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const { flagValue, reason } = req.body as { flagValue?: unknown; reason?: unknown };
+
+    if (typeof flagValue !== 'boolean') {
+      return res.status(400).json({ error: 'flagValue (boolean) is required' });
+    }
+    if (!reason || typeof reason !== 'string' || !reason.trim()) {
+      return res.status(400).json({ error: 'reason (non-empty string) is required' });
+    }
+
+    const partner = await prisma.partner.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, businessName: true },
+    });
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+
+    // VenueFraudConfig.venueId stores Partner.id (not Venue.id) — pass partner.id directly.
+    await fraudDetectionService.setPartnerRiskFlag(
+      partner.id,
+      flagValue,
+      req.user!.id,
+      reason.trim(),
+      req.ip,
+      req.get('user-agent') ?? undefined,
+    );
+
+    res.json({ success: true, flagValue });
   })
 );
 

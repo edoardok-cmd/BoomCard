@@ -49,22 +49,27 @@ export class WalletService {
     const plan: SubscriptionPlan = subscription?.plan ?? 'PREMIUM_WEEKLY';
     const threshold = await getPayoutThresholdBGN(plan);
 
-    // Spec §4.2 / §6.1 v1.1 — FAILED_PAYMENT blocks payout, BUT a user who has
-    // recovered with a newer ACTIVE/TRIALING subscription is no longer gated.
-    // Look at the latest subscription only: if its status is FAILED_PAYMENT,
-    // hold the payout; otherwise the user has recovered.
+    // Spec §8.1 point 3 — Payout eligibility gate for the wallet info display.
+    // FAILED_PAYMENT blocks payout. Cancelled-within-paid-period allows payout.
     const latestSub = await prisma.subscription.findFirst({
       where: { userId },
       orderBy: { createdAt: 'desc' },
-      select: { status: true },
+      select: { status: true, currentPeriodEnd: true },
     });
     const hasFailedPayment = latestSub?.status === 'FAILED_PAYMENT';
 
-    // §6.1 v1.1 subscription gate — POST /api/wallet/payout rejects unless the
-    // subscriber has an ACTIVE or TRIALING subscription; reflect that here so
-    // the mobile UI can disable the request button.
+    // Spec §8.1 point 3: new payouts allowed when subscription is Active or
+    // Cancelled-within-paid-period (currentPeriodEnd still in the future).
+    // "Cancelled post-period" → blocked (same as Expired).
+    const walletNow = new Date();
     const hasEligibleSubscription =
-      !!subscription && (subscription.status === 'ACTIVE' || subscription.status === 'TRIALING');
+      !!subscription && (
+        subscription.status === 'ACTIVE' ||
+        subscription.status === 'TRIALING' ||
+        (subscription.status === 'CANCELLED' &&
+          subscription.currentPeriodEnd != null &&
+          subscription.currentPeriodEnd > walletNow)
+      );
 
     return {
       balance: wallet.balance,
@@ -443,16 +448,16 @@ export class WalletService {
       logger.error(`[payout] Pre-prune failed for wallet ${wallet.id} — continuing with current balance:`, pruneError);
     }
 
-    // §6.1 v1.1 subscription gate — payout requires an ACTIVE or TRIALING
-    // subscription. FAILED_PAYMENT is a hard 403 (specific message below).
-    // PAST_DUE / UNPAID / PAUSED fall through to the 402 SUBSCRIPTION_INACTIVE
-    // check — all are hard rejections, not deferred holds.
-    // Latest sub is FAILED_PAYMENT → hold payout. Older FAILED_PAYMENT rows
-    // are ignored when the user has since recovered with a newer subscription.
+    // Spec §8.1 point 3 — Payout eligibility (earned-rights model):
+    //   New payouts allowed:  Active subscription OR Cancelled-within-paid-period.
+    //   New payouts blocked:  Cancelled post-period, Failed Payment, Expired.
+    //   In-flight payouts:    Always continue regardless of subscription changes.
+    //
+    // Step A: hard-block FAILED_PAYMENT regardless of other subscriptions.
     const latestSub = await prisma.subscription.findFirst({
       where: { userId },
       orderBy: { createdAt: 'desc' },
-      select: { status: true },
+      select: { status: true, currentPeriodEnd: true, plan: true },
     });
     if (latestSub?.status === 'FAILED_PAYMENT') {
       throw new AppError(
@@ -462,8 +467,25 @@ export class WalletService {
       );
     }
 
+    // Step B: find an eligible subscription. Spec §8.1 point 3 allows payout when:
+    //   1. Subscription status is ACTIVE or TRIALING (fully active), OR
+    //   2. Status is CANCELLED but currentPeriodEnd > now (still within paid period).
+    // "Cancelled post-period" (currentPeriodEnd in the past) is blocked like Expired.
+    const now = new Date();
     const subscription = await prisma.subscription.findFirst({
-      where: { userId, status: { in: ['ACTIVE', 'TRIALING'] } },
+      where: {
+        userId,
+        OR: [
+          // Case 1: active subscriptions
+          { status: { in: ['ACTIVE', 'TRIALING'] } },
+          // Case 2: Spec §8.1 point 3 — Cancelled within paid period
+          // Scanning allowed and new payouts allowed until currentPeriodEnd.
+          {
+            status: 'CANCELLED',
+            currentPeriodEnd: { gt: now },
+          },
+        ],
+      },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -867,12 +889,24 @@ export class WalletService {
   /**
    * Save the user's payout bank account details without initiating a payout.
    * Creates the wallet if it doesn't exist yet.
+   *
+   * Writes an explicit AuditLog entry with action 'wallet.iban.update' so that
+   * the fraud detection Signal 1 (+40 points) can query by this exact key rather
+   * than an unsafe substring match. The action string must not change without
+   * also updating sticker.service.ts ibanChangedRecently query.
    */
   async updatePayoutAccount(
     userId: string,
     opts: { iban: string; beneficiaryName: string }
   ): Promise<void> {
     await this.getOrCreateWallet(userId);
+
+    // Fetch existing IBAN for before/after audit diff.
+    const existing = await prisma.wallet.findUnique({
+      where: { userId },
+      select: { payoutIban: true },
+    });
+
     await prisma.wallet.update({
       where: { userId },
       data: {
@@ -880,7 +914,24 @@ export class WalletService {
         payoutBeneficiaryName: opts.beneficiaryName,
       },
     });
-    logger.info(`Payout account updated for user ${userId}: ${opts.iban}`);
+
+    // Write audit entry with exact action key 'wallet.iban.update'.
+    // This key is consumed by fraudDetection Signal 1 (sticker.service.ts).
+    // Do not use partial strings or aliases — the query in sticker.service.ts
+    // uses an exact match: action: { equals: 'wallet.iban.update' }.
+    const { writeAudit } = await import('../middleware/audit.middleware');
+    writeAudit({
+      actorUserId: userId,
+      action: 'wallet.iban.update',
+      objectType: 'wallet',
+      objectId: null,
+      before: existing?.payoutIban ? { payoutIban: '[REDACTED]' } : null,
+      after: { payoutIban: '[REDACTED]' },
+    }).catch((err: unknown) => {
+      logger.warn(`[updatePayoutAccount] audit write failed for user ${userId}: ${err}`);
+    });
+
+    logger.info(`Payout account updated for user ${userId}`);
   }
 
   /**

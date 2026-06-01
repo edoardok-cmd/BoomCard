@@ -26,7 +26,7 @@ import { Router, Response } from 'express';
 import { FraudRuleTier, SubscriptionPlan } from '@prisma/client';
 import { invalidatePayoutThresholdCache, getPayoutThresholdBGNSync } from '../utils/payoutThreshold';
 import { invalidateSystemSettingCache } from '../utils/systemSettings';
-import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
+import { authenticate, authorize, requirePermission, requireActiveAdmin, AuthRequest } from '../middleware/auth.middleware';
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
@@ -832,10 +832,13 @@ router.get(
  * POST /api/admin/settings/fraud-rules/:id/overrides
  * Body: { targetType: "user"|"partner", targetId, override: {...}, reason?, expiresAt? }
  * Spec §7.4: SUPER_ADMIN only.
+ * requireActiveAdmin blocks aro=true (Inactive) SUPER_ADMINs — this route does not use
+ * requirePermission(), so the aro check must be applied explicitly (B3 fix).
  */
 router.post(
   '/fraud-rules/:id/overrides',
   authorize('SUPER_ADMIN'),
+  requireActiveAdmin,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { targetType, targetId, override, reason, expiresAt } = req.body as {
       targetType?: string;
@@ -875,10 +878,13 @@ router.post(
 /**
  * DELETE /api/admin/settings/fraud-rules/:id/overrides/:overId
  * Spec §7.4: SUPER_ADMIN only.
+ * requireActiveAdmin blocks aro=true (Inactive) SUPER_ADMINs — this route does not use
+ * requirePermission(), so the aro check must be applied explicitly (B3 fix).
  */
 router.delete(
   '/fraud-rules/:id/overrides/:overId',
   authorize('SUPER_ADMIN'),
+  requireActiveAdmin,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const ov = await prisma.fraudRuleOverride.findFirst({
       where: { id: req.params.overId, ruleId: req.params.id },

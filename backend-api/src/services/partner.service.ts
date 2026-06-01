@@ -6,31 +6,26 @@
  *   - Reads previous status atomically with the update.
  *   - Writes a PartnerStatusChange audit row in the same transaction.
  *
- * Spec §5.4 — "QR кодовете автоматично се деактивират в backend-а" is
- * implemented as a synthetic, scan-time gate in sticker.service (createSession,
- * scanSticker, validateStickerById all reject when partner.status !== ACTIVE
- * or verifiedAt is null). We DELIBERATELY do not flip Sticker.status rows on
- * partner status transitions because:
+ * Spec §1.4 / §3.5 / §8.1 point 5 — QR code auto-deactivation/reactivation:
+ *   - Partner status → Inactive, Paused, Suspended, or Archived: all ACTIVE QR codes
+ *     automatically deactivated (Sticker.status set to INACTIVE). Spec §1.4:
+ *     "Transition to Inactive or Archived → All QR codes automatically deactivate in backend."
+ *   - Inactive → Active: all INACTIVE QR codes automatically reactivated (bulk flip).
+ *     Spec §1.4: "Transition back to Active → All QR codes automatically reactivate
+ *     (no manual regeneration needed)."
+ *   - Archived → Active: NO auto-reactivation. QR codes require explicit admin
+ *     reactivation per sticker (spec §2.4 Gap 6). Admin must use the QR management UI.
  *
- *   1. The row flip is lossy on re-activation — manually INACTIVE stickers
- *      (damaged QR, decommissioned printout) would be silently flipped back
- *      to ACTIVE when the partner returns from SUSPENDED. No flag exists to
- *      distinguish auto- vs manual-deactivation; the cleanest answer is
- *      to keep the sticker row authoritative for sticker-level state and
- *      keep the partner row authoritative for operational gating.
- *   2. Wide UPDATEs on a chain with thousands of stickers can hit lock
- *      timeouts inside the status transition, so a single failed UPDATE
- *      blocks the suspend.
- *   3. The scan gate already covers the user-visible behaviour (scans fail
- *      while suspended). No current code filters on Sticker.status='ACTIVE'
- *      alone — all scan-path queries go through sticker.service which calls
- *      isPartnerOperationallyActive(). If a future reporting query needs
- *      "operationally active stickers", add a partner join; do NOT filter
- *      on Sticker.status='ACTIVE' alone.
+ * Implementation note: the fromStatus parameter distinguishes Inactive→Active from
+ * Archived→Active so the correct reactivation policy is applied. Once the
+ * `Sticker.autoDeactivatedAt` schema column is added (TODO below), Inactive→Active
+ * reactivation can be further scoped to only stickers that were auto-deactivated by
+ * this partner's status change rather than all inactive stickers.
+ * TODO(db-engineer): add `autoDeactivatedAt DateTime?` to Sticker so reactivation
+ * can selectively restore only stickers deactivated by this function.
  *
- * Any future "operationally active stickers" query MUST also gate on the
- * owning partner — use isPartnerOperationallyActive(partner) exported from
- * this module.
+ * Statuses that trigger deactivation: INACTIVE, PAUSED, SUSPENDED, ARCHIVED.
+ * Statuses that trigger reactivation: ACTIVE (only, and only from INACTIVE).
  *
  * NB: This service deliberately does NOT call writeAudit() — the AuditLog row
  * with the action label "partner.status.update" is written by the caller so
@@ -38,9 +33,20 @@
  * written here because it has no actor metadata to forward.
  */
 
-import { PartnerStatus } from '@prisma/client';
+import { PartnerStatus, StickerStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { logger } from '../utils/logger';
+
+/**
+ * Spec §1.4 / §3.6 — Partner statuses that trigger QR code auto-deactivation.
+ * INACTIVE, PAUSED (admin-imposed pause), SUSPENDED, ARCHIVED all block scanning.
+ */
+const QR_DEACTIVATING_STATUSES: PartnerStatus[] = [
+  PartnerStatus.INACTIVE,
+  PartnerStatus.PAUSED,
+  PartnerStatus.SUSPENDED,
+  PartnerStatus.ARCHIVED,
+];
 
 /**
  * Spec §5.3 / §5.4 v1.1 — single source of truth for "is this partner
@@ -76,16 +82,26 @@ export interface SetPartnerStatusResult {
 
 export class PartnerService {
   /**
-   * Atomically transition a partner's status and log the change to
-   * PartnerStatusChange. QR auto-deactivation is enforced at scan-time
-   * (see sticker.service) — no row mutation on stickers here.
+   * Atomically transition a partner's status, log the change to
+   * PartnerStatusChange, and auto-deactivate/reactivate QR codes per spec.
+   *
+   * Spec §1.4 / §3.5 / §8.1 point 5:
+   *   - → Inactive/Archived/Suspended/Paused: all partner QR codes deactivated.
+   *   - → Active: all partner QR codes reactivated.
+   *
+   * The QR status flip runs OUTSIDE the main transaction (post-commit step) so
+   * a sticker-update failure does NOT roll back the partner status change (which
+   * is the authoritative operational state). Sticker status is derived from
+   * partner status — a transient failure is logged but not fatal. A background
+   * reconciliation can be run if needed (sticker status should match partner
+   * operational state at all times).
    *
    * Throws if the partner is missing or already in the target state.
    */
   async setPartnerStatus(params: SetPartnerStatusParams): Promise<SetPartnerStatusResult> {
     const { partnerId, toStatus, reason, changedById } = params;
 
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const partner = await tx.partner.findUnique({
         where: { id: partnerId },
         select: { id: true, status: true },
@@ -120,6 +136,95 @@ export class PartnerService {
 
       return { partnerId, fromStatus, toStatus };
     });
+
+    // Spec §1.4 / §3.5: QR code auto-deactivation/reactivation after status flip commits.
+    // Runs outside the main transaction — sticker failure is non-fatal for the status change.
+    await this.syncQrCodesForPartner(partnerId, toStatus, result.fromStatus);
+
+    return result;
+  }
+
+  /**
+   * Spec §1.4 / §3.5 / §8.1 point 5 — Sync QR code (Sticker) status with partner
+   * operational status. Called after every partner status transition.
+   *
+   * Three distinct behaviors based on fromStatus + toStatus:
+   *
+   *   1. Any status → Inactive, Paused, Suspended, Archived:
+   *      Deactivate ALL ACTIVE stickers (flip to INACTIVE).
+   *
+   *   2. Inactive → Active:
+   *      Reactivate ALL INACTIVE stickers (bulk flip to ACTIVE). Spec §1.4:
+   *      "Transition back to Active → All QR codes automatically reactivate
+   *      (no manual regeneration needed)."
+   *      NOTE: Bulk reactivation on Inactive→Active per spec §1.4. Once the
+   *      `Sticker.autoDeactivatedAt` column is added (TODO(db-engineer) below),
+   *      this can be scoped to only stickers that were auto-deactivated by this
+   *      partner's status change rather than all inactive stickers.
+   *
+   *   3. Archived → Active:
+   *      NO auto-reactivation. Spec §2.4 Gap 6 states QR codes require "explicit
+   *      admin reactivation per code" after an archived partner is re-onboarded.
+   *      Admin must reactivate individual stickers via the QR management UI.
+   *
+   * TODO(db-engineer): Add a `Sticker.autoDeactivatedAt DateTime?` column. When set,
+   * it marks the sticker as system-deactivated (not admin-deactivated). Once the
+   * column exists, case 2 can safely reactivate only stickers where
+   * autoDeactivatedAt IS NOT NULL, i.e. those deactivated by this very function.
+   */
+  async syncQrCodesForPartner(
+    partnerId: string,
+    toStatus: PartnerStatus,
+    fromStatus?: PartnerStatus,
+  ): Promise<void> {
+    try {
+      if (QR_DEACTIVATING_STATUSES.includes(toStatus)) {
+        // Case 1: Spec §1.4: "Transition to Inactive or Archived → All QR codes automatically deactivate"
+        const result = await prisma.sticker.updateMany({
+          where: {
+            venue: { partnerId },
+            status: StickerStatus.ACTIVE,
+          },
+          data: { status: StickerStatus.INACTIVE },
+        });
+        logger.info(
+          `[partner.syncQr] partnerId=${partnerId} → ${toStatus}: deactivated ${result.count} sticker(s)`
+        );
+      } else if (toStatus === PartnerStatus.ACTIVE) {
+        if (fromStatus === PartnerStatus.ARCHIVED) {
+          // Case 3: Archived → Active. Spec §2.4 Gap 6 — QR codes require explicit
+          // admin reactivation per sticker. Do NOT auto-reactivate.
+          logger.info(
+            `[partner.syncQr] partnerId=${partnerId} transitioned from ARCHIVED to ACTIVE. ` +
+            `QR codes require explicit admin reactivation per sticker (spec §2.4 Gap 6). ` +
+            `Admin must use the QR management UI to reactivate individual stickers.`
+          );
+        } else {
+          // Case 2: Inactive (or other non-Archived) → Active. Spec §1.4 bulk reactivation.
+          // Bulk reactivation on Inactive→Active per spec §1.4. Once `Sticker.autoDeactivatedAt`
+          // column is added, this can be scoped to only stickers that were auto-deactivated by
+          // this partner's status change.
+          const result = await prisma.sticker.updateMany({
+            where: {
+              venue: { partnerId },
+              status: StickerStatus.INACTIVE,
+            },
+            data: { status: StickerStatus.ACTIVE },
+          });
+          logger.info(
+            `[partner.syncQr] partnerId=${partnerId} → ACTIVE (from ${fromStatus ?? 'unknown'}): ` +
+            `reactivated ${result.count} sticker(s) per spec §1.4`
+          );
+        }
+      }
+    } catch (err) {
+      // Non-fatal: log and continue. The partner status change is already committed.
+      // TODO: alert ops channel or enqueue a retry job so sticker state converges.
+      logger.error(
+        `[partner.syncQr] WARN: QR sync failed for partner ${partnerId} → ${toStatus}. ` +
+        `Manual reconciliation may be needed. Error: ${err}`
+      );
+    }
   }
 }
 

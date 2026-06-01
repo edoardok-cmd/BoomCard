@@ -140,6 +140,10 @@ export interface TokenPayload {
   impBy?: string;
   impByRole?: string;
   impAg?: string[];
+  // Spec §1.5 — admin read-only flag. Stamped when admin account status is INACTIVE.
+  // Inactive admins can log in but cannot approve, reassign, or modify records.
+  // Enforced in requirePermission() by blocking any write-suffix permission key.
+  aro?: true;
 }
 
 export interface ImpersonationClaims {
@@ -647,7 +651,16 @@ export class AuthService {
     );
     const user = preferred ?? matches[0];
 
-    // Check if user is active
+    // Spec §1.5 — Admin account status enforcement:
+    //   ACTIVE   → full login and operational rights.
+    //   INACTIVE → login allowed, but operational rights limited to read-only.
+    //              (JWT carries `adminReadOnly: true` claim; enforced in requirePermission).
+    //   SUSPENDED/ARCHIVED → no login (maps to spec's Archived state for admins).
+    //
+    // NOTE: `INACTIVE` maps to spec §1.5 "Inactive admin" (login allowed, read-only).
+    // `SUSPENDED` maps to spec §1.5 "Archived admin" (no login). A dedicated ARCHIVED
+    // enum value requires a schema migration — flagged as a TODO for db-engineer.
+    // TODO(schema): add UserStatus.ARCHIVED for semantic clarity (db-engineer task).
     if (user.status === 'SUSPENDED') {
       prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'suspended' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
       throw new AppError('Account has been suspended', 403);
@@ -1439,6 +1452,14 @@ export class AuthService {
     const multipleAccounts = users.length > 1;
 
     for (const user of users) {
+      // Security: do not issue OTPs for suspended accounts. Silently skip the
+      // user — the caller receives the same "check your email" response whether
+      // the account exists, doesn't exist, or is suspended. This prevents
+      // status enumeration via the password-reset flow.
+      if (user.status === 'SUSPENDED') {
+        continue;
+      }
+
       const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit
       const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
       // Spec §9.5: per-role validity. Admin tightened to 1h, partner/user 24h.
@@ -1497,12 +1518,13 @@ export class AuthService {
         after: { selfService: true },
       }).catch((err: unknown) => logger.error('[forgotPassword] writeAudit failed', err));
 
-      // Spec §9.5 — alert when admin accounts are repeatedly reset.
+      // Spec Part 9, Tier 3 — password reset rate-limit for admin accounts:
+      //   Alert at 3 resets in 24h → notify all SUPER_ADMINs.
+      //   Account suspension pending Super Admin review at 5 resets in 24h.
       if (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN') {
-
-        // Count resets in the last 24 h for this admin account.
         const ALERT_WINDOW_HOURS = 24;
-        const ALERT_THRESHOLD    = 3;
+        const ALERT_THRESHOLD      = 3;  // fire alert email once at exactly 3
+        const SUSPENSION_THRESHOLD = 5;  // suspend account at 5
         const windowStart = new Date(Date.now() - ALERT_WINDOW_HOURS * 60 * 60 * 1000);
         const recentCount = await prisma.linkResendLog.count({
           where: {
@@ -1512,10 +1534,8 @@ export class AuthService {
           },
         }).catch(() => 0);
 
-        // Fire exactly once when threshold is first crossed; subsequent resets
-        // in the same window don't re-alert (noise suppression).
+        // Spec Part 9, Tier 3 — alert at exactly 3 resets (fire once; noise suppression).
         if (recentCount === ALERT_THRESHOLD) {
-          // Notify all SUPER_ADMINs.
           const superAdmins = await prisma.user.findMany({
             where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
             select: { email: true },
@@ -1530,6 +1550,48 @@ export class AuthService {
               recipientEmails: superAdmins.map((a) => a.email),
             }).catch((err: unknown) => logger.error('[forgotPassword] alert email failed', err));
           }
+        }
+
+        // Spec Part 9, Tier 3 — suspend account at 5 resets in 24h, pending Super Admin review.
+        // Only suspend once (when count exactly hits the threshold) to avoid redundant DB writes.
+        if (recentCount >= SUSPENSION_THRESHOLD && user.status === 'ACTIVE') {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { status: 'SUSPENDED' },
+          }).catch((err: unknown) => logger.error('[forgotPassword] suspension update failed', err));
+
+          writeAudit({
+            actorUserId: null,
+            action: 'auth.password-reset.suspension',
+            objectType: 'user',
+            objectId: user.id,
+            after: {
+              reason: `Spec Part 9 Tier 3: ${recentCount} password resets within ${ALERT_WINDOW_HOURS}h — account suspended pending Super Admin review`,
+              resetCount: recentCount,
+              windowHours: ALERT_WINDOW_HOURS,
+            },
+          }).catch((err: unknown) => logger.error('[forgotPassword] suspension audit failed', err));
+
+          // Notify all SUPER_ADMINs about the suspension (separate from the alert email).
+          const superAdmins = await prisma.user.findMany({
+            where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+            select: { email: true },
+          }).catch(() => [] as { email: string }[]);
+
+          if (superAdmins.length > 0) {
+            emailService.sendAdminPasswordResetAlert({
+              targetEmail: user.email,
+              targetName:  `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email,
+              resetCount:  recentCount,
+              windowHours: ALERT_WINDOW_HOURS,
+              recipientEmails: superAdmins.map((a) => a.email),
+            }).catch((err: unknown) => logger.error('[forgotPassword] suspension alert email failed', err));
+          }
+
+          logger.warn(
+            `[forgotPassword] Admin account ${user.id} (${user.email}) suspended after ` +
+            `${recentCount} password resets in ${ALERT_WINDOW_HOURS}h — Spec Part 9 Tier 3`
+          );
         }
       }
     }
@@ -1605,6 +1667,20 @@ export class AuthService {
     // SUPER_ADMIN bypasses requirePermission unconditionally — no query needed.
     // USER/PARTNER never call admin routes — no query needed.
     let permissions: string[] | undefined;
+    let adminReadOnly = false; // Spec §1.5 — true when admin status is INACTIVE
+    if (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN') {
+      // Spec §1.5: check admin status to set read-only flag for INACTIVE admins.
+      // We do one DB query here (shared with permission resolution for ADMIN role).
+      const freshAdmin = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { status: true },
+      }).catch(() => null);
+      if (freshAdmin?.status === 'INACTIVE') {
+        // Spec §1.5: Inactive admin — login allowed, operational rights limited to read-only.
+        // Embed `aro: true` (admin read-only) in the JWT; enforced in requirePermission().
+        adminReadOnly = true;
+      }
+    }
     if (user.role === 'ADMIN') {
       const perms = await resolveUserPermissions(user.id);
       if (perms.length > 0) {
@@ -1619,6 +1695,8 @@ export class AuthService {
       email: user.email,
       role: user.role,
       ...(permissions ? { permissions } : {}),
+      // Spec §1.5: flag inactive admins as read-only so requirePermission() can block writes
+      ...(adminReadOnly ? { aro: true as const } : {}),
       ...(accountGroup && accountGroup.length > 1 ? { ag: accountGroup } : {}),
       ...(clientType ? { ct: clientType } : {}),
       ...(impersonation

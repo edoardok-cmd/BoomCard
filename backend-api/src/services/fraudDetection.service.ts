@@ -51,9 +51,39 @@ import { receiptTemplateService } from './receiptTemplate.service';
  * - Card tier verification
  *
  * Fraud Score Scale:
- * - All receipts require admin manual review regardless of score
- * - Score is recorded for admin reference only
+ * - Internal multi-signal fraud score used for admin triage
+ * - Spec §2.1 five-signal additive risk level drives the manual-review gate:
+ *   Low (0–20) → auto-approve within 24h; Medium/High → manual review queue
  */
+
+// Spec §2.1 five-signal risk scoring constants (additive model, canonical set)
+const RISK_IBAN_CHANGE_POINTS   = 40;  // IBAN changed in last 24h
+const RISK_RECEIPT_MATCH_POINTS = 30;  // Receipt match confidence < 60%
+const RISK_LOCATION_MISMATCH_POINTS = 20; // QR location mismatch
+const RISK_USER_VOIDED_POINTS   = 20;  // User has 3+ Voided cashback records
+const RISK_PARTNER_FLAG_POINTS  = 10;  // Partner has active risk flag
+
+/** Spec §2.1: threshold boundaries for the additive risk level. */
+const RISK_LEVEL_MEDIUM_MIN = 21; // scores 21–50 → Medium
+const RISK_LEVEL_HIGH_MIN   = 51; // scores 51+  → High
+
+export type SpecRiskLevel = 'Low' | 'Medium' | 'High';
+
+export interface SpecRiskResult {
+  /** Additive score from the 5 canonical signals (spec §2.1). */
+  riskScore: number;
+  /** Spec §2.1 risk level derived from riskScore thresholds. */
+  riskLevel: SpecRiskLevel;
+  /**
+   * True when riskLevel is Medium or High — both require admin manual review.
+   * Spec §2.2: "Medium Risk → Manual Review triggered — all Medium-risk records
+   * enter the admin review queue (same workflow as High Risk)."
+   * False (Low) → eligible for automatic approval within 24h (spec §3.4).
+   */
+  requiresManualReview: boolean;
+  /** Human-readable reasons for each signal that fired. */
+  riskSignals: string[];
+}
 
 interface FraudCheckParams {
   imageHash: string;
@@ -321,7 +351,12 @@ class FraudDetectionService {
       // Final score capping
       const finalScore = Math.min(100, Math.max(0, score));
 
-      // All receipts require admin manual review — no auto-approve or auto-reject
+      // Spec §3.4: requiresManualReview is determined by the spec §2.1 five-signal
+      // risk level (computed separately via computeSpecRiskLevel). The internal
+      // fraud score is retained for admin triage reference only.
+      // NOTE: The legacy Receipt submission flow always sets requiresManualReview=true
+      // here as a conservative default; the sticker scan flow (sticker.service.ts)
+      // calls computeSpecRiskLevel() separately and uses that result to gate manual review.
       return {
         fraudScore: finalScore,
         fraudReasons: reasons,
@@ -855,6 +890,107 @@ class FraudDetectionService {
     return { cashbackAmount, cashbackPercent };
   }
 
+  // ===== Spec §2.1 Five-Signal Risk Level =====
+
+  /**
+   * Spec §2.1 / §2.2 / §3.4 — Compute the canonical five-signal additive risk
+   * level for a cashback/receipt record. This is separate from the broader
+   * fraud score (checkReceipt) and is the authoritative gate for manual review.
+   *
+   * Risk level drives the PENDING → review decision:
+   *   Low  (0–20)  → auto-approve within 24h (spec §3.4)
+   *   Medium (21–50) → manual review queue (spec §2.2)
+   *   High (51+)   → manual review queue (spec §2.2)
+   *
+   * Signal 2 (receipt match confidence) maps to ocrConfidence: a value below
+   * 60% triggers the +30 signal. Pass the OCR confidence as a percentage (0–100).
+   *
+   * Signal 3 (QR location mismatch) is true when the GPS distance between the
+   * user location and the venue location exceeds the configured radius.
+   */
+  async computeSpecRiskLevel(params: {
+    userId: string;
+    partnerId?: string;
+    /** True if the user's IBAN was changed within the last 24 hours. */
+    ibanChangedRecently: boolean;
+    /** OCR confidence percentage (0–100). Below 60% → +30 points. */
+    ocrConfidence: number;
+    /** True when the QR code location does not match the user's GPS location. */
+    locationMismatch: boolean;
+  }): Promise<SpecRiskResult> {
+    // Spec §2.1: additive risk score
+    let riskScore = 0;
+    const riskSignals: string[] = [];
+
+    // Signal 1: IBAN changed in last 24h → +40
+    if (params.ibanChangedRecently) {
+      riskScore += RISK_IBAN_CHANGE_POINTS;
+      riskSignals.push('IBAN_CHANGED_24H');
+    }
+
+    // Signal 2: Receipt match confidence < 60% → +30
+    if (params.ocrConfidence < 60) {
+      riskScore += RISK_RECEIPT_MATCH_POINTS;
+      riskSignals.push('RECEIPT_MATCH_LOW_CONFIDENCE');
+    }
+
+    // Signal 3: QR location mismatch → +20
+    if (params.locationMismatch) {
+      riskScore += RISK_LOCATION_MISMATCH_POINTS;
+      riskSignals.push('LOCATION_MISMATCH');
+    }
+
+    // Signal 4: User has 3+ Voided cashback records → +20
+    const voidedCount = await prisma.walletTransaction.count({
+      where: {
+        wallet: { userId: params.userId },
+        cashbackStatus: 'VOIDED',
+      },
+    }).catch(() => 0);
+    if (voidedCount >= 3) {
+      riskScore += RISK_USER_VOIDED_POINTS;
+      riskSignals.push('USER_HAS_3_PLUS_VOIDED');
+    }
+
+    // Signal 5: Partner has active risk flag → +10
+    // Spec §2.1 defines "partner has active risk flag" as a boolean field on the
+    // partner record. The current schema stores risk information in VenueFraudConfig
+    // and the adminControl risk signals. We check the partner's risk flag in the
+    // RiskAssessment/venueFraudConfig — any partner-level block in VenueFraudConfig
+    // metadata acts as the "active risk flag".
+    // TODO(schema): add a dedicated `hasRiskFlag: Boolean` column to Partner for
+    // a cleaner implementation; for now, check VenueFraudConfig.metadata for a
+    // `{ partnerRiskFlag: true }` marker set by the Risk Review admin role.
+    if (params.partnerId) {
+      const config = await prisma.venueFraudConfig.findFirst({
+        where: { venueId: params.partnerId },
+        select: { metadata: true },
+      }).catch(() => null);
+      const meta = config?.metadata
+        ? (typeof config.metadata === 'string' ? JSON.parse(config.metadata) : config.metadata) as Record<string, unknown>
+        : null;
+      if (meta?.partnerRiskFlag === true) {
+        riskScore += RISK_PARTNER_FLAG_POINTS;
+        riskSignals.push('PARTNER_ACTIVE_RISK_FLAG');
+      }
+    }
+
+    // Spec §2.1 thresholds: 0–20 = Low, 21–50 = Medium, 51+ = High
+    let riskLevel: SpecRiskLevel;
+    if (riskScore >= RISK_LEVEL_HIGH_MIN) {
+      riskLevel = 'High';
+    } else if (riskScore >= RISK_LEVEL_MEDIUM_MIN) {
+      riskLevel = 'Medium';
+    } else {
+      riskLevel = 'Low';
+    }
+
+    // Spec §2.2: Medium AND High both trigger manual review
+    const requiresManualReview = riskLevel === 'Medium' || riskLevel === 'High';
+
+    return { riskScore, riskLevel, requiresManualReview, riskSignals };
+  }
+
   // ===== Admin Methods =====
 
   /**
@@ -961,11 +1097,101 @@ class FraudDetectionService {
       }
     }
 
+    // B3-HIGH fix: Strip partnerRiskFlag from the metadata blob before the upsert.
+    // partnerRiskFlag is a security-sensitive fraud signal (Signal 5, +10 points).
+    // Allowing any admin with venueFraudConfig.write to set it to false via a
+    // generic metadata write is a privilege escalation in the fraud model.
+    // The flag must only be set/cleared via the dedicated setPartnerRiskFlag()
+    // method, which requires a specific permission and writes an explicit audit trail.
+    if (config.metadata !== undefined && config.metadata !== null) {
+      // Parse if already a string (round-trip from DB), then sanitize.
+      const metaObj: Record<string, unknown> =
+        typeof config.metadata === 'string'
+          ? JSON.parse(config.metadata as string)
+          : { ...(config.metadata as Record<string, unknown>) };
+      delete metaObj['partnerRiskFlag'];
+      // Re-serialize: VenueFraudConfig.metadata is String? in the Prisma schema.
+      config.metadata = JSON.stringify(metaObj);
+    }
+
     return prisma.venueFraudConfig.upsert({
       where: { venueId },
       create: { venueId, ...config },
       update: config,
     });
+  }
+
+  /**
+   * Set or clear the partner-level risk flag (Signal 5, +10 points) on a venue's
+   * fraud config. This is a dedicated, separately-audited method because the flag
+   * is a security-sensitive control — suppressing it hides a fraud signal from the
+   * review queue. Access requires the caller to check 'admins.actions.write' or an
+   * equivalent privileged permission before calling this method.
+   *
+   * The flag is stored in VenueFraudConfig.metadata.partnerRiskFlag (boolean).
+   * TODO(db-engineer): migrate to a dedicated Partner.hasRiskFlag Boolean column for
+   * a cleaner schema representation (see spec §2.1).
+   *
+   * @param venueId   - The venue (partner) whose risk flag is being changed.
+   * @param flagValue - true to set the flag; false to clear it.
+   * @param actorUserId - Admin performing the action (for audit log).
+   * @param reason    - Mandatory justification for the change.
+   * @param ip        - Originating IP address (for audit log).
+   * @param userAgent - Originating User-Agent header (for audit log).
+   */
+  async setPartnerRiskFlag(
+    venueId: string,
+    flagValue: boolean,
+    actorUserId: string,
+    reason: string,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<void> {
+    if (!reason || reason.trim().length === 0) {
+      throw new Error('A reason is required when setting or clearing the partner risk flag.');
+    }
+
+    // Fetch the current config to capture the before state for the audit log.
+    const existing = await prisma.venueFraudConfig.findUnique({
+      where: { venueId },
+      select: { metadata: true },
+    });
+
+    const beforeMeta = existing?.metadata
+      ? (typeof existing.metadata === 'string'
+        ? JSON.parse(existing.metadata)
+        : existing.metadata) as Record<string, unknown>
+      : {};
+    const beforeFlag = beforeMeta.partnerRiskFlag ?? false;
+
+    // Merge the new flag value into the existing metadata, preserving other keys.
+    const afterMeta = { ...beforeMeta, partnerRiskFlag: flagValue };
+    // VenueFraudConfig.metadata is String? in the Prisma schema — must serialize.
+    const afterMetaStr = JSON.stringify(afterMeta);
+
+    await prisma.venueFraudConfig.upsert({
+      where: { venueId },
+      create: { venueId, metadata: afterMetaStr },
+      update: { metadata: afterMetaStr },
+    });
+
+    // Explicit audit entry for risk flag changes — required for security traceability.
+    const { writeAudit } = await import('../middleware/audit.middleware');
+    await writeAudit({
+      actorUserId,
+      action: 'partner.riskFlag.set',
+      objectType: 'venueFraudConfig',
+      objectId: venueId,
+      before: { partnerRiskFlag: beforeFlag },
+      after:  { partnerRiskFlag: flagValue, reason: reason.trim() },
+      ip: ip ?? null,
+      userAgent: userAgent ?? null,
+    });
+
+    logger.info(
+      `[fraudDetection.setPartnerRiskFlag] venueId=${venueId} flagValue=${flagValue} ` +
+      `by actorUserId=${actorUserId} reason="${reason.trim()}"`
+    );
   }
 
   /**

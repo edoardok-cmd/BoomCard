@@ -23,6 +23,9 @@ export interface AuthRequest extends Request {
     impBy?: string;
     impByRole?: string;
     impAg?: string[];
+    // Spec §1.5: admin read-only flag. True when admin account status is INACTIVE.
+    // Inactive admins can log in but cannot approve, reassign, or modify records.
+    aro?: true;
   };
   file?: any; // Multer file upload
 }
@@ -124,14 +127,75 @@ export const authorize = (...roles: string[]) => {
   };
 };
 
+/**
+ * Write-permission key suffixes — any permission key that ends with one of
+ * these fragments is considered a write operation. Used by the spec §1.5
+ * admin read-only enforcement: Inactive admins (aro=true) are blocked from
+ * write operations even when they hold the permission in their JWT.
+ *
+ * Keys that do NOT match are read-only (safe for Inactive admins).
+ */
+const WRITE_PERMISSION_SUFFIXES = ['.write', '.create', '.delete', '.update', '.actions'];
+
+/**
+ * B3 fix — block Inactive admins (aro=true) from write routes that bypass
+ * requirePermission() by using authorize() directly (e.g. SUPER_ADMIN-only
+ * routes that do not go through the permissions table).
+ *
+ * Use this middleware on any write route that uses only authenticate +
+ * authorize() without requirePermission(), so that the aro=true gate still
+ * fires even when no permission key is involved.
+ *
+ * adminProfile routes (self-service: PATCH /me, POST /me/password, etc.) are
+ * intentionally excluded from this guard — they operate only on the actor's
+ * own account and do not mutate shared platform records. Spec §1.5 restricts
+ * "approve, reassign, or modify records" of other entities, not self-service.
+ */
+export const requireActiveAdmin = (req: AuthRequest, _res: Response, next: NextFunction) => {
+  if (!req.user) {
+    return next(new AppError('Not authenticated', 401));
+  }
+  if (req.user.aro === true) {
+    return next(
+      new AppError(
+        'Your admin account is inactive. Operational rights are limited to read-only access. ' +
+        'Contact a Super Admin to restore full access.',
+        403,
+      ),
+    );
+  }
+  next();
+};
+
+function isWritePermission(key: string): boolean {
+  return WRITE_PERMISSION_SUFFIXES.some((suffix) => key.endsWith(suffix));
+}
+
 // Fine-grained permission guard. Falls back to allowing SUPER_ADMIN unconditionally
 // so existing admin routes continue to work before permissions are fully seeded.
 // Accepts a single key or an array of keys (OR logic — user needs any one of them).
 export const requirePermission = (key: string | string[]) => {
   const keys = Array.isArray(key) ? key : [key];
-  return (req: AuthRequest, res: Response, next: NextFunction) => {
+  return (req: AuthRequest, _res: Response, next: NextFunction) => {
     if (!req.user) {
       return next(new AppError('Not authenticated', 401));
+    }
+
+    // Spec §1.5: Inactive admin (aro=true) — login allowed, read-only.
+    // Block any write operation; pass read-only operations through.
+    if (req.user.aro === true) {
+      const requestsWrite = keys.some((k) => isWritePermission(k));
+      if (requestsWrite) {
+        return next(
+          new AppError(
+            'Your admin account is inactive. Operational rights are limited to read-only access. ' +
+            'Contact a Super Admin to restore full access.',
+            403,
+          ),
+        );
+      }
+      // Read-only permission requested — allow through for Inactive admin.
+      return next();
     }
 
     if (req.user.role === 'SUPER_ADMIN') {

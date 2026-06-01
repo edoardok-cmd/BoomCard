@@ -1231,17 +1231,65 @@ class StickerService {
       }
     }
 
-    // Spec §7.1: 0-30 → auto-approve; 31-60 → manual review; 61+ → high risk.
-    // Design note: scanFraudScore is captured here (pre-OCR). The merchant-verification
-    // job enqueued above runs async and may later increment fraudScore via { increment: 40 },
-    // but that write cannot affect the routing decision made in this synchronous call.
-    // This is intentional: OCR enriches the scan record for subsequent admin review;
-    // it does not gate the current upload's auto-approve path.
-    const autoApproveThreshold = (scan as any).venue?.stickerConfig?.autoApproveThreshold ?? 30;
-    const scanFraudScore = scan.fraudScore ?? 0;
+    // Spec §2.1 / §2.2 / §3.4 — compute the canonical five-signal additive risk level.
+    // This is authoritative for routing the scan to auto-approve vs manual review.
+    // The internal fraud score (scan.fraudScore) is retained for admin triage only.
+    //
+    // Signal inputs derived from the scan and OCR data at upload time:
+    //   ibanChangedRecently: check if user's IBAN was changed within the last 24h.
+    //   ocrConfidence:       OCR confidence from ocrData (0–100); below 60% → +30.
+    //   locationMismatch:    GPS distance from the scanSticker phase is stored in
+    //                        fraudReasons as 'GPS_FAR_FROM_VENUE'; detect it there.
+    // N3 fix: absent OCR confidence means no confidence data, not perfect confidence.
+    // Default to 0 (triggers +30 Signal 2 penalty) rather than 100 (no penalty) to
+    // avoid silently classifying receipts with missing OCR data as Low risk.
+    const ocrConfidence: number = (ocrData as any)?.confidence ?? 0;
+    const locationMismatch = Array.isArray(scan.fraudReasons)
+      && (scan.fraudReasons as string[]).some((r) => r === 'GPS_FAR_FROM_VENUE' || r === 'GPS_OUTSIDE_RANGE');
+    const partnerId = scan.venue?.partner?.id ?? undefined;
 
-    if (scanFraudScore <= autoApproveThreshold) {
-      // ── Auto-approve path ────────────────────────────────────────────────
+    // Check if user's IBAN was changed in the last 24h (Signal 1, +40 points).
+    // Queries by the exact action key 'wallet.iban.update' written by
+    // WalletService.updatePayoutAccount() — NOT a substring match, which would
+    // be fragile and could produce false positives (e.g. 'admin.iban.read').
+    // If this action key ever changes, update both files together.
+    let ibanChangedRecently = false;
+    if (userId) {
+      const ibanCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const ibanLog = await prisma.auditLog.findFirst({
+        where: {
+          actorUserId: userId,
+          action: { equals: 'wallet.iban.update' },
+          createdAt: { gte: ibanCutoff },
+        },
+        select: { id: true },
+      }).catch(() => null);
+      ibanChangedRecently = ibanLog !== null;
+    }
+
+    // Spec §2.1 five-signal risk level — drives manual-review gate
+    const specRisk = await fraudDetectionService.computeSpecRiskLevel({
+      userId: userId ?? scan.userId,
+      partnerId,
+      ibanChangedRecently,
+      ocrConfidence,
+      locationMismatch,
+    });
+
+    // Persist the spec risk level on the scan record so admin dashboard can filter/display
+    // TODO(schema): add `specRiskLevel String?` column to StickerScan for cleaner storage.
+    // For now store in fraudReasons as a tagged entry (non-breaking, additive).
+    const specRiskTag = `SPEC_RISK:${specRisk.riskLevel}:${specRisk.riskScore}`;
+    await (prisma.stickerScan.update as any)({
+      where: { id: scanId },
+      data: { fraudReasons: { push: specRiskTag } },
+    }).catch((err: unknown) => logger.error(`[uploadReceipt] failed to store spec risk tag:`, err));
+
+    // Spec §3.4: Low risk → auto-approve within 24h. Medium/High → manual review queue.
+    // Low = riskScore 0–20 per spec §2.1 thresholds.
+    if (!specRisk.requiresManualReview) {
+      // ── Auto-approve path (Spec §3.4: Low risk auto-approves) ────────────
+      // Spec §2.1 / §3.4: riskLevel=Low (score 0–20) → auto-approve within 24h.
       // Transition to MANUAL_REVIEW first so approveScan() accepts the scan,
       // then immediately promote. This reuses all cashback-credit, wallet,
       // audit-trail, and notification logic in a single call.
@@ -1284,13 +1332,14 @@ class StickerService {
       });
     }
 
-    // ── Manual review path (fraudScore 31-60 = review, 61+ = high risk) ───
+    // ── Manual review path (Spec §2.2: Medium/High risk → manual queue) ───
+    // Spec §2.1 thresholds: Medium = 21–50, High = 51+. Both enter admin queue.
     const finalScan = await prisma.stickerScan.update({
       where: { id: scanId },
       data: { status: ScanStatus.MANUAL_REVIEW },
     });
 
-    // Spec §7.1 v1.1 — create a PENDING cashback record visible to the user
+    // Spec §2.2 / §3.4 v1.1 — create a PENDING cashback record visible to the user
     // for the duration of the risk review. Non-fatal: a write failure here
     // must not roll back the upload. Idempotent — repeated calls return the
     // existing entry. On admin approve, this row is promoted to CLEARED

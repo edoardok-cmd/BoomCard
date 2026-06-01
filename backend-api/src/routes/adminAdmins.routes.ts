@@ -168,7 +168,12 @@ router.get('/pending', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
   }
 });
 
+// Spec §9: Dual-approval requests expire after 72 hours. Computed once per request
+// to give a consistent cutoff across all queries in this handler.
+const PENDING_SUPER_ADMIN_TTL_MS = 72 * 60 * 60 * 1000; // 72h in milliseconds
+
 // GET /api/admin/admins/pending-super — list pending SUPER_ADMIN creation requests
+// N6 fix: requests older than 72h are excluded from the list (spec §9 expiry).
 // #12 fix: use admins.read (not admins.write) — this is a read-only list
 router.get('/pending-super', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.read'), async (req, res, next) => {
   try {
@@ -178,10 +183,14 @@ router.get('/pending-super', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), re
     const skip = (pageNum - 1) * limitNum;
     const take = limitNum;
 
+    // N6 fix: filter out requests older than 72h — they are expired and cannot be approved.
+    const expiryThreshold = new Date(Date.now() - PENDING_SUPER_ADMIN_TTL_MS);
+
     const [requests, total] = await Promise.all([
       prisma.pendingSuperAdminRequest.findMany({
         skip,
         take,
+        where: { createdAt: { gte: expiryThreshold } },
         orderBy: { createdAt: 'desc' },
         select: {
           id: true,
@@ -193,7 +202,7 @@ router.get('/pending-super', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), re
           requestedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
         },
       }),
-      prisma.pendingSuperAdminRequest.count(),
+      prisma.pendingSuperAdminRequest.count({ where: { createdAt: { gte: expiryThreshold } } }),
     ]);
 
     res.json({ requests, total, page: pageNum, limit: take });
@@ -211,6 +220,10 @@ router.get('/pending-all', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requ
   try {
     const hasAdminsRead = req.user!.role === 'SUPER_ADMIN' || (req.user!.permissions ?? []).includes('admins.read');
 
+    // N2 fix: apply the same 72h expiry filter used in /pending-super so that
+    // expired requests are excluded from the unified pending count/list here too.
+    const pendingAllExpiryThreshold = new Date(Date.now() - PENDING_SUPER_ADMIN_TTL_MS);
+
     const [pendingRoleAssignments, pendingSuperAdmins, pendingCriticalActions] = await Promise.all([
       hasAdminsRead
         ? prisma.user.findMany({
@@ -221,6 +234,7 @@ router.get('/pending-all', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requ
         : Promise.resolve([]),
       hasAdminsRead
         ? prisma.pendingSuperAdminRequest.findMany({
+            where: { createdAt: { gte: pendingAllExpiryThreshold } },
             orderBy: { createdAt: 'desc' },
             select: {
               id: true,
@@ -705,6 +719,15 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
     });
     if (!request) return res.status(404).json({ error: 'Pending request not found' });
 
+    // N6 fix: reject approval of requests older than 72h (spec §9 dual-approval expiry).
+    const requestAgeMs = Date.now() - request.createdAt.getTime();
+    if (requestAgeMs > PENDING_SUPER_ADMIN_TTL_MS) {
+      return res.status(410).json({
+        error: 'This pending SUPER_ADMIN creation request has expired (72h window). ' +
+               'Please submit a new request.',
+      });
+    }
+
     if (request.requestedById === req.user!.id) {
       return res.status(403).json({ error: 'The approver must be a different admin from the original requester' });
     }
@@ -852,20 +875,37 @@ router.get('/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermi
   }
 });
 
-// PATCH /api/admin/admins/:id/status — suspend or activate an admin account (#5)
+// PATCH /api/admin/admins/:id/status — change an admin account's operational status.
+// Spec §1.5 status enum: Active | Inactive | Archived
+//
+// Implementation mapping (UserStatus enum in schema lacks ARCHIVED; using SUSPENDED
+// as the nearest equivalent for "no login" — db-engineer must add ARCHIVED enum value):
+//   ACTIVE    → spec Active   (full login, full operational rights)
+//   INACTIVE  → spec Inactive (login allowed, read-only only — aro JWT claim enforced in requirePermission)
+//   SUSPENDED → spec Archived (no login; account decommissioned/departed)
+//
+// TODO(schema): add UserStatus.ARCHIVED for semantic precision (db-engineer task).
+// The current SUSPENDED value is repurposed here to block admin login, matching §1.5
+// "Archived: no login access."
 router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.write'), async (req: AuthRequest, res, next) => {
   try {
     const { id } = req.params;
     const { status, reason } = req.body as { status?: string; reason?: string };
 
-    if (status !== 'ACTIVE' && status !== 'SUSPENDED') {
-      return res.status(400).json({ error: 'status must be ACTIVE or SUSPENDED' });
+    // Spec §1.5: valid admin statuses are Active, Inactive, Archived.
+    // SUSPENDED is used as the functional equivalent of Archived until schema is updated.
+    const VALID_ADMIN_STATUSES = ['ACTIVE', 'INACTIVE', 'SUSPENDED'] as const;
+    if (!VALID_ADMIN_STATUSES.includes(status as typeof VALID_ADMIN_STATUSES[number])) {
+      return res.status(400).json({
+        error: 'status must be one of: ACTIVE (Active), INACTIVE (Inactive — read-only), SUSPENDED (Archived — no login)',
+      });
     }
-    if (status === 'SUSPENDED' && !reason?.trim()) {
-      return res.status(400).json({ error: 'reason is required when suspending an admin account' });
+    // Require a reason when deactivating or archiving (INACTIVE or SUSPENDED)
+    if ((status === 'INACTIVE' || status === 'SUSPENDED') && !reason?.trim()) {
+      return res.status(400).json({ error: 'reason is required when setting an admin account to INACTIVE or SUSPENDED' });
     }
 
-    // Prevent self-suspension
+    // Prevent self-demotion
     if (id === req.user!.id) {
       return res.status(400).json({ error: 'You cannot change your own status' });
     }
@@ -876,18 +916,18 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
     }
 
     // Only a SUPER_ADMIN may change the status of another SUPER_ADMIN.
-    // An ADMIN with admins.write cannot demote or suspend a higher-privilege account.
+    // An ADMIN with admins.write cannot demote or deactivate a higher-privilege account.
     if (target.role === 'SUPER_ADMIN' && req.user!.role !== 'SUPER_ADMIN') {
       return res.status(403).json({ error: 'Only a SUPER_ADMIN can change another SUPER_ADMIN\'s status' });
     }
 
-    // #3-adjacent: prevent suspending the last active SUPER_ADMIN
-    if (target.role === 'SUPER_ADMIN' && status === 'SUSPENDED') {
+    // Prevent archiving the last active SUPER_ADMIN (SUSPENDED = Archived for admins)
+    if (target.role === 'SUPER_ADMIN' && (status === 'SUSPENDED' || status === 'INACTIVE')) {
       const activeSuperAdmins = await prisma.user.count({
         where: { role: 'SUPER_ADMIN', status: 'ACTIVE', id: { not: id } },
       });
       if (activeSuperAdmins === 0) {
-        return res.status(409).json({ error: 'Cannot suspend the last active SUPER_ADMIN' });
+        return res.status(409).json({ error: 'Cannot deactivate the last active SUPER_ADMIN' });
       }
     }
 
@@ -895,7 +935,7 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
 
     const updated = await prisma.user.update({
       where: { id },
-      data: { status },
+      data: { status: status as UserStatus },
       select: { id: true, status: true },
     });
 
@@ -906,7 +946,12 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
       objectType: 'admin',
       objectId: id,
       before: { status: beforeStatus },
-      after: { status, reason: reason?.trim() || null },
+      // Spec §1.5: include spec-level label in audit for clarity
+      after: {
+        status,
+        specLabel: status === 'ACTIVE' ? 'Active' : status === 'INACTIVE' ? 'Inactive (read-only)' : 'Archived (no login)',
+        reason: reason?.trim() || null,
+      },
       ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
     });
