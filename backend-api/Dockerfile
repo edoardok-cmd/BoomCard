@@ -18,7 +18,7 @@ COPY prisma ./prisma/
 # Install dependencies (production only); ignore native build scripts that
 # may fail on transient network errors (e.g. @sentry/profiling-node).
 # The app handles missing native modules gracefully at runtime.
-RUN npm install --omit=dev --ignore-scripts && \
+RUN npm install --omit=dev --ignore-scripts --legacy-peer-deps && \
     npx node-gyp-build 2>/dev/null || true
 
 # Generate Prisma Client
@@ -40,7 +40,7 @@ COPY tsconfig.json ./
 COPY prisma ./prisma/
 
 # Install all dependencies (including dev); skip native scripts (see dependencies stage)
-RUN npm install --ignore-scripts
+RUN npm install --ignore-scripts --legacy-peer-deps
 
 # Generate Prisma Client
 RUN npx prisma generate
