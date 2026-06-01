@@ -203,6 +203,7 @@ model Partner {
   // future scripts). The DB column maps to the string forms shown in the UI
   // ("1" / "2-5" / "6-10" / "11+") via per-value @map directives below.
   requestObjectCount    PartnerVenueCountBucket?
+  hasRiskFlag           Boolean                  @default(false)
   onboardingCompletedAt DateTime?
   bookings              Booking[]
   marketingListMembers  MarketingListMember[]
@@ -221,6 +222,7 @@ model Partner {
   @@index([partnerTypeId])
   @@index([status])
   @@index([city])
+  @@index([hasRiskFlag])
 }
 
 model PartnerCashbackPayment {
@@ -1189,8 +1191,9 @@ model Sticker {
   status        StickerStatus   @default(ACTIVE)
   printedAt     DateTime?
   activatedAt   DateTime?
-  deactivatedAt DateTime?
-  totalScans    Int             @default(0)
+  deactivatedAt     DateTime?
+  autoDeactivatedAt DateTime?
+  totalScans        Int             @default(0)
   lastScannedAt DateTime?
   metadata      String?
   // Spec §5.4 — when a QR label is physically replaced, the new sticker's row
@@ -1211,6 +1214,7 @@ model Sticker {
   @@index([locationId])
   @@index([stickerId])
   @@index([status])
+  @@index([autoDeactivatedAt])
 }
 
 model StickerLocation {
@@ -1256,6 +1260,7 @@ model StickerScan {
   userAgent            String?
   transactionId        String?             @unique
   rejectionReason      String?
+  specRiskLevel        String?
   processedAt          DateTime?
   metadata             String?
   createdAt            DateTime            @default(now())
@@ -1278,6 +1283,7 @@ model StickerScan {
   @@index([status])
   @@index([createdAt])
   @@index([userId, deviceFingerprint])
+  @@index([specRiskLevel])
 }
 
 model VenueStickerConfig {
@@ -1801,6 +1807,7 @@ enum UserStatus {
   PENDING_VERIFICATION
   PENDING_PAYMENT
   DELETED
+  ARCHIVED
 }
 
 enum PartnerRequestStatus {

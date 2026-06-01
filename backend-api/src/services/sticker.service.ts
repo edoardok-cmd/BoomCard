@@ -1276,13 +1276,14 @@ class StickerService {
       locationMismatch,
     });
 
-    // Persist the spec risk level on the scan record so admin dashboard can filter/display
-    // TODO(schema): add `specRiskLevel String?` column to StickerScan for cleaner storage.
-    // For now store in fraudReasons as a tagged entry (non-breaking, additive).
+    // Persist the spec risk level on the scan record so admin dashboard can filter/display.
+    // specRiskLevel is stored as a dedicated column (added in BC-SCHEMA-1) for clean
+    // filtering. specRiskTag is also pushed to fraudReasons for backward compat with
+    // existing callers that read fraudReasons for spec risk info.
     const specRiskTag = `SPEC_RISK:${specRisk.riskLevel}:${specRisk.riskScore}`;
-    await (prisma.stickerScan.update as any)({
+    await prisma.stickerScan.update({
       where: { id: scanId },
-      data: { fraudReasons: { push: specRiskTag } },
+      data: { specRiskLevel: specRisk.riskLevel, fraudReasons: { push: specRiskTag } },
     }).catch((err: unknown) => logger.error(`[uploadReceipt] failed to store spec risk tag:`, err));
 
     // Spec §3.4: Low risk → auto-approve within 24h. Medium/High → manual review queue.

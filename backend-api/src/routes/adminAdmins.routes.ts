@@ -878,31 +878,27 @@ router.get('/:id', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermi
 // PATCH /api/admin/admins/:id/status — change an admin account's operational status.
 // Spec §1.5 status enum: Active | Inactive | Archived
 //
-// Implementation mapping (UserStatus enum in schema lacks ARCHIVED; using SUSPENDED
-// as the nearest equivalent for "no login" — db-engineer must add ARCHIVED enum value):
-//   ACTIVE    → spec Active   (full login, full operational rights)
-//   INACTIVE  → spec Inactive (login allowed, read-only only — aro JWT claim enforced in requirePermission)
-//   SUSPENDED → spec Archived (no login; account decommissioned/departed)
-//
-// TODO(schema): add UserStatus.ARCHIVED for semantic precision (db-engineer task).
-// The current SUSPENDED value is repurposed here to block admin login, matching §1.5
-// "Archived: no login access."
+// Implementation mapping (UserStatus enum — ARCHIVED added in schema migration BC-SCHEMA-1):
+//   ACTIVE    → spec Active    (full login, full operational rights)
+//   INACTIVE  → spec Inactive  (login allowed, read-only only — aro JWT claim enforced in requirePermission)
+//   SUSPENDED → legacy blocked (no login; superseded by ARCHIVED for new decommissions)
+//   ARCHIVED  → spec Archived  (no login; account decommissioned/departed)
 router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.write'), async (req: AuthRequest, res, next) => {
   try {
     const { id } = req.params;
     const { status, reason } = req.body as { status?: string; reason?: string };
 
     // Spec §1.5: valid admin statuses are Active, Inactive, Archived.
-    // SUSPENDED is used as the functional equivalent of Archived until schema is updated.
-    const VALID_ADMIN_STATUSES = ['ACTIVE', 'INACTIVE', 'SUSPENDED'] as const;
+    // ARCHIVED is the canonical "no login" state (BC-SCHEMA-1); SUSPENDED retained for legacy records.
+    const VALID_ADMIN_STATUSES = ['ACTIVE', 'INACTIVE', 'SUSPENDED', 'ARCHIVED'] as const;
     if (!VALID_ADMIN_STATUSES.includes(status as typeof VALID_ADMIN_STATUSES[number])) {
       return res.status(400).json({
-        error: 'status must be one of: ACTIVE (Active), INACTIVE (Inactive — read-only), SUSPENDED (Archived — no login)',
+        error: 'status must be one of: ACTIVE (Active), INACTIVE (Inactive — read-only), SUSPENDED (Suspended — legacy), ARCHIVED (Archived — no login)',
       });
     }
-    // Require a reason when deactivating or archiving (INACTIVE or SUSPENDED)
-    if ((status === 'INACTIVE' || status === 'SUSPENDED') && !reason?.trim()) {
-      return res.status(400).json({ error: 'reason is required when setting an admin account to INACTIVE or SUSPENDED' });
+    // Require a reason when deactivating or archiving (INACTIVE, SUSPENDED, or ARCHIVED)
+    if ((status === 'INACTIVE' || status === 'SUSPENDED' || status === 'ARCHIVED') && !reason?.trim()) {
+      return res.status(400).json({ error: 'reason is required when setting an admin account to INACTIVE, SUSPENDED, or ARCHIVED' });
     }
 
     // Prevent self-demotion
@@ -921,8 +917,8 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
       return res.status(403).json({ error: 'Only a SUPER_ADMIN can change another SUPER_ADMIN\'s status' });
     }
 
-    // Prevent archiving the last active SUPER_ADMIN (SUSPENDED = Archived for admins)
-    if (target.role === 'SUPER_ADMIN' && (status === 'SUSPENDED' || status === 'INACTIVE')) {
+    // Prevent archiving the last active SUPER_ADMIN (SUSPENDED / ARCHIVED / INACTIVE all block login)
+    if (target.role === 'SUPER_ADMIN' && (status === 'SUSPENDED' || status === 'INACTIVE' || status === 'ARCHIVED')) {
       const activeSuperAdmins = await prisma.user.count({
         where: { role: 'SUPER_ADMIN', status: 'ACTIVE', id: { not: id } },
       });
@@ -949,7 +945,7 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
       // Spec §1.5: include spec-level label in audit for clarity
       after: {
         status,
-        specLabel: status === 'ACTIVE' ? 'Active' : status === 'INACTIVE' ? 'Inactive (read-only)' : 'Archived (no login)',
+        specLabel: status === 'ACTIVE' ? 'Active' : status === 'INACTIVE' ? 'Inactive (read-only)' : status === 'SUSPENDED' ? 'Suspended (no login — legacy)' : 'Archived (no login)',
         reason: reason?.trim() || null,
       },
       ip: getClientIp(req) ?? null,

@@ -723,25 +723,6 @@ Five risk signals are tracked across all cashback records:
 | 5.4 | Gap | Limits table defaults and change authority undefined | Engineering sets defaults; product owner signs off at go-live; Risk Review adjusts within bounds; Super Admin can exceed bounds | ✅ Resolved |
 | Gap 12 | Gap | Inactive user behaviour undefined | Login allowed, scanning blocked, support requests allowed (mirrors partner model) | ✅ Resolved |
 
-### Previously Unresolved Items — Now Resolved
-
-All 14 open gaps have been decided by the product owner and integrated into this specification:
-
-| Gap | Decision |
-|----|---------|
-| Gap 1 — Subscription cancellation | Access ends at period end (standard SaaS); Cancelled status retains scanning until last paid day |
-| Gap 2 — Payout permission matrix | Earned-rights model: in-flight payouts always continue; new payouts blocked post period end |
-| Gap 3 — Anti-fraud limits authority | Product team defines defaults in pre-launch config doc; Risk Review can adjust within bounds; only Super Admin can exceed bounds |
-| Gap 4 — Plus-addressing | Deferred to v1.3; v1.2 uses X-BoomCard-Request-ID header + [#XXXX] subject pattern |
-| Gap 5 — Dual-approval protocol | 2-of-N Super Admin approval; 72h expiry; initiator can cancel; bootstrap exception for single-SA systems |
-| Gap 6 — Archived reactivation | Users: self-reactivate via password reset + new subscription; Partners: admin action + new onboarding review; QR codes require explicit admin reactivation |
-| Gap 7 — Admin account status | Active / Inactive / Archived — mirrors User and Partner model |
-| Gap 8 — Request assignment | Fully manual; shared "Unassigned" queue; any admin can claim; Super Admin can reassign |
-| Gap 9/13 — Risk combining function | Additive score with five signals; thresholds 0–20 Low, 21–50 Medium, 51+ High |
-| Gap 10 — BGN/EUR transition | Dual-currency display during transition window; BGN hidden after window closes |
-| Gap 11 — Password reset rate-limit | Alert at 3 resets in 24h; suspension pending Super Admin review at 5 resets in 24h |
-| Gap 12 — Inactive user behaviour | Login allowed; scanning blocked; support requests allowed |
-| Gap 14 — Limits table defaults ownership | Engineering sets defaults; product owner signs off as part of go-live checklist |
 
 
 ___

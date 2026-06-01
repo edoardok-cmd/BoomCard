@@ -17,12 +17,9 @@
  *     reactivation per sticker (spec §2.4 Gap 6). Admin must use the QR management UI.
  *
  * Implementation note: the fromStatus parameter distinguishes Inactive→Active from
- * Archived→Active so the correct reactivation policy is applied. Once the
- * `Sticker.autoDeactivatedAt` schema column is added (TODO below), Inactive→Active
- * reactivation can be further scoped to only stickers that were auto-deactivated by
- * this partner's status change rather than all inactive stickers.
- * TODO(db-engineer): add `autoDeactivatedAt DateTime?` to Sticker so reactivation
- * can selectively restore only stickers deactivated by this function.
+ * Archived→Active so the correct reactivation policy is applied. Inactive→Active
+ * reactivation is scoped to stickers where autoDeactivatedAt IS NOT NULL (set by
+ * Case 1 deactivation) so manually-deactivated stickers are not bulk-reactivated.
  *
  * Statuses that trigger deactivation: INACTIVE, PAUSED, SUSPENDED, ARCHIVED.
  * Statuses that trigger reactivation: ACTIVE (only, and only from INACTIVE).
@@ -154,23 +151,16 @@ export class PartnerService {
    *      Deactivate ALL ACTIVE stickers (flip to INACTIVE).
    *
    *   2. Inactive → Active:
-   *      Reactivate ALL INACTIVE stickers (bulk flip to ACTIVE). Spec §1.4:
-   *      "Transition back to Active → All QR codes automatically reactivate
-   *      (no manual regeneration needed)."
-   *      NOTE: Bulk reactivation on Inactive→Active per spec §1.4. Once the
-   *      `Sticker.autoDeactivatedAt` column is added (TODO(db-engineer) below),
-   *      this can be scoped to only stickers that were auto-deactivated by this
-   *      partner's status change rather than all inactive stickers.
+   *      Reactivate INACTIVE stickers that were auto-deactivated by this function
+   *      (autoDeactivatedAt IS NOT NULL). Spec §1.4: "Transition back to Active →
+   *      All QR codes automatically reactivate (no manual regeneration needed)."
+   *      Scoped to auto-deactivated stickers only so manually-deactivated stickers
+   *      are not bulk-reactivated. Clears autoDeactivatedAt on reactivation.
    *
    *   3. Archived → Active:
    *      NO auto-reactivation. Spec §2.4 Gap 6 states QR codes require "explicit
    *      admin reactivation per code" after an archived partner is re-onboarded.
    *      Admin must reactivate individual stickers via the QR management UI.
-   *
-   * TODO(db-engineer): Add a `Sticker.autoDeactivatedAt DateTime?` column. When set,
-   * it marks the sticker as system-deactivated (not admin-deactivated). Once the
-   * column exists, case 2 can safely reactivate only stickers where
-   * autoDeactivatedAt IS NOT NULL, i.e. those deactivated by this very function.
    */
   async syncQrCodesForPartner(
     partnerId: string,
@@ -185,7 +175,7 @@ export class PartnerService {
             venue: { partnerId },
             status: StickerStatus.ACTIVE,
           },
-          data: { status: StickerStatus.INACTIVE },
+          data: { status: StickerStatus.INACTIVE, autoDeactivatedAt: new Date() },
         });
         logger.info(
           `[partner.syncQr] partnerId=${partnerId} → ${toStatus}: deactivated ${result.count} sticker(s)`
@@ -210,15 +200,15 @@ export class PartnerService {
           );
         } else {
           // Case 2: Inactive (or other non-Archived) → Active. Spec §1.4 bulk reactivation.
-          // Bulk reactivation on Inactive→Active per spec §1.4. Once `Sticker.autoDeactivatedAt`
-          // column is added, this can be scoped to only stickers that were auto-deactivated by
-          // this partner's status change.
+          // Scoped to stickers that were auto-deactivated by this function (autoDeactivatedAt IS NOT NULL)
+          // so manually-deactivated stickers are not unintentionally bulk-reactivated.
           const result = await prisma.sticker.updateMany({
             where: {
               venue: { partnerId },
               status: StickerStatus.INACTIVE,
+              autoDeactivatedAt: { not: null },
             },
-            data: { status: StickerStatus.ACTIVE },
+            data: { status: StickerStatus.ACTIVE, autoDeactivatedAt: null },
           });
           logger.info(
             `[partner.syncQr] partnerId=${partnerId} → ACTIVE (from ${fromStatus}): ` +
@@ -228,7 +218,12 @@ export class PartnerService {
       }
     } catch (err) {
       // Non-fatal: log and continue. The partner status change is already committed.
-      // TODO: alert ops channel or enqueue a retry job so sticker state converges.
+      // The QR sync intentionally runs outside the partner-status transaction so a
+      // sticker failure does not roll back the status change (see spec §1.4).
+      //
+      // Recovery path: a background reconciliation script should periodically run
+      // `SELECT * FROM "Sticker" WHERE "status" = 'ACTIVE' AND venue.partner.status IN (INACTIVE, PAUSED, SUSPENDED, ARCHIVED)`
+      // and flip those stickers. Track as a follow-up ops task (not in scope of BC-SCHEMA-1).
       logger.error(
         `[partner.syncQr] WARN: QR sync failed for partner ${partnerId} → ${toStatus}. ` +
         `Manual reconciliation may be needed. Error: ${err}`

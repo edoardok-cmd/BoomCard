@@ -954,22 +954,13 @@ class FraudDetectionService {
 
     // Signal 5: Partner has active risk flag → +10
     // Spec §2.1 defines "partner has active risk flag" as a boolean field on the
-    // partner record. The current schema stores risk information in VenueFraudConfig
-    // and the adminControl risk signals. We check the partner's risk flag in the
-    // RiskAssessment/venueFraudConfig — any partner-level block in VenueFraudConfig
-    // metadata acts as the "active risk flag".
-    // TODO(schema): add a dedicated `hasRiskFlag: Boolean` column to Partner for
-    // a cleaner implementation; for now, check VenueFraudConfig.metadata for a
-    // `{ partnerRiskFlag: true }` marker set by the Risk Review admin role.
+    // partner record. Reads Partner.hasRiskFlag directly (added in BC-SCHEMA-1).
     if (params.partnerId) {
-      const config = await prisma.venueFraudConfig.findFirst({
-        where: { venueId: params.partnerId },
-        select: { metadata: true },
+      const partner = await prisma.partner.findUnique({
+        where: { id: params.partnerId },
+        select: { hasRiskFlag: true },
       }).catch(() => null);
-      const meta = config?.metadata
-        ? (typeof config.metadata === 'string' ? JSON.parse(config.metadata) : config.metadata) as Record<string, unknown>
-        : null;
-      if (meta?.partnerRiskFlag === true) {
+      if (partner?.hasRiskFlag === true) {
         riskScore += RISK_PARTNER_FLAG_POINTS;
         riskSignals.push('PARTNER_ACTIVE_RISK_FLAG');
       }
@@ -1128,11 +1119,13 @@ class FraudDetectionService {
    * review queue. Access requires the caller to check 'admins.actions.write' or an
    * equivalent privileged permission before calling this method.
    *
-   * The flag is stored in VenueFraudConfig.metadata.partnerRiskFlag (boolean).
-   * TODO(db-engineer): migrate to a dedicated Partner.hasRiskFlag Boolean column for
-   * a cleaner schema representation (see spec §2.1).
+   * The flag is stored in two places during the transition period:
+   *   - VenueFraudConfig.metadata.partnerRiskFlag (legacy — kept for backward compat)
+   *   - Partner.hasRiskFlag (new column added in BC-SCHEMA-1, canonical going forward)
+   * Both are written atomically in sequence here. The metadata write will be removed
+   * in a follow-up cleanup task once all readers are migrated to Partner.hasRiskFlag.
    *
-   * @param venueId   - The venue (partner) whose risk flag is being changed.
+   * @param partnerId   - The partner whose risk flag is being changed.
    * @param flagValue - true to set the flag; false to clear it.
    * @param actorUserId - Admin performing the action (for audit log).
    * @param reason    - Mandatory justification for the change.
@@ -1140,7 +1133,7 @@ class FraudDetectionService {
    * @param userAgent - Originating User-Agent header (for audit log).
    */
   async setPartnerRiskFlag(
-    venueId: string,
+    partnerId: string,
     flagValue: boolean,
     actorUserId: string,
     reason: string,
@@ -1153,7 +1146,7 @@ class FraudDetectionService {
 
     // Fetch the current config to capture the before state for the audit log.
     const existing = await prisma.venueFraudConfig.findUnique({
-      where: { venueId },
+      where: { venueId: partnerId },
       select: { metadata: true },
     });
 
@@ -1169,10 +1162,22 @@ class FraudDetectionService {
     // VenueFraudConfig.metadata is String? in the Prisma schema — must serialize.
     const afterMetaStr = JSON.stringify(afterMeta);
 
-    await prisma.venueFraudConfig.upsert({
-      where: { venueId },
-      create: { venueId, metadata: afterMetaStr },
-      update: { metadata: afterMetaStr },
+    // Wrap both writes in a single transaction so the two stores cannot diverge on crash.
+    // Partner.hasRiskFlag is the canonical column (read by computeSpecRiskLevel); it is
+    // written first. VenueFraudConfig.metadata is kept for backward compat during the
+    // transition period and will be removed in a follow-up cleanup task once all readers
+    // have migrated to Partner.hasRiskFlag.
+    // Note: VenueFraudConfig.venueId stores Partner.id — pass partnerId directly.
+    await prisma.$transaction(async (tx) => {
+      await tx.partner.update({
+        where: { id: partnerId },
+        data: { hasRiskFlag: flagValue },
+      });
+      await tx.venueFraudConfig.upsert({
+        where: { venueId: partnerId },
+        create: { venueId: partnerId, metadata: afterMetaStr },
+        update: { metadata: afterMetaStr },
+      });
     });
 
     // Explicit audit entry for risk flag changes — required for security traceability.
@@ -1181,7 +1186,7 @@ class FraudDetectionService {
       actorUserId,
       action: 'partner.riskFlag.set',
       objectType: 'venueFraudConfig',
-      objectId: venueId,
+      objectId: partnerId,
       before: { partnerRiskFlag: beforeFlag },
       after:  { partnerRiskFlag: flagValue, reason: reason.trim() },
       ip: ip ?? null,
@@ -1189,7 +1194,7 @@ class FraudDetectionService {
     });
 
     logger.info(
-      `[fraudDetection.setPartnerRiskFlag] venueId=${venueId} flagValue=${flagValue} ` +
+      `[fraudDetection.setPartnerRiskFlag] partnerId=${partnerId} flagValue=${flagValue} ` +
       `by actorUserId=${actorUserId} reason="${reason.trim()}"`
     );
   }

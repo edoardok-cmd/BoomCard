@@ -658,10 +658,9 @@ export class AuthService {
     //   SUSPENDED/ARCHIVED → no login (maps to spec's Archived state for admins).
     //
     // NOTE: `INACTIVE` maps to spec §1.5 "Inactive admin" (login allowed, read-only).
-    // `SUSPENDED` maps to spec §1.5 "Archived admin" (no login). A dedicated ARCHIVED
-    // enum value requires a schema migration — flagged as a TODO for db-engineer.
-    // TODO(schema): add UserStatus.ARCHIVED for semantic clarity (db-engineer task).
-    if (user.status === 'SUSPENDED') {
+    // `SUSPENDED` maps to spec §1.5 "Archived admin" (no login). `ARCHIVED` is the
+    // dedicated enum value added in schema migration BC-SCHEMA-1.
+    if (user.status === 'SUSPENDED' || user.status === 'ARCHIVED') {
       prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'suspended' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
       throw new AppError('Account has been suspended', 403);
     }
