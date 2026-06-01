@@ -175,7 +175,7 @@ export class PartnerService {
   async syncQrCodesForPartner(
     partnerId: string,
     toStatus: PartnerStatus,
-    fromStatus?: PartnerStatus,
+    fromStatus: PartnerStatus | undefined,
   ): Promise<void> {
     try {
       if (QR_DEACTIVATING_STATUSES.includes(toStatus)) {
@@ -191,7 +191,16 @@ export class PartnerService {
           `[partner.syncQr] partnerId=${partnerId} → ${toStatus}: deactivated ${result.count} sticker(s)`
         );
       } else if (toStatus === PartnerStatus.ACTIVE) {
-        if (fromStatus === PartnerStatus.ARCHIVED) {
+        if (fromStatus === undefined) {
+          // Safety guard: caller did not supply previous status. We cannot determine the
+          // correct reactivation policy (Inactive→Active vs Archived→Active), so we skip
+          // reactivation entirely rather than risk bulk-reactivating stickers that should
+          // remain inactive. Admin must reactivate stickers manually via the QR management UI.
+          logger.warn(
+            `[partner.syncQr] partnerId=${partnerId} → ACTIVE: fromStatus missing — ` +
+            `skipping QR reactivation for safety. Admin must reactivate stickers manually.`
+          );
+        } else if (fromStatus === PartnerStatus.ARCHIVED) {
           // Case 3: Archived → Active. Spec §2.4 Gap 6 — QR codes require explicit
           // admin reactivation per sticker. Do NOT auto-reactivate.
           logger.info(
@@ -212,7 +221,7 @@ export class PartnerService {
             data: { status: StickerStatus.ACTIVE },
           });
           logger.info(
-            `[partner.syncQr] partnerId=${partnerId} → ACTIVE (from ${fromStatus ?? 'unknown'}): ` +
+            `[partner.syncQr] partnerId=${partnerId} → ACTIVE (from ${fromStatus}): ` +
             `reactivated ${result.count} sticker(s) per spec §1.4`
           );
         }

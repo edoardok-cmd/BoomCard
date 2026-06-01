@@ -265,6 +265,13 @@ app.use('/api/sidebar', sidebarRouter);
 app.use('/api/partners', partnersRouter);
 app.use('/api/admin/cashback', adminCashbackRouter);
 app.use('/api/admin/alerts', adminAlertsRouter);
+// TODO(routing): adminPartnersRouter handles two concerns in one router —
+// the partner application pipeline (§5.1/§5.2, semantically /api/admin/partner-requests)
+// AND active-partner management (§5.3, risk-flag, partner-status — semantically
+// /api/admin/partners). Splitting into two separate routers and mounting each at its
+// correct path is the clean fix. Until the split is done (requires updating every
+// admin UI caller at the same time), the router stays mounted at /partner-requests
+// to avoid breaking existing frontend API calls. Track as a refactor task.
 app.use('/api/admin/partner-requests', adminPartnersRouter);
 app.use('/api/admin/subscribers', adminSubscribersRouter);
 app.use('/api/admin/payouts', adminPayoutsRouter);
