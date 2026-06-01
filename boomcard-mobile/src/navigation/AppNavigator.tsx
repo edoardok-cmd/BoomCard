@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../store/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTabVisibility } from '../contexts/TabVisibilityContext';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
 import { ProgressRing } from '../components/loading';
 import BoomLogo from '../components/brand/BoomLogo';
 import * as SecureStore from '../utils/secureStore';
@@ -183,13 +183,24 @@ const TabNavigator = () => {
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
-        options={{
+        options={({ navigation }) => ({
           title: t('profile.title'),
           tabBarLabel: t('navigation.profile'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person" size={size} color={color} />
           ),
-        }}
+          headerLeft: navigation.canGoBack()
+            ? () => (
+                <TouchableOpacity
+                  onPress={() => navigation.goBack()}
+                  style={{ marginLeft: 16 }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="chevron-back" size={24} color={theme.colors.onSurface} />
+                </TouchableOpacity>
+              )
+            : undefined,
+        })}
       />
     </Tab.Navigator>
   );
@@ -198,6 +209,7 @@ const TabNavigator = () => {
 // Main App Stack Navigator with nested tabs
 const MainNavigator = ({ initialRouteName = 'MainTabs', initialParams }: { initialRouteName?: string; initialParams?: Record<string, any> }) => {
   const { t } = useTranslation();
+  const { theme } = useTheme();
 
   return (
     <Stack.Navigator
@@ -205,6 +217,10 @@ const MainNavigator = ({ initialRouteName = 'MainTabs', initialParams }: { initi
       screenOptions={{
         headerShown: false,
         cardStyle: { flex: 1 },
+        headerTintColor: theme.colors.onSurface,
+        headerStyle: {
+          backgroundColor: theme.colors.surface,
+        },
       }}
     >
       {/* Main Tabs */}
