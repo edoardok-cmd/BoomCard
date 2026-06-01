@@ -266,8 +266,13 @@ router.post('/scan/:scanId/receipt', authenticate, uploadSingle, validateMagicBy
       userId,
     });
 
-    // Parse OCR data if provided
-    const ocrData = req.body.ocrData ? JSON.parse(req.body.ocrData) : undefined;
+    // Parse OCR data if provided. Strip confidence — it feeds Signal 2 of the fraud risk
+    // score, so it must not be client-controlled. Server-side OCR is the authoritative
+    // source; for now we default to 0 (conservative) until async OCR is synchronised.
+    const ocrData = req.body.ocrData ? (() => {
+      const { confidence: _dropped, ...rest } = JSON.parse(req.body.ocrData);
+      return rest;
+    })() : undefined;
 
     // Update sticker scan with receipt.
     // Pass the raw buffer so server-side OCR can fuzzy-verify the merchant name

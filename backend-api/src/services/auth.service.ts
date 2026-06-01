@@ -661,8 +661,10 @@ export class AuthService {
     // `SUSPENDED` maps to spec §1.5 "Archived admin" (no login). `ARCHIVED` is the
     // dedicated enum value added in schema migration BC-SCHEMA-1.
     if (user.status === 'SUSPENDED' || user.status === 'ARCHIVED') {
-      prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'suspended' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
-      throw new AppError('Account has been suspended', 403);
+      const failReason = user.status === 'ARCHIVED' ? 'archived' : 'suspended';
+      const message = user.status === 'ARCHIVED' ? 'Account has been archived' : 'Account has been suspended';
+      prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason } }).catch((err) => logger.error('loginHistory.create failed', { err }));
+      throw new AppError(message, 403);
     }
 
     // Set by the PARTNER block below when status is SUSPENDED/PAUSED; included
@@ -840,8 +842,9 @@ export class AuthService {
       }
 
       // Check if user is active
-      if (storedToken.user.status === 'SUSPENDED') {
-        throw new AppError('Account has been suspended', 403);
+      if (storedToken.user.status === 'SUSPENDED' || storedToken.user.status === 'ARCHIVED') {
+        await prisma.refreshToken.delete({ where: { id: storedToken.id } });
+        throw new AppError(storedToken.user.status === 'ARCHIVED' ? 'Account has been archived' : 'Account has been suspended', 403);
       }
 
       // Mobile surface is customer-only. Reject refresh if this token was
@@ -1455,7 +1458,7 @@ export class AuthService {
       // user — the caller receives the same "check your email" response whether
       // the account exists, doesn't exist, or is suspended. This prevents
       // status enumeration via the password-reset flow.
-      if (user.status === 'SUSPENDED') {
+      if (user.status === 'SUSPENDED' || user.status === 'ARCHIVED') {
         continue;
       }
 
@@ -1764,7 +1767,7 @@ export class AuthService {
     const users = await prisma.user.findMany({
       where: {
         id: { in: accountIds },
-        status: { notIn: ['SUSPENDED', 'INACTIVE'] },
+        status: { notIn: ['SUSPENDED', 'INACTIVE', 'ARCHIVED'] },
       },
       select: {
         id: true,
@@ -1873,7 +1876,7 @@ export class AuthService {
       throw new AppError('Target account no longer exists', 404);
     }
 
-    if (target.status === 'SUSPENDED' || target.status === 'INACTIVE') {
+    if (target.status === 'SUSPENDED' || target.status === 'INACTIVE' || target.status === 'ARCHIVED') {
       throw new AppError('Target account is not available', 403);
     }
 

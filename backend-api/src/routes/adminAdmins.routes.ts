@@ -931,7 +931,12 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
 
     const updated = await prisma.user.update({
       where: { id },
-      data: { status: status as UserStatus },
+      data: {
+        status: status as UserStatus,
+        // Stamp rolesUpdatedAt whenever status changes to a no-login state so the
+        // authenticate middleware invalidates any existing access tokens immediately.
+        ...(status === 'SUSPENDED' || status === 'ARCHIVED' ? { rolesUpdatedAt: new Date() } : {}),
+      },
       select: { id: true, status: true },
     });
 
