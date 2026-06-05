@@ -7,10 +7,13 @@
 import { apiService } from './api.service';
 import {
   CreateReceiptDTO,
+  PartnerReceiptResponse,
   Receipt,
   ReceiptFilters,
   ReceiptListResponse,
-  ReceiptResponse,
+  // ReceiptResponse intentionally NOT imported here — this service is partner-facing.
+  // Use PartnerReceiptResponse for all partner-accessible endpoints.
+  // See receipt.types.ts @internal annotation on ReceiptResponse.
   ReceiptStatsResponse,
   ReviewReceiptResponse,
   UpdateReceiptDTO,
@@ -27,10 +30,13 @@ class ReceiptsApiService {
   }
 
   /**
-   * Get single receipt by ID
+   * Get single receipt by ID.
+   * Returns PartnerReceiptResponse (spec §11.3, HIGH-1 fix r2ad) — partner
+   * callers must never receive the full Receipt type with internal-only fields.
+   * Admin callers should use a separate admin endpoint or cast appropriately.
    */
-  async getReceiptById(id: string): Promise<ReceiptResponse> {
-    return apiService.get<ReceiptResponse>(`${this.baseUrl}/${id}`);
+  async getReceiptById(id: string): Promise<PartnerReceiptResponse> {
+    return apiService.get<PartnerReceiptResponse>(`${this.baseUrl}/${id}`);
   }
 
   /**
@@ -41,24 +47,36 @@ class ReceiptsApiService {
   }
 
   /**
-   * Create a new receipt from OCR scan data
+   * Create a new receipt from OCR scan data.
+   * Returns PartnerReceiptResponse — internal fields are not returned to the
+   * partner submitting the scan (spec §11.3).
    */
-  async createReceipt(data: CreateReceiptDTO): Promise<ReceiptResponse> {
-    return apiService.post<ReceiptResponse>(this.baseUrl, data);
+  async createReceipt(data: CreateReceiptDTO): Promise<PartnerReceiptResponse> {
+    return apiService.post<PartnerReceiptResponse>(this.baseUrl, data);
   }
 
   /**
-   * Update an existing receipt
+   * Update an existing receipt.
+   * Returns PartnerReceiptResponse — internal fields remain hidden from
+   * the caller (spec §11.3).
    */
-  async updateReceipt(id: string, data: UpdateReceiptDTO): Promise<ReceiptResponse> {
-    return apiService.patch<ReceiptResponse>(`${this.baseUrl}/${id}`, data);
+  async updateReceipt(id: string, data: UpdateReceiptDTO): Promise<PartnerReceiptResponse> {
+    // Receipt update lives on the v1 router (PUT /api/receipts/:id) — the v2
+    // (enhanced) router has no PATCH/PUT /:id. Use the real endpoint so this
+    // doesn't 404 if a caller is wired up later.
+    return apiService.put<PartnerReceiptResponse>(`/receipts/${id}`, data);
   }
 
   /**
-   * Delete a receipt
+   * Delete a receipt.
+   * HIGH fix: the enhanced (v2) router has NO `DELETE /:id` — `${this.baseUrl}/${id}`
+   * resolved to `/api/receipts/v2/:id`, which 404s. The real endpoint lives on the
+   * v1 receipts router: `DELETE /api/receipts/:id` (authenticated, owner-scoped,
+   * receipts.routes.ts L158). apiService.delete prepends the `/api` baseURL, so the
+   * absolute `/receipts/${id}` path below resolves to `/api/receipts/:id` — NOT v2.
    */
   async deleteReceipt(id: string): Promise<{ success: boolean }> {
-    return apiService.delete<{ success: boolean }>(`${this.baseUrl}/${id}`);
+    return apiService.delete<{ success: boolean }>(`/receipts/${id}`);
   }
 
   // ============================================

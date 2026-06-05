@@ -34,22 +34,27 @@ router.get('/me', authenticate, asyncHandler(async (req: AuthRequest, res: Respo
 
   const resolvedSubscription = subscription
     ? { ...subscription, benefits: await subscriptionService.getPlanBenefits(subscription.plan) }
-    : { plan: 'PREMIUM_WEEKLY', status: 'ACTIVE', benefits: await subscriptionService.getPlanBenefits('PREMIUM_WEEKLY') };
+    : null;
 
   // Show upgrade-to-Premium-Monthly prompt for BASIC or Premium Weekly subscribers only (per spec §6.1)
-  const subMetadata = (() => {
+  const subMetadata = resolvedSubscription ? (() => {
     try { return (resolvedSubscription as any).metadata ? JSON.parse((resolvedSubscription as any).metadata) : {}; }
     catch { return {}; }
-  })();
+  })() : {};
   const billingPeriod = ((subMetadata.billingPeriod ?? '') as string).toLowerCase();
-  const isPremiumWeekly = resolvedSubscription.plan === 'PREMIUM' && billingPeriod.includes('week');
+  // F-007 fix: was incorrectly checking for 'PREMIUM_MONTHLY' — should check 'PREMIUM_WEEKLY'.
+  // The second clause (PREMIUM_MONTHLY && billingPeriod.includes('week')) was removed:
+  // a PREMIUM_MONTHLY row having a weekly billingPeriod is contradictory and should
+  // not occur in normal operation. If a legacy migration scenario requires it, a
+  // targeted data migration should normalise the plan column rather than branching here.
+  const isPremiumWeekly = resolvedSubscription?.plan === 'PREMIUM_WEEKLY';
 
   res.json({
     subscription: resolvedSubscription,
     wallet,
     receipts,
-    nextPaymentDate: ('currentPeriodEnd' in resolvedSubscription ? resolvedSubscription.currentPeriodEnd : null) ?? null,
-    showUpgradePrompt: (resolvedSubscription.plan === 'BASIC' || isPremiumWeekly) && resolvedSubscription.status === 'ACTIVE',
+    nextPaymentDate: (resolvedSubscription && 'currentPeriodEnd' in resolvedSubscription ? resolvedSubscription.currentPeriodEnd : null) ?? null,
+    showUpgradePrompt: resolvedSubscription ? ((resolvedSubscription.plan === 'BASIC' || isPremiumWeekly) && resolvedSubscription.status === 'ACTIVE') : false,
   });
 }));
 

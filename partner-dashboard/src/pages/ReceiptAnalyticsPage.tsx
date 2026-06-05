@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
 import { receiptsApiService } from '../services/receipts-api.service';
-import { Receipt, ReceiptStatus } from '../types/receipt.types';
+import { apiService } from '../services/api.service';
+import { PartnerReceipt, ReceiptStatus } from '../types/receipt.types';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -21,6 +22,9 @@ import { ArrowLeft, Calendar, DollarSign, TrendingUp, PieChart as PieChartIcon, 
 import { useNavigate } from 'react-router-dom';
 import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval } from 'date-fns';
 import { exportReceiptsToCSV } from '../utils/receiptExport';
+// MEDIUM-2 fix (r2t): currency-aware formatter for displayed amounts
+// (spec §7.3 / Clash 12.1 — BGN during transition, EUR after).
+import { useCurrencyDisplay, formatWithCurrency } from '../utils/currencyDisplay';
 
 // Register ChartJS components
 ChartJS.register(
@@ -288,8 +292,56 @@ const PredictionValue = styled.div`
   font-weight: 700;
 `;
 
+/**
+ * Server-side analytics shape returned by GET /receipts/v2/analytics
+ * (receiptAnalyticsService.getAnalytics). Computed over ALL of the user's
+ * receipts in the DB, so its totals are correct regardless of how many
+ * receipts exist — unlike summing a list endpoint that the backend caps at
+ * 100 rows per request. The route returns this object directly (no
+ * { success, data } envelope). cashbackPercent and other internal fields are
+ * intentionally absent (spec §11.3).
+ */
+interface ServerAnalytics {
+  totalReceipts: number;
+  approvedReceipts: number;
+  rejectedReceipts: number;
+  pendingReceipts: number;
+  totalCashback: number;
+  totalSpent: number;
+  averageReceiptAmount: number;
+  successRate: number;
+  topMerchants?: Array<{ name: string; count: number; totalSpent: number }>;
+}
+
+/**
+ * Walk every page of the user's receipts.
+ *
+ * HIGH fix: the backend clamps the receipts list `limit` to 100
+ * (receipts.enhanced.routes.ts L192), so the previous single
+ * getReceipts({ limit: 1000 }) call silently returned at most 100 rows and
+ * every client-side aggregate (totals, monthly trends, merchant/status
+ * breakdowns) was wrong for partners with >100 receipts. We page through the
+ * full result set instead of assuming a large `limit` works. A hard page
+ * ceiling guards against runaway loops.
+ */
+async function fetchAllReceipts(pageSize = 100, maxPages = 200): Promise<PartnerReceipt[]> {
+  const all: PartnerReceipt[] = [];
+  let page = 1;
+  let totalPages = 1;
+
+  do {
+    const res = await receiptsApiService.getReceipts({ page, limit: pageSize });
+    all.push(...res.data);
+    totalPages = res.pagination?.totalPages ?? 1;
+    page += 1;
+  } while (page <= totalPages && page <= maxPages);
+
+  return all;
+}
+
+// LOW-3: use PartnerReceipt (partner-safe type) instead of the admin-only Receipt type.
 interface AnalyticsData {
-  receipts: Receipt[];
+  receipts: PartnerReceipt[];
   stats: {
     totalReceipts: number;
     totalAmount: number;
@@ -314,7 +366,10 @@ interface AnalyticsData {
   };
   predictions: {
     nextMonthSpending: number;
-    nextMonthCashback: number;
+    // LOW-2 fix (r2t): nextMonthCashback removed — field was hardcoded to 0
+    // (spec §11.3 prohibits exposing cashback % to partners), never rendered
+    // (JSX commented out), yet its dead translation keys and interface field
+    // created confusion about spec intent. Removed entirely.
     averageGrowth: number;
   };
 }
@@ -322,6 +377,8 @@ interface AnalyticsData {
 export const ReceiptAnalyticsPage: React.FC = () => {
   const { language } = useLanguage();
   const navigate = useNavigate();
+  // MEDIUM-2 fix (r2t): resolve active currency mode for displayed amounts
+  const currencyMode = useCurrencyDisplay();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [dateRange, setDateRange] = useState('6months');
@@ -363,7 +420,8 @@ export const ReceiptAnalyticsPage: React.FC = () => {
       predictions: {
         title: 'Predictive Analytics',
         nextMonthSpending: 'Predicted Next Month Spending',
-        nextMonthCashback: 'Predicted Next Month Cashback',
+        // LOW-2 fix (r2t): nextMonthCashback translation key removed — field
+        // removed from AnalyticsData.predictions (spec §11.3 / Clash 10.6).
         avgGrowth: 'Average Monthly Growth',
       },
       export: 'Export to CSV',
@@ -403,7 +461,7 @@ export const ReceiptAnalyticsPage: React.FC = () => {
       predictions: {
         title: 'Прогнозна аналитика',
         nextMonthSpending: 'Прогнозни разходи за следващия месец',
-        nextMonthCashback: 'Прогнозен кешбек за следващия месец',
+        // LOW-2 fix (r2t): nextMonthCashback translation key removed
         avgGrowth: 'Среден месечен растеж',
       },
       export: 'Експорт в CSV',
@@ -423,9 +481,33 @@ export const ReceiptAnalyticsPage: React.FC = () => {
     try {
       setLoading(true);
 
-      // Fetch receipts
-      const receiptsResponse = await receiptsApiService.getReceipts({ limit: 1000 });
-      const allReceipts = receiptsResponse.data;
+      // HIGH fix: source authoritative totals from the server-side analytics
+      // endpoint (computed over ALL receipts) and page through the full receipt
+      // list for per-receipt data (monthly trends, filters) instead of summing a
+      // single list response the backend caps at 100 rows.
+      // Both run in parallel. If server analytics is unavailable we still have
+      // the fully-paginated receipt set to aggregate from.
+      const [serverAnalyticsResult, allReceipts] = await Promise.all([
+        apiService
+          .get<ServerAnalytics>('/receipts/v2/analytics')
+          .catch((err) => {
+            console.error('Failed to load server analytics; falling back to client aggregation:', err);
+            return null;
+          }),
+        fetchAllReceipts(),
+      ]);
+
+      // Whether the user has narrowed the data with any filter. When no filter
+      // is active the authoritative server analytics totals are used for the
+      // headline stat cards / status / merchant breakdowns; once a filter is
+      // applied those server lifetime totals no longer match the visible subset,
+      // so we fall back to aggregating the (now fully-paginated, uncapped) set.
+      const filtersActive =
+        dateRange !== 'alltime' ||
+        merchantFilter !== 'all' ||
+        statusFilter !== 'all' ||
+        minAmount !== '' ||
+        maxAmount !== '';
 
       // Apply filters
       let filteredReceipts = [...allReceipts];
@@ -449,23 +531,48 @@ export const ReceiptAnalyticsPage: React.FC = () => {
       }
 
       // Amount filters
+      // LOW-2 fix (review r2t): guard against NaN — parseFloat returns NaN for
+      // non-numeric input and `number >= NaN` is always false, silently dropping
+      // every receipt. Only apply the filter when the parsed value is a valid number.
       if (minAmount) {
-        filteredReceipts = filteredReceipts.filter(r => (r.totalAmount || 0) >= parseFloat(minAmount));
+        const min = parseFloat(minAmount);
+        if (!isNaN(min)) {
+          filteredReceipts = filteredReceipts.filter(r => (r.totalAmount || 0) >= min);
+        }
       }
       if (maxAmount) {
-        filteredReceipts = filteredReceipts.filter(r => (r.totalAmount || 0) <= parseFloat(maxAmount));
+        const max = parseFloat(maxAmount);
+        if (!isNaN(max)) {
+          filteredReceipts = filteredReceipts.filter(r => (r.totalAmount || 0) <= max);
+        }
       }
 
       // Calculate stats
-      const totalAmount = filteredReceipts.reduce((sum, r) => sum + (r.totalAmount || 0), 0);
-      const totalCashback = filteredReceipts
-        .filter(r => r.status === ReceiptStatus.CASHBACK_APPLIED)
+      // MEDIUM fix: the backend ReceiptStatus enum has no CASHBACK_APPLIED / VALIDATED
+      // states for granted cashback — an APPROVED receipt is the one whose cashback has
+      // been calculated and credited (receipts.routes.ts review/validate flow). Filtering
+      // on the non-existent statuses produced a constant 0 cashback and 0% success rate.
+      const clientTotalAmount = filteredReceipts.reduce((sum, r) => sum + (r.totalAmount || 0), 0);
+      const clientTotalCashback = filteredReceipts
+        .filter(r => r.status === ReceiptStatus.APPROVED)
         .reduce((sum, r) => sum + (r.cashbackAmount || 0), 0);
-      const averageAmount = filteredReceipts.length > 0 ? totalAmount / filteredReceipts.length : 0;
-      const validatedCount = filteredReceipts.filter(
-        r => r.status === ReceiptStatus.VALIDATED || r.status === ReceiptStatus.CASHBACK_APPLIED
+      const clientApprovedCount = filteredReceipts.filter(
+        r => r.status === ReceiptStatus.APPROVED
       ).length;
-      const successRate = filteredReceipts.length > 0 ? (validatedCount / filteredReceipts.length) * 100 : 0;
+
+      // HIGH fix: when no filter narrows the view, use the server-side
+      // aggregates (correct over the full dataset). Otherwise aggregate the
+      // fully-paginated filtered subset. Both are now cap-free.
+      const useServer = !filtersActive && serverAnalyticsResult !== null;
+      const totalAmount = useServer ? serverAnalyticsResult!.totalSpent : clientTotalAmount;
+      const totalCashback = useServer ? serverAnalyticsResult!.totalCashback : clientTotalCashback;
+      const totalReceiptsCount = useServer ? serverAnalyticsResult!.totalReceipts : filteredReceipts.length;
+      const averageAmount = useServer
+        ? serverAnalyticsResult!.averageReceiptAmount
+        : (filteredReceipts.length > 0 ? clientTotalAmount / filteredReceipts.length : 0);
+      const successRate = useServer
+        ? serverAnalyticsResult!.successRate
+        : (filteredReceipts.length > 0 ? (clientApprovedCount / filteredReceipts.length) * 100 : 0);
 
       // Generate monthly data
       const monthsToShow = 6;
@@ -503,7 +610,7 @@ export const ReceiptAnalyticsPage: React.FC = () => {
               return (
                 receiptDate >= startOfMonth(month) &&
                 receiptDate <= endOfMonth(month) &&
-                r.status === ReceiptStatus.CASHBACK_APPLIED
+                r.status === ReceiptStatus.APPROVED
               );
             })
             .reduce((sum, r) => sum + (r.cashbackAmount || 0), 0);
@@ -522,10 +629,21 @@ export const ReceiptAnalyticsPage: React.FC = () => {
         }
       });
 
-      const topMerchants = Array.from(merchantMap.entries())
+      const clientTopMerchants = Array.from(merchantMap.entries())
         .map(([name, data]) => ({ name, ...data }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
+
+      // HIGH fix: prefer the server's top-merchant aggregate when unfiltered —
+      // it is computed over all receipts, not just the first capped page.
+      const topMerchants =
+        useServer && serverAnalyticsResult!.topMerchants?.length
+          ? serverAnalyticsResult!.topMerchants.map(m => ({
+              name: m.name,
+              count: m.count,
+              amount: m.totalSpent,
+            }))
+          : clientTopMerchants;
 
       const merchantData = {
         labels: topMerchants.map(m => m.name),
@@ -534,28 +652,43 @@ export const ReceiptAnalyticsPage: React.FC = () => {
       };
 
       // Status breakdown
-      const statusMap = new Map<string, number>();
-      filteredReceipts.forEach(r => {
-        statusMap.set(r.status, (statusMap.get(r.status) || 0) + 1);
-      });
-
-      const statusData = {
-        labels: Array.from(statusMap.keys()),
-        values: Array.from(statusMap.values()),
-      };
+      // HIGH fix: when unfiltered, build the breakdown from the server's
+      // status counters (full dataset) rather than tallying a capped page.
+      let statusData: { labels: string[]; values: number[] };
+      if (useServer) {
+        const serverStatusEntries: Array<[string, number]> = [
+          [ReceiptStatus.APPROVED, serverAnalyticsResult!.approvedReceipts],
+          [ReceiptStatus.REJECTED, serverAnalyticsResult!.rejectedReceipts],
+          [ReceiptStatus.PENDING, serverAnalyticsResult!.pendingReceipts],
+        ].filter(([, count]) => (count as number) > 0) as Array<[string, number]>;
+        statusData = {
+          labels: serverStatusEntries.map(([label]) => label),
+          values: serverStatusEntries.map(([, count]) => count),
+        };
+      } else {
+        const statusMap = new Map<string, number>();
+        filteredReceipts.forEach(r => {
+          statusMap.set(r.status, (statusMap.get(r.status) || 0) + 1);
+        });
+        statusData = {
+          labels: Array.from(statusMap.keys()),
+          values: Array.from(statusMap.values()),
+        };
+      }
 
       // Predictions (simple linear regression on last 3 months)
       const last3MonthsSpending = monthlyData.spending.slice(-3);
       const avgSpending = last3MonthsSpending.reduce((a, b) => a + b, 0) / 3;
       const trend = last3MonthsSpending[2] - last3MonthsSpending[0];
       const nextMonthSpending = avgSpending + trend;
-      const nextMonthCashback = nextMonthSpending * 0.05; // Assume 5% cashback
+      // LOW-2 fix (r2t) / spec §11.3 Clash 10.6: nextMonthCashback removed entirely
+      // (was hardcoded to 0 and never rendered — dead field).
       const averageGrowth = trend / avgSpending * 100;
 
       setData({
         receipts: filteredReceipts,
         stats: {
-          totalReceipts: filteredReceipts.length,
+          totalReceipts: totalReceiptsCount,
           totalAmount,
           totalCashback,
           averageAmount,
@@ -566,7 +699,6 @@ export const ReceiptAnalyticsPage: React.FC = () => {
         statusData,
         predictions: {
           nextMonthSpending: Math.max(0, nextMonthSpending),
-          nextMonthCashback: Math.max(0, nextMonthCashback),
           averageGrowth,
         },
       });
@@ -579,6 +711,9 @@ export const ReceiptAnalyticsPage: React.FC = () => {
 
   const handleExportCSV = () => {
     if (data?.receipts) {
+      // LOW-1 fix (review r2t): exportReceiptsToCSV already accepts PartnerReceipt[]
+      // (receiptExport.ts:489). The previous `as any` cast and its comment were
+      // factually wrong and disabled TypeScript checking at this call site.
       exportReceiptsToCSV(data.receipts, 'receipt-analytics.csv');
     }
   };
@@ -650,11 +785,17 @@ export const ReceiptAnalyticsPage: React.FC = () => {
         <FilterGroup>
           <Label>{t.filters.status}</Label>
           <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+            {/* MEDIUM fix: offer only statuses the backend enum actually emits.
+                VALIDATED / CASHBACK_APPLIED are not produced by the receipt
+                pipeline, so those options matched nothing. APPROVED is the
+                granted-cashback terminal state. */}
             <option value="all">{t.filters.all}</option>
             <option value={ReceiptStatus.PENDING}>Pending</option>
-            <option value={ReceiptStatus.VALIDATED}>Validated</option>
+            <option value={ReceiptStatus.PROCESSING}>Processing</option>
+            <option value={ReceiptStatus.APPROVED}>Approved</option>
             <option value={ReceiptStatus.REJECTED}>Rejected</option>
-            <option value={ReceiptStatus.CASHBACK_APPLIED}>Cashback Applied</option>
+            <option value={ReceiptStatus.MANUAL_REVIEW}>Manual Review</option>
+            <option value={ReceiptStatus.EXPIRED}>Expired</option>
           </Select>
         </FilterGroup>
 
@@ -687,7 +828,7 @@ export const ReceiptAnalyticsPage: React.FC = () => {
               <DollarSign size={20} />
             </StatIcon>
           </StatHeader>
-          <StatValue>{data.stats.totalAmount.toFixed(2)} лв</StatValue>
+          <StatValue>{formatWithCurrency(data.stats.totalAmount, currencyMode)}</StatValue>
         </StatCard>
 
         <StatCard>
@@ -697,7 +838,7 @@ export const ReceiptAnalyticsPage: React.FC = () => {
               <TrendingUp size={20} />
             </StatIcon>
           </StatHeader>
-          <StatValue>{data.stats.totalCashback.toFixed(2)} лв</StatValue>
+          <StatValue>{formatWithCurrency(data.stats.totalCashback, currencyMode)}</StatValue>
         </StatCard>
 
         <StatCard>
@@ -707,7 +848,7 @@ export const ReceiptAnalyticsPage: React.FC = () => {
               <PieChartIcon size={20} />
             </StatIcon>
           </StatHeader>
-          <StatValue>{data.stats.averageAmount.toFixed(2)} лв</StatValue>
+          <StatValue>{formatWithCurrency(data.stats.averageAmount, currencyMode)}</StatValue>
         </StatCard>
 
         <StatCard>
@@ -726,12 +867,9 @@ export const ReceiptAnalyticsPage: React.FC = () => {
         <PredictionGrid>
           <PredictionItem>
             <PredictionLabel>{t.predictions.nextMonthSpending}</PredictionLabel>
-            <PredictionValue>{data.predictions.nextMonthSpending.toFixed(2)} лв</PredictionValue>
+            <PredictionValue>{formatWithCurrency(data.predictions.nextMonthSpending, currencyMode)}</PredictionValue>
           </PredictionItem>
-          <PredictionItem>
-            <PredictionLabel>{t.predictions.nextMonthCashback}</PredictionLabel>
-            <PredictionValue>{data.predictions.nextMonthCashback.toFixed(2)} лв</PredictionValue>
-          </PredictionItem>
+          {/* nextMonthCashback prediction removed — spec §11.3 prohibits exposing cashback % to partners */}
           <PredictionItem>
             <PredictionLabel>{t.predictions.avgGrowth}</PredictionLabel>
             <PredictionValue>

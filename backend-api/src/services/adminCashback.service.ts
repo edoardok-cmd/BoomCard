@@ -9,7 +9,7 @@
  * which is the valid FK target of PartnerCashbackPayment.partnerId.
  */
 
-import { ScanStatus } from '@prisma/client';
+import { ScanStatus, CashbackEntryStatus as PrismaCashbackEntryStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/error.middleware';
@@ -149,6 +149,31 @@ class AdminCashbackService {
     const [year, mon] = params.month.split('-').map(Number);
     const monthStart = new Date(year, mon - 1, 1);
     const monthEnd = new Date(year, mon, 1);
+
+    // ── Period-lock / PAID-freeze guards ─────────────────────────────────────
+    // This path writes the same PartnerCashbackPayment table as the finance
+    // invoice routes (adminFinance.routes.ts) and recomputes financial totals on
+    // every call. It must enforce the same two guards the finance module enforces
+    // so a frozen period cannot be silently rewritten through here:
+    //   1. ReportingPeriod LOCKED/INVOICED → no data changes allowed (mirrors
+    //      adminFinance.routes.ts isPeriodLocked()).
+    //   2. An already-PAID PartnerCashbackPayment is frozen (mirrors the
+    //      "Cannot change status of a paid invoice" guard on PATCH .../status).
+    const period = await prisma.reportingPeriod.findUnique({
+      where: { month: params.month },
+      select: { status: true },
+    });
+    if (period?.status === 'LOCKED' || period?.status === 'INVOICED') {
+      throw new AppError(`Billing period ${params.month} is locked or invoiced — no changes allowed.`, 409);
+    }
+
+    const existingPayment = await prisma.partnerCashbackPayment.findUnique({
+      where: { partnerId_month: { partnerId: params.partnerId, month: params.month } },
+      select: { status: true },
+    });
+    if (existingPayment?.status === 'PAID') {
+      throw new AppError(`Cashback for ${params.month} is already marked as paid — its financials are frozen.`, 400);
+    }
 
     // Compute totalOwed (cashback) if not provided.
     let totalOwed = params.totalOwed ?? 0;
@@ -593,20 +618,20 @@ class AdminCashbackService {
     const seenSteps = new Set<number>();
     for (const r of params.rates) {
       if (typeof r.discountStep !== 'number' || typeof r.basic !== 'number' || typeof r.premium !== 'number') {
-        throw new Error(`discountStep, basic, and premium must all be numbers`);
+        throw new AppError(`discountStep, basic, and premium must all be numbers`, 400);
       }
       if (!allowedSteps.has(r.discountStep)) {
-        throw new Error(`Invalid discount step: ${r.discountStep}. Allowed: ${[...allowedSteps].join(', ')}`);
+        throw new AppError(`Invalid discount step: ${r.discountStep}. Allowed: ${[...allowedSteps].join(', ')}`, 400);
       }
       if (seenSteps.has(r.discountStep)) {
-        throw new Error(`Duplicate discountStep ${r.discountStep} in input — each step must appear once`);
+        throw new AppError(`Duplicate discountStep ${r.discountStep} in input — each step must appear once`, 400);
       }
       seenSteps.add(r.discountStep);
       if (r.basic < 0 || r.premium < 0 || r.basic > 100 || r.premium > 100) {
-        throw new Error(`Cashback percentages must be between 0 and 100`);
+        throw new AppError(`Cashback percentages must be between 0 and 100`, 400);
       }
       if (r.basic > r.discountStep || r.premium > r.discountStep) {
-        throw new Error(`Step ${r.discountStep}%: cashback cannot exceed the partner discount — margin would be negative`);
+        throw new AppError(`Step ${r.discountStep}%: cashback cannot exceed the partner discount — margin would be negative`, 400);
       }
     }
 
@@ -615,7 +640,7 @@ class AdminCashbackService {
     // "version", making it impossible to reason about which rates are currently active.
     const missingSteps = [...allowedSteps].filter(s => !seenSteps.has(s));
     if (missingSteps.length > 0) {
-      throw new Error(`Missing discount steps: ${missingSteps.join(', ')}. All ${allowedSteps.size} steps must be provided to form a complete snapshot`);
+      throw new AppError(`Missing discount steps: ${missingSteps.join(', ')}. All ${allowedSteps.size} steps must be provided to form a complete snapshot`, 400);
     }
 
     const effectiveFrom = params.effectiveFrom ?? new Date();
@@ -1117,13 +1142,20 @@ export async function approveEntry(entryId: string, adminUserId: string): Promis
   if (!entry) throw new AppError('Entry not found', 404);
   if (entry.type !== 'CASHBACK_CREDIT') throw new AppError('Not a cashback entry', 400);
 
+  // Spec §1.3 — TrialPending records cannot be manually approved or rejected.
+  // Only the scheduler resolves them (resolveTrialPendingCashback at 5:30 AM).
+  // Guard via both cashbackStatus column and the legacy raw-status field.
+  if (entry.cashbackStatus === 'TRIAL_PENDING' || entry.status === 'TRIAL_PENDING') {
+    throw new AppError('Cannot manually approve a TrialPending record — only the scheduler resolves these.', 400);
+  }
+
   // Pending = lifecycle-tagged PENDING, OR legacy raw-status in pending bucket.
   // Idempotency: ALSO accept "already-COMPLETED but missing cashbackStatus" so a
   // retry after a previous failed markCleared can recover the entry. Without this,
   // a partial-completion (status=COMPLETED, cashbackStatus=null) would leave the
   // entry stuck — neither pending nor cleared.
   const isPending = entry.cashbackStatus === 'PENDING'
-    || (entry.cashbackStatus == null && ['PENDING', 'TRIAL_PENDING', 'PROCESSING', 'RISK_HOLD'].includes(entry.status));
+    || (entry.cashbackStatus == null && ['PENDING', 'PROCESSING', 'RISK_HOLD'].includes(entry.status));
   const isMidApproval = entry.cashbackStatus == null && entry.status === 'COMPLETED';
   if (!isPending && !isMidApproval) {
     throw new AppError(`Cannot approve entry — not in Pending state`, 400);
@@ -1204,10 +1236,77 @@ export async function voidEntry(entryId: string, adminUserId: string, reason: st
   }
   const entry = await prisma.walletTransaction.findUnique({
     where: { id: entryId },
-    select: { id: true, type: true },
+    select: { id: true, type: true, status: true, cashbackStatus: true, walletId: true, amount: true },
   });
   if (!entry) throw new AppError('Entry not found', 404);
   if (entry.type !== 'CASHBACK_CREDIT') throw new AppError('Not a cashback entry', 400);
+  // Spec §1.3 — TrialPending records cannot be manually rejected (voided) by admin.
+  // Only the scheduler resolves them (resolveTrialPendingCashback at 5:30 AM).
+  if (entry.cashbackStatus === 'TRIAL_PENDING' || entry.status === 'TRIAL_PENDING') {
+    throw new AppError('Cannot manually void a TrialPending record — only the scheduler resolves these.', 400);
+  }
+
+  // Spec §1.3 + §3.4: Locked → Voided is a supported transition. markVoided
+  // throws on LOCKED to protect in-flight payouts. For a standalone admin void
+  // (not tied to a payout cancellation), we perform the full transition — setting
+  // all voided fields and decrementing the wallet balance — in a SINGLE atomic
+  // $transaction. Calling markVoided from within a $transaction is avoided because
+  // it opens its own $transaction internally; two separate committed transactions
+  // would leave the entry stranded as CLEARED if the process crashed between them.
+  if (entry.cashbackStatus === PrismaCashbackEntryStatus.LOCKED) {
+    // Distinguish lock origin:
+    // - Admin-panel lockEntry sets status='CANCELLED' (wallet NOT yet drained) → safe to decrement.
+    // - User's requestPayout sets status='COMPLETED' then LOCKED (wallet already drained) → decrement
+    //   would be a double-debit. Reject with 409 so the caller cancels the payout first.
+    if (entry.status === 'COMPLETED') {
+      throw new AppError(
+        'This cashback entry is locked for payout processing; cancel the payout first',
+        409,
+      );
+    }
+    const trimmedReason = reason.trim();
+    const voidedAt = new Date();
+    await prisma.$transaction(async (tx) => {
+      // Atomically set all voided fields and decrement the wallet balance.
+      // The entry was CLEARED (balance credited) before being LOCKED by admin
+      // (status='CANCELLED'), so we decrement both balance and availableBalance
+      // to reclaim the amount.
+      await tx.walletTransaction.update({
+        where: { id: entryId },
+        data: {
+          cashbackStatus: PrismaCashbackEntryStatus.VOIDED,
+          status: 'ANNULLED',
+          voidedAt,
+          voidedReason: trimmedReason,
+          voidedByUserId: adminUserId,
+        },
+      });
+      await tx.wallet.update({
+        where: { id: entry.walletId },
+        data: {
+          balance: { decrement: entry.amount },
+          availableBalance: { decrement: entry.amount },
+        },
+      });
+    });
+    await writeAudit({
+      actorUserId: adminUserId,
+      action: 'CASHBACK_VOIDED',
+      objectType: 'WalletTransaction',
+      objectId: entryId,
+      before: { cashbackStatus: entry.cashbackStatus },
+      after: {
+        cashbackStatus: 'VOIDED',
+        voidedAt,
+        voidedReason: trimmedReason,
+        balanceReversal: true,
+        reversalAmount: entry.amount,
+      },
+    }).catch((err) => logger.error('[adminCashback.voidEntry] audit write failed (Locked→Voided):', err));
+    logger.info(`Admin ${adminUserId} voided LOCKED cashback entry ${entryId} (Locked → Voided atomic): ${reason}`);
+    return;
+  }
+
   await cashbackLifecycleService.markVoided({
     walletTransactionId: entryId,
     actorUserId: adminUserId,
@@ -1234,11 +1333,19 @@ export async function lockEntry(entryId: string, adminUserId: string): Promise<v
   if (entry.status !== 'COMPLETED') {
     throw new AppError(`Cannot lock entry with status ${entry.status}`, 400);
   }
-  // Guard against re-locking a Paid entry. The lifecycle service sets
-  // cashbackStatus='PAID' (keeping status='COMPLETED') when markPaid runs;
-  // the legacy path sets cashbackPaidAt. Neither is caught by the withdrawal-date
-  // check below, which only covers entries paid out via a WITHDRAWAL transaction.
-  if (entry.cashbackStatus === 'PAID' || entry.cashbackPaidAt != null) {
+  // Spec §1.3: only Cleared → Locked is a valid transition. A COMPLETED entry
+  // without cashbackStatus=CLEARED (e.g. mid-approval where status=COMPLETED but
+  // cashbackStatus=null) must NOT be locked — it would skip the Cleared state,
+  // leaving clearedAt/cashbackExpiresAt unset and corrupting 60-day expiry tracking.
+  if (entry.cashbackStatus !== PrismaCashbackEntryStatus.CLEARED) {
+    throw new AppError(
+      `Cannot lock entry — cashbackStatus must be CLEARED (current: ${entry.cashbackStatus ?? 'null'})`,
+      409,
+    );
+  }
+  // Guard against re-locking a Paid entry via cashbackPaidAt (legacy path).
+  // cashbackStatus='PAID' is already excluded by the CLEARED guard above.
+  if (entry.cashbackPaidAt != null) {
     throw new AppError('Cannot lock a paid entry', 400);
   }
   // Guard against locking a "Paid" entry — one that predates the wallet's latest completed payout.
@@ -1259,6 +1366,14 @@ export async function lockEntry(entryId: string, adminUserId: string): Promise<v
     where: { id: entryId },
     data: { status: 'CANCELLED', cashbackStatus: 'LOCKED', cashbackExpiresAt: keepExpiresAt },
   });
+  await writeAudit({
+    actorUserId: adminUserId,
+    action: 'CASHBACK_LOCKED',
+    objectType: 'WalletTransaction',
+    objectId: entryId,
+    before: { cashbackStatus: entry.cashbackStatus },
+    after: { cashbackStatus: 'LOCKED', notes: 'Cleared → Locked (payout pipeline)' },
+  }).catch((err) => logger.error('[adminCashback.lockEntry] audit write failed:', err));
   logger.info(`Admin ${adminUserId} locked cashback entry ${entryId}`);
 }
 
@@ -1275,12 +1390,28 @@ export async function expireEntry(entryId: string, adminUserId: string): Promise
   });
   if (!entry) throw new AppError('Entry not found', 404);
   if (entry.type !== 'CASHBACK_CREDIT') throw new AppError('Not a cashback entry', 400);
+  // Spec §1.3 — TrialPending records cannot be manually expired by admin.
+  // Only the scheduler resolves them (resolveTrialPendingCashback at 5:30 AM).
+  if (entry.cashbackStatus === 'TRIAL_PENDING' || entry.status === 'TRIAL_PENDING') {
+    throw new AppError('Cannot manually expire a TrialPending record — only the scheduler resolves these.', 400);
+  }
   // Block terminal states that cannot be expired.
   if (['VOIDED', 'PAID', 'EXPIRED'].includes(entry.cashbackStatus ?? '')) {
     throw new AppError(`Cannot expire entry with cashback status ${entry.cashbackStatus}`, 400);
   }
   if (['ANNULLED', 'FAILED'].includes(entry.status) && !entry.cashbackStatus) {
     throw new AppError(`Cannot expire entry with status ${entry.status}`, 400);
+  }
+  // Payout-locked entries (requestPayout path: cashbackStatus=LOCKED, status=COMPLETED)
+  // must not be transitioned to EXPIRED. The wallet is already drained; expiring the
+  // entry would leave payEntry unable to complete the in-flight payout (it reads
+  // cashbackStatus=EXPIRED and fails the LOCKED check). Reject with 409 so the
+  // caller cancels the payout first — mirroring voidEntry's guard.
+  if (entry.cashbackStatus === 'LOCKED' && entry.status === 'COMPLETED') {
+    throw new AppError(
+      'This cashback entry is locked for payout processing; cancel the payout first',
+      409,
+    );
   }
   const now = new Date();
   // Was the balance already credited? True for CLEARED and LOCKED states.
@@ -1307,7 +1438,13 @@ export async function expireEntry(entryId: string, adminUserId: string): Promise
       data: { status: 'CANCELLED', cashbackStatus: 'EXPIRED' },
     });
     if (result.count === 0) return; // concurrent expire already ran — skip wallet debit
-    if (wasCleared) {
+    // For LOCKED entries, distinguish lock origin before decrementing:
+    // - Admin-panel lockEntry → status='CANCELLED' (wallet still holds the amount) → decrement.
+    // - User's requestPayout → status='COMPLETED' with cashbackStatus=LOCKED (wallet already
+    //   drained by requestPayout) → skip decrement to avoid a double-debit.
+    const isPayoutLocked =
+      entry.cashbackStatus === 'LOCKED' && entry.status === 'COMPLETED';
+    if (wasCleared && !isPayoutLocked) {
       await tx.wallet.update({
         where: { id: entry.walletId },
         data: {
@@ -1317,6 +1454,14 @@ export async function expireEntry(entryId: string, adminUserId: string): Promise
       });
     }
   });
+  await writeAudit({
+    actorUserId: adminUserId,
+    action: 'CASHBACK_EXPIRED',
+    objectType: 'WalletTransaction',
+    objectId: entryId,
+    before: { cashbackStatus: entry.cashbackStatus },
+    after: { cashbackStatus: 'EXPIRED', notes: 'Admin force-expire' },
+  }).catch((err) => logger.error('[adminCashback.expireEntry] audit write failed:', err));
   logger.info(`Admin ${adminUserId} force-expired cashback entry ${entryId}`);
 }
 
@@ -1360,6 +1505,14 @@ export async function payEntry(entryId: string, adminUserId: string): Promise<vo
   if (result.count === 0) {
     throw new AppError('Entry has already been marked as paid by a concurrent request', 409);
   }
+  await writeAudit({
+    actorUserId: adminUserId,
+    action: 'CASHBACK_PAID',
+    objectType: 'WalletTransaction',
+    objectId: entryId,
+    before: { cashbackStatus: entry.cashbackStatus },
+    after: { cashbackStatus: 'PAID', notes: 'Locked → Paid (payout complete)' },
+  }).catch((err) => logger.error('[adminCashback.payEntry] audit write failed:', err));
   logger.info(`Admin ${adminUserId} marked cashback entry ${entryId} as paid`);
 }
 

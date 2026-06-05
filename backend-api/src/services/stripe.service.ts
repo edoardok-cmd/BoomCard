@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma';
 import { walletService } from './wallet.service';
 import { notificationService } from './notification.service';
 import { emailService } from './email.service';
+import { detach } from '../utils/detach';
 
 /**
  * Stripe Service for Payment Processing
@@ -753,18 +754,18 @@ class StripeService {
     try {
       // Determine plan from Stripe price ID, falling back to metadata
       const priceId = subscription.items.data[0]?.price.id;
-      let plan: 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' = 'PREMIUM_WEEKLY';
+      let plan: 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY' = 'PREMIUM_WEEKLY';
 
       // Reverse-lookup the plan from the configured Stripe price IDs
-      const priceIdToPlan: Record<string, 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM'> = {};
+      const priceIdToPlan: Record<string, 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY'> = {};
       const PRICE_IDS = {
         // Env var kept as STRIPE_LIGHT_PRICE_ID for backward compat with existing deployments.
         PREMIUM_WEEKLY: process.env.STRIPE_PREMIUM_WEEKLY_PRICE_ID || process.env.STRIPE_LIGHT_PRICE_ID || 'price_PREMIUM_WEEKLY',
         BASIC: process.env.STRIPE_BASIC_PRICE_ID || 'price_BASIC',
-        PREMIUM: process.env.STRIPE_PREMIUM_PRICE_ID || 'price_PREMIUM',
+        PREMIUM_MONTHLY: process.env.STRIPE_PREMIUM_PRICE_ID || 'price_PREMIUM',
       };
       for (const [key, val] of Object.entries(PRICE_IDS)) {
-        priceIdToPlan[val] = key as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM';
+        priceIdToPlan[val] = key as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY';
       }
 
       if (priceId && priceIdToPlan[priceId]) {
@@ -994,7 +995,7 @@ class StripeService {
       // Spec §3.1: send renewal confirmation email for recurring payments
       if (invoice.billing_reason === 'subscription_cycle' && dbSub.user?.email) {
         const lang = (dbSub.user.preferredLanguage === 'en' ? 'en' : 'bg') as 'bg' | 'en';
-        emailService
+        detach(emailService
           .sendPaymentConfirmation(
             dbSub.user.email,
             {
@@ -1005,8 +1006,7 @@ class StripeService {
               date: new Date(),
             },
             lang,
-          )
-          .catch((err: unknown) => logger.error(`Failed to send renewal confirmation email for sub ${dbSub.id}:`, err));
+          ), (err: unknown) => logger.error(`Failed to send renewal confirmation email for sub ${dbSub.id}:`, err));
       }
 
       // If this payment clears a previously failed renewal, recover to ACTIVE
@@ -1122,7 +1122,7 @@ class StripeService {
       });
 
       if (dbSub.user?.email) {
-        emailService
+        detach(emailService
           .sendExpiryNotice(dbSub.user.email, {
             customerName: dbSub.user.firstName || 'Customer',
             planName,
@@ -1131,8 +1131,7 @@ class StripeService {
             renewalDate: renewalDate.toLocaleDateString(lang === 'bg' ? 'bg-BG' : 'en-GB'),
             manageUrl: `${process.env.APP_URL || 'https://mobile.boomcard.bg'}/subscription`,
             language: lang,
-          })
-          .catch((err: unknown) => logger.error(`Failed to send renewal reminder email for sub ${dbSub.id}:`, err));
+          }), (err: unknown) => logger.error(`Failed to send renewal reminder email for sub ${dbSub.id}:`, err));
       }
 
       logger.info(`Renewal reminder sent to user ${dbSub.userId} for ${planName} renewing ${renewalDate.toISOString()}`);

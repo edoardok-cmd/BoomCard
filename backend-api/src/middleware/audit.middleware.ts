@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from './auth.middleware';
 import prisma from '../lib/prisma';
+import { detach } from '../utils/detach';
 
 const SENSITIVE_KEYS = new Set([
   'password', 'passwordHash', 'newPassword', 'currentPassword',
@@ -138,7 +139,7 @@ export const auditMiddleware = (req: AuthRequest, res: Response, next: NextFunct
       ?? null;
     const userAgent = req.headers['user-agent'] ?? null;
 
-    prisma.auditLog.create({
+    detach(prisma.auditLog.create({
       data: {
         actorUserId: actorId,
         action:     req.auditAction     ?? derived.action,
@@ -149,7 +150,7 @@ export const auditMiddleware = (req: AuthRequest, res: Response, next: NextFunct
         ip,
         userAgent,
       },
-    }).catch(() => {
+    }), () => {
       // Non-blocking — audit failures must never interrupt the response.
     });
 

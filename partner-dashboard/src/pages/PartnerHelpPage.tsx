@@ -5,32 +5,39 @@
  * follow-up replies. Corresponds to the "Помощ > Нова заявка" and
  * "Помощ > Моите заявки" sections described in §11.1 for the partner panel.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { apiService } from '../services/api.service';
 
 // ── Types ──────────────────────────────────────────────────────────────────
-type TicketStatus = 'NEW' | 'OPEN' | 'IN_REVIEW' | 'WAITING' | 'RESOLVED' | 'CLOSED' | 'REJECTED';
+// S1 fix (r2ae): CANCELLED added — backend canonical mapping includes it and
+// isTerminal/STATUS_LABELS/statusColor must all handle it so the reply box
+// closes and the badge renders correctly when a CANCELLED ticket arrives.
+type TicketStatus = 'NEW' | 'OPEN' | 'IN_REVIEW' | 'WAITING' | 'RESOLVED' | 'CLOSED' | 'REJECTED' | 'CANCELLED';
 
 interface PartnerTicket {
   id: string;
   subject: string;
   category: string;
   status: TicketStatus;
-  priority: string;
+  // INFO-2 fix: `priority` is an internal triage field not shown to the partner.
+  // Removed from the type so it is ignored even if the backend returns it.
   requestType: string;
-  source: string;
+  // `source` and `assignee` removed: the partner-safe list/detail projections in
+  // partnerHelp.routes.ts (the `select` blocks) no longer return them — they are
+  // internal admin fields (spec §11.3). Declaring them here was dead type surface.
   createdAt: string;
   updatedAt: string;
-  assignee: { id: string; firstName: string | null; lastName: string | null } | null;
 }
 
 interface PartnerTicketFull extends PartnerTicket {
   body: string;
-  externalEmail: string | null;
-  reopenedAt: string | null;
+  // INFO-1 fix: `externalEmail` (email-ingested sender address) and
+  // `reopenedAt` (internal audit timestamp) are not rendered and not
+  // partner-visible per spec. Removed to minimise unnecessary field exposure.
 }
 
 interface PartnerReply {
@@ -38,7 +45,12 @@ interface PartnerReply {
   body: string;
   isAdmin: boolean;
   createdAt: string;
-  author: { id: string; firstName: string | null; lastName: string | null } | null;
+  // LOW-1 fix (r2ae): remove `author.id` from the partner-visible type.
+  // `author.id` is an internal admin UUID (spec §11.3 — internal data must not
+  // be surfaced). Even though it is not rendered today, it is present in the
+  // deserialised object and accessible via browser devtools. The same
+  // defence-in-depth approach was already applied to `assignee.id`.
+  author: { firstName: string | null; lastName: string | null } | null;
 }
 
 // ── Palette ────────────────────────────────────────────────────────────────
@@ -54,9 +66,10 @@ const p = {
 };
 
 // ── Labels ─────────────────────────────────────────────────────────────────
+// S1 fix (r2ae): CANCELLED added to STATUS_LABELS
 const STATUS_LABELS: Record<TicketStatus, string> = {
   NEW: 'Отворена', OPEN: 'Отворена', IN_REVIEW: 'В преглед', WAITING: 'Чака отговор',
-  RESOLVED: 'Решена', CLOSED: 'Затворена', REJECTED: 'Отказана',
+  RESOLVED: 'Решена', CLOSED: 'Затворена', REJECTED: 'Отказана', CANCELLED: 'Отменена',
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -84,8 +97,10 @@ function extractApiError(err: unknown, fallback: string): string {
   return (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? fallback;
 }
 
+// S1 fix (r2ae): CANCELLED added to isTerminal so the reply box closes for
+// cancelled tickets (spec §10.4 canonical status includes CANCELLED as final).
 function isTerminal(status: TicketStatus) {
-  return status === 'CLOSED' || status === 'REJECTED';
+  return status === 'CLOSED' || status === 'REJECTED' || status === 'CANCELLED';
 }
 
 // ── API calls ──────────────────────────────────────────────────────────────
@@ -109,14 +124,18 @@ const partnerHelpApi = {
 };
 
 // ── Status Badge ───────────────────────────────────────────────────────────
+// S1 fix (r2ae): CANCELLED case added so the badge renders with a meaningful
+// colour rather than falling through to the default (which would show info-blue,
+// the same as NEW/OPEN, misleading the partner into thinking the ticket is active).
 function statusColor(status: TicketStatus): { bg: string; text: string } {
   switch (status) {
-    case 'IN_REVIEW': return { bg: p.infoSoft, text: p.info };
-    case 'WAITING':   return { bg: p.warningSoft, text: p.warning };
-    case 'RESOLVED':  return { bg: p.successSoft, text: p.success };
-    case 'CLOSED':    return { bg: p.border, text: p.subtle };
-    case 'REJECTED':  return { bg: p.dangerSoft, text: p.danger };
-    default:          return { bg: p.infoSoft, text: p.info };
+    case 'IN_REVIEW':  return { bg: p.infoSoft, text: p.info };
+    case 'WAITING':    return { bg: p.warningSoft, text: p.warning };
+    case 'RESOLVED':   return { bg: p.successSoft, text: p.success };
+    case 'CLOSED':     return { bg: p.border, text: p.subtle };
+    case 'REJECTED':   return { bg: p.dangerSoft, text: p.danger };
+    case 'CANCELLED':  return { bg: p.border, text: p.subtle };
+    default:           return { bg: p.infoSoft, text: p.info };
   }
 }
 
@@ -132,6 +151,40 @@ export default function PartnerHelpPage() {
   const [form, setForm] = useState({
     subject: '', body: '', category: 'OTHER', requestType: 'SUPPORT',
   });
+
+  // LOW-5 fix: ProfilePage CTAs deep-link here with query params
+  //   /partners/help?type=Change                       (Request data change)
+  //   /partners/help?type=Change&subject=close-account (Request account closure)
+  // Read those params on mount, open the "new ticket" view and prefill the form
+  // so the CTA actually lands the partner on a pre-populated request form.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const type = searchParams.get('type');
+    const subject = searchParams.get('subject');
+    if (!type && !subject) return;
+
+    setForm((f) => {
+      const next = { ...f };
+      // `type=Change` is a data-change request intent.
+      if (type && type.toLowerCase() === 'change') {
+        next.requestType = subject === 'close-account' ? 'CONTRACT_CHANGE' : 'DATA_CHANGE';
+        next.category = 'ACCOUNT';
+      }
+      // Map the known subject shortcut to a prefilled subject line.
+      if (subject === 'close-account') {
+        next.subject = 'Заявка за закриване на акаунт';
+        next.requestType = 'CONTRACT_CHANGE';
+        next.category = 'ACCOUNT';
+      }
+      return next;
+    });
+    setView('new');
+
+    // Clear the params so a later manual navigation to "list" / "new" is not
+    // re-triggered, and a browser refresh doesn't re-prefill unexpectedly.
+    setSearchParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: listData, isLoading: listLoading } = useQuery({
     queryKey: ['partner-help-tickets', page],
@@ -257,11 +310,6 @@ export default function PartnerHelpPage() {
                 <StatusBadge $bg={sc.bg} $color={sc.text}>{STATUS_LABELS[ticket.status]}</StatusBadge>
                 <SmallLabel>{REQUEST_TYPE_LABELS[ticket.requestType] ?? ticket.requestType}</SmallLabel>
                 <SmallLabel>Подадена {fmt(ticket.createdAt)}</SmallLabel>
-                {ticket.assignee && (
-                  <SmallLabel>
-                    Отговорник: {[ticket.assignee.firstName, ticket.assignee.lastName].filter(Boolean).join(' ') || '—'}
-                  </SmallLabel>
-                )}
               </BadgeRow>
             )}
           </div>
@@ -292,8 +340,11 @@ export default function PartnerHelpPage() {
 
         {terminal ? (
           <ClosedNote>
+            {/* S1 fix (r2ae): CANCELLED message added */}
             {ticket?.status === 'REJECTED'
               ? 'Заявката е отказана — нови отговори не се приемат.'
+              : ticket?.status === 'CANCELLED'
+              ? 'Заявката е отменена — нови отговори не се приемат.'
               : 'Заявката е затворена — нови отговори не се приемат.'}
           </ClosedNote>
         ) : (
@@ -355,11 +406,6 @@ export default function PartnerHelpPage() {
             </TicketMain>
             <TicketRight>
               <StatusBadge $bg={sc.bg} $color={sc.text}>{STATUS_LABELS[t.status]}</StatusBadge>
-              {t.assignee && (
-                <SmallLabel>
-                  {[t.assignee.firstName, t.assignee.lastName].filter(Boolean).join(' ')}
-                </SmallLabel>
-              )}
             </TicketRight>
           </TicketRow>
         );

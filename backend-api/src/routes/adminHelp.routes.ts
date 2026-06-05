@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { TicketStatus, TicketPriority, TicketCategory } from '@prisma/client';
+import { TicketStatus, TicketPriority, TicketCategory, TicketRequestType } from '@prisma/client';
 import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
 import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
@@ -8,7 +8,9 @@ import { emailService } from '../services/email.service';
 import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef } from '../services/ticketEmail.service';
 import { fireAutomation } from '../lib/automationDispatcher';
 import { logger } from '../utils/logger';
+import { parsePagination } from '../utils/pagination';
 import type { AuthRequest } from '../middleware/auth.middleware';
+import { detach } from '../utils/detach';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -105,8 +107,8 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
         ? (priority as TicketPriority)
         : 'MEDIUM';
 
-    const resolvedRequestType = requestType && ADMIN_VALID_REQUEST_TYPES.includes(requestType)
-      ? requestType
+    const resolvedRequestType: TicketRequestType = requestType && ADMIN_VALID_REQUEST_TYPES.includes(requestType)
+      ? (requestType as TicketRequestType)
       : 'SUPPORT';
 
     const ticket = await prisma.helpTicket.create({
@@ -133,7 +135,7 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
       },
     });
 
-    notificationService
+    detach(notificationService
       .notifyAdminOps({
         opsType: 'help_ticket_created',
         title: `Admin ticket: ${category}`,
@@ -145,8 +147,7 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
           { label: 'Admin', value: req.user!.email },
           { label: 'Ticket ID', value: ticket.id },
         ],
-      })
-      .catch((err) => logger.error('[adminHelp] Failed to notify on admin ticket creation:', err));
+      }), (err) => logger.error('[adminHelp] Failed to notify on admin ticket creation:', err));
 
     // Spec §11.6: send auto-reply confirmation to the admin who created the ticket
     // (same pattern as partner and user web-form tickets).
@@ -195,7 +196,7 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
     const PRIORITY_BG: Record<string, string> = {
       LOW: 'Нисък', MEDIUM: 'Среден', HIGH: 'Висок', URGENT: 'Спешен',
     };
-    emailService
+    detach(emailService
       .sendEmail({
         to: 'support@boomcard.bg',
         subject: `[Admin заявка] ${CATEGORY_BG[category] ?? category}: ${subject.trim()}`,
@@ -210,8 +211,7 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
 <p>${esc(body.trim()).replace(/\n/g, '<br/>')}</p>
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id}</p>`,
         text: `Нова вътрешна заявка от администратор\n\nАдминистратор: ${adminEmail}\nКатегория: ${CATEGORY_BG[category] ?? category}\nПриоритет: ${PRIORITY_BG[resolvedPriority] ?? resolvedPriority}\nТема: ${subject.trim()}\n\n${body.trim()}\n\nTicket ID: ${ticket.id}`,
-      })
-      .catch((err) => logger.error('[adminHelp] Failed to send email to support@boomcard.bg:', err));
+      }), (err) => logger.error('[adminHelp] Failed to send email to support@boomcard.bg:', err));
 
     res.status(201).json({ ticket });
   } catch (error) {
@@ -249,12 +249,8 @@ router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
     const {
       status, priority, category, search,
       from, to, assigneeId,
-      page = '1', limit = '25',
     } = req.query as Record<string, string>;
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 25));
-    const skip = (pageNum - 1) * limitNum;
-    const take = limitNum;
+    const { skip, take, page: pageNum } = parsePagination(req.query, { defaultLimit: 25, maxLimit: 100 });
 
     const where: Parameters<typeof prisma.helpTicket.findMany>[0]['where'] = {};
     if (status && Object.values(TicketStatus).includes(status as TicketStatus)) {
@@ -270,7 +266,7 @@ router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
       if (!ADMIN_VALID_REQUEST_TYPES.includes(req.query.requestType)) {
         return res.status(400).json({ error: 'Невалиден тип заявка' });
       }
-      where.requestType = req.query.requestType;
+      where.requestType = req.query.requestType as TicketRequestType;
     }
     // Spec §11.5 "период" — date range filter on createdAt.
     // `from` and `to` are ISO-8601 strings; invalid values are silently ignored.
@@ -309,11 +305,8 @@ router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
 // GET /api/admin/help/mine — tickets created by the current admin (Spec §11 "Моите заявки")
 router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res, next) => {
   try {
-    const { status, priority, category, search, page = '1', limit = '25' } = req.query as Record<string, string>;
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 25));
-    const skip = (pageNum - 1) * limitNum;
-    const take = limitNum;
+    const { status, priority, category, search } = req.query as Record<string, string>;
+    const { skip, take, page: pageNum } = parsePagination(req.query, { defaultLimit: 25, maxLimit: 100 });
 
     // Build where as AND conditions so status + search can coexist without clobbering each other.
     // Spec §11.5 "Моите заявки": tickets where the current admin is owner OR assignee.
@@ -335,7 +328,7 @@ router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res
       if (!ADMIN_VALID_REQUEST_TYPES.includes(req.query.requestType)) {
         return res.status(400).json({ error: 'Невалиден тип заявка' });
       }
-      conditions.push({ requestType: req.query.requestType });
+      conditions.push({ requestType: req.query.requestType as TicketRequestType });
     }
     if (search) {
       conditions.push({ OR: [
@@ -481,14 +474,14 @@ router.post('/:id/assign', requirePermission('help.write'), async (req: AuthRequ
     });
 
     req.skipAudit = true;
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'ticket.assign',
       objectType: 'ticket',
       objectId: req.params.id,
       before: { assigneeId: ticket.assigneeId, status: ticket.status },
       after: { assigneeId: resolvedAssigneeId, status: newStatus },
-    }).catch(() => {});
+    }), () => {});
 
     res.json({ ok: true });
   } catch (error) {
@@ -575,7 +568,7 @@ router.post('/:id/reject', requirePermission('help.write'), async (req: AuthRequ
       ].filter((id): id is string => !!id);
       const escR = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const rejectAudience = ticket.user.role === 'PARTNER' ? 'partner' : 'subscriber';
-      emailService
+      detach(emailService
         .sendEmail({
           to: ticket.user.email,
           audience: ticket.user.role === 'PARTNER' ? 'partner' : undefined,
@@ -592,8 +585,7 @@ router.post('/:id/reject', requirePermission('help.write'), async (req: AuthRequ
 <blockquote style="border-left:3px solid #e5e7eb;padding-left:12px;color:#555;">${escR(trimmedReason)}</blockquote>
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id}</p>`,
           text: `Здравей, ${ticket.user.firstName || ticket.user.email},\n\nВашата заявка беше отказана.\n\nПричина: ${trimmedReason}\n\nTicket ID: ${ticket.id}`,
-        })
-        .catch((err) => logger.error('[adminHelp] reject notification email failed:', err));
+        }), (err) => logger.error('[adminHelp] reject notification email failed:', err));
     }
 
     res.json({ ok: true });
@@ -713,7 +705,7 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
         ...patchPriorMsgs.map((r) => r.messageId),
       ].filter((id): id is string => !!id);
       const patchAudience = ticket.user.role === 'PARTNER' ? 'partner' : 'subscriber';
-      emailService
+      detach(emailService
         .sendEmail({
           to: ticket.user.email,
           audience: ticket.user.role === 'PARTNER' ? 'partner' : undefined,
@@ -738,8 +730,7 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id}${footerLink}</p>`;
           })(),
           text: `Здравей, ${ticket.user.firstName || ticket.user.email},\n\nСтатусът на вашата заявка беше обновен на: ${newStatusLabel}\n\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG_NOTIFY[ticket.category] ?? ticket.category}\n\nTicket ID: ${ticket.id}`,
-        })
-        .catch((err) => logger.error('[adminHelp] Failed to send status-change notification to creator:', err));
+        }), (err) => logger.error('[adminHelp] Failed to send status-change notification to creator:', err));
     }
 
     res.json({ ok: true });
@@ -882,8 +873,7 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
     // produce two emails for any user with marketingConsentEmail=true. The
     // automation still creates the in-app bell notification unconditionally.
     if (!isCreator && ticket.userId) {
-      fireAutomation('support.reply', { userId: ticket.userId, skipEmail: true })
-        .catch((err) => logger.error('[automation] support.reply fire failed:', err));
+      detach(fireAutomation('support.reply', { userId: ticket.userId, skipEmail: true }), (err) => logger.error('[automation] support.reply fire failed:', err));
     }
 
     // Shared helpers for reply notification emails
@@ -895,7 +885,7 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
     // Notify the ticket creator by email when support (non-creator) replies
     if (!isCreator && ticket.user?.email) {
       const replyAudience = ticket.user.role === 'PARTNER' ? 'partner' : 'subscriber';
-      emailService
+      detach(emailService
         .sendEmail({
           to: ticket.user.email,
           audience: ticket.user.role === 'PARTNER' ? 'partner' : undefined,
@@ -918,15 +908,14 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id}${footerLink}</p>`;
           })(),
           text: `Здравей, ${ticket.user.firstName || ticket.user.email},\n\nПолучихте отговор на вашата заявка.\n\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG[ticket.category] ?? ticket.category}\n\n${body.trim()}\n\nTicket ID: ${ticket.id}`,
-        })
-        .catch((err) => logger.error('[adminHelp] Failed to send reply notification email:', err));
+        }), (err) => logger.error('[adminHelp] Failed to send reply notification email:', err));
     }
 
     // Notify the assigned admin by email when the ticket creator replies.
     // Skip when the ticket is self-assigned (assigneeId === userId) — the
     // creator would otherwise receive an email telling themselves they replied.
     if (isCreator && ticket.assignee?.email && ticket.assigneeId !== ticket.userId) {
-      emailService
+      detach(emailService
         .sendEmail({
           to: ticket.assignee.email,
           subject: buildTicketSubject(ticket.id, `[Отговор от заявител] ${ticket.subject}`),
@@ -941,13 +930,12 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
 <p>${escR(body.trim()).replace(/\n/g, '<br/>')}</p>
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id} &middot; <a href="${FRONTEND_URL}/admin/help/all?ticket=${ticket.id}">Отвори заявката</a></p>`,
           text: `Здравей, ${ticket.assignee.firstName || ticket.assignee.email},\n\nЗаявителят изпрати отговор на заявка, назначена на вас.\n\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG[ticket.category] ?? ticket.category}\n\n${body.trim()}\n\nTicket ID: ${ticket.id}`,
-        })
-        .catch((err) => logger.error('[adminHelp] Failed to send creator-reply notification to assignee:', err));
+        }), (err) => logger.error('[adminHelp] Failed to send creator-reply notification to assignee:', err));
     }
 
     // When creator replies on an unassigned ticket, alert support so it isn't silently missed.
     if (isCreator && !ticket.assigneeId) {
-      emailService
+      detach(emailService
         .sendEmail({
           to: 'support@boomcard.bg',
           subject: buildTicketSubject(ticket.id, `[Без отговорник] ${ticket.subject}`),
@@ -960,8 +948,7 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
 </table>
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id} &middot; <a href="${FRONTEND_URL}/admin/help/all?ticket=${ticket.id}">Отвори заявката</a></p>`,
           text: `Заявителят изпрати отговор на заявка без назначен отговорник.\n\nЗаявител: ${ticket.user.firstName || ticket.user.email}\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG[ticket.category] ?? ticket.category}\n\nTicket ID: ${ticket.id}`,
-        })
-        .catch((err) => logger.error('[adminHelp] Failed to send unassigned-reply alert to support:', err));
+        }), (err) => logger.error('[adminHelp] Failed to send unassigned-reply alert to support:', err));
     }
 
     res.status(201).json({ reply });

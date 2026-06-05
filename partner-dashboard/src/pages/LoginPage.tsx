@@ -214,6 +214,43 @@ const SocialButtons = styled.div`
   gap: 0.75rem;
 `;
 
+// HIGH fix: OAuth buttons are disabled until the backend /auth/oauth/login endpoint
+// is implemented. Wrapping them in a tooltip container makes the "coming soon" state
+// visible without removing the UI elements entirely.
+const ComingSoonWrapper = styled.div`
+  position: relative;
+  cursor: not-allowed;
+
+  & > * {
+    pointer-events: none;
+    opacity: 0.5;
+    user-select: none;
+  }
+
+  &::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1f2937;
+    color: #f9fafb;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.375rem 0.625rem;
+    border-radius: 0.375rem;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 150ms ease;
+    z-index: 10;
+  }
+
+  &:hover::after {
+    opacity: 1;
+  }
+`;
+
 const SignupPrompt = styled.p`
   text-align: center;
   margin-top: 2rem;
@@ -393,11 +430,15 @@ const LoginPage: React.FC = () => {
       navigate(from, { replace: true });
     } catch (error) {
       console.error('Google login error:', error);
+      // LOW-1 fix (review r2ab): surface caught errors to the user — Google success
+      // path was silently swallowing errors. Must be consistent with Facebook path.
+      toast.error(t('auth.googleLoginFailed'));
     }
   };
 
   const handleGoogleError = () => {
     console.error('Google login failed');
+    toast.error(t('auth.googleLoginFailed'));
   };
 
   const handleFacebookSuccess = async (response: {
@@ -425,11 +466,15 @@ const LoginPage: React.FC = () => {
       navigate(from, { replace: true });
     } catch (error) {
       console.error('Facebook login error:', error);
+      // LOW-1 fix: surface caught errors to the user — Facebook success path was
+      // silently swallowing errors. Must be consistent with Google success path.
+      toast.error(t('auth.facebookLoginFailed'));
     }
   };
 
   const handleFacebookError = (error: Error) => {
     console.error('Facebook login failed:', error);
+    toast.error(t('auth.facebookLoginFailed'));
   };
 
   return (
@@ -537,24 +582,42 @@ const LoginPage: React.FC = () => {
           <DividerText>{t('auth.or')}</DividerText>
         </Divider>
 
+        {/* HIGH fix: Google and Facebook OAuth are disabled — the backend
+            /auth/oauth/login endpoint is not yet implemented (returns HTTP 404).
+            The buttons are wrapped in a non-interactive "coming soon" overlay so
+            partners understand the feature is planned but not yet available.
+            Remove these wrappers once the backend endpoint is live. */}
         <SocialButtons>
-          <GoogleLoginButton
-            onSuccess={handleGoogleSuccess}
-            onError={handleGoogleError}
-            text={t('auth.continueWithGoogle')}
-            language={language}
-          />
-          <FacebookLoginButton
-            onSuccess={handleFacebookSuccess}
-            onError={handleFacebookError}
-            text={t('auth.continueWithFacebook')}
-          />
+          <ComingSoonWrapper
+            data-tooltip={language === 'bg' ? 'Очаквайте скоро' : 'Coming soon'}
+            aria-label={language === 'bg' ? 'Вход с Google — очаквайте скоро' : 'Google login — coming soon'}
+          >
+            <GoogleLoginButton
+              onSuccess={handleGoogleSuccess}
+              onError={handleGoogleError}
+              text={t('auth.continueWithGoogle')}
+              language={language}
+            />
+          </ComingSoonWrapper>
+          <ComingSoonWrapper
+            data-tooltip={language === 'bg' ? 'Очаквайте скоро' : 'Coming soon'}
+            aria-label={language === 'bg' ? 'Вход с Facebook — очаквайте скоро' : 'Facebook login — coming soon'}
+          >
+            <FacebookLoginButton
+              onSuccess={handleFacebookSuccess}
+              onError={handleFacebookError}
+              text={t('auth.continueWithFacebook')}
+            />
+          </ComingSoonWrapper>
         </SocialButtons>
 
+        {/* LOW-2 fix: spec §2.3/§2.4 — the partner application does not create
+            a login account. Direct users to the partner application page instead
+            of a consumer subscription plan selector. */}
         <SignupPrompt>
-          {t('auth.dontHaveAccount')} {' '}
-          <Link to="/#subscription-plans">
-            {t('common.choosePlan')}
+          {t('auth.notAPartnerYet') || (language === 'bg' ? 'Все още не сте партньор?' : 'Not a partner yet?')}{' '}
+          <Link to="/register/partner">
+            {t('auth.applyAsPartner') || (language === 'bg' ? 'Кандидатствайте тук' : 'Apply here')}
           </Link>
         </SignupPrompt>
 

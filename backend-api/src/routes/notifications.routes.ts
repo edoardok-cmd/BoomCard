@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { emitNotification } from '../lib/socket';
 import { getVapidPublicKey } from '../lib/webPush';
+import { parsePagination } from '../utils/pagination';
 
 const router = Router();
 
@@ -382,9 +383,7 @@ router.get(
   authenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
-    const page = Math.max(1, parseInt(String(req.query.page || '1'), 10));
-    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '20'), 10)));
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     const where = buildWhere(userId, req.query);
 

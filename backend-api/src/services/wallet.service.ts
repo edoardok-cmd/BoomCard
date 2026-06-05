@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { SubscriptionPlan, WalletTransactionType, WalletTransactionStatus, CashbackEntryStatus } from '@prisma/client';
+import { Prisma, SubscriptionPlan, WalletTransactionType, WalletTransactionStatus, CashbackEntryStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { CASHBACK_VALIDITY_DAYS, EUR_TO_BGN_RATE } from '../constants/receipt.constants';
@@ -10,6 +10,7 @@ import { fireAutomation } from '../lib/automationDispatcher';
 import { getSystemSettingInt } from '../utils/systemSettings';
 import { cashbackLifecycleService } from './cashbackLifecycle.service';
 import { AppError } from '../middleware/error.middleware';
+import { detach } from '../utils/detach';
 
 // ── Service ────────────────────────────────────────────────────────────────────
 
@@ -38,11 +39,18 @@ export class WalletService {
   async getBalance(userId: string) {
     const wallet = await this.getOrCreateWallet(userId);
 
-    // Resolve payout threshold for this user's active plan. PAUSED is included
-    // so a paused subscriber still sees the correct threshold for their plan;
-    // the actual payout request is gated separately on ACTIVE/TRIALING only.
+    // Resolve payout threshold and eligibility. The query mirrors requestPayout()'s
+    // Step B exactly: ACTIVE, TRIALING, or CANCELLED-within-paid-period.
+    // PAUSED is intentionally excluded — requestPayout() blocks it with a 402,
+    // so canRequestPayout must also be false for PAUSED subscribers.
     const subscription = await prisma.subscription.findFirst({
-      where: { userId, status: { in: ['ACTIVE', 'TRIALING', 'PAUSED'] } },
+      where: {
+        userId,
+        OR: [
+          { status: { in: ['ACTIVE', 'TRIALING'] } },
+          { status: 'CANCELLED' as any, currentPeriodEnd: { gt: new Date() } },
+        ],
+      },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -71,11 +79,54 @@ export class WalletService {
           subscription.currentPeriodEnd > walletNow)
       );
 
+    const pendingAgg = await prisma.walletTransaction.aggregate({
+      where: { walletId: wallet.id, cashbackStatus: { in: [CashbackEntryStatus.PENDING, CashbackEntryStatus.TRIAL_PENDING] } },
+      _sum: { amount: true },
+    });
+    const computedPendingBalance = pendingAgg._sum.amount ?? 0;
+
+    const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const expiringAgg = await prisma.walletTransaction.aggregate({
+      where: {
+        walletId: wallet.id,
+        cashbackStatus: CashbackEntryStatus.CLEARED,
+        cashbackExpiresAt: { lte: sevenDaysFromNow, gt: new Date() },
+      },
+      _sum: { amount: true },
+    });
+    const expiringBalance = expiringAgg._sum.amount ?? 0;
+
+    const hasIban = !!wallet.payoutIban && wallet.payoutIban.trim().length > 0;
+
+    // F-021: CURRENCY_TRANSITION_MODE env var controls dual BGN/EUR display.
+    // Values: 'dual' (show both BGN and EUR, current default for safety) or
+    // 'eur_only' (show EUR only, for post-transition cutover).
+    // Switch to 'eur_only' when the product team confirms the BGN→EUR migration is complete.
+    const currencyMode = (process.env.CURRENCY_TRANSITION_MODE ?? 'dual').toLowerCase();
+    const showDualCurrency = currencyMode !== 'eur_only';
+
     return {
       balance: wallet.balance,
       availableBalance: wallet.availableBalance,
-      pendingBalance: wallet.pendingBalance,
+      pendingBalance: computedPendingBalance,
+      expiringBalance,
       currency: wallet.currency,
+      // F-021: Dual-currency display. When showDualCurrency is true, both BGN and EUR
+      // amounts are included so clients can render a transition-mode display.
+      // When currencyMode === 'eur_only', only EUR fields are populated.
+      ...(showDualCurrency
+        ? {
+            balanceBGN: wallet.balance,
+            availableBalanceBGN: wallet.availableBalance,
+            pendingBalanceBGN: computedPendingBalance,
+            expiringBalanceBGN: expiringBalance,
+            balanceEUR: parseFloat((wallet.balance / EUR_TO_BGN_RATE).toFixed(2)),
+            availableBalanceEUR: parseFloat((wallet.availableBalance / EUR_TO_BGN_RATE).toFixed(2)),
+          }
+        : {
+            balanceEUR: parseFloat((wallet.balance / EUR_TO_BGN_RATE).toFixed(2)),
+            availableBalanceEUR: parseFloat((wallet.availableBalance / EUR_TO_BGN_RATE).toFixed(2)),
+          }),
       isLocked: wallet.isLocked,
       lastUpdated: wallet.updatedAt,
       payoutThreshold: parseFloat(threshold.toFixed(2)),
@@ -83,7 +134,8 @@ export class WalletService {
       canRequestPayout: !wallet.isLocked
         && wallet.availableBalance >= threshold
         && hasEligibleSubscription
-        && !hasFailedPayment,
+        && !hasFailedPayment
+        && hasIban,
       subscriptionStatus: subscription?.status ?? null,
       payoutIban: wallet.payoutIban ?? null,
       payoutBeneficiaryName: wallet.payoutBeneficiaryName ?? null,
@@ -136,6 +188,15 @@ export class WalletService {
     const cashbackValidityDays = await getSystemSettingInt('cashback_expiry_days', CASHBACK_VALIDITY_DAYS);
     const now = new Date();
 
+    // F-004 DEVIATION NOTICE (BC-USER-SPEC-GAP-001 F-004):
+    // TRIAL_PENDING intermediate state deviates from spec §2.1 which requires all
+    // trial cashback to be visible. This implementation stores trial-period cashback
+    // as TRIAL_PENDING and keeps it out of availableBalance (not fully visible to
+    // the user as a withdrawable amount). The entry IS visible in balance but NOT
+    // in availableBalance, creating an intermediate state not disclosed to the user.
+    // This implementation requires explicit product sign-off per the spec.
+    // See gap report BC-USER-SPEC-GAP-001 F-004.
+    //
     // If the user is within their 24h trial refund window, hold cashback as
     // TRIAL_PENDING: it shows in balance but is not yet spendable/withdrawable.
     // The nightly resolveTrialPendingCashback job releases it once the window closes.
@@ -164,12 +225,20 @@ export class WalletService {
     // CLEARED (and stamps clearedAt + cashbackExpiresAt) once the trial window
     // closes. This keeps the 60-day clock honest — it starts when the cashback
     // becomes Available, not when the transaction was originally scanned.
+    // F-010 DEVIATION NOTICE (BC-USER-SPEC-GAP-001 F-010):
+    // Fast-path creates cashback as CLEARED directly, skipping the PENDING
+    // 'In Review' state. Spec §9.5 requires all submissions to show In Review first.
+    // This deviation is tracked at BC-USER-SPEC-FIX-001 F-010 and requires product
+    // sign-off before the intermediate PENDING state can be removed from the spec flow.
     const isClearedCashback = type === WalletTransactionType.CASHBACK_CREDIT && !isTrialPending;
     const cashbackExpiresAt = isClearedCashback
       ? new Date(now.getTime() + cashbackValidityDays * 24 * 60 * 60 * 1000)
       : undefined;
+    // Spec §1.3: TrialPending cashback must be stored with cashbackStatus=TRIAL_PENDING
+    // (not PENDING) so admin queries filtering cashbackStatus=TRIAL_PENDING find these
+    // entries. PENDING is reserved for risk-hold entries pending manual review.
     const cashbackStatus = type === WalletTransactionType.CASHBACK_CREDIT
-      ? (isTrialPending ? CashbackEntryStatus.PENDING : CashbackEntryStatus.CLEARED)
+      ? (isTrialPending ? CashbackEntryStatus.TRIAL_PENDING : CashbackEntryStatus.CLEARED)
       : undefined;
     const clearedAt = isClearedCashback ? now : undefined;
 
@@ -257,21 +326,31 @@ export class WalletService {
         const preCreditAvailable = updatedWallet.availableBalance - amount;
         if (updatedWallet.availableBalance > 0 && !updatedWallet.isLocked) {
           const subscription = await prisma.subscription.findFirst({
-            where: { userId, status: { in: ['ACTIVE', 'TRIALING', 'PAUSED'] } },
+            where: { userId, status: { in: ['ACTIVE', 'TRIALING'] } },
             orderBy: { createdAt: 'desc' },
           });
           const plan: SubscriptionPlan = subscription?.plan ?? 'PREMIUM_WEEKLY';
           const threshold = await getPayoutThresholdBGN(plan);
           if (preCreditAvailable < threshold && updatedWallet.availableBalance >= threshold) {
-            notificationService
-              .notifyPayoutReady({
-                userId,
-                availableBalance: updatedWallet.availableBalance,
-                threshold,
-              })
-              .catch((err) => logger.error(`[wallet] payout-ready notify failed for ${userId}:`, err));
-            fireAutomation('cashback.threshold_reached', { userId })
-              .catch((err) => logger.error(`[wallet] cashback.threshold_reached automation failed for ${userId}:`, err));
+            // Spec §3.7 — if no IBAN on file when threshold is crossed, hold payout
+            // and notify user to add their bank details before requesting a payout.
+            const hasIban = !!updatedWallet.payoutIban && updatedWallet.payoutIban.trim().length > 0;
+            if (!hasIban) {
+              detach(notificationService
+                .notifyPayoutHeldNoIban({
+                  userId,
+                  availableBalance: updatedWallet.availableBalance,
+                  threshold,
+                }), (err) => logger.error(`[wallet] payout-held-no-iban notify failed for ${userId}:`, err));
+            } else {
+              detach(notificationService
+                .notifyPayoutReady({
+                  userId,
+                  availableBalance: updatedWallet.availableBalance,
+                  threshold,
+                }), (err) => logger.error(`[wallet] payout-ready notify failed for ${userId}:`, err));
+              detach(fireAutomation('cashback.threshold_reached', { userId }), (err) => logger.error(`[wallet] cashback.threshold_reached automation failed for ${userId}:`, err));
+            }
           }
         }
       } catch (err) {
@@ -384,10 +463,19 @@ export class WalletService {
 
       // Mark the originating TRIAL_PENDING transactions as CANCELLED so
       // resolveTrialPendingCashback doesn't find them and double-decrement balance.
+      // Spec §3.1 / §4.4: also set cashbackStatus=VOIDED so the voided amount drops
+      // out of getBalance's pending aggregation (which sums cashbackStatus IN
+      // [PENDING, TRIAL_PENDING] with no status filter). Mirrors the scheduler's
+      // parallel void path (jobs/scheduler.ts resolveTrialPendingCashback) exactly.
       if (transactionIds && transactionIds.length > 0) {
         await tx.walletTransaction.updateMany({
           where: { id: { in: transactionIds } },
-          data: { status: WalletTransactionStatus.CANCELLED },
+          data: {
+            status: WalletTransactionStatus.CANCELLED,
+            cashbackStatus: CashbackEntryStatus.VOIDED,
+            voidedAt: new Date(),
+            voidedReason: 'Trial refund used',
+          },
         });
       }
 
@@ -432,6 +520,20 @@ export class WalletService {
     userId: string,
     opts: { iban?: string; beneficiaryName?: string } = {}
   ): Promise<{ amount: number; currency: string; status: 'PENDING' }> {
+    // F-001: Spec §1.2 — INACTIVE users retain read access but must not be able
+    // to initiate payout requests (operational write path). Check user_account_status first.
+    const userRecord = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { status: true },
+    }).catch(() => null);
+    if ((userRecord?.status as string) === 'INACTIVE') {
+      throw new AppError(
+        'ACCOUNT_INACTIVE: Payout requests are not available for inactive accounts. ' +
+        'Please contact support to reactivate your account.',
+        403,
+      );
+    }
+
     const wallet = await this.getOrCreateWallet(userId);
 
     if (wallet.isLocked) {
@@ -500,14 +602,17 @@ export class WalletService {
     const plan: SubscriptionPlan = subscription.plan;
     const threshold = await getPayoutThresholdBGN(plan);
 
-    // Resolve IBAN — prefer caller-supplied value, fall back to stored wallet value
+    // Resolve IBAN — prefer caller-supplied value, fall back to stored wallet value.
+    // Spec §7.3: IBAN is required before payout initiation. Checked here (after merge)
+    // so a caller can supply IBAN in the payout request without a separate pre-flight.
     const ibanRaw = opts.iban?.replace(/\s+/g, '').toUpperCase() || wallet.payoutIban || '';
     const beneficiaryName = opts.beneficiaryName?.trim() || wallet.payoutBeneficiaryName || '';
 
-    // If Transfer API is configured, require an IBAN
-    if (payseraService.isTransferConfigured() && !ibanRaw) {
-      throw new Error('Please provide your bank IBAN to receive the payout.');
+    if (!ibanRaw) {
+      throw new AppError('IBAN required before requesting payout.', 400);
     }
+
+    // Require beneficiary name when Paysera Transfer API is configured.
     if (payseraService.isTransferConfigured() && !beneficiaryName) {
       throw new Error('Please provide the beneficiary name as it appears on your bank account.');
     }
@@ -581,7 +686,7 @@ export class WalletService {
       if (lockedIds.length > 0) {
         await tx.walletTransaction.updateMany({
           where: { id: { in: lockedIds } },
-          data: { cashbackStatus: CashbackEntryStatus.LOCKED },
+          data: { cashbackStatus: CashbackEntryStatus.LOCKED, lockedAt: new Date() } as any,
         });
       }
 
@@ -596,6 +701,7 @@ export class WalletService {
           // from admin /approve → executePayoutTransfer() after risk review.
           status: WalletTransactionStatus.PENDING,
           description: 'Заявка за изплащане — в очакване на одобрение от администратор',
+          payoutIbanSnapshot: currentWallet.payoutIban ?? null as any,
           metadata: JSON.stringify({
             plan,
             thresholdBGN: threshold,
@@ -615,13 +721,13 @@ export class WalletService {
       // Audit the LOCK transition outside the transaction (best-effort — the
       // status change is already durable from the updateMany above).
       const { writeAudit } = await import('../middleware/audit.middleware');
-      writeAudit({
+      detach(writeAudit({
         actorUserId: userId,
         action: 'CASHBACK_LOCKED',
         objectType: 'WalletTransaction',
         objectId: withdrawalTxId,
         after: { count: lockedCashbackIds.length, ids: lockedCashbackIds, withdrawalId: withdrawalTxId },
-      }).catch((err) => logger.error('[wallet] CASHBACK_LOCKED audit failed:', err));
+      }), (err) => logger.error('[wallet] CASHBACK_LOCKED audit failed:', err));
     }
 
     logger.info(`Payout request enqueued for user ${userId}: ${amount.toFixed(2)} BGN (plan: ${plan}, withdrawalTxId: ${withdrawalTxId})`);
@@ -694,6 +800,37 @@ export class WalletService {
       logger.error(`[wallet] revertCashbackLockForWithdrawal failed for ${withdrawalId}:`, err);
       return { count: 0 };
     }
+  }
+
+  /**
+   * Spec §3.7 / §7.4 — escalate a user to HIGH risk after a repeated payout failure.
+   *
+   * Single source of truth for the two-strike risk-flagging math, shared by the
+   * admin `/:id/fail` route and the automatic Paysera-failure path in
+   * `executePayoutTransfer`. Floors riskScore at 61 and never downgrades a higher
+   * existing score, so the persisted score always stays inside the HIGH_51_PLUS
+   * bucket (spec §2.1) and never inflates unbounded across repeated failures
+   * (the prior `riskScore += 40` Paysera path could exceed 100 and drift away
+   * from the bucket boundary). Uses `updateMany` so a user soft-deleted between
+   * the read and the write is a no-op rather than a P2025 that would abort a
+   * caller's transaction.
+   *
+   * Pass a transaction client to run inside an existing `$transaction`; defaults
+   * to the shared prisma client for fire-outside-tx callers.
+   */
+  async escalateRiskAfterRepeatedPayoutFailure(
+    userId: string,
+    client: Prisma.TransactionClient = prisma,
+  ): Promise<void> {
+    const current = await client.user.findUnique({
+      where: { id: userId },
+      select: { riskScore: true },
+    });
+    const safeRiskScore = Math.max(current?.riskScore ?? 0, 61);
+    await client.user.updateMany({
+      where: { id: userId },
+      data: { riskBucket: 'HIGH_51_PLUS', riskScore: safeRiskScore },
+    });
   }
 
   /**
@@ -882,6 +1019,50 @@ export class WalletService {
         }).catch(() => {});
       }
 
+      // F-014: Spec §7.4 payout failure handling.
+      // First failure: notify user requesting IBAN correction.
+      // Second failure: flag user as high-risk for manual admin review (no user notification).
+      try {
+        // Count prior payout failures for this user to determine which action to take.
+        const priorFailureCount = await prisma.walletTransaction.count({
+          where: {
+            walletId,
+            type: WalletTransactionType.WITHDRAWAL,
+            status: WalletTransactionStatus.FAILED,
+          },
+        });
+
+        // priorFailureCount includes the row we just marked FAILED (the DB write happened above).
+        // So 1 = this is the first failure, 2+ = second or subsequent failure.
+        if (priorFailureCount <= 1) {
+          // First failure: notify user to correct IBAN per spec §7.4.
+          detach(notificationService
+            .notifyPayoutFailedInvalidIban(userId), (err) => logger.error(`[executePayoutTransfer] notifyPayoutFailedInvalidIban failed for user ${userId}:`, err));
+        } else {
+          // Second+ failure: flag user as high-risk for manual admin review.
+          // User is NOT notified on second failure per spec §7.4.
+          // Shared two-strike math (floors riskScore at 61, never downgrades) so
+          // this path stays consistent with the admin /fail route (spec §2.1).
+          await this.escalateRiskAfterRepeatedPayoutFailure(userId)
+            .catch((err) => logger.error(`[executePayoutTransfer] risk flag update failed for user ${userId}:`, err));
+
+          detach(notificationService
+            .notifyAdminOps({
+              opsType: 'payout_failure_high_risk',
+              title: 'User flagged high-risk after repeated payout failures',
+              message: `User ${userId} has had ${priorFailureCount} payout failures. Flagged for manual admin review per spec §7.4.`,
+              severity: 'warning',
+              fields: [
+                { label: 'User ID', value: userId },
+                { label: 'Failure count', value: String(priorFailureCount) },
+                { label: 'Last error', value: transferError.message.slice(0, 200) },
+              ],
+            }), (err) => logger.error(`[executePayoutTransfer] admin notification failed for user ${userId}:`, err));
+        }
+      } catch (f014Err) {
+        logger.error(`[executePayoutTransfer] F-014 failure-handling logic failed for user ${userId}:`, f014Err);
+      }
+
       throw new Error(`Payout could not be processed: ${transferError.message}`);
     }
   }
@@ -920,16 +1101,50 @@ export class WalletService {
     // Do not use partial strings or aliases — the query in sticker.service.ts
     // uses an exact match: action: { equals: 'wallet.iban.update' }.
     const { writeAudit } = await import('../middleware/audit.middleware');
-    writeAudit({
+    detach(writeAudit({
       actorUserId: userId,
       action: 'wallet.iban.update',
       objectType: 'wallet',
       objectId: null,
       before: existing?.payoutIban ? { payoutIban: '[REDACTED]' } : null,
       after: { payoutIban: '[REDACTED]' },
-    }).catch((err: unknown) => {
+    }), (err: unknown) => {
       logger.warn(`[updatePayoutAccount] audit write failed for user ${userId}: ${err}`);
     });
+
+    // F-011: Spec §7.3 auto-trigger payout when IBAN is later provided.
+    // After saving the IBAN, check if wallet.availableBalance >= plan payout threshold.
+    // If so, enqueue an automatic payout (spec §7.3 auto-trigger on IBAN save).
+    try {
+      const updatedWallet = await prisma.wallet.findUnique({
+        where: { userId },
+        select: { availableBalance: true, isLocked: true },
+      });
+      if (updatedWallet && !updatedWallet.isLocked && updatedWallet.availableBalance > 0) {
+        const subForThreshold = await prisma.subscription.findFirst({
+          where: {
+            userId,
+            OR: [
+              { status: { in: ['ACTIVE', 'TRIALING'] } },
+              { status: 'CANCELLED', currentPeriodEnd: { gt: new Date() } },
+            ],
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (subForThreshold) {
+          const plan: SubscriptionPlan = subForThreshold.plan;
+          const threshold = await getPayoutThresholdBGN(plan);
+          if (updatedWallet.availableBalance >= threshold) {
+            // spec §7.3 auto-trigger on IBAN save — enqueue payout asynchronously.
+            // Non-fatal: if the auto-payout fails, the user can still request manually.
+            detach(this.requestPayout(userId, { iban: opts.iban, beneficiaryName: opts.beneficiaryName })
+              .then(() => logger.info(`[updatePayoutAccount] Auto-payout enqueued for user ${userId} (spec §7.3)`)), (err) => logger.error(`[updatePayoutAccount] Auto-payout failed for user ${userId} (spec §7.3):`, err));
+          }
+        }
+      }
+    } catch (autoPayoutCheckErr) {
+      logger.error(`[updatePayoutAccount] Auto-payout threshold check failed for user ${userId}:`, autoPayoutCheckErr);
+    }
 
     logger.info(`Payout account updated for user ${userId}`);
   }
@@ -995,30 +1210,54 @@ export class WalletService {
   }
 
   /**
-   * Get wallet transaction history
+   * Get wallet transaction history.
+   *
+   * F-012: Added cashbackStatus and period filter support per spec §9.5.
+   *   cashbackStatus: PENDING | CLEARED | LOCKED | PAID | EXPIRED | VOIDED
+   *   period: '7d' | '30d' | 'all' — filters by createdAt relative to now
    */
   async getTransactions(userId: string, params?: {
     type?: WalletTransactionType;
     limit?: number;
     offset?: number;
+    /** F-012: Filter by cashback entry status */
+    cashbackStatus?: CashbackEntryStatus;
+    /** F-012: Period preset — '7d' | '30d' | 'all' (default: all) */
+    period?: '7d' | '30d' | 'all';
   }) {
     const wallet = await this.getOrCreateWallet(userId);
 
+    // F-012: Build createdAt filter from period preset
+    let periodFilter: { gte: Date } | undefined;
+    if (params?.period === '7d') {
+      periodFilter = { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
+    } else if (params?.period === '30d') {
+      periodFilter = { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) };
+    }
+
+    // F-012: Validate cashbackStatus against allowed values to prevent arbitrary filter injection
+    const ALLOWED_CASHBACK_STATUSES: string[] = ['PENDING', 'CLEARED', 'LOCKED', 'PAID', 'EXPIRED', 'VOIDED', 'TRIAL_PENDING'];
+    const cashbackStatusFilter = params?.cashbackStatus
+      && ALLOWED_CASHBACK_STATUSES.includes(params.cashbackStatus as string)
+      ? params.cashbackStatus
+      : undefined;
+
+    const whereClause = {
+      walletId: wallet.id,
+      ...(params?.type && { type: params.type }),
+      ...(cashbackStatusFilter && { cashbackStatus: cashbackStatusFilter }),
+      ...(periodFilter && { createdAt: periodFilter }),
+    };
+
     const transactions = await prisma.walletTransaction.findMany({
-      where: {
-        walletId: wallet.id,
-        ...(params?.type && { type: params.type }),
-      },
+      where: whereClause,
       orderBy: { createdAt: 'desc' },
       take: params?.limit || 50,
       skip: params?.offset || 0,
     });
 
     const total = await prisma.walletTransaction.count({
-      where: {
-        walletId: wallet.id,
-        ...(params?.type && { type: params.type }),
-      },
+      where: whereClause,
     });
 
     return {

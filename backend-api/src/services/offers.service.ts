@@ -25,6 +25,20 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 
 const OFFER_REDEMPTION_RADIUS_METERS = 100;
 
+/**
+ * Safely parse the stored tags JSON string into an array. A malformed tags
+ * value must never throw a 500 out of a public read endpoint — fall back to [].
+ */
+function parseTags(tags: string | null): string[] {
+  if (!tags) return [];
+  try {
+    const parsed = JSON.parse(tags);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export interface OfferFilters {
   category?: string;
   city?: string;
@@ -293,7 +307,7 @@ class OffersService {
     ]);
 
     return {
-      data: offers.map(o => ({ ...o, tags: o.tags ? JSON.parse(o.tags) : [] })),
+      data: offers.map(o => ({ ...o, tags: parseTags(o.tags) })),
       pagination: {
         page,
         limit,
@@ -304,11 +318,19 @@ class OffersService {
   }
 
   /**
-   * Get all distinct tags used across active offers (for filter UI).
+   * Get all distinct tags used across currently-live active offers (for filter UI).
+   * S4: include startDate/endDate window so tags from expired or not-yet-started
+   * offers do not appear in the filter UI.
    */
   async getAllTags(): Promise<string[]> {
+    const now = new Date();
     const offers = await prisma.offer.findMany({
-      where: { status: OfferStatus.ACTIVE, tags: { not: null } },
+      where: {
+        status: OfferStatus.ACTIVE,
+        tags: { not: null },
+        startDate: { lte: now },
+        endDate: { gte: now },
+      },
       select: { tags: true },
     });
     const tagSet = new Set<string>();
@@ -354,7 +376,7 @@ class OffersService {
       orderBy: [{ isFeatured: 'desc' }, { featuredOrder: 'asc' }, { discountPercent: 'desc' }],
       take: limit,
     });
-    return offers.map(o => ({ ...o, tags: o.tags ? JSON.parse(o.tags) : [] }));
+    return offers.map(o => ({ ...o, tags: parseTags(o.tags) }));
   }
 
   /**
@@ -386,7 +408,7 @@ class OffersService {
       orderBy: [{ featuredOrder: 'asc' }, { createdAt: 'desc' }],
       take: limit,
     });
-    return offers.map(o => ({ ...o, tags: o.tags ? JSON.parse(o.tags) : [] }));
+    return offers.map(o => ({ ...o, tags: parseTags(o.tags) }));
   }
 
   /**
@@ -420,8 +442,20 @@ class OffersService {
       if (!p || p.status !== 'ACTIVE' || !p.verifiedAt || !p.isVisible) return null;
       const visibleTypeIds = await partnerTypeService.getVisibleTypeIdsForPlan(userPlan ?? null);
       if (visibleTypeIds !== null && p.partnerTypeId && !visibleTypeIds.includes(p.partnerTypeId)) return null;
+      // Non-admin callers only see ACTIVE, non-expired offers.
+      if ((offer as any).status !== 'ACTIVE') return null;
+      if ((offer as any).endDate && new Date((offer as any).endDate) < new Date()) return null;
+
+      // Strip internal partner gating fields (status/verifiedAt/isVisible/partnerTypeId)
+      // that were selected only for the visibility check above — they must not leak
+      // into the public offer response via the {...offer} spread. This strip stays
+      // inside the !isAdmin block so admins keep those flags for ops visibility
+      // (mapOffer returns admin payloads verbatim).
+      const { status: _ps, verifiedAt: _pv, isVisible: _piv, partnerTypeId: _ptid, ...publicPartner } =
+        offer.partner as Record<string, unknown>;
+      return { ...offer, partner: publicPartner, tags: parseTags(offer.tags) };
     }
-    return { ...offer, tags: offer.tags ? JSON.parse(offer.tags) : [] };
+    return { ...offer, tags: parseTags(offer.tags) };
   }
 
   /**
@@ -441,7 +475,11 @@ class OffersService {
       endDate = new Date(start.getTime() + validityDays * 24 * 60 * 60 * 1000);
     }
 
-    const { tags, status, endDate: _ignored, ...rest } = data as any;
+    // `category` is collected by the offer form for UI/filtering but the Offer
+    // model has NO category column (offers inherit their partner's category).
+    // It MUST be destructured out — leaving it in `...rest` makes prisma.offer.create
+    // throw "Unknown argument `category`", which broke partner offer creation.
+    const { tags, status, endDate: _ignored, category: _category, ...rest } = data as any;
     const offer = await prisma.offer.create({
       data: {
         ...rest,
@@ -483,7 +521,9 @@ class OffersService {
       isAdmin,
     );
 
-    const { partnerId: _ignored, tags, ...updateData } = data as any;
+    // Drop `category` (no Offer column — see createOffer) so prisma.offer.update
+    // doesn't throw "Unknown argument `category`" on edit.
+    const { partnerId: _ignored, tags, category: _category, ...updateData } = data as any;
     const finalData: any = { ...updateData };
     if (tags !== undefined) finalData.tags = this.serializeTags(tags);
 
@@ -628,8 +668,19 @@ class OffersService {
       } else if (partner.latitude != null && partner.longitude != null) {
         minDistance = calculateDistance(latitude, longitude, partner.latitude, partner.longitude);
       } else {
-        // Partner has no location data — skip proximity check
-        minDistance = 0;
+        // Venue geolocation is a REQUIRED field (enforced at venue creation). If a
+        // redemption still reaches here with no geocoded venue and no partner
+        // location, the venue predates the requirement or is misconfigured. FAIL
+        // CLOSED — never silently bypass the anti-fraud proximity gate. The venue
+        // must be backfilled with coordinates before its offers can be redeemed.
+        logger.warn(
+          `[offers] redeemOffer BLOCKED — partner ${partner.id ?? 'unknown'} (offer ${offerId}) ` +
+          `has no geocoded venue or partner location; geolocation is required for redemption.`
+        );
+        throw new Error(
+          'This venue is not yet set up for location-based redemption (missing geolocation). ' +
+          'Please contact the venue.'
+        );
       }
 
       if (minDistance > OFFER_REDEMPTION_RADIUS_METERS) {
@@ -649,21 +700,50 @@ class OffersService {
       throw new Error('You have already redeemed this offer and the code has expired.');
     }
 
-    if (offer.usageLimit !== null && offer.usageCount >= offer.usageLimit) {
-      throw new Error('This offer has reached its redemption limit');
-    }
-
+    // B4: The pre-transaction usageCount snapshot is stale under concurrent
+    // requests. Move the limit enforcement inside the transaction using a
+    // conditional updateMany that only increments when usageCount < usageLimit.
+    // This makes the check-and-increment atomic in the DB, preventing
+    // over-redemption races across concurrent callers.
     const code = `BOOM-${crypto.randomBytes(4).toString('hex').toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    const [updatedOffer] = await prisma.$transaction([
-      prisma.offer.update({
-        where: { id: offerId },
-        data: { usageCount: { increment: 1 } },
-        select: { usageCount: true, usageLimit: true },
-      }),
-      prisma.offerRedemption.create({ data: { offerId, userId, code, expiresAt } }),
-    ]);
+    let updatedOffer: { usageCount: number; usageLimit: number | null };
+
+    try {
+      [updatedOffer] = await prisma.$transaction(async (tx) => {
+        // Atomically increment only if under the limit (or no limit set).
+        // usageLimit null means unlimited — always allow.
+        const whereLimit = offer.usageLimit !== null
+          ? { id: offerId, usageCount: { lt: offer.usageLimit } }
+          : { id: offerId };
+
+        const countResult = await tx.offer.updateMany({
+          where: whereLimit,
+          data: { usageCount: { increment: 1 } },
+        });
+
+        if (countResult.count === 0) {
+          // Either no row matched (offer deleted) or usageCount >= usageLimit
+          // at the moment the UPDATE ran — treat as limit-reached.
+          throw new Error('This offer has reached its redemption limit');
+        }
+
+        const updated = await tx.offer.findUnique({
+          where: { id: offerId },
+          select: { usageCount: true, usageLimit: true },
+        });
+        if (!updated) throw new Error('Offer not found after increment');
+
+        const redemption = await tx.offerRedemption.create({
+          data: { offerId, userId, code, expiresAt },
+        });
+
+        return [updated, redemption];
+      });
+    } catch (err: any) {
+      throw err;
+    }
 
     // Notify the partner that owns this offer (non-fatal). Fire-and-forget so
     // a notification hiccup can never mask a successful redemption.

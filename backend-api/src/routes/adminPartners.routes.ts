@@ -58,6 +58,8 @@ import {
 } from '../services/partnerVenueCountBucket.helper';
 import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
 import { fraudDetectionService } from '../services/fraudDetection.service';
+import { parsePagination } from '../utils/pagination';
+import { detach } from '../utils/detach';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -98,11 +100,8 @@ router.get(
   '/',
   requirePermission('partners.requests.read'),
   asyncHandler(async (req, res) => {
-    const { search, status, requestStatus, objectCount, page = '1', limit = '20' } = req.query as Record<string, string>;
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(Math.max(1, parseInt(limit) || 20), 100);
-    const skip = (pageNum - 1) * limitNum;
-    const take = limitNum;
+    const { search, status, requestStatus, objectCount } = req.query as Record<string, string>;
+    const { skip, take, page: pageNum } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     const where: Parameters<typeof prisma.partner.findMany>[0]['where'] = {};
 
@@ -315,12 +314,12 @@ router.get(
 // ─── Advance pipeline status ──────────────────────────────────────────────────
 
 const VALID_PIPELINE_TRANSITIONS: Partial<Record<PartnerRequestStatus, PartnerRequestStatus[]>> = {
-  NOVA: ['KOMUNIKACIYA', 'OTKAZANA'],
-  KOMUNIKACIYA: ['DOGOVARYANE', 'OTKAZANA'],
-  DOGOVARYANE: ['ONBOARDING', 'OTKAZANA'],
-  ONBOARDING: ['ODOBRENA', 'OTKAZANA'],
-  ODOBRENA: [],
-  OTKAZANA: [],
+  NEW: ['COMMUNICATION', 'REJECTED'],
+  COMMUNICATION: ['NEGOTIATION', 'REJECTED'],
+  NEGOTIATION: ['ONBOARDING', 'REJECTED'],
+  ONBOARDING: ['APPROVED', 'REJECTED'],
+  APPROVED: [],
+  REJECTED: [],
 };
 
 router.patch(
@@ -336,7 +335,7 @@ router.patch(
     const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
     if (!partner) return res.status(404).json({ error: 'Partner not found' });
 
-    const current: PartnerRequestStatus = partner.requestStatus ?? 'NOVA';
+    const current: PartnerRequestStatus = partner.requestStatus ?? 'NEW';
     const allowed = VALID_PIPELINE_TRANSITIONS[current] ?? [];
     if (!allowed.includes(requestStatus as PartnerRequestStatus)) {
       return res.status(400).json({
@@ -346,7 +345,7 @@ router.patch(
     }
 
     const isOdobrenaTransition =
-      requestStatus === PartnerRequestStatus.ODOBRENA && current !== PartnerRequestStatus.ODOBRENA;
+      requestStatus === PartnerRequestStatus.APPROVED && current !== PartnerRequestStatus.APPROVED;
 
     const updated = await prisma.partner.update({
       where: { id: req.params.id },
@@ -362,7 +361,7 @@ router.patch(
     });
 
     // Spec §10.4 — log every pipeline status change with before/after context.
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'partner.request.status',
       objectType: 'Partner',
@@ -372,7 +371,7 @@ router.patch(
         requestStatus,
         ...(isOdobrenaTransition ? { onboardingCompleted: true } : {}),
       },
-    }).catch((err) => logger.error('[adminPartners] pipeline writeAudit failed:', err));
+    }), (err) => logger.error('[adminPartners] pipeline writeAudit failed:', err));
 
     res.json({ partner: updated });
   })
@@ -400,14 +399,14 @@ router.patch(
       select: PARTNER_SELECT,
     });
 
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'partner.assign',
       objectType: 'Partner',
       objectId: req.params.id,
       before: { assignedAdminId: partner.assignedAdminId },
       after: { assignedAdminId: adminId ?? null },
-    }).catch((err) => logger.error('[adminPartners] assign writeAudit failed:', err));
+    }), (err) => logger.error('[adminPartners] assign writeAudit failed:', err));
 
     res.json({ partner: updated });
   })
@@ -436,7 +435,7 @@ router.post(
 
     const note = await prisma.$transaction(async (tx) => {
       if (needsInit) {
-        await tx.partner.update({ where: { id: req.params.id }, data: { requestStatus: 'NOVA' } });
+        await tx.partner.update({ where: { id: req.params.id }, data: { requestStatus: 'NEW' } });
       }
       return tx.partnerRequestNote.create({
         data: {
@@ -501,14 +500,14 @@ router.patch(
     let parsedFeatures: Record<string, unknown> | null = null;
     if (updated.features) { try { parsedFeatures = JSON.parse(updated.features); } catch { /* ignore */ } }
 
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'partner.contract.update',
       objectType: 'Partner',
       objectId: req.params.id,
       before: { contractSigned: existingFeatures.contractSigned ?? null },
       after: { contractSigned: signed },
-    }).catch((err) => logger.error('[adminPartners] contract writeAudit failed:', err));
+    }), (err) => logger.error('[adminPartners] contract writeAudit failed:', err));
 
     res.json({ partner: { ...updated, features: parsedFeatures } });
   })
@@ -559,14 +558,14 @@ router.patch(
       select: PARTNER_SELECT,
     });
 
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'partner.discount-rate.update',
       objectType: 'Partner',
       objectId: req.params.id,
       before: { discountRate: partner.discountRate },
       after: { discountRate: rate ?? null },
-    }).catch((err) => logger.error('[adminPartners] writeAudit failed:', err));
+    }), (err) => logger.error('[adminPartners] writeAudit failed:', err));
 
     res.json({ partner: updated });
   })
@@ -602,10 +601,10 @@ router.post(
     }
     // Spec §5.2 — the full onboarding pipeline must be completed before activation.
     // Approval directly from NOVA/KOMUNIKACIYA/DOGOVARYANE bypasses required steps.
-    if (partner.requestStatus !== PartnerRequestStatus.ONBOARDING && partner.requestStatus !== PartnerRequestStatus.ODOBRENA) {
+    if (partner.requestStatus !== PartnerRequestStatus.ONBOARDING && partner.requestStatus !== PartnerRequestStatus.APPROVED) {
       return res.status(400).json({
-        error: `Partner must reach the ONBOARDING stage before approval. Current stage: ${partner.requestStatus ?? 'NOVA'}`,
-        currentStatus: partner.requestStatus ?? 'NOVA',
+        error: `Partner must reach the ONBOARDING stage before approval. Current stage: ${partner.requestStatus ?? 'NEW'}`,
+        currentStatus: partner.requestStatus ?? 'NEW',
       });
     }
     // Belt-and-braces: if requestStatus is already ODOBRENA but partner.status is
@@ -613,7 +612,7 @@ router.post(
     // consuming an activation link. PENDING is the only status where a manual
     // ODOBRENA advance + approve makes sense. Any other status is post-onboarding.
     if (
-      partner.requestStatus === PartnerRequestStatus.ODOBRENA &&
+      partner.requestStatus === PartnerRequestStatus.APPROVED &&
       partner.status !== PartnerStatus.PENDING
     ) {
       return res.status(400).json({
@@ -636,7 +635,7 @@ router.post(
         where: { id: req.params.id },
         data: {
           status: PartnerStatus.ACTIVE,
-          requestStatus: PartnerRequestStatus.ODOBRENA,
+          requestStatus: PartnerRequestStatus.APPROVED,
           // Spec §5.2 v1.1 — `verifiedAt` is the "fully activated" flag, stamped
           // only on activation-token consumption. Leaving it null here ensures
           // the partner can't log in or be publicly visible until they click the
@@ -681,15 +680,14 @@ router.post(
     if (issued && recipientEmail) {
       const linkId = issued.linkId;
       const { url, expiresAt } = issued;
-      sendActivationEmail({
+      detach(sendActivationEmail({
         email: recipientEmail,
         firstName: updated.user.firstName || updated.businessName,
         businessName: updated.businessName,
         activationUrl: url,
         expiresAt,
       })
-        .then(() => stampEmailOutcome(linkId, { sent: true }))
-        .catch((err) => {
+        .then(() => stampEmailOutcome(linkId, { sent: true })), (err) => {
           logger.error('[partner-activation] email failed:', err);
           stampEmailOutcome(linkId, { sent: false, error: String((err as Error)?.message ?? err) });
         });
@@ -702,14 +700,14 @@ router.post(
     // partner.approved automation fires when the partner clicks the activation link
     // (POST /api/auth/partner/activate), not at admin-approval time. See auth.routes.ts.
 
-    writeAudit({
+    detach(writeAudit({
       actorUserId: (req as AuthRequest).user!.id,
       action: 'partner.approve',
       objectType: 'Partner',
       objectId: req.params.id,
       before: { status: partner.status, requestStatus: partner.requestStatus },
-      after: { status: PartnerStatus.ACTIVE, requestStatus: PartnerRequestStatus.ODOBRENA },
-    }).catch((err) => logger.error('[adminPartners] approve writeAudit failed:', err));
+      after: { status: PartnerStatus.ACTIVE, requestStatus: PartnerRequestStatus.APPROVED },
+    }), (err) => logger.error('[adminPartners] approve writeAudit failed:', err));
 
     // Spec §5.2 v1.1 — H4 fix: response now reflects the actual outcome of
     // link issuance so the UI can warn the admin to resend (the drawer also
@@ -788,7 +786,7 @@ router.post(
       reason: 'resend',
     });
 
-    sendActivationEmail({
+    detach(sendActivationEmail({
       email: partner.email ?? partner.user.email,
       firstName: partner.user.firstName || partner.businessName,
       businessName: partner.businessName,
@@ -796,8 +794,7 @@ router.post(
       expiresAt,
       isResend: true,
     })
-      .then(() => stampEmailOutcome(linkId, { sent: true }))
-      .catch((err) => {
+      .then(() => stampEmailOutcome(linkId, { sent: true })), (err) => {
         logger.error('[partner-activation] resend email failed:', err);
         stampEmailOutcome(linkId, { sent: false, error: String((err as Error)?.message ?? err) });
       });
@@ -806,7 +803,7 @@ router.post(
     // auditMiddleware would write after:{} (empty body) for this endpoint;
     // suppress it and write a richer entry instead.
     req.skipAudit = true;
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'partner.activation-link.resend',
       objectType: 'Partner',
@@ -814,7 +811,7 @@ router.post(
       after: { linkId, expiresAt: expiresAt.toISOString(), sentTo: partner.email ?? partner.user.email },
       ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
-    }).catch((err) => logger.error('[adminPartners] resend writeAudit failed:', err));
+    }), (err) => logger.error('[adminPartners] resend writeAudit failed:', err));
 
     res.json({ success: true, expiresAt });
   })
@@ -863,7 +860,7 @@ router.post(
     const [updated] = await prisma.$transaction([
       prisma.partner.update({
         where: { id: req.params.id },
-        data: { status: PartnerStatus.REJECTED, requestStatus: PartnerRequestStatus.OTKAZANA },
+        data: { status: PartnerStatus.REJECTED, requestStatus: PartnerRequestStatus.REJECTED },
         select: PARTNER_SELECT,
       }),
       prisma.partnerRequestNote.create({
@@ -885,14 +882,14 @@ router.post(
       }),
     ]);
 
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'partner.reject',
       objectType: 'Partner',
       objectId: req.params.id,
       before: { status: partner.status, requestStatus: partner.requestStatus },
-      after: { status: PartnerStatus.REJECTED, requestStatus: PartnerRequestStatus.OTKAZANA, reason: reason.trim() },
-    }).catch((err) => logger.error('[adminPartners] reject writeAudit failed:', err));
+      after: { status: PartnerStatus.REJECTED, requestStatus: PartnerRequestStatus.REJECTED, reason: reason.trim() },
+    }), (err) => logger.error('[adminPartners] reject writeAudit failed:', err));
 
     res.json({ success: true, partner: updated, reason });
   })
@@ -916,14 +913,14 @@ router.patch(
       select: { id: true, businessName: true, isVisible: true },
     });
 
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'partner.visibility.update',
       objectType: 'Partner',
       objectId: req.params.id,
       before: { isVisible: partner.isVisible },
       after: { isVisible },
-    }).catch((err) => logger.error('[adminPartners] visibility writeAudit failed:', err));
+    }), (err) => logger.error('[adminPartners] visibility writeAudit failed:', err));
 
     res.json({ partner: updated });
   })
@@ -982,7 +979,7 @@ router.patch(
     // Spec §10.4 — record an AuditLog entry with actor metadata. The
     // PartnerStatusChange row above is the user-facing history; this is the
     // append-only admin audit trail.
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'partner.status.update',
       objectType: 'Partner',
@@ -992,22 +989,21 @@ router.patch(
         status: change.toStatus,
         reason: reason?.trim() || null,
       },
-    }).catch((err) => logger.error('[adminPartners] writeAudit failed:', err));
+    }), (err) => logger.error('[adminPartners] writeAudit failed:', err));
 
     // Spec §8.2 v1.1 — notify the partner by email about the status change.
     // Prefer the partner contact email, fall back to the linked user account.
     // Fire-and-forget: a delivery failure must not roll back the status move.
     const notifyTo = partner.email || partner.user?.email || null;
     if (notifyTo) {
-      emailService
+      detach(emailService
         .sendPartnerStatusChangeEmail(notifyTo, {
           firstName: partner.user?.firstName || partner.businessName,
           businessName: partner.businessName,
           fromStatus: change.fromStatus,
           toStatus: change.toStatus,
           reason: reason ?? null,
-        })
-        .catch((err) => logger.error('[adminPartners] partner status email failed:', err));
+        }), (err) => logger.error('[adminPartners] partner status email failed:', err));
     } else {
       logger.warn(`[adminPartners] partner ${req.params.id} has no contact email — status change email skipped`);
     }
@@ -1157,13 +1153,13 @@ router.post(
       },
     });
 
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'partner.discount-rate.propose',
       objectType: 'Partner',
       objectId: req.params.id,
       after: { proposalId: proposal.id, proposedRate: rate },
-    }).catch((err) => logger.error('[adminPartners] writeAudit failed:', err));
+    }), (err) => logger.error('[adminPartners] writeAudit failed:', err));
 
     res.status(201).json({ proposal });
   })

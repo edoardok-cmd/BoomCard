@@ -103,12 +103,18 @@ export function useSearchPartners(query: string, filters?: PartnerFilters) {
 }
 
 /**
- * Hook to get current partner profile (authenticated)
+ * Hook to get current partner profile (authenticated).
+ *
+ * @param enabled - When false the query is skipped entirely.
+ *   Pass `isPartner` (user.role === 'partner') so the hook never fires for
+ *   consumer or admin users, preventing spurious /partners/me requests
+ *   (MEDIUM-1 fix from review r2q).
  */
-export function useCurrentPartner() {
+export function useCurrentPartner(enabled: boolean = true) {
   return useQuery({
     queryKey: ['partner', 'me'],
     queryFn: () => partnersService.getCurrentPartner(),
+    enabled,
     staleTime: 10 * 60 * 1000,
     retry: 1,
     retryDelay: 1000,

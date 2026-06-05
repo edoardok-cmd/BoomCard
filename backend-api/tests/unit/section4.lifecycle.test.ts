@@ -147,10 +147,17 @@ jest.mock('../../src/lib/prisma', () => {
     })),
   };
 
+  // F-001: requestPayout() reads user_account_status first (prisma.user.findUnique).
+  // The payout owner is ACTIVE in these fixtures so the INACTIVE gate is not tripped.
+  const userDelegate = {
+    findUnique: jest.fn(async (_args: any) => ({ id: 'user-1', status: 'ACTIVE' })),
+  };
+
   const client = {
     walletTransaction: walletTransactionDelegate,
     wallet: walletDelegate,
     subscription: subscriptionDelegate,
+    user: userDelegate,
     $transaction: jest.fn(async (fnOrArray: any) => {
       if (typeof fnOrArray === 'function') {
         return fnOrArray({

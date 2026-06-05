@@ -49,13 +49,13 @@ describe('userRisk.service', () => {
   });
 
   describe('bucketFor', () => {
-    it('matches spec §7.1 thresholds at the boundaries', () => {
-      expect(bucketFor(0)).toBe('LOW_0_30');
-      expect(bucketFor(30)).toBe('LOW_0_30');
-      expect(bucketFor(31)).toBe('REVIEW_31_60');
-      expect(bucketFor(60)).toBe('REVIEW_31_60');
-      expect(bucketFor(61)).toBe('HIGH_61_PLUS');
-      expect(bucketFor(100)).toBe('HIGH_61_PLUS');
+    it('matches the canonical RiskBucket thresholds at the boundaries', () => {
+      expect(bucketFor(0)).toBe('LOW_0_20');
+      expect(bucketFor(20)).toBe('LOW_0_20');
+      expect(bucketFor(21)).toBe('MEDIUM_21_50');
+      expect(bucketFor(50)).toBe('MEDIUM_21_50');
+      expect(bucketFor(51)).toBe('HIGH_51_PLUS');
+      expect(bucketFor(100)).toBe('HIGH_51_PLUS');
     });
   });
 
@@ -64,7 +64,7 @@ describe('userRisk.service', () => {
       const out = await computeRiskForUsers([baseUser()]);
       const a = out.get('u1')!;
       expect(a.score).toBe(0);
-      expect(a.bucket).toBe('LOW_0_30');
+      expect(a.bucket).toBe('LOW_0_20');
       expect(a.reasons).toEqual([]);
     });
 
@@ -106,7 +106,7 @@ describe('userRisk.service', () => {
       ]);
       const out = await computeRiskForUsers([baseUser()]);
       expect(out.get('u1')!.score).toBe(30);
-      expect(out.get('u1')!.bucket).toBe('LOW_0_30');
+      expect(out.get('u1')!.bucket).toBe('MEDIUM_21_50');
     });
 
     it('adds 20 for past-due / unpaid subscription', async () => {
@@ -154,10 +154,10 @@ describe('userRisk.service', () => {
       const out = await computeRiskForUsers([u]);
       // Rule sum is 15+25+10+20+30+10+20=130, capped at 100.
       expect(out.get('u1')!.score).toBe(100);
-      expect(out.get('u1')!.bucket).toBe('HIGH_61_PLUS');
+      expect(out.get('u1')!.bucket).toBe('HIGH_51_PLUS');
     });
 
-    it('crosses into REVIEW bucket at the 31-60 band', async () => {
+    it('crosses into MEDIUM bucket at the 21-50 band', async () => {
       mockedPrisma.subscription.groupBy.mockResolvedValueOnce([{ userId: 'u1', _count: { _all: 1 } }]); // 20
       mockedPrisma.transaction.groupBy
         .mockResolvedValueOnce([])
@@ -166,7 +166,7 @@ describe('userRisk.service', () => {
       const u = baseUser({ ibanLastChangedAt: new Date(Date.now() - 12 * 60 * 60 * 1000) }); // +10
       const out = await computeRiskForUsers([u]);
       expect(out.get('u1')!.score).toBe(40);
-      expect(out.get('u1')!.bucket).toBe('REVIEW_31_60');
+      expect(out.get('u1')!.bucket).toBe('MEDIUM_21_50');
     });
 
     it('adds 15 for 3+ flagged receipts in last 30d (spec §7.2 Receipt match)', async () => {

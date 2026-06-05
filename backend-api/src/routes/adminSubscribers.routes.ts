@@ -9,6 +9,8 @@ import { computeRiskForUsers, persistRiskAssessments } from '../services/userRis
 import { planDisplayName } from '../utils/planDisplayName';
 import { logger } from '../utils/logger';
 import { getClientIp } from '../utils/requestIp';
+import { parsePagination } from '../utils/pagination';
+import { detach } from '../utils/detach';
 
 const router = Router();
 router.use(auditMiddleware);
@@ -80,16 +82,20 @@ function buildSubscriberQuery(q: Record<string, string | undefined>) {
     where.createdAt = createdAt;
   }
 
-  if (accountStatus === 'ACTIVE' || accountStatus === 'SUSPENDED' || accountStatus === 'PENDING_VERIFICATION' || accountStatus === 'PENDING_PAYMENT' || accountStatus === 'INACTIVE') {
+  // Spec §1.1 — valid user_account_status values: Active, Inactive, Archived.
+  // ARCHIVED is included so admins can filter/view Archived users. Also accept
+  // SUSPENDED and PENDING_* as implementation extensions (see spec note).
+  if (accountStatus === 'ACTIVE' || accountStatus === 'SUSPENDED' || accountStatus === 'PENDING_VERIFICATION' || accountStatus === 'PENDING_PAYMENT' || accountStatus === 'INACTIVE' || accountStatus === 'ARCHIVED') {
     where.status = accountStatus as any;
     where.deletedAt = null;
   } else if (accountStatus === 'DELETED') {
     where.deletedAt = { not: null };
   }
 
-  if (riskLevel === 'low') where.riskScore = { lte: 30 };
-  else if (riskLevel === 'medium') where.riskScore = { gt: 30, lte: 60 };
-  else if (riskLevel === 'high') where.riskScore = { gt: 60 };
+  // Spec §2.1 Clash 5.1 — additive risk thresholds: 0–20 Low, 21–50 Medium, 51+ High.
+  if (riskLevel === 'low') where.riskScore = { lte: 20 };
+  else if (riskLevel === 'medium') where.riskScore = { gt: 20, lte: 50 };
+  else if (riskLevel === 'high') where.riskScore = { gt: 50 };
 
   // ibanChangedAfter: used by the suspicious_iban_changes alert deep-link to
   // filter the subscriber list to users who changed IBAN within the alert window.
@@ -210,10 +216,8 @@ function flattenSubscriber<T extends { subscriptions: Array<{ plan: Subscription
 // "Абонати" = user profile management: user-centric view with subscription summary
 router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.read'), async (req, res, next) => {
   try {
-    const { page = '1', limit = '20', sortBy, sortOrder, ...filters } = req.query as Record<string, string>;
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(Math.max(1, parseInt(limit) || 20), 100);
-    const skip = (pageNum - 1) * limitNum;
+    const { sortBy, sortOrder, ...filters } = req.query as Record<string, string>;
+    const { skip, page: pageNum, limit: limitNum } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     const { where, subFilter, hasSubFilter } = buildSubscriberQuery(filters);
 
@@ -271,7 +275,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
       // restart between chunks. The next admin GET (or the daily sweep in
       // jobs/user-risk-sweep.ts) recomputes the same assessments and writes
       // any users that were missed, so the failure mode self-heals.
-      void persistRiskAssessments(Array.from(assessments.values())).catch(() => {});
+      detach(persistRiskAssessments(Array.from(assessments.values())), () => {});
     } catch {
       // Computation failure must not break the list — fall back to stored values.
     }
@@ -320,19 +324,18 @@ router.get('/export', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePe
 router.get('/:userId/cashback', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.read'), async (req, res, next) => {
   try {
     const { userId } = req.params;
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 20), 100);
+    const { page, limit } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     const result = await getSubscriberCashbackEntries(userId, page, limit);
 
-    writeAudit({
+    detach(writeAudit({
       actorUserId: (req as AuthRequest).user?.id ?? null,
       action: 'subscriber.cashback.view',
       objectType: 'cashback',
       objectId: userId,
       ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
-    }).catch(() => {});
+    }), () => {});
 
     res.json({ success: true, ...result });
   } catch (error: any) {
@@ -409,14 +412,14 @@ router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
     };
 
     const actorReq = req as AuthRequest;
-    writeAudit({
+    detach(writeAudit({
       actorUserId: actorReq.user?.id ?? null,
       action: 'subscriber.view',
       objectType: 'subscriber',
       objectId: userId,
       ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
-    }).catch(() => {});
+    }), () => {});
 
     res.json(enriched);
   } catch (error) {
@@ -424,14 +427,20 @@ router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
   }
 });
 
-// PATCH /api/admin/subscribers/:userId/status — suspend or unsuspend a subscriber (#7)
+// PATCH /api/admin/subscribers/:userId/status — change a subscriber's account status.
+// Spec §1.1 — valid user_account_status values: Active, Inactive, Archived.
+//   ACTIVE   → Normal operation; scanning allowed.
+//   INACTIVE → Temporary pause; login allowed, scanning blocked.
+//   ARCHIVED → Terminal for operational purposes; no login, no scanning.
+// Spec §6.6 Clash 6.6 — users are NOT notified of account status changes (intentional).
 router.patch('/:userId/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.write'), async (req, res, next) => {
   try {
     const { userId } = req.params;
     const { status } = req.body as { status?: string };
 
-    if (status !== 'ACTIVE' && status !== 'SUSPENDED') {
-      return res.status(400).json({ error: 'status must be ACTIVE or SUSPENDED' });
+    // Spec §1.1 — only the three canonical statuses are allowed for new updates.
+    if (status !== 'ACTIVE' && status !== 'INACTIVE' && status !== 'ARCHIVED') {
+      return res.status(400).json({ error: 'status must be ACTIVE, INACTIVE, or ARCHIVED' });
     }
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -445,12 +454,12 @@ router.patch('/:userId/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
     const [updated] = await Promise.all([
       prisma.user.update({
         where: { id: userId },
-        data: { status },
+        data: { status: status as any },
         select: { id: true, status: true },
       }),
-      // Revoke all active sessions when suspending so the user is locked out
-      // immediately rather than remaining active until their JWT expires.
-      status === 'SUSPENDED'
+      // Spec §1.1: INACTIVE users can log in — do NOT revoke their sessions.
+      // Only ARCHIVED is a terminal no-login state that requires immediate session revocation.
+      status === 'ARCHIVED'
         ? prisma.refreshToken.deleteMany({ where: { userId } })
         : Promise.resolve(),
     ]);
@@ -549,7 +558,7 @@ router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
     }
 
     // Spec §10.4 — audit every admin subscription mutation.
-    writeAudit({
+    detach(writeAudit({
       actorUserId: (req as AuthRequest).user?.id ?? null,
       action: 'subscription.cancel',
       objectType: 'subscription',
@@ -561,7 +570,7 @@ router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
       },
       ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
-    }).catch(() => {});
+    }), () => {});
 
     res.json({ ok: true });
   } catch (error) {
@@ -632,9 +641,10 @@ router.patch('/:userId/plan', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), r
         return;
       }
 
-      const priceIdMap: Partial<Record<SubscriptionPlan, string | undefined>> = {
+      const priceIdMap: Partial<Record<SubscriptionPlan | string, string | undefined>> = {
         BASIC: process.env.STRIPE_BASIC_PRICE_ID,
         PREMIUM: process.env.STRIPE_PREMIUM_PRICE_ID,
+        PREMIUM_MONTHLY: process.env.STRIPE_PREMIUM_PRICE_ID,
       };
       const newPriceId = priceIdMap[plan];
       if (!newPriceId) {
@@ -941,9 +951,7 @@ router.post('/:userId/refund', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), 
 router.get('/:userId/login-history', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.read'), async (req, res, next) => {
   try {
     const { userId } = req.params;
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
-    const skip = (page - 1) * limit;
+    const { skip, page, limit } = parsePagination(req.query, { defaultLimit: 50, maxLimit: 100 });
 
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, role: true } });
     if (!user || user.role !== 'USER') {

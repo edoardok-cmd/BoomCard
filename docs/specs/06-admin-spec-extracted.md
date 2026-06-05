@@ -332,7 +332,7 @@ All Medium-risk records enter the admin review queue using the same workflow as 
 **Rules Enforced by Admin Backend:**
 
 - Inactive status: User can log in, view history, and submit support requests, but cannot scan receipts or generate new cashback.
-- IBAN: Not required at registration but required for payout initiation.
+- IBAN: Not required at registration but required before an automatic payout can proceed. If the threshold is reached and no IBAN is on file, the system notifies the user; the payout is held until IBAN is saved.
 - Failed payouts: First failure notifies the user to check their IBAN; second failure routes the record to manual review.
 
 **Password Reset Rate-Limiting (Clash 11.4):**
@@ -383,7 +383,7 @@ All Medium-risk records enter the admin review queue using the same workflow as 
 
 - Pending records with Low risk score auto-approve within 24 hours.
 - Cleared records automatically expire after 60 days if not transitioned to Paid.
-- Locked records transition to Paid via manual admin action; no automatic resolution.
+- Locked state is entered **automatically by the nightly scheduler** when a wallet's Cleared balance reaches the plan-specific threshold — no user action triggers this. Locked → Paid still requires manual admin action; there is no automatic resolution of Locked records.
 - TrialPending records are resolved daily by the scheduler (5:30 AM; source: `src/jobs/scheduler.ts` `resolveTrialPendingCashback()`): promoted to Cleared after the trial window, Voided if the subscription was cancelled within the window.
 
 **Cashback Rate Management** *(implementation extension — not in source spec §3.4; source spec Clash 10.6 defines the concept but not the mechanism):*
@@ -455,7 +455,7 @@ Note: The source spec does not define business rules for rate transitions, requi
 
 - User must have a subscription status that allows payout: Active or Cancelled-within-paid-period.
 - Blocked when: Cancelled (post period end), Failed Payment, or Expired.
-- IBAN required at payout initiation (not at registration).
+- IBAN required before automatic payout can proceed (not at registration). Users with no IBAN on file receive a notification when their threshold is reached and are prompted to add their bank details.
 - Payout threshold (plan-specific minimum Cleared balance) triggers the automatic payout process.
 - First failed payout (invalid IBAN): Notify user to correct IBAN.
 - Second failed payout: Record marked High risk + routes to manual review. The user is not notified of the manual review; the payout record remains visible as "Sent to payout" from the user's perspective.

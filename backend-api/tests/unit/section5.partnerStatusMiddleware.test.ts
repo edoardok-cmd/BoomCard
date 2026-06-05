@@ -90,10 +90,21 @@ describe('§5.3 middleware — ACTIVE partner write allowed', () => {
 // ── Blocked statuses ──────────────────────────────────────────────────────────
 
 describe('§5.3 middleware — non-ACTIVE partner write blocked', () => {
-  it.each(['INACTIVE', 'SUSPENDED', 'PAUSED', 'ARCHIVED', 'PENDING'])(
-    '%s partner POST returns 403 with PARTNER_STATUS_BLOCKED code',
-    async (partnerStatus) => {
-      partnerFindUnique.mockResolvedValue({ status: partnerStatus });
+  // Spec §1.1 / MEDIUM-1: the partner-facing API exposes ONLY the canonical
+  // three-value enum (Active | Inactive | Archived). Internal DB sub-types
+  // (PAUSED, SUSPENDED, PENDING, REJECTED) must not leak into responses:
+  //   INACTIVE / SUSPENDED / PAUSED / PENDING → 'Inactive'
+  //   ARCHIVED / REJECTED                     → 'Archived'
+  it.each([
+    ['INACTIVE', 'Inactive'],
+    ['SUSPENDED', 'Inactive'],
+    ['PAUSED', 'Inactive'],
+    ['PENDING', 'Inactive'],
+    ['ARCHIVED', 'Archived'],
+  ])(
+    '%s partner POST returns 403 with PARTNER_STATUS_BLOCKED code and canonical partnerStatus=%s',
+    async (rawStatus, canonicalStatus) => {
+      partnerFindUnique.mockResolvedValue({ status: rawStatus });
       const req = makeReq('POST', 'PARTNER');
       const { res, status, json } = makeRes();
       const next: NextFunction = jest.fn();
@@ -103,7 +114,11 @@ describe('§5.3 middleware — non-ACTIVE partner write blocked', () => {
       expect(next).not.toHaveBeenCalled();
       expect(status).toHaveBeenCalledWith(403);
       expect(json).toHaveBeenCalledWith(
-        expect.objectContaining({ success: false, code: 'PARTNER_STATUS_BLOCKED', partnerStatus }),
+        expect.objectContaining({
+          success: false,
+          code: 'PARTNER_STATUS_BLOCKED',
+          partnerStatus: canonicalStatus,
+        }),
       );
     },
   );
@@ -136,16 +151,21 @@ describe('§5.3 middleware — non-ACTIVE partner write blocked', () => {
 // ── No partner row ────────────────────────────────────────────────────────────
 
 describe('§5.3 middleware — no partner row', () => {
-  it('calls next() if partner record is not found (route handles the 404)', async () => {
+  it('fails CLOSED with 403 PARTNER_NOT_FOUND when the partner record is missing', async () => {
+    // The gate now fails closed on a missing partner row instead of delegating to
+    // the route: a write request with no resolvable partner must not slip through.
     partnerFindUnique.mockResolvedValue(null);
     const req = makeReq('POST', 'PARTNER');
-    const { res } = makeRes();
+    const { res, status, json } = makeRes();
     const next: NextFunction = jest.fn();
 
     await requireActivePartnerForWrites(req, res, next);
 
-    expect(next).toHaveBeenCalledTimes(1);
-    expect(res.status).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(403);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({ success: false, code: 'PARTNER_NOT_FOUND' }),
+    );
   });
 });
 

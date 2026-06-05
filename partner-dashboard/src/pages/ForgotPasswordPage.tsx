@@ -290,6 +290,19 @@ const ForgotPasswordPage: React.FC = () => {
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [isLoading, setIsLoading] = useState(false);
+  // Persist OTP cooldown in sessionStorage so it survives page reloads.
+  // Initialise from sessionStorage so a reload within the 60-second window
+  // correctly blocks re-submission rather than resetting the countdown.
+  const [codeSentAt, setCodeSentAt] = useState<number | null>(() => {
+    const stored = sessionStorage.getItem('otp_cooldown_sent_at');
+    return stored ? parseInt(stored, 10) : null;
+  });
+
+  // Keep sessionStorage in sync with state changes.
+  const recordCodeSentAt = (ts: number) => {
+    sessionStorage.setItem('otp_cooldown_sent_at', String(ts));
+    setCodeSentAt(ts);
+  };
 
   const content = {
     en: {
@@ -303,7 +316,7 @@ const ForgotPasswordPage: React.FC = () => {
       otpLabel: 'Reset Code',
       otpPlaceholder: '000000',
       newPasswordLabel: 'New Password',
-      newPasswordPlaceholder: 'At least 8 characters',
+      newPasswordPlaceholder: 'Min 8 chars, upper, lower, number, symbol',
       confirmPasswordLabel: 'Confirm Password',
       confirmPasswordPlaceholder: 'Re-enter your new password',
       emailRequired: 'Email is required',
@@ -312,6 +325,7 @@ const ForgotPasswordPage: React.FC = () => {
       otpInvalid: 'Code must be 6 digits',
       passwordRequired: 'Password is required',
       passwordTooShort: 'Password must be at least 8 characters',
+      passwordTooWeak: 'Password must include uppercase, lowercase, a number, and a special character',
       passwordMismatch: 'Passwords do not match',
       sendButton: 'Send Reset Code',
       sending: 'Sending...',
@@ -337,7 +351,7 @@ const ForgotPasswordPage: React.FC = () => {
       otpLabel: 'Код за Нулиране',
       otpPlaceholder: '000000',
       newPasswordLabel: 'Нова Парола',
-      newPasswordPlaceholder: 'Поне 8 символа',
+      newPasswordPlaceholder: 'Поне 8 символа, главна, малка, цифра, символ',
       confirmPasswordLabel: 'Потвърдете Паролата',
       confirmPasswordPlaceholder: 'Въведете новата парола отново',
       emailRequired: 'Имейлът е задължителен',
@@ -346,6 +360,7 @@ const ForgotPasswordPage: React.FC = () => {
       otpInvalid: 'Кодът трябва да е 6 цифри',
       passwordRequired: 'Паролата е задължителна',
       passwordTooShort: 'Паролата трябва да е поне 8 символа',
+      passwordTooWeak: 'Паролата трябва да съдържа главни, малки букви, цифра и специален символ',
       passwordMismatch: 'Паролите не съвпадат',
       sendButton: 'Изпрати Код',
       sending: 'Изпращане...',
@@ -379,7 +394,16 @@ const ForgotPasswordPage: React.FC = () => {
 
   const validatePassword = (password: string): string | undefined => {
     if (!password) return t.passwordRequired;
+    // Canonical password policy (matches backend registerValidation /
+    // changePasswordValidation / reset-password): min 8 chars + complexity.
     if (password.length < 8) return t.passwordTooShort;
+    // HIGH-2 fix (r2ac): apply the same complexity gate as ResetPasswordPage.
+    // Previously this path only checked length, allowing weak passwords like
+    // "aaaaaaaaaa" to bypass the OTP-based reset flow.
+    const hasUpperLower = /[a-z]/.test(password) && /[A-Z]/.test(password);
+    const hasNumber = /\d/.test(password);
+    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+    if (!hasUpperLower || !hasNumber || !hasSpecial) return t.passwordTooWeak;
     return undefined;
   };
 
@@ -406,14 +430,29 @@ const ForgotPasswordPage: React.FC = () => {
       return;
     }
 
+    // S5 fix: enforce 60-second cooldown between code requests to prevent
+    // unlimited code generation for the same email address.
+    if (codeSentAt && Date.now() - codeSentAt < 60_000) {
+      const secsLeft = Math.ceil((60_000 - (Date.now() - codeSentAt)) / 1000);
+      toast.error(
+        language === 'bg'
+          ? `Моля, изчакайте ${secsLeft} сек. преди повторно изпращане`
+          : `Please wait ${secsLeft}s before requesting another code`
+      );
+      return;
+    }
+
     setIsLoading(true);
     try {
       await apiService.post('/auth/forgot-password', {
         email: formData.email.toLowerCase().trim(),
       });
+      recordCodeSentAt(Date.now());
       setStep('otp');
     } catch {
-      // Enumeration protection: advance regardless of whether the email exists
+      // Enumeration protection: advance regardless of whether the email exists.
+      // Also record the timestamp so the cooldown persists across reloads.
+      recordCodeSentAt(Date.now());
       setStep('otp');
     } finally {
       setIsLoading(false);
@@ -441,9 +480,23 @@ const ForgotPasswordPage: React.FC = () => {
       setStep('done');
       toast.success(t.successTitle);
     } catch (err) {
-      const serverMessage = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      toast.error(serverMessage || t.invalidCodeError);
-      setErrors({ otp: serverMessage || t.invalidCodeError });
+      const rawMessage = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      // Only show an inline OTP field error for known OTP-specific failures.
+      // For network/server errors (rawMessage absent), emit a toast so the user
+      // is not confused into thinking their OTP code is wrong — MEDIUM-2 fix (r2ac).
+      const isKnownOtpError = rawMessage
+        ? /invalid|expired|incorrect|not found/i.test(rawMessage)
+        : false;
+      if (isKnownOtpError) {
+        // OTP-specific error — put the message on the field so the user knows
+        // to request a new code or re-enter the one they received.
+        setErrors({ otp: t.invalidCodeError });
+      } else {
+        // Generic connectivity or server error — show as toast, NOT as an
+        // inline OTP field error (that would mislead the user into re-typing
+        // their code and potentially exhausting a one-time-use OTP).
+        toast.error(t.genericError);
+      }
     } finally {
       setIsLoading(false);
     }

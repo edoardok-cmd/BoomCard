@@ -67,8 +67,27 @@ const PartnerStatusBanner: React.FC = () => {
 
   if (!isVisible) return null;
 
+  // LOW-1 fix (r2ad): show distinct messages for SUSPENDED (admin-imposed) vs
+  // PAUSED (voluntary partner pause) per spec §1.3, §14.1, §14.2.
+  // LOW-2 fix (r2ad): removed conflicting aria-live="polite" — role="status"
+  // with aria-live="polite" is the correct combination for a persistent notice.
+  // role="alert" implies aria-live="assertive" and must not be combined with
+  // aria-live="polite".
+  // LOW-3 fix (r2ad): guard against future unknown partnerRestriction values
+  // (e.g. a new enum entry from the backend). Unknown values are treated as a
+  // no-op to avoid showing incorrect PAUSED messaging via the fallthrough.
+  if (partnerRestriction !== 'SUSPENDED' && partnerRestriction !== 'PAUSED') {
+    // Unknown restriction value — log for observability and render nothing.
+    // This protects against backend regressions emitting unexpected statuses.
+    if (partnerRestriction) {
+      console.warn('[PartnerStatusBanner] Unknown partnerRestriction value:', partnerRestriction);
+    }
+    return null;
+  }
+  const isSuspended = partnerRestriction === 'SUSPENDED';
+
   return (
-    <BannerRoot ref={rootRef} role="alert" aria-live="polite">
+    <BannerRoot ref={rootRef} role="status" aria-live="polite">
       <BannerInner>
         <BannerIcon>
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -81,8 +100,17 @@ const PartnerStatusBanner: React.FC = () => {
           </svg>
         </BannerIcon>
         <BannerText>
-          ⚠️ Вашият партньорски акаунт е временно спрян. За повторно активиране се свържете с{' '}
-          <strong>office@boomcard.bg</strong>.
+          {isSuspended ? (
+            <>
+              ⚠️ Вашият партньорски акаунт е спрян от администратор. За повторно активиране се свържете с{' '}
+              <strong>office@boomcard.bg</strong>.
+            </>
+          ) : (
+            <>
+              ⏸ Вашият партньорски акаунт е в режим пауза. За повече информация се свържете с{' '}
+              <strong>office@boomcard.bg</strong>.
+            </>
+          )}
         </BannerText>
       </BannerInner>
     </BannerRoot>

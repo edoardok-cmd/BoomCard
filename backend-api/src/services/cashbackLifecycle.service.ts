@@ -31,6 +31,19 @@ import { logger } from '../utils/logger';
 
 const CASHBACK_VALIDITY_DAYS_DEFAULT = 60;
 
+// F-008: Controlled vocabulary for voidedReason per spec requirement.
+// All void reasons must use one of these canonical categories.
+// Adding a new reason requires updating this list AND the gap report.
+export const VOID_REASON_CATEGORIES = [
+  'DUPLICATE',
+  'FRAUD',
+  'SYSTEM_ERROR',
+  'ADMIN_CORRECTION',
+  'PARTNER_DISPUTE',
+  'OTHER',
+] as const;
+export type VoidReasonCategory = typeof VOID_REASON_CATEGORIES[number];
+
 async function getValidityDays(): Promise<number> {
   return getSystemSettingInt('cashback_expiry_days', CASHBACK_VALIDITY_DAYS_DEFAULT);
 }
@@ -101,10 +114,25 @@ export async function markVoided(params: {
   walletTransactionId: string;
   reason: string;
   actorUserId: string | null;
+  /** F-017: Must be explicitly set to true to void a LOCKED or PROCESSING entry. */
+  forceVoidLockedEntry?: boolean;
 }) {
-  const { walletTransactionId, reason, actorUserId } = params;
+  const { walletTransactionId, reason, actorUserId, forceVoidLockedEntry } = params;
   if (!reason || reason.trim().length === 0) {
     throw new Error('VOIDED transition requires a non-empty reason');
+  }
+
+  // F-008: Validate reason against controlled vocabulary.
+  // The reason must start with one of the canonical category codes, or be one of them exactly.
+  // This allows reasons like "DUPLICATE: receipt was already approved" while requiring
+  // the category prefix to be canonical.
+  const reasonCategory = reason.trim().split(':')[0].trim().toUpperCase();
+  if (!(VOID_REASON_CATEGORIES as readonly string[]).includes(reasonCategory)) {
+    throw new Error(
+      `Invalid voidedReason category "${reasonCategory}". ` +
+      `Must be one of: ${VOID_REASON_CATEGORIES.join(', ')}. ` +
+      `Format: "CATEGORY" or "CATEGORY: description".`
+    );
   }
 
   const existing = await prisma.walletTransaction.findUnique({
@@ -123,13 +151,23 @@ export async function markVoided(params: {
     throw new Error(`Cannot void a PAID cashback entry (${walletTransactionId}) — issue a refund instead`);
   }
   if (existing.cashbackStatus === CashbackEntryStatus.LOCKED) {
+    // F-017: Guard against voiding in-flight payout entries.
     // §6.1 invariant: LOCKED entries are part of an in-flight WITHDRAWAL whose
     // balance is already debited. Voiding here without unwinding the payout
     // would leave the wallet in a torn state. Admin must reject/cancel the
     // pending payout first (which reverts LOCKED → CLEARED via revertLocked),
     // then void the now-CLEARED entry.
-    throw new Error(
-      `Cannot void a LOCKED cashback entry (${walletTransactionId}) — cancel the pending payout first`
+    // The forceVoidLockedEntry=true flag overrides this guard for explicit admin action
+    // (e.g. fraud or legal hold) — the caller accepts responsibility for the state inconsistency.
+    if (!forceVoidLockedEntry) {
+      throw new Error(
+        `Cannot void in-flight payout (LOCKED/PROCESSING). Set forceVoidLockedEntry=true to override per §10 earned-rights model. ` +
+        `Original message: Cannot void a LOCKED cashback entry (${walletTransactionId}) — cancel the pending payout first`
+      );
+    }
+    logger.warn(
+      `[cashbackLifecycle] markVoided: forceVoidLockedEntry=true override used for LOCKED entry ${walletTransactionId} by actor ${actorUserId}. ` +
+      `Reason: ${reason}. Wallet state may be inconsistent — admin must manually reconcile the in-flight payout.`
     );
   }
 
@@ -338,12 +376,18 @@ export async function markPaid(params: {
  * sweep via a raw SQL UPDATE…RETURNING for per-wallet atomic balance adjustments.
  * Wiring both in would cause double-processing and double-decrements.
  *
- * Retained for testing. If you intend to change production expiry behaviour,
- * edit expireWallet() in jobs/scheduler.ts instead.
+ * F-009: This function is deprecated and should not be called from any production
+ * or public path. It remains here for testing purposes ONLY. It is intentionally
+ * kept out of the `cashbackLifecycleService` object and any barrel/index file so it
+ * is NOT reachable via a public service surface; it is exported as a named symbol
+ * solely so the unit test can exercise it directly. If you need to expire cashback
+ * in production, use expireWallet() in jobs/scheduler.ts instead.
  *
+ * @internal
  * Sweep CLEARED entries past their cashbackExpiresAt and mark them EXPIRED.
  * Returns the count of expired rows.
  */
+/** @deprecated @internal Use expireWallet() in jobs/scheduler.ts for production cashback expiry. F-009. */
 export async function expireOverdueCashback(actorUserId: string | null = null) {
   const now = new Date();
 
@@ -639,91 +683,10 @@ export async function promotePendingToCleared(params: {
   return row;
 }
 
-/**
- * Spec §4.4 — expire PENDING cashback entries that have been waiting longer
- * than the configured validity window (default 60 days from createdAt).
- *
- * The spec says Pending cashback "stays Pending until subscription recovery
- * OR natural expiry by the 60-day rule". Because PENDING entries never reach
- * CLEARED they have no clearedAt / cashbackExpiresAt. We use createdAt as the
- * baseline — after validityDays from creation the entry is stale enough that
- * administrative cleanup is appropriate, matching the 60-day window applied to
- * CLEARED entries. Balance is unaffected: PENDING entries are never credited.
- *
- * NOTE: TRIAL_PENDING entries are excluded. Although they share
- * cashbackStatus=PENDING, they carry status=TRIAL_PENDING and are owned by
- * resolveTrialPendingCashback() (scheduler 5:30 AM). Including them here would
- * set cashbackStatus=EXPIRED while leaving status=TRIAL_PENDING unchanged, so
- * the 5:30 AM job would still match on status and overwrite the transition.
- *
- * NOTE: entries linked to an active risk review (StickerScan or Receipt in
- * MANUAL_REVIEW) are excluded. Spec §4.4: "Pending кешбек за транзакция,
- * попаднала в риск преглед, трябва да остане видим за потребителя до
- * финализиране на проверката." The review finalises via approveScan /
- * rejectScan which call promotePendingToCleared / markVoided; expiring the
- * entry here before that decision is made violates the spec guarantee.
- *
- * Returns the count of entries transitioned to EXPIRED.
- */
-export async function expireStalePendingCashback(actorUserId: string | null = null): Promise<{ count: number }> {
-  const validityDays = await getValidityDays();
-  const cutoff = new Date(Date.now() - validityDays * 24 * 60 * 60 * 1000);
-
-  const stale = await prisma.walletTransaction.findMany({
-    where: {
-      type: WalletTransactionType.CASHBACK_CREDIT,
-      cashbackStatus: CashbackEntryStatus.PENDING,
-      // Exclude TRIAL_PENDING entries — see JSDoc above.
-      status: { not: WalletTransactionStatus.TRIAL_PENDING },
-      createdAt: { lt: cutoff },
-      // Spec §4.4 — entries linked to an active risk review must not be
-      // expired until the review is finalised (approve / reject).
-      NOT: [
-        { stickerScan: { status: ScanStatus.MANUAL_REVIEW } },
-        { receipt: { status: ReceiptStatus.MANUAL_REVIEW } },
-      ],
-    },
-    select: { id: true },
-  });
-
-  if (stale.length === 0) return { count: 0 };
-
-  const ids = stale.map((r) => r.id);
-
-  // Use updateMany with the PENDING predicate so a concurrent approve/void that
-  // wins the race leaves count=0 and is correctly skipped (no double-transition).
-  // Also set status=CANCELLED (the closest terminal WalletTransactionStatus) so
-  // these entries are not surfaced by operational queries filtering on status=PENDING.
-  // cashbackStatus=EXPIRED is authoritative for display; the legacy fallback in
-  // deriveCashbackEntryStatus also handles CANCELLED correctly (sees EXPIRED first).
-  const result = await prisma.walletTransaction.updateMany({
-    where: {
-      id: { in: ids },
-      cashbackStatus: CashbackEntryStatus.PENDING,
-    },
-    data: {
-      cashbackStatus: CashbackEntryStatus.EXPIRED,
-      status: WalletTransactionStatus.CANCELLED,
-    },
-  });
-
-  if (result.count > 0) {
-    // `staleIds` = all candidates found by findMany. `count` = entries actually
-    // transitioned by updateMany (may be less if a concurrent approve/void won
-    // the CAS race for some entries). Prisma updateMany has no RETURNING, so we
-    // cannot cheaply recover the exact subset; labelling the field `staleIds`
-    // (not `ids`) makes the distinction explicit in the audit trail.
-    await writeAudit({
-      actorUserId,
-      action: 'CASHBACK_PENDING_EXPIRED_BATCH',
-      objectType: 'WalletTransaction',
-      objectId: null,
-      after: { count: result.count, staleIds: ids, cutoffDays: validityDays },
-    }).catch((err) => logger.error('[cashbackLifecycle] audit write failed (expireStalePending):', err));
-  }
-
-  logger.info(`[cashbackLifecycle] expireStalePendingCashback: expired ${result.count} stale PENDING entries (>${validityDays}d old)`);
-  return { count: result.count };
+// Spec §5 / §4.4: Pending cashback NEVER expires — this function is disabled.
+// The nightly scheduler must not call it.
+export async function expireStalePendingCashback(_actorUserId: string | null = null): Promise<{ count: number }> {
+  throw new Error('expireStalePendingCashback is disabled per spec §5: Pending cashback never expires.');
 }
 
 export const cashbackLifecycleService = {
@@ -733,7 +696,9 @@ export const cashbackLifecycleService = {
   lockClearedForWallet,
   revertLocked,
   markPaid,
-  expireOverdueCashback,
+  // F-009: expireOverdueCashback is intentionally NOT exported here.
+  // It is deprecated (@internal) and must not be accessible via any public barrel or service object.
+  // Production expiry is handled by expireWallet() in jobs/scheduler.ts.
   expireStalePendingCashback,
   recordRejectedAsVoided,
   recordPendingForRiskReview,

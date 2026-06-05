@@ -2,10 +2,10 @@ import { prisma } from '../lib/prisma';
 import { RiskBucket } from '@prisma/client';
 
 // Spec §4.1 + §7.2 — behaviour-based risk profile per subscriber.
-// Rule-sum scorer (0-100). Buckets per spec §7.1:
-//   0-30  → LOW_0_30      (auto-approve)
-//   31-60 → REVIEW_31_60  (manual review)
-//   61+   → HIGH_61_PLUS  (high risk)
+// Rule-sum scorer (0-100). Buckets use the canonical RiskBucket ranges:
+//   0-20  → LOW_0_20      (auto-approve)
+//   21-50 → MEDIUM_21_50  (manual review)
+//   51+   → HIGH_51_PLUS  (high risk)
 //
 // Each rule contributes a fixed score when its signal fires. The total is
 // capped at 100. If new signals are added, keep the cap so a single
@@ -47,16 +47,15 @@ const RECEIPT_REVIEW_FRAUD_THRESHOLD = 31;
 // tests assert against the constant rather than a string literal.
 export const HIGH_TX_24H_THRESHOLD = 10;
 
-// NOTE on thresholds: spec §7.1 (0-30 / 31-60 / 61+) is defined for receipt
-// fraud-review ("Преглед на рискови транзакции" — the spec's "транзакция" is
-// a receipt-cashback claim, not the `Transaction` model in this codebase).
-// Spec §4.1 references user-level "Риск" without numeric bands, so we reuse
-// the receipt-review boundaries here for UI consistency. If product later
-// splits the two scales, change this function AND bucketLabel in the dashboards.
+// NOTE on thresholds: the canonical RiskBucket ranges (0-20 / 21-50 / 51+) are
+// the source of truth, encoded directly in the RiskBucket enum names. Spec §4.1
+// references user-level "Риск" without numeric bands, so we reuse these
+// receipt-review boundaries here for UI consistency. If product later splits the
+// two scales, change this function AND bucketLabel in the dashboards.
 export function bucketFor(score: number): RiskBucket {
-  if (score <= 30) return 'LOW_0_30';
-  if (score <= 60) return 'REVIEW_31_60';
-  return 'HIGH_61_PLUS';
+  if (score <= 20) return 'LOW_0_20';
+  if (score <= 50) return 'MEDIUM_21_50';
+  return 'HIGH_51_PLUS';
 }
 
 export interface RiskAssessment {
@@ -91,7 +90,7 @@ export async function computeRiskForUsers(users: UserSlice[]): Promise<Map<strin
   // Initialise every user with a 0/empty assessment so users without any
   // signals still get an explicit LOW bucket (not undefined).
   for (const u of users) {
-    out.set(u.id, { userId: u.id, score: 0, bucket: 'LOW_0_30', reasons: [] });
+    out.set(u.id, { userId: u.id, score: 0, bucket: 'LOW_0_20', reasons: [] });
   }
 
   // Rule batches — one groupBy per rule across the input set.
@@ -203,12 +202,43 @@ export async function computeRiskForUsers(users: UserSlice[]): Promise<Map<strin
 //
 // Concurrency is capped at PERSIST_CONCURRENCY (default 10) so the daily
 // 200-row sweep doesn't saturate the Prisma connection pool at 04:00.
+
+// Minimum score that keeps a user in the HIGH bucket (spec §7.1 boundary: 61+).
+// Used as the RISK_HOLD floor: a user with an open RISK_HOLD payout must not be
+// downgraded below HIGH by periodic recomputes (spec §3.7 / FIX-B).
+const RISK_HOLD_FLOOR_SCORE = 61;
+
 const PERSIST_CONCURRENCY = 10;
 
 export async function persistRiskAssessments(assessments: RiskAssessment[]): Promise<void> {
   if (assessments.length === 0) return;
-  for (let i = 0; i < assessments.length; i += PERSIST_CONCURRENCY) {
-    const chunk = assessments.slice(i, i + PERSIST_CONCURRENCY);
+
+  // Look up which users in this batch currently have at least one RISK_HOLD payout.
+  // A single IN-query across the whole batch is cheaper than per-user lookups and
+  // avoids inflating the concurrency cap with extra DB round-trips.
+  const userIds = assessments.map((a) => a.userId);
+  const riskHoldWallets = await prisma.walletTransaction.findMany({
+    where: {
+      type: 'WITHDRAWAL',
+      status: 'RISK_HOLD',
+      wallet: { userId: { in: userIds } },
+    },
+    select: { wallet: { select: { userId: true } } },
+  }).catch(() => [] as Array<{ wallet: { userId: string } }>);
+
+  const usersWithRiskHold = new Set(riskHoldWallets.map((r) => r.wallet.userId));
+
+  // Apply RISK_HOLD floor: if the live-signal score is below the HIGH boundary
+  // but the user has an open RISK_HOLD payout, clamp to RISK_HOLD_FLOOR_SCORE.
+  const floored = assessments.map((a) => {
+    if (usersWithRiskHold.has(a.userId) && a.score < RISK_HOLD_FLOOR_SCORE) {
+      return { ...a, score: RISK_HOLD_FLOOR_SCORE, bucket: 'HIGH_51_PLUS' as RiskBucket };
+    }
+    return a;
+  });
+
+  for (let i = 0; i < floored.length; i += PERSIST_CONCURRENCY) {
+    const chunk = floored.slice(i, i + PERSIST_CONCURRENCY);
     await Promise.all(
       chunk.map((a) =>
         prisma.user
@@ -220,7 +250,7 @@ export async function persistRiskAssessments(assessments: RiskAssessment[]): Pro
               // NULL (not TRUE) when the stored value is NULL. Without the third
               // clause, a freshly migrated user with riskBucket=NULL never matches
               // the where, so the bucket stays NULL forever even though score=0
-              // and bucket='LOW_0_30' were computed. The explicit `riskBucket: null`
+              // and bucket='LOW_0_20' were computed. The explicit `riskBucket: null`
               // covers the NULL-stored case.
               OR: [
                 { riskScore: { not: a.score } },

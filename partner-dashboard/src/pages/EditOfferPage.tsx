@@ -1,12 +1,32 @@
-import React, { useState, useEffect } from 'react';
+/**
+ * EditOfferPage
+ *
+ * SPEC §8a WARNING — UNSPECIFIED FEATURE:
+ * Offer and menu management is NOT defined in the BoomCard partner spec
+ * (07-partner-spec-extracted.md §8a). Neither source spec file contains any
+ * requirements for offer or menu management as a partner self-service workflow.
+ * This page must NOT be shipped to production until a formal product specification
+ * has been written and approved. All API calls below are mock stubs.
+ *
+ * Gate: set VITE_OFFER_MANAGEMENT_ENABLED=true to unlock this page in
+ * non-production environments only.
+ */
+
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
-import { Upload, X, Check, ArrowLeft, ArrowRight, Save } from 'lucide-react';
+import { Upload, X, Check, ArrowLeft, ArrowRight, Save, AlertTriangle } from 'lucide-react';
 import Button from '../components/common/Button/Button';
 import { DISCOUNT_STEPS } from '../utils/discountSteps';
+
+/**
+ * Gate: set VITE_OFFER_MANAGEMENT_ENABLED=true to unlock this page in
+ * non-production environments only.
+ */
+const OFFER_MANAGEMENT_ENABLED = import.meta.env.VITE_OFFER_MANAGEMENT_ENABLED === 'true';
 
 const content = {
   en: {
@@ -120,6 +140,21 @@ const EditOfferPage: React.FC = () => {
 
   const [loading, setLoading] = useState(true);
   const [currentStep, setCurrentStep] = useState(1);
+  // S1 fix: store one object URL per File identity so re-renders don't
+  // create a new URL each time and leak the previous one. Revoke all on unmount.
+  const objectUrlMap = useRef<Map<File, string>>(new Map());
+
+  useEffect(() => {
+    // MEDIUM-2 fix (review r2v): skip side-effects when the feature flag is
+    // disabled so that, when the stub is replaced with a real API call, it does
+    // not execute while the blocked banner is displayed.
+    if (!OFFER_MANAGEMENT_ENABLED) return;
+    const map = objectUrlMap.current;
+    return () => {
+      map.forEach(url => URL.revokeObjectURL(url));
+      map.clear();
+    };
+  }, []);
   const [formData, setFormData] = useState<OfferFormData>({
     title: '',
     category: '',
@@ -137,12 +172,28 @@ const EditOfferPage: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
-    // Mock fetch offer data - replace with real API call
+    // MEDIUM-2 fix (review r2v): skip side-effects when the feature flag is
+    // disabled so that, when the stub is replaced with a real API call, it does
+    // not execute while the blocked banner is displayed.
+    if (!OFFER_MANAGEMENT_ENABLED) return;
+
+    // S3 fix (r2v): AbortController pattern so that a stale response from an
+    // in-flight fetch (triggered by a dependency change such as a language switch
+    // while the network request is pending) is discarded rather than applied.
+    const controller = new AbortController();
+
+    // STUB: real API call not yet implemented (spec §8a — feature unspecified).
+    // When wired to a real endpoint, catch 403/404 and redirect to /partners/offers.
+    // NOTE: re-enabling VITE_OFFER_MANAGEMENT_ENABLED also requires restoring
+    // partner-level authorization on POST /api/offers (currently ADMIN-only).
     const fetchOffer = async () => {
       try {
         await new Promise(resolve => setTimeout(resolve, 1000));
 
-        // Mock data
+        // Guard against stale response from an aborted effect
+        if (controller.signal.aborted) return;
+
+        // Mock data — replace with real API call
         setFormData({
           title: '20% Off All Main Courses',
           category: 'restaurants',
@@ -159,14 +210,25 @@ const EditOfferPage: React.FC = () => {
         });
 
         setLoading(false);
-      } catch {
+      } catch (err: unknown) {
+        if (controller.signal.aborted) return;
+        // Navigate away on access-denied or not-found responses
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status === 403 || status === 404) {
+          navigate('/partners/offers');
+          return;
+        }
         toast.error(t.error);
         setLoading(false);
       }
     };
 
     fetchOffer();
-  }, [id]);
+    // MEDIUM-3 fix (review r2v): include navigate and t so that if a language
+    // switch occurs while a real fetch is in flight, the error toast uses the
+    // current locale rather than a stale one.
+    return () => controller.abort();
+  }, [id, navigate, t]);
 
   const handleInputChange = (field: keyof OfferFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -186,8 +248,18 @@ const EditOfferPage: React.FC = () => {
       if (!formData.description.trim()) newErrors.description = t.required;
       if (!formData.validFrom) newErrors.validFrom = t.required;
       if (!formData.validUntil) newErrors.validUntil = t.required;
-      if (formData.validFrom && formData.validUntil && formData.validFrom >= formData.validUntil) {
+      // S4: use explicit Date comparison rather than string comparison
+      if (formData.validFrom && formData.validUntil &&
+          new Date(formData.validFrom) >= new Date(formData.validUntil)) {
         newErrors.validUntil = t.invalidDate;
+      }
+      // S2 fix: reject 0 and negative maxRedemptions at validation time, not
+      // just at submit time.  The min="1" HTML attribute is a browser hint only.
+      if (formData.maxRedemptions) {
+        const val = parseInt(formData.maxRedemptions, 10);
+        if (isNaN(val) || val < 1) {
+          newErrors.maxRedemptions = t.required;
+        }
       }
     }
 
@@ -247,22 +319,56 @@ const EditOfferPage: React.FC = () => {
   };
 
   const removeNewImage = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      newImages: prev.newImages.filter((_, i) => i !== index),
-    }));
+    setFormData(prev => {
+      // S1 fix: revoke the object URL for the removed file to free memory.
+      const file = prev.newImages[index];
+      if (file) {
+        const url = objectUrlMap.current.get(file);
+        if (url) {
+          URL.revokeObjectURL(url);
+          objectUrlMap.current.delete(file);
+        }
+      }
+      return { ...prev, newImages: prev.newImages.filter((_, i) => i !== index) };
+    });
   };
 
   const handleSubmit = async () => {
-    if (!validateStep(3)) return;
+    // S2 fix: validate all three steps before submitting, not just step 3.
+    const allErrors: Partial<Record<keyof OfferFormData, string>> = {};
+    if (!formData.title.trim()) allErrors.title = t.required;
+    if (!formData.category) allErrors.category = t.required;
+    if (!formData.discount) allErrors.discount = t.required;
+    if (!formData.description.trim()) allErrors.description = t.required;
+    if (!formData.validFrom) allErrors.validFrom = t.required;
+    if (!formData.validUntil) allErrors.validUntil = t.required;
+    if (formData.validFrom && formData.validUntil &&
+        new Date(formData.validFrom) >= new Date(formData.validUntil)) {
+      allErrors.validUntil = t.invalidDate;
+    }
+    if (formData.maxRedemptions) {
+      const val = parseInt(formData.maxRedemptions, 10);
+      if (isNaN(val) || val < 1) allErrors.maxRedemptions = t.required;
+    }
+    if (!formData.terms.trim()) allErrors.terms = t.required;
+    if (Object.keys(allErrors).length > 0) {
+      setErrors(allErrors);
+      return;
+    }
 
     try {
-      // Mock API call - replace with real API
+      // STUB: real API call not yet implemented (spec §8a — feature unspecified).
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       toast.success(t.success);
       navigate('/partners/offers');
-    } catch {
+    } catch (err: unknown) {
+      // Navigate away on access-denied or not-found responses
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 403 || status === 404) {
+        navigate('/partners/offers');
+        return;
+      }
       toast.error(t.error);
     }
   };
@@ -413,36 +519,59 @@ const EditOfferPage: React.FC = () => {
           </>
         )}
 
-        <UploadZone
-          isDragging={isDragging}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          onClick={() => document.getElementById('file-upload')?.click()}
-        >
-          <Upload size={32} />
-          <p>{t.dragDrop}</p>
-          <span>{t.supportedFormats}</span>
-          <input
-            id="file-upload"
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            multiple
-            style={{ display: 'none' }}
-            onChange={(e) => handleImageUpload(e.target.files)}
-          />
-        </UploadZone>
+        {/* S1 fix (r2v): hide the upload zone when all 5 slots are full so
+            the user gets unambiguous feedback that the cap is reached. Previously
+            the zone stayed visible but silently accepted zero files on drop/select. */}
+        {(formData.existingImages.length + formData.newImages.length) < 5 ? (
+          <UploadZone
+            isDragging={isDragging}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => document.getElementById('file-upload')?.click()}
+          >
+            <Upload size={32} />
+            <p>{t.dragDrop}</p>
+            <span>{t.supportedFormats}</span>
+            <input
+              id="file-upload"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              style={{ display: 'none' }}
+              onChange={(e) => handleImageUpload(e.target.files)}
+            />
+          </UploadZone>
+        ) : (
+          <MaxImagesNotice>
+            {t && (t as any).maxImagesReached
+              ? (t as any).maxImagesReached
+              : 'Maximum of 5 images reached. Remove an image to add another.'}
+          </MaxImagesNotice>
+        )}
 
         {formData.newImages.length > 0 && (
           <ImagePreviewGrid>
-            {formData.newImages.map((file, index) => (
-              <ImagePreview key={`new-${index}`}>
-                <img src={URL.createObjectURL(file)} alt={`New ${index + 1}`} />
-                <RemoveButton onClick={() => removeNewImage(index)}>
-                  <X size={16} />
-                </RemoveButton>
-              </ImagePreview>
-            ))}
+            {formData.newImages.map((file, index) => {
+              // S1 fix: reuse cached URL from the stable map; create only once
+              // per File identity to avoid a new blob URL on every render.
+              if (!objectUrlMap.current.has(file)) {
+                objectUrlMap.current.set(file, URL.createObjectURL(file));
+              }
+              const objUrl = objectUrlMap.current.get(file)!;
+              // S2 fix (r2v): use the object URL (unique per File reference) as
+              // the React key instead of name+size+lastModified, which is not
+              // unique when the same file is selected twice. The object URL is
+              // created once per File instance and lives in objectUrlMap.
+              return (
+                <ImagePreview key={objUrl}>
+                  <img src={objUrl} alt={`New ${index + 1}`} />
+                  <RemoveButton onClick={() => removeNewImage(index)}>
+                    <X size={16} />
+                  </RemoveButton>
+                </ImagePreview>
+              );
+            })}
           </ImagePreviewGrid>
         )}
       </FormGroup>
@@ -492,6 +621,28 @@ const EditOfferPage: React.FC = () => {
     </StepContent>
   );
 
+  if (!OFFER_MANAGEMENT_ENABLED) {
+    return (
+      <Container>
+        <SpecBlockBanner>
+          <AlertTriangle size={24} />
+          <div>
+            <SpecBlockTitle>
+              {language === 'bg'
+                ? 'Функцията не е налична'
+                : 'Feature not available'}
+            </SpecBlockTitle>
+            <SpecBlockDesc>
+              {language === 'bg'
+                ? 'Управлението на оферти е в очакване на продуктова спецификация. Свържете се с продуктовия екип преди активиране.'
+                : 'This feature is pending product specification. Contact the product team before enabling.'}
+            </SpecBlockDesc>
+          </div>
+        </SpecBlockBanner>
+      </Container>
+    );
+  }
+
   if (loading) {
     return (
       <Container>
@@ -505,6 +656,17 @@ const EditOfferPage: React.FC = () => {
 
   return (
     <Container>
+      {/* Spec §8a warning banner — visible when the flag is enabled (non-production).
+          S-4 fix: user-facing text does not reference internal spec section numbers. */}
+      <SpecWarningBanner>
+        <AlertTriangle size={20} />
+        <SpecWarningText>
+          {language === 'bg'
+            ? 'Тази функция е в очакване на продуктова спецификация. Свържете се с продуктовия екип преди активиране.'
+            : 'This feature is pending product specification. Contact the product team before enabling.'}
+        </SpecWarningText>
+      </SpecWarningBanner>
+
       <Header>
         <BackButton onClick={() => navigate('/partners/offers')}>
           <ArrowLeft size={20} />
@@ -1024,6 +1186,75 @@ const ActionButtons = styled.div`
       flex: 1;
     }
   }
+`;
+
+// Spec §8a block banner — shown when VITE_OFFER_MANAGEMENT_ENABLED is not set.
+const SpecBlockBanner = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 2rem;
+  background: #fef3c7;
+  border: 2px solid #f59e0b;
+  border-radius: 1rem;
+  margin-top: 2rem;
+
+  svg {
+    color: #b45309;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+`;
+
+const SpecBlockTitle = styled.p`
+  font-size: 1rem;
+  font-weight: 700;
+  color: #92400e;
+  margin: 0 0 0.375rem;
+`;
+
+const SpecBlockDesc = styled.p`
+  font-size: 0.875rem;
+  color: #92400e;
+  line-height: 1.5;
+  margin: 0;
+`;
+
+// Spec §8a warning banner — visible when OFFER_MANAGEMENT_ENABLED is true
+const SpecWarningBanner = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  background: #fef3c7;
+  border: 2px solid #f59e0b;
+  border-radius: 0.75rem;
+  margin-bottom: 1.5rem;
+
+  svg {
+    color: #b45309;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+`;
+
+const SpecWarningText = styled.p`
+  font-size: 0.875rem;
+  color: #92400e;
+  line-height: 1.5;
+  font-weight: 500;
+  margin: 0;
+`;
+
+/* S1 fix (r2v): shown when all 5 image slots are occupied */
+const MaxImagesNotice = styled.p`
+  text-align: center;
+  padding: 1rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+  background: #f9fafb;
+  border: 2px dashed #e5e7eb;
+  border-radius: 0.75rem;
 `;
 
 export default EditOfferPage;

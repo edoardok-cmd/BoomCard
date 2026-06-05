@@ -20,13 +20,14 @@
  * but no further side-effects (no reopen, no notification fan-out).
  */
 
-import { TicketStatus, TicketCategory, TicketPriority } from '@prisma/client';
+import { TicketStatus, TicketCategory, TicketPriority, TicketRequestType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { writeAudit } from '../middleware/audit.middleware';
 import { emailService } from './email.service';
 import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef } from './ticketEmail.service';
 import { notificationService } from './notification.service';
+import { detach } from '../utils/detach';
 
 export interface InboundEmailPayload {
   /** RFC 5321 sender — bare email or "Name <email@host>" */
@@ -214,7 +215,7 @@ async function getSystemOwnerId(): Promise<string | null> {
  * by the ticket owner's role, not by the destination address. The admin can
  * re-classify to DATA_CHANGE / CONTRACT_CHANGE etc. once they've read the email.
  */
-function inferRequestType(_toAddress: string): string {
+function inferRequestType(_toAddress: string): TicketRequestType {
   return 'SUPPORT';
 }
 
@@ -418,22 +419,21 @@ export async function ingestInboundEmail(
     // Spec §11.1 — auto-reply to the sender with the ticket reference so
     // subsequent replies thread back via [#XXXXXXXX] / X-BoomCard-Ticket-ID.
     // Fire-and-forget: a mailer failure must not block ticket creation.
-    sendInboundAutoReply({
+    detach(sendInboundAutoReply({
       ticketId: ticket.id,
       to: fromEmail,
       originalSubject: cleanedSubject,
       inReplyTo: payload.messageId || null,
       audience: payload.to?.includes('office@') ? 'partner' : 'subscriber',
-    }).catch((err) =>
-      logger.error(`[ticketInbound] failed to send auto-reply for ${ticket.id}:`, err),
-    );
+    }), (err) =>
+      logger.error(`[ticketInbound] failed to send auto-reply for ${ticket.id}:`, err));
 
     // Gap 9 fix: §11.6 routing — email tickets default to SUPPORT; admin can
     // reclassify. Surface the destination mailbox so the admin can see which
     // channel it arrived on (support@ vs. office@).
     const emailReqType = inferRequestType(payload.to || '');
     const emailQueue = payload.to?.includes('office@') ? 'Partner support' : 'User support';
-    notificationService
+    detach(notificationService
       .notifyAdminOps({
         opsType: `help_ticket_created_email_${ticket.id}`,
         title: `Имейл заявка [${emailReqType}]: ${emailQueue}`,
@@ -445,8 +445,7 @@ export async function ingestInboundEmail(
           { label: 'До', value: payload.to || '' },
           { label: 'Ticket ID', value: ticket.id },
         ],
-      })
-      .catch((err) => logger.warn('[ticketInbound] failed to notify admin ops of email ticket:', err));
+      }), (err) => logger.warn('[ticketInbound] failed to notify admin ops of email ticket:', err));
 
     return { ticketId: ticket.id, created: true };
   }
@@ -529,16 +528,15 @@ export async function ingestInboundEmail(
     // address); silence would push them to resend or escalate. The reply
     // does NOT reveal that the original ticket existed — just acknowledges
     // their inbound was received and gives them a way to thread replies.
-    sendInboundAutoReply({
+    detach(sendInboundAutoReply({
       ticketId: linked.id,
       to: fromEmail,
       originalSubject:
         (payload.subject || '').replace(SUBJECT_REF_RE, '').trim() || `(re: ${t.subject})`,
       inReplyTo: payload.messageId || null,
       audience: payload.to?.includes('office@') ? 'partner' : 'subscriber',
-    }).catch((err) =>
-      logger.error(`[ticketInbound] failed to send spoof-branch auto-reply for ${linked.id}:`, err),
-    );
+    }), (err) =>
+      logger.error(`[ticketInbound] failed to send spoof-branch auto-reply for ${linked.id}:`, err));
 
     return { ticketId: linked.id, created: true };
   }
@@ -632,7 +630,7 @@ export async function ingestInboundEmail(
           inReplyTo: refChain.at(-1) ?? null,
           references: refChain,
         });
-        emailService
+        detach(emailService
           .sendEmail({
             to: assignee.email,
             subject: buildTicketSubject(t.id, `[Нов отговор от заявител] ${t.subject}`),
@@ -645,8 +643,7 @@ export async function ingestInboundEmail(
 </table>
 <p style="color:#999;font-size:12px;">Ticket ID: ${t.id}</p>`,
             text: `Здравей, ${assignee.firstName || assignee.email},\n\nЗаявителят отговори на заявка, назначена на вас.\n\nОт: ${fromEmail}\nТема: ${t.subject}\n\nTicket ID: ${t.id}`,
-          })
-          .catch((err) => logger.error('[ticketInbound] failed to notify assignee of inbound reply:', err));
+          }), (err) => logger.error('[ticketInbound] failed to notify assignee of inbound reply:', err));
       }
     } catch (err) {
       logger.error('[ticketInbound] failed to look up assignee for inbound reply notification:', err);

@@ -3,13 +3,12 @@
  * Multiple professional receipt template designs
  */
 
-import { Receipt } from '../services/receipt.service';
-import type { ReceiptItem } from '../types/receipt.types';
+import type { PartnerReceipt, ReceiptItem } from '../types/receipt.types';
 import { format } from 'date-fns';
 
 export type TemplateType = 'classic' | 'modern' | 'minimal' | 'professional' | 'colorful';
 
-function parseReceiptItems(items: Receipt['items']): ReceiptItem[] {
+function parseReceiptItems(items: PartnerReceipt['items']): ReceiptItem[] {
   if (!items) return [];
   if (Array.isArray(items)) return items;
   if (typeof items === 'string') {
@@ -36,16 +35,21 @@ export interface TemplateOptions extends TemplateRenderOptions {
 }
 
 /**
- * Generate receipt HTML with selected template
+ * Generate receipt HTML with selected template.
+ * Accepts PartnerReceipt — the full admin Receipt type must not be used here
+ * (spec §11.3, Clash 5.1, Clash 10.6).
  */
-export function generateReceiptHTML(receipt: Receipt, options: TemplateOptions): string {
+export function generateReceiptHTML(receipt: PartnerReceipt, options: TemplateOptions): string {
   const {
     template = 'classic',
     includeLogo = false,
     logoUrl = '',
     companyName = 'BOOM Card',
     showItemizedList = true,
-    showOCRText = true,
+    // HIGH fix: showOCRText defaults to false — ocrRawText is internal-only
+    // (spec §11.3). A caller may opt in explicitly only if they have an
+    // admin-only context where this is permitted.
+    showOCRText = false,
   } = options;
 
   switch (template) {
@@ -63,10 +67,25 @@ export function generateReceiptHTML(receipt: Receipt, options: TemplateOptions):
   }
 }
 
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/** Escape a value for safe interpolation into an HTML template. */
+function escapeHtml(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
 /**
  * Classic Template - Traditional receipt design
  */
-function generateClassicTemplate(receipt: Receipt, options: TemplateRenderOptions): string {
+function generateClassicTemplate(receipt: PartnerReceipt, options: TemplateRenderOptions): string {
   const items = parseReceiptItems(receipt.items);
 
   return `
@@ -74,7 +93,7 @@ function generateClassicTemplate(receipt: Receipt, options: TemplateRenderOption
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Receipt - ${receipt.merchantName || 'Unknown'}</title>
+  <title>Receipt - ${escapeHtml(receipt.merchantName || 'Unknown')}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -154,15 +173,6 @@ function generateClassicTemplate(receipt: Receipt, options: TemplateRenderOption
     .status.CASHBACK_APPLIED { background: #10b981; color: white; }
     .status.PENDING { background: #f59e0b; color: white; }
     .status.REJECTED { background: #ef4444; color: white; }
-    .ocr-section {
-      margin-top: 30px;
-      padding: 20px;
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      font-size: 11px;
-      white-space: pre-wrap;
-      font-family: 'Courier New', monospace;
-    }
     @media print {
       body { background: white; padding: 0; }
       .receipt { box-shadow: none; border: none; }
@@ -172,24 +182,20 @@ function generateClassicTemplate(receipt: Receipt, options: TemplateRenderOption
 <body>
   <div class="receipt">
     <div class="header">
-      ${options.includeLogo && options.logoUrl ? `<img src="${options.logoUrl}" alt="Logo" class="logo" />` : ''}
-      <h1>${receipt.merchantName || 'Receipt'}</h1>
-      <div class="company">${options.companyName}</div>
-      <div class="status ${receipt.status}">${receipt.status}</div>
+      ${options.includeLogo && options.logoUrl ? `<img src="${escapeHtml(options.logoUrl)}" alt="Logo" class="logo" />` : ''}
+      <h1>${escapeHtml(receipt.merchantName || 'Receipt')}</h1>
+      <div class="company">${escapeHtml(options.companyName)}</div>
+      <div class="status ${escapeHtml(receipt.status)}">${escapeHtml(receipt.status)}</div>
     </div>
 
     <div class="info">
       <div class="info-row">
         <span class="label">Receipt ID:</span>
-        <span>${receipt.id}</span>
+        <span>${escapeHtml(receipt.id)}</span>
       </div>
       <div class="info-row">
         <span class="label">Date:</span>
-        <span>${format(new Date(receipt.receiptDate || receipt.createdAt), 'PPP')}</span>
-      </div>
-      <div class="info-row">
-        <span class="label">OCR Confidence:</span>
-        <span>${receipt.ocrConfidence.toFixed(0)}%</span>
+        <span>${escapeHtml(format(new Date(receipt.receiptDate || receipt.createdAt), 'PPP'))}</span>
       </div>
     </div>
 
@@ -198,32 +204,26 @@ function generateClassicTemplate(receipt: Receipt, options: TemplateRenderOption
       <h3 style="margin-bottom: 15px;">Items</h3>
       ${items.map((item: ReceiptItem) => `
         <div class="item">
-          <span>${item.quantity || 1}x ${item.name || 'Item'}</span>
-          <span>${(item.price || 0).toFixed(2)}</span>
+          <span>${escapeHtml(item.quantity || 1)}x ${escapeHtml(item.name || 'Item')}</span>
+          <span>${escapeHtml((item.price || 0).toFixed(2))}</span>
         </div>
       `).join('')}
     </div>
     ` : ''}
 
     <div class="total">
-      TOTAL: ${(receipt.totalAmount || 0).toFixed(2)}    </div>
+      TOTAL: ${escapeHtml((receipt.totalAmount || 0).toFixed(2))}
+    </div>
 
     ${receipt.cashbackAmount > 0 ? `
     <div class="info-row" style="margin-top: 15px; font-weight: bold; color: #10b981;">
       <span>Cashback Earned:</span>
-      <span>${receipt.cashbackAmount.toFixed(2)}</span>
-    </div>
-    ` : ''}
-
-    ${options.showOCRText && receipt.ocrRawText ? `
-    <div class="ocr-section">
-      <strong>Raw OCR Text:</strong><br/><br/>
-      ${receipt.ocrRawText}
+      <span>${escapeHtml(receipt.cashbackAmount.toFixed(2))}</span>
     </div>
     ` : ''}
 
     <div class="footer">
-      <p>Thank you for using ${options.companyName}!</p>
+      <p>Thank you for using ${escapeHtml(options.companyName)}!</p>
       <p>This is a digital receipt</p>
     </div>
   </div>
@@ -235,7 +235,7 @@ function generateClassicTemplate(receipt: Receipt, options: TemplateRenderOption
 /**
  * Modern Template - Gradient and contemporary design
  */
-function generateModernTemplate(receipt: Receipt, options: TemplateRenderOptions): string {
+function generateModernTemplate(receipt: PartnerReceipt, options: TemplateRenderOptions): string {
   const items = parseReceiptItems(receipt.items);
 
   return `
@@ -357,29 +357,25 @@ function generateModernTemplate(receipt: Receipt, options: TemplateRenderOptions
 <body>
   <div class="receipt">
     <div class="header">
-      ${options.includeLogo && options.logoUrl ? `<img src="${options.logoUrl}" alt="Logo" class="logo" />` : ''}
-      <h1>${receipt.merchantName || 'Receipt'}</h1>
-      <div class="company">${options.companyName}</div>
-      <div class="status">${receipt.status}</div>
+      ${options.includeLogo && options.logoUrl ? `<img src="${escapeHtml(options.logoUrl)}" alt="Logo" class="logo" />` : ''}
+      <h1>${escapeHtml(receipt.merchantName || 'Receipt')}</h1>
+      <div class="company">${escapeHtml(options.companyName)}</div>
+      <div class="status">${escapeHtml(receipt.status)}</div>
     </div>
 
     <div class="content">
       <div class="info-grid">
         <div class="info-card">
           <div class="info-label">Receipt ID</div>
-          <div class="info-value">#${receipt.id.slice(0, 8)}</div>
+          <div class="info-value">#${escapeHtml(receipt.id.slice(0, 8))}</div>
         </div>
         <div class="info-card">
           <div class="info-label">Date</div>
-          <div class="info-value">${format(new Date(receipt.receiptDate || receipt.createdAt), 'MMM dd, yyyy')}</div>
-        </div>
-        <div class="info-card">
-          <div class="info-label">OCR Confidence</div>
-          <div class="info-value">${receipt.ocrConfidence.toFixed(0)}%</div>
+          <div class="info-value">${escapeHtml(format(new Date(receipt.receiptDate || receipt.createdAt), 'MMM dd, yyyy'))}</div>
         </div>
         <div class="info-card">
           <div class="info-label">Cashback</div>
-          <div class="info-value">${receipt.cashbackAmount.toFixed(2)}</div>
+          <div class="info-value">${escapeHtml(receipt.cashbackAmount.toFixed(2))}</div>
         </div>
       </div>
 
@@ -388,8 +384,8 @@ function generateModernTemplate(receipt: Receipt, options: TemplateRenderOptions
         <h3>Items Purchased</h3>
         ${items.map((item: ReceiptItem) => `
           <div class="item">
-            <span><strong>${item.quantity || 1}x</strong> ${item.name || 'Item'}</span>
-            <span style="font-weight: 600;">${(item.price || 0).toFixed(2)}</span>
+            <span><strong>${escapeHtml(item.quantity || 1)}x</strong> ${escapeHtml(item.name || 'Item')}</span>
+            <span style="font-weight: 600;">${escapeHtml((item.price || 0).toFixed(2))}</span>
           </div>
         `).join('')}
       </div>
@@ -397,13 +393,13 @@ function generateModernTemplate(receipt: Receipt, options: TemplateRenderOptions
 
       <div class="total">
         <span>TOTAL</span>
-        <span>${(receipt.totalAmount || 0).toFixed(2)}</span>
+        <span>${escapeHtml((receipt.totalAmount || 0).toFixed(2))}</span>
       </div>
     </div>
 
     <div class="footer">
-      <p><strong>Thank you for using ${options.companyName}!</strong></p>
-      <p style="margin-top: 10px; font-size: 12px;">Digital Receipt • Eco-Friendly</p>
+      <p><strong>Thank you for using ${escapeHtml(options.companyName)}!</strong></p>
+      <p style="margin-top: 10px; font-size: 12px;">Digital Receipt &bull; Eco-Friendly</p>
     </div>
   </div>
 </body>
@@ -414,7 +410,7 @@ function generateModernTemplate(receipt: Receipt, options: TemplateRenderOptions
 /**
  * Minimal Template - Ultra-clean minimalist design
  */
-function generateMinimalTemplate(receipt: Receipt, options: TemplateRenderOptions): string {
+function generateMinimalTemplate(receipt: PartnerReceipt, options: TemplateRenderOptions): string {
   const items = parseReceiptItems(receipt.items);
 
   return `
@@ -489,22 +485,22 @@ function generateMinimalTemplate(receipt: Receipt, options: TemplateRenderOption
 </head>
 <body>
   <div class="receipt">
-    <h1>${receipt.merchantName || 'Receipt'}</h1>
-    <div class="company">${options.companyName}</div>
+    <h1>${escapeHtml(receipt.merchantName || 'Receipt')}</h1>
+    <div class="company">${escapeHtml(options.companyName)}</div>
 
     <div class="divider"></div>
 
     <div class="info-row">
       <span class="label">Receipt</span>
-      <span class="value">#${receipt.id.slice(0, 8)}</span>
+      <span class="value">#${escapeHtml(receipt.id.slice(0, 8))}</span>
     </div>
     <div class="info-row">
       <span class="label">Date</span>
-      <span class="value">${format(new Date(receipt.receiptDate || receipt.createdAt), 'MMMM d, yyyy')}</span>
+      <span class="value">${escapeHtml(format(new Date(receipt.receiptDate || receipt.createdAt), 'MMMM d, yyyy'))}</span>
     </div>
     <div class="info-row">
       <span class="label">Status</span>
-      <span class="value">${receipt.status}</span>
+      <span class="value">${escapeHtml(receipt.status)}</span>
     </div>
 
     <div class="divider"></div>
@@ -513,8 +509,8 @@ function generateMinimalTemplate(receipt: Receipt, options: TemplateRenderOption
     <div class="items">
       ${items.map((item: ReceiptItem) => `
         <div class="item">
-          <span>${item.name || 'Item'}</span>
-          <span style="font-weight: 500;">${(item.price || 0).toFixed(2)}</span>
+          <span>${escapeHtml(item.name || 'Item')}</span>
+          <span style="font-weight: 500;">${escapeHtml((item.price || 0).toFixed(2))}</span>
         </div>
       `).join('')}
     </div>
@@ -522,18 +518,18 @@ function generateMinimalTemplate(receipt: Receipt, options: TemplateRenderOption
 
     <div class="total">
       <span>Total</span>
-      <span>${(receipt.totalAmount || 0).toFixed(2)}</span>
+      <span>${escapeHtml((receipt.totalAmount || 0).toFixed(2))}</span>
     </div>
 
     ${receipt.cashbackAmount > 0 ? `
     <div class="info-row" style="margin-top: 20px; color: #10b981;">
       <span>Cashback</span>
-      <span style="font-weight: 600;">+${receipt.cashbackAmount.toFixed(2)}</span>
+      <span style="font-weight: 600;">+${escapeHtml(receipt.cashbackAmount.toFixed(2))}</span>
     </div>
     ` : ''}
 
     <div class="footer">
-      <p>${options.companyName} • Digital Receipt</p>
+      <p>${escapeHtml(options.companyName)} &bull; Digital Receipt</p>
     </div>
   </div>
 </body>
@@ -544,7 +540,7 @@ function generateMinimalTemplate(receipt: Receipt, options: TemplateRenderOption
 /**
  * Professional Template - Corporate business style
  */
-function generateProfessionalTemplate(receipt: Receipt, options: TemplateRenderOptions): string {
+function generateProfessionalTemplate(receipt: PartnerReceipt, options: TemplateRenderOptions): string {
   const items = parseReceiptItems(receipt.items);
 
   return `
@@ -666,24 +662,22 @@ function generateProfessionalTemplate(receipt: Receipt, options: TemplateRenderO
 <body>
   <div class="receipt">
     <div class="header">
-      ${options.includeLogo && options.logoUrl ? `<img src="${options.logoUrl}" alt="Logo" class="logo" />` : ''}
-      <h1>${receipt.merchantName || 'Tax Receipt'}</h1>
-      <div class="company">${options.companyName}</div>
+      ${options.includeLogo && options.logoUrl ? `<img src="${escapeHtml(options.logoUrl)}" alt="Logo" class="logo" />` : ''}
+      <h1>${escapeHtml(receipt.merchantName || 'Tax Receipt')}</h1>
+      <div class="company">${escapeHtml(options.companyName)}</div>
     </div>
 
     <div class="content">
       <table>
         <tr>
-          <th style="width: 30%;">Receipt Number</th>
-          <th style="width: 30%;">Date Issued</th>
+          <th style="width: 40%;">Receipt Number</th>
+          <th style="width: 40%;">Date Issued</th>
           <th style="width: 20%;">Status</th>
-          <th style="width: 20%;">Confidence</th>
         </tr>
         <tr>
-          <td><strong>#${receipt.id.slice(0, 8).toUpperCase()}</strong></td>
-          <td>${format(new Date(receipt.receiptDate || receipt.createdAt), 'PPP')}</td>
-          <td><span class="status-badge status-${receipt.status}">${receipt.status}</span></td>
-          <td>${receipt.ocrConfidence.toFixed(0)}%</td>
+          <td><strong>#${escapeHtml(receipt.id.slice(0, 8).toUpperCase())}</strong></td>
+          <td>${escapeHtml(format(new Date(receipt.receiptDate || receipt.createdAt), 'PPP'))}</td>
+          <td><span class="status-badge status-${escapeHtml(receipt.status)}">${escapeHtml(receipt.status)}</span></td>
         </tr>
       </table>
 
@@ -698,10 +692,10 @@ function generateProfessionalTemplate(receipt: Receipt, options: TemplateRenderO
         </tr>
         ${items.map((item: ReceiptItem) => `
           <tr>
-            <td>${item.name || 'Item'}</td>
-            <td>${item.quantity || 1}</td>
-            <td style="text-align: right;">${(item.price || 0).toFixed(2)}</td>
-            <td style="text-align: right;"><strong>${((item.quantity || 1) * (item.price || 0)).toFixed(2)}</strong></td>
+            <td>${escapeHtml(item.name || 'Item')}</td>
+            <td>${escapeHtml(item.quantity || 1)}</td>
+            <td style="text-align: right;">${escapeHtml((item.price || 0).toFixed(2))}</td>
+            <td style="text-align: right;"><strong>${escapeHtml(((item.quantity || 1) * (item.price || 0)).toFixed(2))}</strong></td>
           </tr>
         `).join('')}
       </table>
@@ -710,23 +704,23 @@ function generateProfessionalTemplate(receipt: Receipt, options: TemplateRenderO
       <div class="total-section">
         <div class="total-row">
           <span>Subtotal</span>
-          <span>${(receipt.totalAmount || 0).toFixed(2)}</span>
+          <span>${escapeHtml((receipt.totalAmount || 0).toFixed(2))}</span>
         </div>
         ${receipt.cashbackAmount > 0 ? `
         <div class="total-row" style="color: #28a745;">
           <span>Cashback Earned</span>
-          <span>+${receipt.cashbackAmount.toFixed(2)}</span>
+          <span>+${escapeHtml(receipt.cashbackAmount.toFixed(2))}</span>
         </div>
         ` : ''}
         <div class="total-row grand">
           <span>GRAND TOTAL</span>
-          <span>${(receipt.totalAmount || 0).toFixed(2)}</span>
+          <span>${escapeHtml((receipt.totalAmount || 0).toFixed(2))}</span>
         </div>
       </div>
     </div>
 
     <div class="footer">
-      <p><strong>${options.companyName}</strong></p>
+      <p><strong>${escapeHtml(options.companyName)}</strong></p>
       <p style="margin-top: 10px;">This is a digitally generated receipt and is valid without signature.</p>
       <p style="margin-top: 5px;">For inquiries, please contact office@boomcard.bg</p>
     </div>
@@ -739,7 +733,7 @@ function generateProfessionalTemplate(receipt: Receipt, options: TemplateRenderO
 /**
  * Colorful Template - Vibrant and fun design
  */
-function generateColorfulTemplate(receipt: Receipt, options: TemplateRenderOptions): string {
+function generateColorfulTemplate(receipt: PartnerReceipt, options: TemplateRenderOptions): string {
   const items = parseReceiptItems(receipt.items);
 
   return `
@@ -861,58 +855,53 @@ function generateColorfulTemplate(receipt: Receipt, options: TemplateRenderOptio
 <body>
   <div class="receipt">
     <div class="header">
-      <div class="emoji">🎉</div>
-      <h1>${receipt.merchantName || 'Awesome Receipt!'}</h1>
-      <div style="font-size: 14px; opacity: 0.9;">${options.companyName}</div>
+      <div class="emoji">&#127881;</div>
+      <h1>${escapeHtml(receipt.merchantName || 'Awesome Receipt!')}</h1>
+      <div style="font-size: 14px; opacity: 0.9;">${escapeHtml(options.companyName)}</div>
     </div>
 
     <div class="content">
       <div class="info-card">
         <div class="info-label">Receipt #</div>
-        <div class="info-value">${receipt.id.slice(0, 8).toUpperCase()}</div>
+        <div class="info-value">${escapeHtml(receipt.id.slice(0, 8).toUpperCase())}</div>
       </div>
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
         <div style="background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%); color: white; padding: 15px; border-radius: 12px; text-align: center;">
           <div style="font-size: 11px; opacity: 0.9;">Date</div>
           <div style="font-size: 14px; font-weight: 700; margin-top: 5px;">
-            ${format(new Date(receipt.receiptDate || receipt.createdAt), 'MMM dd')}
+            ${escapeHtml(format(new Date(receipt.receiptDate || receipt.createdAt), 'MMM dd'))}
           </div>
         </div>
         <div style="background: linear-gradient(135deg, #55efc4 0%, #00b894 100%); color: white; padding: 15px; border-radius: 12px; text-align: center;">
           <div style="font-size: 11px; opacity: 0.9;">Cashback</div>
           <div style="font-size: 14px; font-weight: 700; margin-top: 5px;">
-            ${receipt.cashbackAmount.toFixed(2)}          </div>
+            ${escapeHtml(receipt.cashbackAmount.toFixed(2))}
+          </div>
         </div>
       </div>
 
       ${options.showItemizedList && items.length > 0 ? `
       <div class="items">
         <div style="text-align: center; font-weight: 900; margin-bottom: 15px; color: #d63031;">
-          🛍️ Items 🛍️
+          Items
         </div>
         ${items.map((item: ReceiptItem) => `
           <div class="item">
-            <span><strong>${item.quantity || 1}x</strong> ${item.name || 'Item'}</span>
-            <span style="font-weight: 900; color: #d63031;">${(item.price || 0).toFixed(2)}</span>
+            <span><strong>${escapeHtml(item.quantity || 1)}x</strong> ${escapeHtml(item.name || 'Item')}</span>
+            <span style="font-weight: 900; color: #d63031;">${escapeHtml((item.price || 0).toFixed(2))}</span>
           </div>
         `).join('')}
       </div>
       ` : ''}
 
       <div class="total">
-        💰 ${(receipt.totalAmount || 0).toFixed(2)} 💰
+        ${escapeHtml((receipt.totalAmount || 0).toFixed(2))}
       </div>
     </div>
 
     <div class="footer">
-      <div style="font-size: 24px; margin-bottom: 10px;">
-        <span class="confetti">🎊</span>
-        <span class="confetti">🎉</span>
-        <span class="confetti">✨</span>
-      </div>
       <p><strong>Thanks for shopping!</strong></p>
-      <p style="font-size: 12px; margin-top: 8px;">You're amazing! 🌟</p>
     </div>
   </div>
 </body>
@@ -921,10 +910,11 @@ function generateColorfulTemplate(receipt: Receipt, options: TemplateRenderOptio
 }
 
 /**
- * Export receipt with template
+ * Export receipt with template.
+ * Accepts PartnerReceipt to prevent leakage of internal fields (spec §11.3).
  */
 export async function exportReceiptWithTemplate(
-  receipt: Receipt,
+  receipt: PartnerReceipt,
   options: TemplateOptions
 ): Promise<void> {
   const html = generateReceiptHTML(receipt, options);

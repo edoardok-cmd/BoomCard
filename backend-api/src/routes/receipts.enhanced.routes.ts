@@ -11,6 +11,7 @@ import { requireActivePartnerForWrites } from '../middleware/partnerStatus.middl
 import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../middleware/error.middleware';
 import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
+import { parsePagination } from '../utils/pagination';
 
 const analyticsUpdateSchema = z.object({
   receiptId: z.string().min(1),
@@ -21,9 +22,25 @@ const analyticsUpdateSchema = z.object({
 
 const router = Router();
 
+// Spec §5.3 / §12 rule 1: Inactive/Archived partners may not perform writes.
+// Mounted at router level so all future write endpoints in this file are
+// automatically gated without per-route boilerplate.
+router.use(requireActivePartnerForWrites);
+
 // Cap bulk review endpoints so a rogue/buggy client can't blow up the DB in
 // one request. 500 is generous for a human-driven review workflow.
 const BULK_RECEIPT_LIMIT = 500;
+
+// Spec §11.3 / §6: only these columns may be used as sort keys in user-facing
+// and admin receipt listings. Any value outside this set is silently replaced
+// with 'createdAt' so Prisma never touches fraud-detection columns.
+const RECEIPT_SORT_ALLOWLIST = ['createdAt', 'totalAmount', 'date', 'status'] as const;
+type AllowedReceiptSortBy = typeof RECEIPT_SORT_ALLOWLIST[number];
+function safeSortBy(raw: string | undefined): AllowedReceiptSortBy {
+  return (RECEIPT_SORT_ALLOWLIST as readonly string[]).includes(raw ?? '')
+    ? (raw as AllowedReceiptSortBy)
+    : 'createdAt';
+}
 
 // ============================================
 // PUBLIC/UTILITY ROUTES
@@ -54,12 +71,15 @@ router.get(
 
 /**
  * GET /api/receipts/merchant-check
- * Check merchant whitelist/blacklist status
+ * Check merchant whitelist/blacklist status.
+ * Spec §11.3: internal merchant administration fields (addedBy, reason, taxId,
+ * metadata) are stripped for non-admin callers. Only { isWhitelisted,
+ * isBlacklisted } are returned to USER/PARTNER roles.
  */
 router.get(
   '/merchant-check',
   authenticate,
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: AuthRequest, res: Response) => {
     const { merchantName } = req.query;
 
     if (!merchantName) {
@@ -71,7 +91,17 @@ router.get(
 
     const result = await fraudDetectionService.checkMerchant(merchantName as string);
 
-    res.json(result);
+    const isAdmin =
+      req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
+
+    if (isAdmin) {
+      return res.json(result);
+    }
+
+    // Non-admin callers receive only the boolean flags — no internal
+    // administration data (addedBy, reason, taxId, metadata, etc.).
+    const { isWhitelisted, isBlacklisted } = result as any;
+    res.json({ isWhitelisted, isBlacklisted });
   })
 );
 
@@ -146,6 +176,13 @@ router.get(
       endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
     }
 
+    // Untrusted ?page=&limit= are clamped by parsePagination so NaN/zero/negative/
+    // over-max values can never reach the service → Prisma malformed. Default page
+    // size 20, hard cap 100 (S4 r2f: prevents unbounded single-request DB reads).
+    const { page, limit } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
+
+    // Spec §11.3 / §6: minFraudScore / maxFraudScore are fraud-detection
+    // internals and must not be accepted from user-facing query params.
     const filters = {
       userId: req.user!.id,
       status: req.query.status as any,
@@ -153,14 +190,17 @@ router.get(
       merchantName: req.query.merchantName as string,
       minAmount: req.query.minAmount ? parseFloat(req.query.minAmount as string) : undefined,
       maxAmount: req.query.maxAmount ? parseFloat(req.query.maxAmount as string) : undefined,
-      minFraudScore: req.query.minFraudScore ? parseFloat(req.query.minFraudScore as string) : undefined,
-      maxFraudScore: req.query.maxFraudScore ? parseFloat(req.query.maxFraudScore as string) : undefined,
       startDate,
       endDate,
-      page: req.query.page ? parseInt(req.query.page as string) : 1,
-      limit: req.query.limit ? parseInt(req.query.limit as string) : 20,
-      sortBy: (req.query.sortBy as any) || 'createdAt',
-      sortOrder: (req.query.sortOrder as 'asc' | 'desc') || 'desc',
+      page,
+      limit,
+      // safeSortBy enforces the allowlist so callers cannot sort by fraudScore or
+      // other internal columns (spec §11.3 side-channel protection).
+      sortBy: safeSortBy(req.query.sortBy as string | undefined),
+      // LOW-2 (r2g): runtime validation — TypeScript cast alone does not guard at
+      // runtime. An invalid sortOrder value forwarded to Prisma throws a client
+      // validation error that surfaces as an unhandled 500 rather than a clean 400.
+      sortOrder: req.query.sortOrder === 'asc' ? 'asc' as const : 'desc' as const,
     };
 
     const result = await receiptService.getReceipts(filters);
@@ -246,7 +286,10 @@ router.get(
   authenticate,
   authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: Request, res: Response) => {
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+    // LOW-3 (r2g): cap the limit so an admin cannot trigger an arbitrarily large
+    // DB read. parsePagination clamps NaN/zero/negative/over-max to a safe value;
+    // default 50, ceiling BULK_RECEIPT_LIMIT (500) for a review workflow.
+    const { limit } = parsePagination(req.query, { defaultLimit: 50, maxLimit: BULK_RECEIPT_LIMIT });
 
     const result = await receiptService.getPendingReviews(limit);
 
@@ -263,6 +306,13 @@ router.get(
   authenticate,
   authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: Request, res: Response) => {
+    // Clamp untrusted pagination before it reaches the service → Prisma. Default
+    // page size 20, hard cap 100.
+    const { page, limit } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
+
+    // NOTE: minFraudScore/maxFraudScore are not yet implemented in getReceipts()
+    // and are intentionally excluded here to avoid implying support. File a
+    // feature request if admin fraud-score range filtering is required.
     const filters = {
       status: req.query.status as any,
       userId: req.query.userId as string,
@@ -270,14 +320,13 @@ router.get(
       merchantName: req.query.merchantName as string,
       minAmount: req.query.minAmount ? parseFloat(req.query.minAmount as string) : undefined,
       maxAmount: req.query.maxAmount ? parseFloat(req.query.maxAmount as string) : undefined,
-      minFraudScore: req.query.minFraudScore ? parseFloat(req.query.minFraudScore as string) : undefined,
-      maxFraudScore: req.query.maxFraudScore ? parseFloat(req.query.maxFraudScore as string) : undefined,
       startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,
       endDate: req.query.endDate ? new Date(req.query.endDate as string) : undefined,
-      page: req.query.page ? parseInt(req.query.page as string) : 1,
-      limit: req.query.limit ? parseInt(req.query.limit as string) : 20,
-      sortBy: (req.query.sortBy as any) || 'fraudScore',
-      sortOrder: (req.query.sortOrder as 'asc' | 'desc') || 'desc',
+      page,
+      limit,
+      sortBy: safeSortBy(req.query.sortBy as string | undefined),
+      // LOW-2 (r2g): runtime validation on sortOrder (mirrors user-facing fix above).
+      sortOrder: req.query.sortOrder === 'asc' ? 'asc' as const : 'desc' as const,
       includeInternal: true,
     };
 
@@ -453,38 +502,75 @@ router.get(
 
 /**
  * POST /api/receipts/email
- * Email receipts to user (requires backend email integration)
+ * Email receipts to user.
+ *
+ * MEDIUM-1 (r2g / S5 r2f): accepts an array of receipt IDs and fetches the
+ * records server-side filtered by the calling user's ID. This replaces the
+ * previous behaviour of accepting a full client-supplied receipt array, which
+ * allowed users to email themselves fabricated receipt data (wrong merchants,
+ * arbitrary amounts, cashback they never earned) using BoomCard-signed mail.
+ *
+ * The email is always sent to req.user!.email (the verified address), so
+ * cross-user phishing is not possible — but content forgery was.
+ *
+ * Array size is capped at BULK_RECEIPT_LIMIT (500) for consistency with other
+ * bulk endpoints.
  */
 router.post(
   '/email',
   authenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { receipts, email } = req.body;
+    const { receiptIds } = req.body;
+    const email = req.user!.email;
 
-    if (!Array.isArray(receipts) || receipts.length === 0) {
+    if (!Array.isArray(receiptIds) || receiptIds.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Receipts array is required',
+        message: 'receiptIds array is required',
       });
     }
 
-    if (!email) {
+    if (receiptIds.length > BULK_RECEIPT_LIMIT) {
       return res.status(400).json({
         success: false,
-        message: 'Email address is required',
+        message: `Cannot email more than ${BULK_RECEIPT_LIMIT} receipts per request`,
+      });
+    }
+
+    // Fetch from DB scoped to the calling user — no client-supplied field values trusted.
+    const dbReceipts = await prisma.receipt.findMany({
+      where: {
+        id: { in: receiptIds },
+        userId: req.user!.id,
+      },
+      select: {
+        id: true,
+        merchantName: true,
+        totalAmount: true,
+        cashbackAmount: true,
+        receiptDate: true,
+        createdAt: true,
+        status: true,
+      },
+    });
+
+    if (dbReceipts.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No receipts found for the provided IDs',
       });
     }
 
     const customerName = email.split('@')[0];
 
-    const totalCashback = receipts.reduce(
-      (sum: number, r: any) => sum + (Number(r.cashbackAmount) || 0),
-      0
+    const totalCashback = dbReceipts.reduce(
+      (sum, r) => sum + (Number(r.cashbackAmount) || 0),
+      0,
     );
 
     await emailService.sendReceiptExportEmail(email, {
       customerName,
-      receipts: receipts.map((r: any) => ({
+      receipts: dbReceipts.map((r) => ({
         merchantName: r.merchantName || 'Unknown',
         amount: Number(r.totalAmount) || 0,
         cashbackAmount: Number(r.cashbackAmount) || 0,
@@ -499,7 +585,7 @@ router.post(
 
     res.json({
       success: true,
-      message: `Receipts sent to ${email}`,
+      message: `Receipts sent to your registered email address.`,
     });
   })
 );
@@ -584,7 +670,7 @@ router.patch(
 router.get(
   '/venues/:venueId/config',
   authenticate,
-  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
+  authorize('ADMIN', 'SUPER_ADMIN'), // Spec §11.3: fraud config is admin-only
   asyncHandler(async (req: Request, res: Response) => {
     const partner = await prisma.partner.findUnique({
       where: { id: req.params.venueId },
@@ -600,31 +686,23 @@ router.get(
 
 /**
  * PUT /api/receipts/venues/:venueId/config
- * Update venue fraud detection configuration (partner/admin only).
+ * Update venue fraud detection configuration (admin only).
  * venueId here is Partner.id — see schema comment in VenueReceiptTemplate.
+ * Spec §11.4: partners cannot modify fraud config — ADMIN/SUPER_ADMIN only.
  */
 router.put(
   '/venues/:venueId/config',
   authenticate,
-  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
-  requireActivePartnerForWrites,
+  authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const config = req.body;
 
     const partner = await prisma.partner.findUnique({
       where: { id: req.params.venueId },
-      select: { id: true, userId: true },
+      select: { id: true },
     });
     if (!partner) {
       return res.status(404).json({ success: false, message: 'Venue not found' });
-    }
-
-    // PARTNER role: verify they own this specific venue
-    if (req.user!.role === 'PARTNER' && partner.userId !== req.user!.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'You do not have permission to modify this venue configuration',
-      });
     }
 
     const result = await fraudDetectionService.updateVenueConfig(
@@ -794,6 +872,21 @@ router.patch(
       }
     }
 
+    // MEDIUM-2 (r2g): validate that the template actually belongs to the venue in
+    // the URL. updateTemplate() looks up by id only; without this check an admin
+    // calling PATCH /venues/venue-A/templates/<id-from-venue-B> would silently
+    // modify a template belonging to a different venue (cross-entity IDOR).
+    const existing = await prisma.venueReceiptTemplate.findUnique({
+      where: { id },
+      select: { venueId: true },
+    });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Template not found' });
+    }
+    if (existing.venueId !== req.params.venueId) {
+      return res.status(404).json({ success: false, message: 'Template not found' });
+    }
+
     const template = await receiptTemplateService.updateTemplate(id, {
       merchantName,
       merchantNameVariations: variations,
@@ -819,6 +912,18 @@ router.delete(
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
     const hardDelete = req.query.hard === 'true';
+
+    // MEDIUM-2 (r2g): validate venue ownership before delete (same as PATCH above).
+    const existing = await prisma.venueReceiptTemplate.findUnique({
+      where: { id },
+      select: { venueId: true },
+    });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Template not found' });
+    }
+    if (existing.venueId !== req.params.venueId) {
+      return res.status(404).json({ success: false, message: 'Template not found' });
+    }
 
     await receiptTemplateService.deleteTemplate(id, hardDelete);
 

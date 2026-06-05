@@ -58,7 +58,7 @@ router.get(
   '/payout-thresholds',
   requirePermission('settings.read'),
   asyncHandler(async (_req: AuthRequest, res: Response) => {
-    const plans: SubscriptionPlan[] = ['BASIC', 'PREMIUM_WEEKLY', 'PREMIUM'];
+    const plans: SubscriptionPlan[] = ['BASIC', 'PREMIUM_WEEKLY', 'PREMIUM_MONTHLY'];
     const rows = await Promise.all(
       plans.map((plan) =>
         prisma.payoutThreshold.findFirst({ where: { plan }, orderBy: { createdAt: 'desc' } })
@@ -119,7 +119,7 @@ router.get(
 
 /**
  * PUT /api/admin/settings/payout-thresholds
- * Body: { thresholds: { BASIC?: number; PREMIUM_WEEKLY?: number; PREMIUM?: number }, notes?: string }
+ * Body: { thresholds: { BASIC?: number; PREMIUM_WEEKLY?: number; PREMIUM_MONTHLY?: number }, notes?: string }
  * Creates versioned rows for each plan supplied.
  */
 router.put(
@@ -135,11 +135,11 @@ router.put(
       return res.status(400).json({ success: false, error: 'thresholds object with at least one plan is required' });
     }
 
-    const validPlans = new Set<string>(['BASIC', 'PREMIUM_WEEKLY', 'PREMIUM']);
+    const validPlans = new Set<string>(['BASIC', 'PREMIUM_WEEKLY', 'PREMIUM_MONTHLY']);
     const entries = Object.entries(thresholds) as [SubscriptionPlan, number][];
     for (const [plan, amount] of entries) {
       if (!validPlans.has(plan)) {
-        return res.status(400).json({ success: false, error: `Invalid plan: ${plan}. Must be BASIC, PREMIUM_WEEKLY, or PREMIUM.` });
+        return res.status(400).json({ success: false, error: `Invalid plan: ${plan}. Must be BASIC, PREMIUM_WEEKLY, or PREMIUM_MONTHLY.` });
       }
       if (typeof amount !== 'number' || isNaN(amount) || amount < 0 || amount > 10000) {
         return res.status(400).json({ success: false, error: `minAmount for ${plan} must be a number between 0 and 10000` });

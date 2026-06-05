@@ -17,6 +17,7 @@ import { imageUploadService } from './imageUpload.service';
 import { notificationService } from './notification.service';
 import { logger } from '../utils/logger';
 import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
+import { detach } from '../utils/detach';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -346,9 +347,16 @@ export async function importFromSpreadsheet(
   const partnerDiscountRate = partnerDiscountRateRaw;
   const partnerTypeName = str(firstRow[COL.PARTNER_TYPE_NAME]) || undefined;
   const partnerStatusRaw = str(firstRow[COL.PARTNER_STATUS]).toUpperCase() || 'ACTIVE';
-  const partnerStatus = Object.values(PartnerStatus).includes(partnerStatusRaw as PartnerStatus)
+  let partnerStatus = Object.values(PartnerStatus).includes(partnerStatusRaw as PartnerStatus)
     ? (partnerStatusRaw as PartnerStatus)
     : PartnerStatus.ACTIVE;
+  // Bulk import must not set ARCHIVED. Archiving is a lifecycle action that has to
+  // run through setPartnerStatus (QR cascade + audit + §1.6/§1.7 transition rules);
+  // writing it directly here would bypass all of that. Clamp to ACTIVE and warn.
+  if (partnerStatus === PartnerStatus.ARCHIVED) {
+    warnings.push(`ARCHIVED partner_status ignored — archiving must go through the admin status flow. Defaulted to ACTIVE.`);
+    partnerStatus = PartnerStatus.ACTIVE;
+  }
 
   // ── 4. Resolve partner type (optional) ────────────────────────────────────
   let partnerTypeId: string | undefined;
@@ -385,6 +393,7 @@ export async function importFromSpreadsheet(
           role: 'PARTNER',
           firstName: businessName,
           lastName: 'Partner',
+          phone: '',
         },
         select: { id: true },
       });
@@ -403,6 +412,7 @@ export async function importFromSpreadsheet(
         role: 'PARTNER',
         firstName: businessName,
         lastName: 'Partner',
+        phone: '',
       },
       select: { id: true },
     });
@@ -654,6 +664,9 @@ export function generatePartnersTemplate(): Buffer {
     ['Requirements & behaviour:'],
     ['  • address AND city must be filled, otherwise venue creation is skipped'],
     ['    with a warning.'],
+    ['  • latitude (-90..90) AND longitude (-180..180) must be valid numbers,'],
+    ['    otherwise venue creation is skipped with a warning. Geolocation is'],
+    ['    required for offer redemption (proximity anti-fraud gate).'],
     ['  • If the partner already has one or more venues (e.g. created by a'],
     ['    previous import or by the onboarding form), these fields are ignored.'],
     ['  • If two rows resolve to the same partner (same email), only the first'],
@@ -755,9 +768,15 @@ export async function importPartnersFromSpreadsheet(
     const categoriesRaw = toStringArray(row[PCOL.CATEGORIES]);
     const categories = categoriesRaw.length > 0 ? categoriesRaw : [category];
     const statusRaw = str(row[PCOL.STATUS]).toUpperCase() || 'ACTIVE';
-    const partnerStatus = Object.values(PartnerStatus).includes(statusRaw as PartnerStatus)
+    let partnerStatus = Object.values(PartnerStatus).includes(statusRaw as PartnerStatus)
       ? (statusRaw as PartnerStatus)
       : PartnerStatus.ACTIVE;
+    // Bulk import must not set ARCHIVED — archiving has to run through setPartnerStatus
+    // (QR cascade + audit + §1.6/§1.7 transition rules). Clamp to ACTIVE and warn.
+    if (partnerStatus === PartnerStatus.ARCHIVED) {
+      warnings.push(`Row ${rowNum}: ARCHIVED status ignored — archiving must go through the admin status flow. Defaulted to ACTIVE.`);
+      partnerStatus = PartnerStatus.ACTIVE;
+    }
 
     // Validate discount rate against allowed steps
     const rowDiscountRate = toNumber(row[PCOL.DISCOUNT_RATE]);
@@ -787,6 +806,7 @@ export async function importPartnersFromSpreadsheet(
             role: 'PARTNER',
             firstName: businessName,
             lastName: 'Partner',
+            phone: '',
           },
           select: { id: true },
         });
@@ -803,6 +823,7 @@ export async function importPartnersFromSpreadsheet(
           role: 'PARTNER',
           firstName: businessName,
           lastName: 'Partner',
+          phone: '',
         },
         select: { id: true },
       });
@@ -860,12 +881,18 @@ export async function importPartnersFromSpreadsheet(
             openingHours: str(row[PCOL.OPENING_HOURS]) || undefined,
             discountRate: rowDiscountRate,
             partnerTypeId,
-            status: partnerStatus,
+            // Never transition an ARCHIVED partner via bulk import — reactivation
+            // must run through setPartnerStatus (re-onboarding + QR cascade per
+            // §1.7/§2.4). Leave status untouched for archived partners.
+            ...(existingPartner.status === PartnerStatus.ARCHIVED ? {} : { status: partnerStatus }),
             ...(logoUrl ? { logo: logoUrl } : {}),
           },
         });
         partnerId = existingPartner.id;
         partnersUpdated++;
+        if (existingPartner.status === PartnerStatus.ARCHIVED) {
+          warnings.push(`Row ${rowNum}: partner "${businessName}" is ARCHIVED — status left unchanged (reactivation must use the admin status flow).`);
+        }
         warnings.push(`Row ${rowNum}: partner "${businessName}" already existed — updated.`);
       } else {
         const newPartner = await prisma.partner.create({
@@ -900,11 +927,11 @@ export async function importPartnersFromSpreadsheet(
 
         // Welcome the new partner — non-fatal, don't block the import batch.
         // Fires only for newly-created partners (not updated ones).
-        notificationService.notifyPartnerWelcome({
+        detach(notificationService.notifyPartnerWelcome({
           partnerUserId: partnerUser.id,
           businessName,
           isBulkImport: true,
-        }).catch((err) => logger.error(`Failed to send bulk-import welcome for ${businessName}:`, err));
+        }), (err) => logger.error(`Failed to send bulk-import welcome for ${businessName}:`, err));
       }
       partners.push({ id: partnerId, businessName, created });
     } catch (err: any) {
@@ -942,6 +969,21 @@ export async function importPartnersFromSpreadsheet(
       continue;
     }
 
+    // Geolocation is REQUIRED — without valid coordinates the offer-redemption
+    // proximity gate (anti-fraud, 100m radius) fails closed, so a venue created
+    // with missing/invalid lat/long would be non-redeemable. Skip + warn rather
+    // than create a broken venue. toNumber() already returns undefined for
+    // missing/non-numeric/non-finite cells; we additionally range-check here.
+    const venueLat = toNumber(row[PCOL.LATITUDE]);
+    const venueLng = toNumber(row[PCOL.LONGITUDE]);
+    if (
+      venueLat === undefined || venueLng === undefined ||
+      venueLat < -90 || venueLat > 90 || venueLng < -180 || venueLng > 180
+    ) {
+      warnings.push(`Row ${rowNum}: venue for "${businessName}" has missing or invalid coordinates (latitude must be -90..90, longitude -180..180) — skipped venue creation. Geolocation is required for offer redemption.`);
+      continue;
+    }
+
     // Don't propagate the synthetic @import.boomcard.bg placeholder onto the venue.
     const venueEmail = partnerEmail && !partnerEmail.endsWith('@import.boomcard.bg') ? partnerEmail : undefined;
 
@@ -963,8 +1005,8 @@ export async function importPartnersFromSpreadsheet(
             address: venueAddress,
             city: venueCity,
             region: str(row[PCOL.REGION]) || undefined,
-            latitude: toNumber(row[PCOL.LATITUDE]),
-            longitude: toNumber(row[PCOL.LONGITUDE]),
+            latitude: venueLat,
+            longitude: venueLng,
             phone: str(row[PCOL.PHONE]) || undefined,
             email: venueEmail,
             openingHours: str(row[PCOL.OPENING_HOURS]) || undefined,

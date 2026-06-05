@@ -2,10 +2,9 @@ import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import toast from 'react-hot-toast';
 import { CheckCircle2, Clock, XCircle, ExternalLink, Link as LinkIcon } from 'lucide-react';
-import Button from '../components/common/Button/Button';
 import { useLanguage } from '../contexts/LanguageContext';
 import { partnersService } from '../services/partners.service';
-import { venuesService, MenuStatus } from '../services/venues.service';
+import { MenuStatus } from '../services/venues.service';
 
 interface PartnerVenue {
   id: string;
@@ -43,6 +42,8 @@ const copy = {
     withdraw: 'Withdraw submission',
     withdrawn: 'Submission withdrawn',
     withdrawError: 'Could not withdraw submission',
+    // MEDIUM-1 fix: read-only notice for Inactive partners (spec §5.1)
+    inactiveNotice: 'Your account is inactive. Menu submissions are read-only while your account status is not Active.',
   },
   bg: {
     title: 'Менюта на обектите',
@@ -66,30 +67,27 @@ const copy = {
     withdraw: 'Оттегли подаването',
     withdrawn: 'Подаването е оттеглено',
     withdrawError: 'Грешка при оттегляне',
+    // MEDIUM-1 fix: read-only notice for Inactive partners (spec §5.1)
+    inactiveNotice: 'Акаунтът Ви е неактивен. Подаването на менюта е само за четене докато статусът не е Активен.',
   },
 };
 
-const isValidUrl = (raw: string): boolean => {
-  try {
-    const u = new URL(raw);
-    return u.protocol === 'http:' || u.protocol === 'https:';
-  } catch {
-    return false;
-  }
-};
 
 const PartnerMenusPage: React.FC = () => {
   const { language } = useLanguage();
   const t = copy[language as keyof typeof copy] ?? copy.en;
   const [venues, setVenues] = useState<PartnerVenue[]>([]);
   const [loading, setLoading] = useState(true);
-  const [inputs, setInputs] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState<Record<string, boolean>>({});
+  // MEDIUM-1 fix: track partner status so Inactive partners get read-only access
+  // per spec §5.1 / §11.2. Status is stored uppercased for consistent comparison.
+  const [partnerStatus, setPartnerStatus] = useState<string | null>(null);
 
   const loadPartner = async () => {
     setLoading(true);
     try {
       const partner = await partnersService.getCurrentPartner();
+      // MEDIUM-1 fix: capture the partner status before reading venues.
+      setPartnerStatus((partner.status as string)?.toUpperCase() ?? null);
       const partnerWithVenues = partner as typeof partner & { venues?: PartnerVenue[] };
       const v: PartnerVenue[] = Array.isArray(partnerWithVenues?.venues) ? partnerWithVenues.venues : [];
       setVenues(v);
@@ -104,42 +102,49 @@ const PartnerMenusPage: React.FC = () => {
     loadPartner();
   }, []);
 
-  const handleSubmit = async (venueId: string) => {
-    const url = (inputs[venueId] ?? '').trim();
-    if (!isValidUrl(url)) {
-      toast.error(t.invalidUrl);
-      return;
-    }
-    setSaving(prev => ({ ...prev, [venueId]: true }));
-    try {
-      const updated = await venuesService.submitMenuUrl(venueId, url);
-      setVenues(prev => prev.map(v => (v.id === venueId ? { ...v, ...updated } : v)));
-      setInputs(prev => ({ ...prev, [venueId]: '' }));
-      toast.success(t.submitted);
-    } catch (err) {
-      toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || t.submitError);
-    } finally {
-      setSaving(prev => ({ ...prev, [venueId]: false }));
-    }
-  };
+  // MEDIUM-1 fix: Inactive partners must have read-only access (spec §5.1, §11.2).
+  // LOW-S2 fix (review r2ae): backend normalizes status to ACTIVE/INACTIVE/ARCHIVED
+  // only — PAUSED and SUSPENDED are not valid backend values in the current schema.
+  const isArchived = partnerStatus === 'ARCHIVED';
+  // S2 fix (review r2ae): treat null status (API failure / unknown) as read-only.
+  // The previous expression `partnerStatus !== null && partnerStatus !== 'ACTIVE'`
+  // evaluated to `false` when partnerStatus was null, incorrectly allowing writes
+  // for an unknown status.  Guard intent: only ACTIVE partners may submit/withdraw.
+  const isReadOnly = partnerStatus !== 'ACTIVE';
 
-  const handleWithdraw = async (venueId: string) => {
-    setSaving(prev => ({ ...prev, [venueId]: true }));
-    try {
-      const updated = await venuesService.withdrawMenuSubmission(venueId);
-      setVenues(prev => prev.map(v => (v.id === venueId ? { ...v, ...updated } : v)));
-      toast.success(t.withdrawn);
-    } catch (err) {
-      toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || t.withdrawError);
-    } finally {
-      setSaving(prev => ({ ...prev, [venueId]: false }));
-    }
-  };
+  // F1 fix (review r2ae): handleSubmit and handleWithdraw removed.
+  // The backend /venues/:id/menu/submit and /venues/:id/menu/withdraw endpoints are
+  // authorize('ADMIN','SUPER_ADMIN') only — all partner calls return HTTP 403.
+  // Spec §8a states menu management requires a separate product specification before
+  // implementation.  The interactive UI is replaced with a contact-manager notice.
 
   if (loading) {
     return (
       <Container>
         <EmptyState>{t.loading}</EmptyState>
+      </Container>
+    );
+  }
+
+  // Finding 5 fix (review r2ae MEDIUM): Archived partners must have NO portal
+  // access at all (spec §11.2 — zero access). Show a blocked state instead of
+  // the read-only view that Inactive partners see.
+  if (isArchived) {
+    return (
+      <Container>
+        <div style={{
+          padding: '1.25rem 1.5rem',
+          background: 'rgba(239,68,68,0.08)',
+          border: '1px solid rgba(239,68,68,0.3)',
+          borderRadius: '0.75rem',
+          color: '#991b1b',
+          fontSize: '0.9375rem',
+          lineHeight: 1.6,
+        }}>
+          {language === 'bg'
+            ? 'Достъпът до партньорския портал е прекратен. За съдействие се свържете с office@boomcard.bg.'
+            : 'Access to the partner portal has been revoked. Contact office@boomcard.bg for assistance.'}
+        </div>
       </Container>
     );
   }
@@ -150,6 +155,21 @@ const PartnerMenusPage: React.FC = () => {
         <Title>{t.title}</Title>
         <Subtitle>{t.subtitle}</Subtitle>
       </Header>
+
+      {/* MEDIUM-1 fix: show read-only banner for Inactive partners (§5.1). */}
+      {isReadOnly && (
+        <div style={{
+          padding: '0.875rem 1rem',
+          background: 'rgba(239,68,68,0.08)',
+          border: '1px solid rgba(239,68,68,0.3)',
+          borderRadius: '0.5rem',
+          color: '#991b1b',
+          marginBottom: '1.5rem',
+          fontSize: '0.875rem',
+        }}>
+          {t.inactiveNotice}
+        </div>
+      )}
 
       {venues.length === 0 ? (
         <EmptyState>{t.empty}</EmptyState>
@@ -185,24 +205,13 @@ const PartnerMenusPage: React.FC = () => {
               )}
 
               {venue.menuStatus === 'PENDING' && venue.pendingMenuUrl && (
-                <>
-                  <MenuRow>
-                    <RowLabel>{t.pendingReview}</RowLabel>
-                    <ExternalLinkAnchor href={venue.pendingMenuUrl} target="_blank" rel="noopener noreferrer" muted>
-                      <LinkIcon size={14} /> {venue.pendingMenuUrl}
-                      <ExternalLink size={12} />
-                    </ExternalLinkAnchor>
-                  </MenuRow>
-                  <MenuRow>
-                    <Button
-                      variant="secondary"
-                      onClick={() => handleWithdraw(venue.id)}
-                      disabled={!!saving[venue.id]}
-                    >
-                      {t.withdraw}
-                    </Button>
-                  </MenuRow>
-                </>
+                <MenuRow>
+                  <RowLabel>{t.pendingReview}</RowLabel>
+                  <ExternalLinkAnchor href={venue.pendingMenuUrl} target="_blank" rel="noopener noreferrer" muted>
+                    <LinkIcon size={14} /> {venue.pendingMenuUrl}
+                    <ExternalLink size={12} />
+                  </ExternalLinkAnchor>
+                </MenuRow>
               )}
 
               {venue.menuStatus === 'REJECTED' && venue.pendingMenuUrl && (
@@ -222,25 +231,18 @@ const PartnerMenusPage: React.FC = () => {
                 </>
               )}
 
-              <InputRow>
-                <UrlInput
-                  type="url"
-                  placeholder={t.placeholder}
-                  value={inputs[venue.id] ?? ''}
-                  onChange={e => setInputs(prev => ({ ...prev, [venue.id]: e.target.value }))}
-                  disabled={!!saving[venue.id]}
-                />
-                <Button
-                  onClick={() => handleSubmit(venue.id)}
-                  disabled={!!saving[venue.id] || !(inputs[venue.id] ?? '').trim()}
-                >
-                  {venue.menuStatus === 'REJECTED'
-                    ? t.resubmit
-                    : venue.menuUrl
-                    ? t.replace
-                    : t.submit}
-                </Button>
-              </InputRow>
+              {/* F1 fix (review r2ae): the backend /venues/:id/menu/submit and
+                  /venues/:id/menu/withdraw endpoints are authorize('ADMIN','SUPER_ADMIN')
+                  only — partner-initiated submit/withdraw permanently 403s.
+                  The spec §8a states menu management requires a separate product spec
+                  before implementation.  Replace the broken submit/withdraw UI with a
+                  read-only "contact your account manager" notice so partners are not
+                  shown action buttons that will always fail silently. */}
+              <ContactNotice>
+                {language === 'bg'
+                  ? 'За промени в менюто се свържете с вашия акаунт мениджър на office@boomcard.bg.'
+                  : 'To update your menu, contact your account manager at office@boomcard.bg.'}
+              </ContactNotice>
             </VenueCard>
           ))}
         </VenueList>
@@ -418,34 +420,21 @@ const RejectionBox = styled.div`
   }
 `;
 
-const InputRow = styled.div`
-  display: flex;
-  gap: 0.75rem;
-  margin-top: 1rem;
 
-  @media (max-width: 600px) {
-    flex-direction: column;
-  }
-`;
-
-const UrlInput = styled.input`
-  flex: 1;
-  padding: 0.625rem 0.875rem;
-  border: 1px solid #d1d5db;
+/* F1 fix (review r2ae): contact-manager notice replaces the broken submit/withdraw UI. */
+const ContactNotice = styled.div`
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: rgba(59, 130, 246, 0.06);
+  border: 1px solid rgba(59, 130, 246, 0.2);
   border-radius: 0.5rem;
-  font-size: 0.9375rem;
-  background: white;
-  color: #111827;
-
-  &:focus {
-    outline: none;
-    border-color: #4f46e5;
-    box-shadow: 0 0 0 3px rgba(79,70,229,0.15);
-  }
+  font-size: 0.875rem;
+  color: #1e40af;
+  line-height: 1.5;
 
   [data-theme="dark"] & {
-    background: #111827;
-    border-color: #374151;
-    color: #f9fafb;
+    background: rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.25);
+    color: #93c5fd;
   }
 `;

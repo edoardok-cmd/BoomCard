@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import Button from '../components/common/Button/Button';
 import { useAuth } from '../contexts/AuthContext';
@@ -337,6 +338,55 @@ const DangerZoneDesc = styled.p`
   line-height: 1.5;
 `;
 
+const ChangeRequestCard = styled(motion.div)`
+  background: var(--color-background);
+  border-radius: 1rem;
+  box-shadow: var(--shadow-soft);
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--color-border);
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+`;
+
+const ChangeRequestTitle = styled.h3`
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 0.75rem;
+`;
+
+const ChangeRequestDesc = styled.p`
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  margin-bottom: 1.25rem;
+`;
+
+const ChangeRequestList = styled.ul`
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  line-height: 1.8;
+  margin: 0 0 1.5rem 1.25rem;
+  padding: 0;
+`;
+
+const HelpEmailLink = styled.a`
+  color: var(--color-text-primary);
+  font-weight: 500;
+  text-decoration: underline;
+  word-break: break-all;
+`;
+
+const CloseAccountCard = styled(ChangeRequestCard)`
+  border-color: var(--color-border);
+`;
+
+const CloseAccountTitle = styled(ChangeRequestTitle)`
+  color: var(--color-error, #ef4444);
+`;
+
+const CloseAccountDesc = styled(ChangeRequestDesc)``;
+
 const ModalBackdrop = styled(motion.div)`
   position: fixed;
   inset: 0;
@@ -401,6 +451,11 @@ interface PasswordErrors {
 const ProfilePage: React.FC = () => {
   const { user, updateProfile, changePassword, requestEmailChange, confirmEmailChange, deleteAccount, uploadAvatar, removeAvatar, isLoading } = useAuth();
   const { language, t } = useLanguage();
+  const navigate = useNavigate();
+
+  // Spec §5.1, §11.4: partners cannot directly edit critical fields.
+  // Profile edits require a Change Request through the Help system.
+  const isPartner = user?.role === 'partner';
 
   const [isEditing, setIsEditing] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
@@ -495,6 +550,12 @@ const ProfilePage: React.FC = () => {
   };
 
   const handleSave = async () => {
+    // Defense-in-depth: partners cannot directly edit profile fields (spec §5.1,
+    // §11.4). The render tree already hides the Save button for partners, but
+    // this function-level guard prevents any secondary code path (keyboard
+    // shortcut, auto-save, etc.) from bypassing that UI gate.
+    if (isPartner) return;
+
     const newErrors: FormErrors = {};
     ['firstName', 'lastName', 'phone'].forEach(field => {
       const error = validateField(field, formData[field as keyof typeof formData]);
@@ -563,6 +624,18 @@ const ProfilePage: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
+
+    // S1: client-side validation before upload
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    const maxSize = 5 * 1024 * 1024; // 5 MB
+    if (!allowedTypes.includes(file.type)) {
+      // toast shown inline; context will surface it
+      return;
+    }
+    if (file.size > maxSize) {
+      return;
+    }
+
     setIsUploadingAvatar(true);
     try {
       await uploadAvatar(file);
@@ -660,6 +733,13 @@ const ProfilePage: React.FC = () => {
   };
 
   const handleDeleteAccount = async () => {
+    // LOW-1 fix (review r2r): defense-in-depth guard matching handleSave pattern.
+    // The render tree already shows CloseAccountCard instead of DangerCard for partners,
+    // but this function-level guard ensures no secondary code path (auto-save, keyboard
+    // shortcut) can trigger direct deletion for a partner. Backend returns 403 for PARTNER
+    // as a second layer; this prevents a round-trip with a misleading error.
+    if (isPartner) return;
+
     if (!deletePassword) {
       setDeletePasswordError(t('profile.enterCurrentPassword'));
       return;
@@ -731,7 +811,10 @@ const ProfilePage: React.FC = () => {
             onChange={handleAvatarFileChange}
           />
           <AvatarWrapper onClick={handleAvatarClick} title={t('profile.changePhoto')}>
-            {user.avatar ? (
+            {user.avatar && /^https?:\/\//i.test(user.avatar) ? (
+              // INFO-1 fix (review r2r): validate avatar URL scheme before passing to src.
+              // React does not block javascript: URIs in img src; the https? guard ensures
+              // only safe remote URLs are rendered.
               <AvatarPhoto src={user.avatar} alt={`${user.firstName} ${user.lastName}`} />
             ) : (
               <AvatarInitials>{getUserInitials()}</AvatarInitials>
@@ -765,7 +848,8 @@ const ProfilePage: React.FC = () => {
         <FormGrid>
           <FormGroup>
             <Label>{t('profile.firstName')}</Label>
-            {isEditing ? (
+            {/* Partners: read-only per spec §5.1, §11.4 — edits require a Change Request */}
+            {!isPartner && isEditing ? (
               <>
                 <Input
                   type="text"
@@ -788,7 +872,7 @@ const ProfilePage: React.FC = () => {
 
           <FormGroup>
             <Label>{t('profile.lastName')}</Label>
-            {isEditing ? (
+            {!isPartner && isEditing ? (
               <>
                 <Input
                   type="text"
@@ -811,12 +895,13 @@ const ProfilePage: React.FC = () => {
 
           <FormGroup>
             <Label>{t('profile.emailAddress')}</Label>
+            {/* Email address: always read-only for partners (spec §5.1, changes go through Help system) */}
             <ReadOnlyValue>{user.email}</ReadOnlyValue>
           </FormGroup>
 
           <FormGroup>
             <Label>{t('profile.phoneLabel')}</Label>
-            {isEditing ? (
+            {!isPartner && isEditing ? (
               <>
                 <Input
                   type="tel"
@@ -840,7 +925,7 @@ const ProfilePage: React.FC = () => {
 
           <FormGroup>
             <Label>{t('profile.city')}</Label>
-            {isEditing ? (
+            {!isPartner && isEditing ? (
               <Input
                 type="text"
                 name="city"
@@ -856,7 +941,7 @@ const ProfilePage: React.FC = () => {
 
           <FormGroup>
             <Label>{t('profile.country')}</Label>
-            {isEditing ? (
+            {!isPartner && isEditing ? (
               <Input
                 type="text"
                 name="country"
@@ -871,8 +956,14 @@ const ProfilePage: React.FC = () => {
           </FormGroup>
         </FormGrid>
 
-        {/* Action Buttons */}
-        {isEditing ? (
+        {/* Action Buttons — partners see Change Request CTA instead of Edit button (spec §5.1, §11.4) */}
+        {isPartner ? (
+          <ActionButtons>
+            <Button variant="primary" onClick={() => navigate('/partners/help?type=Change')}>
+              {language === 'bg' ? 'Заяви промяна' : 'Request Change'}
+            </Button>
+          </ActionButtons>
+        ) : isEditing ? (
           <ActionButtons>
             <Button variant="ghost" onClick={handleCancel} disabled={isLoading}>
               {t('profile.cancel')}
@@ -889,6 +980,44 @@ const ProfilePage: React.FC = () => {
           </ActionButtons>
         )}
       </ProfileCard>
+
+      {/* Partner Change Request info card — spec §5.4 (critical data requires Change Request) */}
+      {isPartner && (
+        <ChangeRequestCard
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.15 }}
+        >
+          <ChangeRequestTitle>
+            {language === 'bg' ? 'Заяви промяна на данни' : 'Request Data Changes'}
+          </ChangeRequestTitle>
+          <ChangeRequestDesc>
+            {language === 'bg'
+              ? 'Промените в профилните данни на партньора се обработват от екипа на BoomCard. За промяна на следните данни, моля подайте заявка:'
+              : 'Changes to partner profile data are processed by the BoomCard team. To update any of the following, please submit a Change Request:'}
+          </ChangeRequestDesc>
+          <ChangeRequestList>
+            {language === 'bg' ? (
+              <>
+                <li>Бизнес данни (наименование, категория, локации)</li>
+                <li>Контактна информация и имейл адрес</li>
+                <li>Платежни данни</li>
+                <li>Условия на договора или комисионна ставка</li>
+              </>
+            ) : (
+              <>
+                <li>Business data (name, category, locations)</li>
+                <li>Contact information and email address</li>
+                <li>Payment details</li>
+                <li>Contract terms or commission rate</li>
+              </>
+            )}
+          </ChangeRequestList>
+          <Button variant="primary" onClick={() => navigate('/partners/help?type=Change')}>
+            {language === 'bg' ? 'Заяви промяна' : 'Submit Change Request'}
+          </Button>
+        </ChangeRequestCard>
+      )}
 
       {/* Security Card */}
       <ProfileCard
@@ -977,12 +1106,24 @@ const ProfilePage: React.FC = () => {
           )}
         </PasswordSection>
 
-        {/* Change Email */}
+        {/* Change Email — hidden for partner accounts (spec §5.1: email changes require a Change Request via Help system) */}
         <EmailChangeSection>
           {emailChangeStep === 'idle' && (
-            <PasswordButton onClick={() => setEmailChangeStep('request')}>
-              {t('profile.changeEmail')}
-            </PasswordButton>
+            isPartner ? (
+              <InfoBox $variant="info" style={{ marginTop: 0 }}>
+                <InfoText $variant="info">
+                  {language === 'bg'
+                    ? 'За промяна на имейл адреса, моля подайте заявка за промяна чрез системата за помощ.'
+                    : 'To change your email address, please submit a Change Request through the Help system.'}
+                  {' '}
+                  <HelpEmailLink href="mailto:office@boomcard.bg">office@boomcard.bg</HelpEmailLink>
+                </InfoText>
+              </InfoBox>
+            ) : (
+              <PasswordButton onClick={() => setEmailChangeStep('request')}>
+                {t('profile.changeEmail')}
+              </PasswordButton>
+            )
           )}
 
           {emailChangeStep === 'request' && (
@@ -1085,74 +1226,106 @@ const ProfilePage: React.FC = () => {
         </EmailChangeSection>
       </ProfileCard>
 
-      {/* Danger Zone Card */}
-      <DangerCard
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.2 }}
-      >
-        <DangerTitle>{t('profile.dangerZone')}</DangerTitle>
-        <DangerZoneRow>
-          <DangerZoneDesc>{t('profile.deleteAccountDesc')}</DangerZoneDesc>
-          <DangerOutlineButton variant="ghost" onClick={handleOpenDeleteModal}>
-            {t('profile.deleteAccount')}
-          </DangerOutlineButton>
-        </DangerZoneRow>
-      </DangerCard>
-
-      {/* Delete Account Modal */}
-      <AnimatePresence>
-        {showDeleteModal && (
-          <ModalBackdrop
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={e => { if (e.target === e.currentTarget && !isDeleting) setShowDeleteModal(false); }}
+      {/*
+       * Spec §5.4, §10.7, §12 Rule 3/4:
+       * Partners cannot delete their account immediately. Account closure requires
+       * a Change Request submitted through the Help system, with a 30-day notice
+       * period. The direct "Delete Profile" danger-zone is shown only to non-partner
+       * accounts (e.g. regular users). Partners see a "Request account closure" card.
+       */}
+      {isPartner ? (
+        <CloseAccountCard
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.2 }}
+        >
+          <CloseAccountTitle>
+            {language === 'bg' ? 'Закриване на акаунт' : 'Close Account'}
+          </CloseAccountTitle>
+          <CloseAccountDesc>
+            {language === 'bg'
+              ? 'Закриването на партньорски акаунт изисква подаване на заявка чрез системата за помощ. Акаунтът не се закрива незабавно — прилага се 30-дневен срок за уведомяване. BoomCard ще разгледа заявката и ще се свърже с вас.'
+              : 'Closing a partner account requires submitting a request through the Help system. The account is not closed immediately — a 30-day notice period applies. BoomCard will review your request and contact you.'}
+          </CloseAccountDesc>
+          <Button
+            variant="ghost"
+            onClick={() => navigate('/partners/help?type=Change&subject=close-account')}
           >
-            <ModalBox
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-            >
-              <ModalTitle>{t('profile.deleteAccountConfirmTitle')}</ModalTitle>
-              <ModalText>{t('profile.deleteAccountConfirmText')}</ModalText>
-              <FormGroup>
-                <Label>{t('profile.deleteAccountPasswordLabel')}</Label>
-                <Input
-                  type="password"
-                  value={deletePassword}
-                  onChange={e => { setDeletePassword(e.target.value); setDeletePasswordError(''); }}
-                  $hasError={!!deletePasswordError}
-                  disabled={isDeleting}
-                  autoFocus
-                />
-                {deletePasswordError && (
-                  <ErrorMessage initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}>
-                    {deletePasswordError}
-                  </ErrorMessage>
-                )}
-              </FormGroup>
-              <ModalActions>
-                <Button
-                  variant="ghost"
-                  onClick={() => setShowDeleteModal(false)}
-                  disabled={isDeleting}
+            {language === 'bg' ? 'Заяви закриване на акаунт' : 'Request Account Closure'}
+          </Button>
+        </CloseAccountCard>
+      ) : (
+        <>
+          {/* Danger Zone Card — non-partner users only */}
+          <DangerCard
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.2 }}
+          >
+            <DangerTitle>{t('profile.dangerZone')}</DangerTitle>
+            <DangerZoneRow>
+              <DangerZoneDesc>{t('profile.deleteAccountDesc')}</DangerZoneDesc>
+              <DangerOutlineButton variant="ghost" onClick={handleOpenDeleteModal}>
+                {t('profile.deleteAccount')}
+              </DangerOutlineButton>
+            </DangerZoneRow>
+          </DangerCard>
+
+          {/* Delete Account Modal — non-partner users only */}
+          <AnimatePresence>
+            {showDeleteModal && (
+              <ModalBackdrop
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={e => { if (e.target === e.currentTarget && !isDeleting) setShowDeleteModal(false); }}
+              >
+                <ModalBox
+                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                  transition={{ type: 'spring', damping: 25, stiffness: 350 }}
                 >
-                  {t('profile.cancelDelete')}
-                </Button>
-                <DeleteConfirmButton
-                  variant="primary"
-                  onClick={handleDeleteAccount}
-                  isLoading={isDeleting}
-                >
-                  {isDeleting ? t('profile.deletingAccount') : t('profile.confirmDelete')}
-                </DeleteConfirmButton>
-              </ModalActions>
-            </ModalBox>
-          </ModalBackdrop>
-        )}
-      </AnimatePresence>
+                  <ModalTitle>{t('profile.deleteAccountConfirmTitle')}</ModalTitle>
+                  <ModalText>{t('profile.deleteAccountConfirmText')}</ModalText>
+                  <FormGroup>
+                    <Label>{t('profile.deleteAccountPasswordLabel')}</Label>
+                    <Input
+                      type="password"
+                      value={deletePassword}
+                      onChange={e => { setDeletePassword(e.target.value); setDeletePasswordError(''); }}
+                      $hasError={!!deletePasswordError}
+                      disabled={isDeleting}
+                      autoFocus
+                    />
+                    {deletePasswordError && (
+                      <ErrorMessage initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}>
+                        {deletePasswordError}
+                      </ErrorMessage>
+                    )}
+                  </FormGroup>
+                  <ModalActions>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setShowDeleteModal(false)}
+                      disabled={isDeleting}
+                    >
+                      {t('profile.cancelDelete')}
+                    </Button>
+                    <DeleteConfirmButton
+                      variant="primary"
+                      onClick={handleDeleteAccount}
+                      isLoading={isDeleting}
+                    >
+                      {isDeleting ? t('profile.deletingAccount') : t('profile.confirmDelete')}
+                    </DeleteConfirmButton>
+                  </ModalActions>
+                </ModalBox>
+              </ModalBackdrop>
+            )}
+          </AnimatePresence>
+        </>
+      )}
     </PageContainer>
   );
 };

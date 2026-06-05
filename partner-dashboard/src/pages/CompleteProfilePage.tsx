@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, Navigate } from 'react-router-dom';
 import styled from 'styled-components';
-import axios from 'axios';
 import Button from '../components/common/Button/Button';
 import { useLanguage } from '../contexts/LanguageContext';
-
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || '/api';
+import * as authStorage from '../lib/auth/authStorage';
+// MEDIUM-1 fix (r2ad): replaced raw `axios` import with the shared `apiService`
+// wrapper so the call goes through the 401-refresh interceptor and uses the same
+// base URL as the rest of the codebase. Raw axios was the only place in the
+// partner-facing code with this inconsistent pattern.
+import { apiService } from '../services/api.service';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -115,6 +118,7 @@ const CompleteProfilePage: React.FC = () => {
   const { language } = useLanguage();
   const token = searchParams.get('token');
 
+  // All hooks must be declared before any early returns (Rules of Hooks).
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [marketingConsentEmail, setMarketingConsentEmail] = useState(false);
@@ -122,6 +126,17 @@ const CompleteProfilePage: React.FC = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [apiError, setApiError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // HIGH fix (review r2ad HIGH-1): already-authenticated users must not reach
+  // this page. If they do, their existing session tokens would be silently
+  // overwritten by the activation token exchange. Guard by checking for a
+  // stored access token. Placed after hooks to comply with React's Rules of Hooks.
+  // Legitimate account activation always happens for accounts that have never
+  // been logged in before, so redirecting is always safe here.
+  const existingToken = authStorage.getItem('token');
+  if (existingToken) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   if (!token) {
     return (
@@ -145,8 +160,21 @@ const CompleteProfilePage: React.FC = () => {
 
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
+    // Canonical password policy (matches backend registerValidation /
+    // changePasswordValidation / complete-profile): min 8 chars + uppercase +
+    // lowercase + digit + special character.
     if (password.length < 8) {
       errs.password = language === 'bg' ? 'Паролата трябва да е поне 8 символа' : 'Password must be at least 8 characters';
+    } else {
+      const hasLower = /[a-z]/.test(password);
+      const hasUpper = /[A-Z]/.test(password);
+      const hasNumber = /\d/.test(password);
+      const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+      if (!hasLower || !hasUpper || !hasNumber || !hasSpecial) {
+        errs.password = language === 'bg'
+          ? 'Паролата трябва да съдържа главна, малка буква, цифра и специален символ'
+          : 'Password must include an uppercase letter, a lowercase letter, a number, and a special character';
+      }
     }
     if (password !== confirmPassword) {
       errs.confirmPassword = language === 'bg' ? 'Паролите не съвпадат' : 'Passwords do not match';
@@ -162,20 +190,40 @@ const CompleteProfilePage: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/auth/complete-profile`, {
-        token,
-        password,
-        marketingConsentEmail,
-        marketingConsentPhone,
-        // Spec §7.1: persist the user's selected interface language so future
-        // system emails (welcome, payments, renewals) are sent in it.
-        lang: language,
-      });
-      const { accessToken, refreshToken } = response.data.data;
+      // MEDIUM-1 fix (r2ad): use apiService.post instead of raw axios so this
+      // call goes through the shared 401-refresh interceptor and base-URL config.
+      const response = await apiService.post<{ data: { accessToken: string; refreshToken: string } }>(
+        '/auth/complete-profile',
+        {
+          token,
+          password,
+          marketingConsentEmail,
+          marketingConsentPhone,
+          // Spec §7.1: persist the user's selected interface language so future
+          // system emails (welcome, payments, renewals) are sent in it.
+          lang: language,
+        },
+      );
+      const { accessToken, refreshToken } = response.data;
 
-      // Store tokens using same keys as AuthContext so it picks them up on reload
-      localStorage.setItem('token', accessToken);
-      localStorage.setItem('refreshToken', refreshToken);
+      // MEDIUM-1 fix: use authStorage (the same abstraction used by AuthContext)
+      // instead of raw localStorage.setItem so that:
+      // 1. The token keys match exactly what AuthContext reads ('token',
+      //    'refreshToken') and the storage layer is consistent.
+      // 2. The boomcard_refresh cookie is set so the axios 401-interceptor can
+      //    silently refresh the access token before the first expiry.
+      // Note: AuthContext.loadUser fires on the next page load and will call
+      // GET /auth/me, which fills the boomcard_auth user cache key.
+      authStorage.setItem('token', accessToken, true); // persistent = true (activation is one-time)
+      authStorage.setItem('refreshToken', refreshToken, true);
+
+      // Mirror the refresh token into the cookie that the 401-interceptor reads
+      // (mirrors the logic in AuthContext.persistRefreshToken).
+      // LOW-3 fix (review r2ad): corrected lifetime from 30 days (2592000) to
+      // 7 days (604800) to match AuthContext.persistRefreshToken's max-age.
+      const isSecure = window.location.protocol === 'https:';
+      const lifetime = '; max-age=604800'; // 7 days — matches AuthContext.persistRefreshToken
+      document.cookie = `boomcard_refresh=${refreshToken}; path=/${lifetime}; SameSite=Strict${isSecure ? '; Secure' : ''}`;
 
       // Hard navigate so AuthContext reinitializes with the stored tokens
       window.location.href = '/dashboard';
@@ -208,7 +256,8 @@ const CompleteProfilePage: React.FC = () => {
               value={password}
               onChange={e => setPassword(e.target.value)}
               $hasError={!!errors.password}
-              placeholder="••••••••"
+              minLength={8}
+              placeholder={language === 'bg' ? 'Поне 8 символа, главна, малка, цифра, символ' : 'Min 8 chars, upper, lower, number, symbol'}
               autoComplete="new-password"
             />
             {errors.password && <ErrorText>{errors.password}</ErrorText>}

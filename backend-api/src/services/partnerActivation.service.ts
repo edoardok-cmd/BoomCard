@@ -2,7 +2,8 @@
  * Partner activation — spec §5.2 v1.1
  *
  * After admin approval, a partner receives a one-time activation link valid
- * for 72h. Clicking the link consumes the token AND sets a password (the
+ * for 72h. Clicking the link consumes the token AND sets the partner's password
+ * (every partner sets it here — none is collected at registration; the
  * partner-facing dashboard collects it on the activation page), AND stamps
  * Partner.verifiedAt — all in a single transaction (see activationLink.service).
  *
@@ -137,12 +138,11 @@ ${opts.activationUrl}
 
 /**
  * Consume an activation token. Throws on missing/expired/already-used tokens.
- * Stamps Partner.verifiedAt, optionally sets the partner user's password, and
- * advances PENDING partners to ACTIVE — all atomically (see
- * activationLinkService.consume).
+ * Stamps Partner.verifiedAt, sets the partner user's password, and advances
+ * PENDING partners to ACTIVE — all atomically (see activationLinkService.consume).
  *
- * `password` is optional: self-registered partners already set one during
- * /auth/register; admin-onboarded partners must supply one here.
+ * Every partner sets their password here at activation — none is collected at
+ * registration. The /auth/partner/activate route requires it.
  */
 export async function consumeActivationToken(
   token: string,

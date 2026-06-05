@@ -29,6 +29,8 @@ import { stickerService } from '../services/sticker.service';
 import { ACTIVE_SCAN_STATUSES } from '../services/adminAlerts.service';
 import { DEFAULT_CORRECTION_WARNING_THRESHOLD } from '../constants/receipt.constants';
 import { getSystemSettingFloat } from '../utils/systemSettings';
+import { parsePagination } from '../utils/pagination';
+import { detach } from '../utils/detach';
 
 const router = Router();
 
@@ -67,9 +69,7 @@ router.get(
   '/security',
   requirePermission(['admins.audit.read', 'control.risk.read']),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 25));
-    const skip = (page - 1) * limit;
+    const { skip, page, limit } = parsePagination(req.query, { defaultLimit: 25, maxLimit: 100 });
     const action = typeof req.query.action === 'string' ? req.query.action.trim() : '';
     const actorId = typeof req.query.actorId === 'string' ? req.query.actorId.trim() : '';
     const fromParam = req.query.from as string;
@@ -132,9 +132,7 @@ router.get(
   '/disputes',
   requirePermission('control.disputes.read'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 25));
-    const skip = (page - 1) * limit;
+    const { skip, page, limit } = parsePagination(req.query, { defaultLimit: 25, maxLimit: 100 });
     const status = typeof req.query.status === 'string' ? req.query.status.trim() : 'MANUAL_REVIEW';
     const venueId = typeof req.query.venueId === 'string' ? req.query.venueId.trim() : '';
 
@@ -200,14 +198,14 @@ router.post(
     const { fraudWarning, ...rest } = result;
 
     req.skipAudit = true;
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'dispute.approve',
       objectType: 'dispute',
       objectId: id,
       before: before ? { status: before.status, totalAmount: before.totalAmount, fraudScore: before.fraudScore } : null,
       after: { status: 'APPROVED', verifiedAmount: verifiedAmount ?? null, notes: notes ?? null },
-    }).catch(() => {});
+    }), () => {});
 
     res.json({ success: true, data: rest, message: 'Receipt approved', ...(fraudWarning && { fraudWarning }) });
   })
@@ -239,14 +237,14 @@ router.post(
     });
 
     req.skipAudit = true;
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'dispute.reject',
       objectType: 'dispute',
       objectId: id,
       before: before ? { status: before.status, totalAmount: before.totalAmount, fraudScore: before.fraudScore } : null,
       after: { status: 'REJECTED', reason: rejectionReason ?? null },
-    }).catch(() => {});
+    }), () => {});
 
     res.json({ success: true, data: updated, message: 'Receipt rejected' });
   })
@@ -302,13 +300,14 @@ router.get(
   '/risk-queue/summary',
   requirePermission('control.risk.read'),
   asyncHandler(async (_req: AuthRequest, res: Response) => {
-    // Mirror the list endpoint: only count scans with fraudScore >= 31 so the
-    // tile totals match what's actionable in the queue (0-30 items auto-approve and
-    // don't appear in the list, so they should not inflate the summary tiles either).
+    // Mirror the list endpoint gate: surface scans via either the fraudScore tier
+    // (≥ 31) OR the spec §2.1 risk level (Medium/High) so tile totals match the queue.
     const baseWhere = {
-      fraudScore: { gte: 31 },
+      OR: [
+        { fraudScore: { gte: 31 }, fraudReasons: { isEmpty: false } },
+        { specRiskLevel: { in: ['Medium', 'High'] as string[] } },
+      ],
       status: { in: QUEUE_ACTIVE_STATUSES },
-      fraudReasons: { isEmpty: false },
     };
 
     // Spec §7.2 "странни IBAN промени": count users who changed IBAN within the last 7 days.
@@ -356,9 +355,7 @@ router.get(
   '/risk-queue',
   requirePermission('control.risk.read'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 25));
-    const skip = (page - 1) * limit;
+    const { skip, page, limit } = parsePagination(req.query, { defaultLimit: 25, maxLimit: 100 });
     const tier = typeof req.query.tier === 'string' ? req.query.tier.trim() : 'all';
     const venueId = typeof req.query.venueId === 'string' ? req.query.venueId.trim() : '';
     const signalCategory = typeof req.query.signalCategory === 'string' ? req.query.signalCategory.trim() : '';
@@ -378,9 +375,24 @@ router.get(
         ? { hasSome: [...RISK_SIGNAL_GROUPS[signalCategory as keyof typeof RISK_SIGNAL_GROUPS]] }
         : { isEmpty: false };
 
+    // Spec §2.2 / §2.1 — the risk queue must surface scans that require manual review.
+    // Two independent gates can trigger review:
+    //   1. fraudScore-based tier (31–60 review, 61+ high) — the primary fraud detection score.
+    //   2. specRiskLevel Medium/High — the canonical spec §2.1 five-signal additive score.
+    //      A scan may have specRiskLevel='Medium' (score 21–50) even if fraudScore < 31 because
+    //      the spec risk signals (IBAN change +40, receipt match +30, etc.) are computed
+    //      separately from the broader fraud detection score. Both gates must surface the scan.
     const where: Parameters<typeof prisma.stickerScan.findMany>[0]['where'] = {
-      fraudScore: fraudScoreFilter,
-      fraudReasons: fraudReasonsFilter,
+      OR: [
+        {
+          fraudScore: fraudScoreFilter,
+          fraudReasons: fraudReasonsFilter,
+        },
+        // Include spec-risk-flagged records (Medium or High) regardless of fraudScore.
+        {
+          specRiskLevel: { in: ['Medium', 'High'] as string[] },
+        },
+      ],
       status: { in: QUEUE_ACTIVE_STATUSES },
     };
     if (venueId) where.venueId = venueId;
@@ -490,14 +502,14 @@ router.post(
     });
 
     req.skipAudit = true;
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'risk.approve',
       objectType: 'risk',
       objectId: req.params.id,
       before: scanBefore ? { status: scanBefore.status, fraudScore: scanBefore.fraudScore, fraudReasons: scanBefore.fraudReasons, billAmount: scanBefore.billAmount } : null,
       after: { status: scan.status, verifiedAmount: verifiedAmount ?? null, notes },
-    }).catch(() => {});
+    }), () => {});
 
     let fraudWarning: string | undefined;
     if (verifiedAmount !== undefined) {
@@ -534,14 +546,14 @@ router.post(
     const scan = await stickerService.rejectScan(req.params.id, reason, req.user?.id ?? null);
 
     req.skipAudit = true;
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user?.id ?? null,
       action: 'risk.reject',
       objectType: 'risk',
       objectId: req.params.id,
       before: scanBefore ? { status: scanBefore.status, fraudScore: scanBefore.fraudScore, fraudReasons: scanBefore.fraudReasons, billAmount: scanBefore.billAmount } : null,
       after: { status: scan.status, reason },
-    }).catch(() => {});
+    }), () => {});
 
     res.json({ success: true, data: scan, message: 'Signal rejected' });
   })
@@ -594,14 +606,14 @@ router.post(
     req.skipAudit = true;
     for (const scanId of uniqueIds) {
       const b = beforeMap.get(scanId);
-      writeAudit({
+      detach(writeAudit({
         actorUserId: req.user?.id ?? null,
         action: 'risk.reject',
         objectType: 'risk',
         objectId: scanId,
         before: b ? { status: b.status, fraudScore: b.fraudScore, fraudReasons: b.fraudReasons, billAmount: b.billAmount } : null,
         after: { status: 'REJECTED', reason, bulk: true },
-      }).catch(() => {});
+      }), () => {});
     }
 
     res.json({ success: true, data: result, message: 'Bulk reject completed' });
@@ -620,9 +632,7 @@ router.get(
   '/dispute-cases',
   requirePermission('control.disputes.read'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 25));
-    const skip = (page - 1) * limit;
+    const { skip, page, limit } = parsePagination(req.query, { defaultLimit: 25, maxLimit: 100 });
     const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
     const assignedTo = typeof req.query.assignedTo === 'string' ? req.query.assignedTo.trim() : '';
     const subjectType = typeof req.query.subjectType === 'string' ? req.query.subjectType.trim() : '';
@@ -1009,9 +1019,7 @@ router.get(
   '/receipt-templates',
   requirePermission('control.risk.read'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 25));
-    const skip = (page - 1) * limit;
+    const { skip, page, limit } = parsePagination(req.query, { defaultLimit: 25, maxLimit: 100 });
     const venueId = typeof req.query.venueId === 'string' ? req.query.venueId.trim() : '';
     const activeParam = req.query.active as string;
 
@@ -1057,18 +1065,18 @@ router.post(
         expectedKeywords?: string[];
       };
 
-    if (!venueId) return res.status(400).json({ success: false, error: 'venueId is required' });
+    if (!venueId?.trim()) return res.status(400).json({ success: false, error: 'venueId is required' });
     if (!merchantName?.trim()) return res.status(400).json({ success: false, error: 'merchantName is required' });
     if (!imageUrl?.trim()) return res.status(400).json({ success: false, error: 'imageUrl is required' });
     if (!imageKey?.trim()) return res.status(400).json({ success: false, error: 'imageKey is required' });
     if (!perceptualHash?.trim()) return res.status(400).json({ success: false, error: 'perceptualHash is required' });
 
-    const venueExists = await prisma.venue.findUnique({ where: { id: venueId }, select: { id: true } });
+    const venueExists = await prisma.venue.findUnique({ where: { id: venueId.trim() }, select: { id: true } });
     if (!venueExists) return res.status(404).json({ success: false, error: 'Venue not found' });
 
     const template = await prisma.venueReceiptTemplate.create({
       data: {
-        venueId,
+        venueId:                venueId.trim(),
         merchantName:           merchantName.trim(),
         merchantNameVariations: merchantNameVariations ?? [],
         imageUrl:               imageUrl.trim(),
@@ -1104,10 +1112,14 @@ router.patch(
     const template = await prisma.venueReceiptTemplate.findUnique({ where: { id: req.params.id } });
     if (!template) return res.status(404).json({ success: false, error: 'Receipt template not found' });
 
+    if (merchantName !== undefined && !merchantName.trim()) {
+      return res.status(400).json({ success: false, error: 'merchantName is required' });
+    }
+
     const data: Parameters<typeof prisma.venueReceiptTemplate.update>[0]['data'] = {};
     if (merchantName !== undefined) data.merchantName = merchantName.trim();
     if (merchantNameVariations !== undefined) data.merchantNameVariations = merchantNameVariations ?? [];
-    if (description !== undefined) data.description = description;
+    if (description !== undefined) data.description = description?.trim() ?? null;
     if (expectedKeywords !== undefined) data.expectedKeywords = expectedKeywords ?? [];
     if (isActive !== undefined) data.isActive = isActive;
 

@@ -100,11 +100,11 @@ export class CardService {
     // Check subscription
     const subscription = await subscriptionService.getActiveSubscription(card.userId);
 
-    if (newTier === 'BASIC' && subscription?.plan !== 'BASIC' && subscription?.plan !== 'PREMIUM') {
+    if (newTier === 'BASIC' && subscription?.plan !== 'BASIC' && (subscription?.plan as string) !== 'PREMIUM' && (subscription?.plan as string) !== 'PREMIUM_MONTHLY') {
       throw new Error('Basic card requires Basic or Premium subscription');
     }
 
-    if (newTier === 'PREMIUM' && subscription?.plan !== 'PREMIUM') {
+    if (newTier === 'PREMIUM' && (subscription?.plan as string) !== 'PREMIUM' && (subscription?.plan as string) !== 'PREMIUM_MONTHLY') {
       throw new Error('Premium card requires Premium subscription');
     }
 
@@ -230,9 +230,11 @@ export class CardService {
    * Generate card number (format: BOOM-XXXX-XXXX-XXXX)
    */
   private generateCardNumber(): string {
-    const part1 = Math.random().toString(36).substring(2, 6).toUpperCase();
-    const part2 = Math.random().toString(36).substring(2, 6).toUpperCase();
-    const part3 = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const cryptoMod = require('crypto');
+    const randomPart = () => cryptoMod.randomBytes(4).readUInt32BE(0).toString(36).substring(0, 4).toUpperCase().padStart(4, '0');
+    const part1 = randomPart();
+    const part2 = randomPart();
+    const part3 = randomPart();
     return `BOOM-${part1}-${part2}-${part3}`;
   }
 

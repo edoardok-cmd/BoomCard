@@ -152,7 +152,7 @@ describe('importPartnersFromSpreadsheet — venue auto-create', () => {
     const file = buildCsv(PARTNER_HEADERS, [[
       'Cafe Pirin', '', 'CAFE', '',
       '', '', '', '+359 88 111 1111', 'cafe@example.com',
-      '1 Main St', 'Sofia', '', '', '',
+      '1 Main St', 'Sofia', '', '42.6977', '23.3219',
       '', '', 'ACTIVE',
       '80', '3', '1',
     ]]);
@@ -181,7 +181,7 @@ describe('importPartnersFromSpreadsheet — venue auto-create', () => {
     const file = buildCsv(PARTNER_HEADERS, [[
       'Cafe Pirin', '', 'CAFE', '',
       '', '', '', '', 'cafe2@example.com',
-      '1 Main St', 'Sofia', '', '', '',
+      '1 Main St', 'Sofia', '', '42.6977', '23.3219',
       '', '', 'ACTIVE',
       '80.7', '3.5', '1',
     ]]);
@@ -224,7 +224,7 @@ describe('importPartnersFromSpreadsheet — venue auto-create', () => {
     const file = buildCsv(PARTNER_HEADERS, [[
       'Cafe Pirin', '', 'CAFE', '',
       '', '', '', '', 'cafe3@example.com',
-      '1 Main St', 'Sofia', '', '', '',
+      '1 Main St', 'Sofia', '', '42.6977', '23.3219',
       '', '', 'ACTIVE',
       '80', '3', '1',
     ]]);
@@ -244,7 +244,7 @@ describe('importPartnersFromSpreadsheet — venue auto-create', () => {
     const file = buildCsv(PARTNER_HEADERS, [[
       'No Email Partner', '', 'CAFE', '',
       '', '', '', '', '',
-      '1 Main St', 'Sofia', '', '', '',
+      '1 Main St', 'Sofia', '', '42.6977', '23.3219',
       '', '', 'ACTIVE',
       '80', '2', '1',
     ]]);
@@ -277,7 +277,7 @@ describe('importPartnersFromSpreadsheet — venue auto-create', () => {
     const file = buildCsv(PARTNER_HEADERS, [[
       'Cafe Pirin', '', 'CAFE', '',
       '', '', '', '', 'cafe5@example.com',
-      '1 Main St', 'Sofia', '', '', '',
+      '1 Main St', 'Sofia', '', '42.6977', '23.3219',
       '', '', 'ACTIVE',
       '80', '3', '1',
     ]]);
@@ -335,7 +335,7 @@ describe('importPartnersFromSpreadsheet — venue auto-create', () => {
     const file = buildCsv(PARTNER_HEADERS, [[
       'Rollback Cafe', '', 'CAFE', '',
       '', '', '', '', 'rb@example.com',
-      '1 Main St', 'Sofia', '', '', '',
+      '1 Main St', 'Sofia', '', '42.6977', '23.3219',
       '', '', 'ACTIVE',
       '80', '3', '1',
     ]]);
@@ -356,7 +356,7 @@ describe('importPartnersFromSpreadsheet — venue auto-create', () => {
     const file = buildCsv(PARTNER_HEADERS, [[
       'Cafe Pirin', '', 'CAFE', '',
       '', '', '', '', 'cafe6@example.com',
-      '1 Main St', 'Sofia', '', '', '',
+      '1 Main St', 'Sofia', '', '42.6977', '23.3219',
       '', '', 'ACTIVE',
       '80', '3', '1',
     ]]);

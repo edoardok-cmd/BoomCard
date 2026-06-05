@@ -6,6 +6,7 @@ import { paymentRateLimiter } from '../middleware/security.middleware';
 import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { WalletTransactionStatus, WalletTransactionType } from '@prisma/client';
+import { parsePagination } from '../utils/pagination';
 
 const router = Router();
 
@@ -25,17 +26,27 @@ router.get('/balance', asyncHandler(async (req: AuthRequest, res: Response) => {
 
 /**
  * GET /api/wallet/transactions
- * Get wallet transaction history
+ * Get wallet transaction history.
+ *
+ * F-012: Added ?status and ?period query params per spec §9.5.
+ *   ?status=PENDING|CLEARED|LOCKED|PAID|EXPIRED|VOIDED  — filter by cashbackStatus
+ *   ?period=7d|30d|all                                   — filter by createdAt relative window
  */
 router.get('/transactions', asyncHandler(async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
 
-  const { type, limit, offset } = req.query;
+  const { type, status, period } = req.query;
+
+  // Clamp limit/offset so a non-numeric/negative/zero/over-max value can never
+  // reach Prisma malformed (skip = the offset-derived value from parsePagination).
+  const { take: limit, skip: offset } = parsePagination(req.query, { defaultLimit: 50, maxLimit: 100 });
 
   const result = await walletService.getTransactions(userId, {
     type: type as any,
-    limit: limit ? parseInt(limit as string) : undefined,
-    offset: offset ? parseInt(offset as string) : undefined,
+    limit,
+    offset,
+    cashbackStatus: status as any,
+    period: period as any,
   });
 
   res.json(result);
@@ -76,6 +87,19 @@ const payoutAccountSchema = z.object({
 router.put('/payout-account', asyncHandler(async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
 
+  // F-002: Spec §1.2 — INACTIVE users must not be able to perform operational writes.
+  // Payout account update is an operational write path; block INACTIVE accounts.
+  const liveUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { status: true },
+  }).catch(() => null);
+  if ((liveUser?.status as string) === 'INACTIVE') {
+    return res.status(403).json({
+      success: false,
+      message: 'ACCOUNT_INACTIVE: Account is inactive. Contact support to reactivate.',
+    });
+  }
+
   const parseResult = payoutAccountSchema.safeParse(req.body);
   if (!parseResult.success) {
     return res.status(400).json({
@@ -91,48 +115,14 @@ router.put('/payout-account', asyncHandler(async (req: AuthRequest, res: Respons
   res.json({ success: true, iban, beneficiaryName });
 }));
 
-const payoutSchema = z.object({
-  iban: z
-    .string()
-    .transform((v) => v.replace(/\s+/g, '').toUpperCase())
-    .refine((v) => /^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/.test(v), 'Invalid IBAN format')
-    .optional(),
-  beneficiaryName: z.string().min(2).max(100).optional(),
-});
-
-/**
- * POST /api/wallet/payout
- * Request cashback payout.
- * Validates that the available balance meets the plan's minimum threshold,
- * then calls Paysera Transfer API to initiate a bank transfer.
- * Body: { iban?: string, beneficiaryName?: string }
- * If omitted, stored wallet IBAN is used (must have been set previously).
- */
-router.post('/payout', paymentRateLimiter, asyncHandler(async (req: AuthRequest, res: Response) => {
-  const userId = req.user!.id;
-
-  const parseResult = payoutSchema.safeParse(req.body);
-  if (!parseResult.success) {
-    return res.status(400).json({
-      success: false,
-      message: 'Invalid payout request',
-      errors: parseResult.error.issues,
-    });
-  }
-
-  const { iban, beneficiaryName } = parseResult.data;
-  const result = await walletService.requestPayout(userId, { iban, beneficiaryName });
-
-  // §6.1 v1.1 — the request now enters an admin review queue; the bank transfer
-  // fires only after approval, so the response no longer carries a transferId.
-  res.json({
-    success: true,
-    message: 'Заявката за изплащане е приета и очаква одобрение. Средствата ще постъпят по сметката ви в рамките на 3–5 работни дни след одобрение от администратор.',
-    amount: result.amount,
-    currency: result.currency,
-    status: result.status,
-  });
-}));
+// F-013: POST /api/wallet/payout user-facing endpoint REMOVED per spec §7.1.
+// Spec §7.1 states: "There is no user-initiated payout action — there is no
+// 'Request Payout' button or endpoint." Payouts are triggered automatically
+// by the nightly scheduler (jobs/scheduler.ts) or by admin approval flow.
+// The walletService.requestPayout() method is retained for internal/scheduler use only.
+// If an admin endpoint exists for manually triggering payouts, it is managed via
+// the admin routes (routes/adminPayouts.routes.ts) — only the user-accessible
+// path is removed here.
 
 /**
  * GET /api/wallet/statistics

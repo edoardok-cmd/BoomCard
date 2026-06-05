@@ -81,6 +81,32 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
       }
     }
 
+    if (decoded?.role === 'USER' || decoded?.role === 'PARTNER') {
+      const freshUser = await prisma.user.findUnique({
+        where: { id: decoded.userId ?? decoded.id },
+        select: { status: true },
+      }).catch(() => null);
+      const s = freshUser?.status as string | undefined;
+      if (s === 'ARCHIVED' || s === 'DELETED' || s === 'PENDING_VERIFICATION' || s === 'PENDING_PAYMENT') {
+        return res.status(401).json({ error: 'Account not accessible.' });
+      }
+    }
+
+    // Spec §1.2 / §5.1 / §11.2: Archived partner — no login, no operational
+    // access. partner.service.setPartnerStatus() updates Partner.status but NOT
+    // User.status, so the User.status check above is insufficient for the PARTNER
+    // role. Query Partner.status independently to close the gap.
+    if (decoded?.role === 'PARTNER' && decoded?.id) {
+      const partner = await prisma.partner.findUnique({
+        where: { userId: decoded.id },
+        select: { status: true },
+      }).catch(() => null);
+      const ps = partner?.status as string | undefined;
+      if (ps === 'ARCHIVED' || ps === 'REJECTED') {
+        return res.status(401).json({ error: 'Account not accessible.' });
+      }
+    }
+
     if (decoded?.id && decoded?.role) {
       touchUserActivity(decoded.id, decoded.role);
     }

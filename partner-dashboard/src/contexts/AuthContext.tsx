@@ -38,6 +38,7 @@ interface MePayload {
   emailVerified?: boolean;
   avatar?: string;
   impersonation?: { adminId: string; adminRole: string } | null;
+  partner_account_status?: 'Active' | 'Inactive' | 'Archived';
 }
 
 interface AuthSuccessPayload {
@@ -48,7 +49,10 @@ interface AuthSuccessPayload {
   switchableAccounts?: SwitchableAccount[];
   impersonation?: ImpersonationMeta;
   pendingVerification?: boolean;
+  // Backend (auth.service.ts) only ever emits 'SUSPENDED'; the previous
+  // 'PAUSED' member was never produced server-side. Narrowed to match.
   partnerRestriction?: 'SUSPENDED';
+  partner_account_status?: 'Active' | 'Inactive' | 'Archived';
 }
 
 type SwitchableAccountsResponse = Envelope<SwitchableAccount[]>;
@@ -123,6 +127,10 @@ export interface User {
   mustChangePassword?: boolean;
   // Admin-only: whether TOTP 2FA has been configured.
   twoFactorEnabled?: boolean;
+  // Spec §1.1, §5.1, §11.2 — partner lifecycle status.
+  // Active = full access, Inactive = read-only, Archived = no access.
+  // Only present for partner accounts. Used by PartnerStatusRoute and partner pages.
+  partner_account_status?: 'Active' | 'Inactive' | 'Archived';
 }
 
 // Backend emits roles in uppercase (USER|PARTNER|ADMIN|SUPER_ADMIN); this
@@ -157,6 +165,10 @@ export interface RegisterData {
   lastName: string;
   phone?: string;
   acceptTerms: boolean;
+  /** Spec §2.3 — required Privacy Policy consent for partner registrations.
+   * Boolean when provided; undefined for regular user registrations that
+   * do not present a separate Privacy Policy checkbox. */
+  acceptPrivacy?: boolean;
   accountType?: 'user' | 'partner';
   businessInfo?: {
     businessName: string;
@@ -168,8 +180,18 @@ export interface RegisterData {
     website?: string;
     city?: string;
     address?: string;
+    /** BC-PARTNER-FU1 — venue geolocation. Required by the backend onboard so the
+     * created venue is redeemable (offer redemption fails closed without these). */
+    latitude?: number;
+    longitude?: number;
     /** Spec §5.1 v1.1 — venue count bucket */
     requestObjectCount?: string;
+    /** Spec §2.3 — required participation tier (basic | active | growth) */
+    participationLevel?: string;
+    /** Spec §2.3 — optional free-text additional info */
+    additionalInfo?: string;
+    /** Spec §2.3 — optional marketing consent */
+    marketingConsent?: boolean;
   };
 }
 
@@ -426,6 +448,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               avatar: meData.avatar,
               mustChangePassword: (meData as any).mustChangePassword ?? false,
               twoFactorEnabled: (meData as any).twoFactorEnabled ?? false,
+              // Spec §1.2/§11.2: partner_account_status must survive page reloads
+              partner_account_status: meData.partner_account_status,
             };
             setUser(verifiedUser);
 
@@ -451,6 +475,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               });
             } else {
               setImpersonation(null);
+            }
+
+            // Refresh partnerRestriction from /auth/me so a mid-session
+            // suspension or reinstatement is applied on the next page load
+            // without requiring a full logout/login cycle. (B4 fix)
+            const freshRestriction = (meData as any).partnerRestriction ?? null;
+            setPartnerRestriction(freshRestriction);
+            if (freshRestriction) {
+              authStorage.setItem(PARTNER_RESTRICTION_KEY, freshRestriction, authStorage.isPersistent(TOKEN_KEY));
+            } else {
+              authStorage.removeItem(PARTNER_RESTRICTION_KEY);
             }
 
             // Refresh the switchable-accounts list so the UI reflects any
@@ -540,6 +575,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw new Error('No authentication token received');
         }
 
+        // Spec §1.2 / §12 Rule 1 — defense-in-depth: block Archived partner login
+        // at the frontend entry point before any tokens are written. PartnerStatusRoute
+        // provides the runtime gate, but if the backend ever returns a valid JWT for
+        // an Archived partner (regression or misconfiguration), this early-exit prevents
+        // a full session from being established.
+        const incomingStatus =
+          (userPayload as any).partner_account_status ??
+          (responseData as any).partner_account_status ??
+          (rawResponse as any).partner_account_status;
+        if (normalizeRole(userPayload.role) === 'partner' && incomingStatus === 'Archived') {
+          throw new Error('This account has been archived. Contact office@boomcard.bg for assistance.');
+        }
+
         // Store tokens — `persistent` routes every auth key to the matching
         // storage (local vs session) and wipes any stale copy in the other,
         // so toggling rememberMe across successive logins always honors the
@@ -567,6 +615,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           avatar: userPayload.avatar,
           mustChangePassword: (userPayload as any).mustChangePassword ?? false,
           twoFactorEnabled: (userPayload as any).twoFactorEnabled ?? false,
+          // Spec §1.2/§11.2: persist partner lifecycle status from login response.
+          // Probe both the nested user object and the top-level response envelope because
+          // some backend shapes return this field alongside the token rather than inside
+          // the user sub-object (mirrors the pattern used in loadUser()).
+          partner_account_status: incomingStatus,
         };
         setUser(user);
         authStorage.setItem(STORAGE_KEY, JSON.stringify(user), persistent);
@@ -614,6 +667,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Validate terms acceptance
       if (!data.acceptTerms) {
         throw new Error('You must accept the terms and conditions');
+      }
+      // Spec §2.3 — Privacy Policy consent is required for partner registrations.
+      // Regular user registration does not present a separate Privacy Policy checkbox
+      // so acceptPrivacy is only enforced when accountType is 'partner'.
+      if (data.accountType === 'partner' && !data.acceptPrivacy) {
+        throw new Error('You must accept the Privacy Policy');
       }
 
       // Call real API endpoint
@@ -776,6 +835,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Invalid switch response');
       }
 
+      // Spec §1.2 / §12 Rule 1 — defense-in-depth: block switching to an Archived partner
+      // account BEFORE writing any tokens to storage or setting them on apiService.
+      // login() and loginWithOAuth() already follow this pattern. Previously this check
+      // was placed AFTER the four storage/header writes; if the guard threw, the catch
+      // block re-threw without rolling back, leaving the Archived partner's token as the
+      // active API credential despite user React state still pointing to the previous account.
+      // Probe both the nested user object and the top-level response envelope for
+      // partner_account_status — mirrors login()'s more robust extraction so the
+      // Archived guard fires regardless of which backend response shape is returned.
+      const switchIncomingStatus =
+        (userPayload as any).partner_account_status ??
+        (responseData as any).partner_account_status ??
+        (rawResponse as any).partner_account_status;
+      if (normalizeRole(userPayload.role) === 'partner' && switchIncomingStatus === 'Archived') {
+        throw new Error('This account has been archived. Contact office@boomcard.bg for assistance.');
+      }
+
       authStorage.setItem(TOKEN_KEY, newToken, inheritPersistent);
       setToken(newToken);
       if (newRefreshToken) {
@@ -796,10 +872,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         avatar: userPayload.avatar,
         mustChangePassword: (userPayload as any).mustChangePassword ?? false,
         twoFactorEnabled: (userPayload as any).twoFactorEnabled ?? false,
+        // Spec §1.2/§11.2: preserve partner lifecycle status across account switches.
+        // Use the same multi-shape probe as the Archived guard above.
+        partner_account_status: switchIncomingStatus,
       };
       setUser(nextUser);
       authStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser), inheritPersistent);
       if (Array.isArray(switchable)) setSwitchableAccounts(switchable);
+
+      // LOW-2 fix (review r2ab): update partnerRestriction for the switched-to account
+      // so PartnerStatusBanner accurately reflects the new session's restriction state.
+      // All other auth flows (login, loadUser, reloadUser) already do this — account
+      // switch was the only path that carried the stale restriction forward.
+      const switchRestriction = responseData?.partnerRestriction ?? null;
+      if (switchRestriction) {
+        authStorage.setItem(PARTNER_RESTRICTION_KEY, switchRestriction, inheritPersistent);
+      } else {
+        authStorage.removeItem(PARTNER_RESTRICTION_KEY);
+      }
+      setPartnerRestriction(switchRestriction);
 
       const label = nextUser.role === 'admin'
         ? 'admin account'
@@ -861,6 +952,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
         emailVerified: userPayload.emailVerified ?? true,
         avatar: userPayload.avatar,
+        // Spec §1.2/§11.2: carry partner lifecycle status into impersonation session
+        partner_account_status: userPayload.partner_account_status,
       };
       setUser(nextUser);
       authStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser), inheritPersistent);
@@ -868,6 +961,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // sibling list from the admin session so the switcher hides.
       setSwitchableAccounts([]);
       setImpersonation(impersonationMeta);
+
+      // LOW-2 fix (review r2ab): update partnerRestriction from the impersonated
+      // partner's response so PartnerStatusBanner shows the correct restriction state.
+      // Admins bypass the status gate (isImpersonating check in PartnerStatusRoute),
+      // but the banner still reads partnerRestriction to show the restriction notice.
+      const impersonateRestriction = responseData?.partnerRestriction ?? null;
+      if (impersonateRestriction) {
+        authStorage.setItem(PARTNER_RESTRICTION_KEY, impersonateRestriction, inheritPersistent);
+      } else {
+        authStorage.removeItem(PARTNER_RESTRICTION_KEY);
+      }
+      setPartnerRestriction(impersonateRestriction);
 
       toast.success(`Impersonating ${nextUser.firstName} ${nextUser.lastName}`.trim() || `Impersonating ${nextUser.email}`);
     } catch (error) {
@@ -920,11 +1025,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         avatar: userPayload.avatar,
         mustChangePassword: (userPayload as any).mustChangePassword ?? false,
         twoFactorEnabled: (userPayload as any).twoFactorEnabled ?? false,
+        // Admin accounts do not have partner_account_status; restored session is admin-role
+        partner_account_status: userPayload.partner_account_status,
       };
       setUser(adminUser);
       authStorage.setItem(STORAGE_KEY, JSON.stringify(adminUser), inheritPersistent);
       setSwitchableAccounts(Array.isArray(switchable) ? switchable : []);
       setImpersonation(null);
+
+      // MEDIUM-1 fix (review r2ab): clear partnerRestriction when stopping impersonation.
+      // impersonate() writes the partner's restriction to state and storage; without
+      // this clear the restored admin session carries the impersonated partner's
+      // restriction value until the next page reload, potentially showing a stale
+      // partner-suspended banner to an admin. Mirrors what logout() already does.
+      setPartnerRestriction(null);
+      authStorage.removeItem(PARTNER_RESTRICTION_KEY);
 
       toast.success(t('auth.stoppedImpersonating'));
     } catch (error) {
@@ -945,11 +1060,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const rawResponse = await apiService.put<any>('/auth/profile', data);
       const payload = rawResponse?.data || rawResponse;
 
+      // SUGGESTION-2 fix (review r2aa): allowlist which fields the /auth/profile response
+      // can update instead of spreading the entire raw payload. Security-sensitive fields
+      // (rawRole, permissions, mustChangePassword, twoFactorEnabled, partner_account_status)
+      // are preserved from the in-memory user object so a compromised or misconfigured
+      // profile endpoint cannot silently overwrite admin security gate fields.
       setUser({
         ...user,
-        ...payload,
-        role: normalizeRole(payload.role),
+        // Allowed profile fields from the API response:
+        firstName: payload.firstName ?? user.firstName,
+        lastName: payload.lastName ?? user.lastName,
+        phone: payload.phone !== undefined ? payload.phone : user.phone,
+        city: payload.city !== undefined ? payload.city : user.city,
+        country: payload.country !== undefined ? payload.country : user.country,
+        avatar: payload.avatar !== undefined ? payload.avatar : user.avatar,
+        email: payload.email ?? user.email,
+        emailVerified: payload.emailVerified !== undefined ? payload.emailVerified : user.emailVerified,
         createdAt: payload.createdAt ? new Date(payload.createdAt).getTime() : user.createdAt,
+        // Security-sensitive fields: always preserved from in-memory state.
+        role: user.role,
+        rawRole: user.rawRole,
+        permissions: user.permissions,
+        mustChangePassword: user.mustChangePassword,
+        twoFactorEnabled: user.twoFactorEnabled,
+        // Explicitly guard partner_account_status: if the /auth/profile response omits
+        // or nulls this field (expected for profile updates), preserve the in-memory value.
+        // Prevents a backend regression from silently erasing the partner's access tier.
+        partner_account_status: user.partner_account_status,
       });
 
       toast.success(t('profile.savedSuccessfully'));
@@ -973,7 +1110,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
 
     try {
-      // Validate new password
+      // Validate new password against the change-password endpoint's real contract.
+      // changePasswordValidation (backend auth.validator.ts) enforces min 8 + uppercase
+      // + lowercase + digit + special char. The /reset-password flow now shares the
+      // SAME canonical policy (validatePasswordPolicy, min 8 + complexity) — there is
+      // no longer a separate min-10 rule anywhere. Keeping this in lockstep with the
+      // backend and with SettingsPage's inline validator (also min 8) avoids values
+      // that pass one gate and are rejected by another.
       if (newPassword.length < 8) {
         throw new Error('Password must be at least 8 characters');
       }
@@ -1049,11 +1192,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(null);
       setSwitchableAccounts([]);
       setImpersonation(null);
+      setPartnerRestriction(null);
       authStorage.removeItem(STORAGE_KEY);
       authStorage.removeItem(TOKEN_KEY);
       authStorage.removeItem(REFRESH_TOKEN_KEY);
       authStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
       authStorage.removeItem(IMPERSONATION_KEY);
+      authStorage.removeItem(PARTNER_RESTRICTION_KEY);
       if (typeof document !== 'undefined') {
         document.cookie = 'boomcard_session=; path=/; max-age=0; SameSite=Strict';
         document.cookie = 'boomcard_refresh=; path=/; max-age=0; SameSite=Strict';
@@ -1082,6 +1227,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw new Error('No authentication token received');
         }
 
+        // Spec §1.2 / §12 Rule 1 — defense-in-depth: block Archived partner OAuth login
+        // before any tokens are written to storage.
+        const oauthIncomingStatus = (response.user as any).partner_account_status as 'Active' | 'Inactive' | 'Archived' | undefined;
+        if (normalizeRole((response.user as any).role) === 'partner' && oauthIncomingStatus === 'Archived') {
+          throw new Error('This account has been archived. Contact office@boomcard.bg for assistance.');
+        }
+
         // Store tokens — OAuth has no rememberMe toggle, default persistent.
         authStorage.setItem(TOKEN_KEY, token, true);
         setToken(token);
@@ -1101,6 +1253,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ? (response.user as any).role.toUpperCase()
               : undefined,
           permissions: (response.user as any).permissions,
+          // Spec §1.2/§11.2: persist partner lifecycle status from OAuth login response
+          partner_account_status: oauthIncomingStatus,
         };
         setUser(oauthUser);
 
@@ -1182,7 +1336,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         permissions: meData.permissions ?? prev.permissions,
         mustChangePassword: (meData as any).mustChangePassword ?? prev.mustChangePassword,
         twoFactorEnabled: (meData as any).twoFactorEnabled ?? prev.twoFactorEnabled,
+        // Spec §1.2/§11.2: refresh partner lifecycle status so mid-session changes are reflected
+        partner_account_status: meData.partner_account_status ?? prev.partner_account_status,
       } : prev);
+      // Refresh partnerRestriction from /auth/me so a suspension or reinstatement
+      // that happens mid-session is picked up the next time reloadUser() is called.
+      const restriction = (meData as any).partnerRestriction ?? null;
+      setPartnerRestriction(restriction);
+      if (restriction) {
+        authStorage.setItem(PARTNER_RESTRICTION_KEY, restriction, authStorage.isPersistent(TOKEN_KEY));
+      } else {
+        authStorage.removeItem(PARTNER_RESTRICTION_KEY);
+      }
     } catch {
       // Non-fatal — stale state is fine if the reload fails
     }

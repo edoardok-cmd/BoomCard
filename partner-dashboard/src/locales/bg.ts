@@ -290,7 +290,7 @@ export const bg: TranslationKey = {
     emailRequired: 'Имейлът е задължителен',
     emailInvalid: 'Невалиден имейл адрес',
     phoneRequired: 'Телефонният номер е задължителен',
-    phoneInvalid: 'Невалиден телефонен номер (български формат)',
+    phoneInvalid: 'Въведете български телефонен номер: +359XXXXXXXXX или 0XXXXXXXXX',
     passwordRequired: 'Паролата е задължителна',
     passwordMinLength: 'Паролата трябва да е поне 8 символа',
     passwordNeedsUppercase: 'Паролата трябва да съдържа поне една главна буква',

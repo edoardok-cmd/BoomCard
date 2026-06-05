@@ -112,7 +112,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     prisma.systemSetting.findUnique({ where: { key: 'large_tx_threshold' } }),
     getPayoutThresholdBGN('BASIC'),
     getPayoutThresholdBGN('PREMIUM_WEEKLY'),
-    getPayoutThresholdBGN('PREMIUM'),
+    getPayoutThresholdBGN('PREMIUM_MONTHLY' as any),
   ]);
   const parseSetting = (raw: string | undefined, fallback: number): number => {
     if (!raw) return fallback;

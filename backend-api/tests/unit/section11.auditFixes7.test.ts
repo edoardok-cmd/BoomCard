@@ -610,16 +610,22 @@ describe('GAP-9 — DISPUTE ticket creation auto-links a Dispute record', () => 
     expect(disputeWindow).toMatch(/ticketId/);
   });
 
-  it('help.routes: DISPUTE auto-link is fire-and-forget (.catch on the promise)', () => {
+  it('help.routes: DISPUTE auto-link is fire-and-forget (detached with error handler)', () => {
     const src = readSource('../../src/routes/help.routes.ts');
     const createStart = src.indexOf("POST /api/help/ticket");
     const createEnd   = src.indexOf('\nrouter.get', createStart);
     const createSrc   = src.slice(createStart, createEnd > createStart ? createEnd : src.length);
 
-    // Must use .catch() so a Dispute create failure does not fail the ticket creation.
+    // The Dispute create must be fire-and-forget with an attached error handler
+    // so a Dispute create failure does not fail the ticket creation. This is now
+    // dispatched via detach(prisma.dispute.create(...), err => logger.error(...))
+    // (src/utils/detach.ts) — the determinism seam — which is the exact
+    // equivalent of the prior `.catch(err => ...)`. Accept either form.
     const disputeIdx  = createSrc.indexOf('prisma.dispute.create');
-    const catchWindow = createSrc.slice(disputeIdx, disputeIdx + 400);
-    expect(catchWindow).toMatch(/\.catch\(/);
+    // Include the `detach(` that immediately precedes the create call.
+    const winStart    = Math.max(0, disputeIdx - 16);
+    const catchWindow = createSrc.slice(winStart, disputeIdx + 400);
+    expect(catchWindow).toMatch(/\.catch\(|detach\(/);
   });
 
   it('partnerHelp.routes: prisma.dispute.create is called when requestType=DISPUTE', () => {

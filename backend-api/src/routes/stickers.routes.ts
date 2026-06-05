@@ -13,6 +13,7 @@ import { LocationType, ScanStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { validateAmount, validateGPSCoordinates, ValidationError } from '../utils/validation';
 import { checkLivePhoto } from '../utils/exifLivePhoto';
+import { parsePagination } from '../utils/pagination';
 
 // Spec §5.4 — QR/location management is admin-only. For GET endpoints that
 // remain accessible to partners (venue stickers, scans, analytics, config),
@@ -181,12 +182,12 @@ router.post('/scan', authenticate, async (req: Request, res: Response) => {
       payloadVersion,
     });
 
-    res.json({
+    // cashbackPercent omitted — internal Business Formula component (spec §11.3, Clash 10.6)
+    const { fraudScore: _fs, fraudReasons: _fr, specRiskLevel: _srl, ipAddress: _ip, userAgent: _ua, deviceFingerprint: _df, deviceFingerprintRaw: _dfr, ocrData: _od, receiptImageHash: _rih, cashbackPercent: _cp, ...safeScan } = scan as any;
+    res.status(200).json({
       success: true,
-      data: scan,
-      message: scan.fraudScore < 10
-        ? 'Scan initiated successfully. Please upload your receipt.'
-        : 'Scan requires manual review. Please upload your receipt.',
+      data: safeScan,
+      message: 'Scan initiated successfully. Please upload your receipt.',
     });
   } catch (error: any) {
     res.status(400).json({
@@ -287,9 +288,10 @@ router.post('/scan/:scanId/receipt', authenticate, uploadSingle, validateMagicBy
       imageBuffer: req.file.buffer,
     });
 
+    const { fraudScore: _rfs, fraudReasons: _rfr, specRiskLevel: _rsrl, ipAddress: _rip, userAgent: _rua, deviceFingerprint: _rdf, deviceFingerprintRaw: _rdfr, ocrData: _rod, receiptImageHash: _rrih, cashbackPercent: _rcp, ...safeReceiptScan } = scan as any;
     res.json({
       success: true,
-      data: scan,
+      data: safeReceiptScan,
       message: scan.status === 'APPROVED'
         ? `Cashback approved! You earned ${scan.cashbackAmount} BGN`
         : scan.status === 'MANUAL_REVIEW'
@@ -312,7 +314,8 @@ router.post('/scan/:scanId/receipt', authenticate, uploadSingle, validateMagicBy
 router.get('/my-scans', authenticate, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
-    const limit = parseInt(req.query.limit as string) || 50;
+    // Clamp untrusted limit before it reaches the service → Prisma. Default 50, cap 100.
+    const { limit } = parsePagination(req.query, { defaultLimit: 50, maxLimit: 100 });
 
     const scans = await stickerService.getScansByUser(userId, limit);
 
@@ -605,14 +608,20 @@ router.get('/venue/:venueId/scans', authenticate, authorize('PARTNER', 'ADMIN', 
   try {
     const { venueId } = req.params;
     if (!await assertPartnerOwnsVenue(req, venueId, res)) return;
-    const limit = parseInt(req.query.limit as string) || 100;
+    // Clamp untrusted limit before it reaches the service → Prisma. Default 100, cap 100.
+    const { limit } = parsePagination(req.query, { defaultLimit: 100, maxLimit: 100 });
 
     const scans = await stickerService.getScansByVenue(venueId, limit);
 
+    const safeScans = scans.map((s: any) => {
+      const { fraudScore: _fs, fraudReasons: _fr, specRiskLevel: _srl, ipAddress: _ip, userAgent: _ua, deviceFingerprint: _df, deviceFingerprintRaw: _dfr, ocrData: _od, receiptImageHash: _rih, ...safe } = s;
+      return safe;
+    });
+
     res.json({
       success: true,
-      data: scans,
-      count: scans.length,
+      data: safeScans,
+      count: safeScans.length,
     });
   } catch (error: any) {
     res.status(500).json({
@@ -631,7 +640,9 @@ router.get('/venue/:venueId/analytics', authenticate, authorize('PARTNER', 'ADMI
   try {
     const { venueId } = req.params;
     if (!await assertPartnerOwnsVenue(req, venueId, res)) return;
-    const days = parseInt(req.query.days as string) || 30;
+    const rawDays = parseInt(req.query.days as string);
+    // Cap at 365 days — unbounded values trigger full-table scans (r2e S2).
+    const days = Number.isFinite(rawDays) && rawDays > 0 ? Math.min(rawDays, 365) : 30;
 
     const analytics = await stickerService.getVenueAnalytics(venueId, days);
 
@@ -657,11 +668,21 @@ router.get('/venue/:venueId/config', authenticate, authorize('PARTNER', 'ADMIN',
     const { venueId } = req.params;
     if (!await assertPartnerOwnsVenue(req, venueId, res)) return;
 
-    const config = await stickerService.getOrCreateVenueConfig(venueId);
+    const rawConfig = await stickerService.getOrCreateVenueConfig(venueId);
+    const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
+
+    // Spec §11.3, Clash 10.6: cashback formula components are internal-only
+    const data = isAdmin ? rawConfig : (() => {
+      const { cashbackPercent: _c, premiumBonus: _p, platinumBonus: _pl,
+              maxCashbackPerScan: _m, autoApproveThreshold: _a,
+              autoRejectThreshold: _ar, gpsVerificationEnabled: _g,
+              gpsRadiusMeters: _gr, ocrVerificationEnabled: _o, ...safe } = rawConfig as any;
+      return safe;
+    })();
 
     res.json({
       success: true,
-      data: config,
+      data,
     });
   } catch (error: any) {
     res.status(500).json({
@@ -991,7 +1012,7 @@ const BULK_SCAN_LIMIT = 500;
  * Body: { scanIds: string[] }
  * Replaces N parallel single-approve calls from the admin UI.
  */
-router.post('/admin/bulk-approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+router.post('/admin/bulk-approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
     const { scanIds } = req.body as { scanIds?: unknown };
     if (!Array.isArray(scanIds) || scanIds.length === 0 || !scanIds.every((id) => typeof id === 'string')) {
@@ -1000,7 +1021,8 @@ router.post('/admin/bulk-approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN
     if (scanIds.length > BULK_SCAN_LIMIT) {
       return res.status(400).json({ success: false, error: `Cannot process more than ${BULK_SCAN_LIMIT} scans per request` });
     }
-    const result = await stickerService.bulkApprove(scanIds as string[]);
+    // Thread actorUserId so each per-scan audit log records the approving admin (r2e S3).
+    const result = await stickerService.bulkApprove(scanIds as string[], req.user?.id ?? null);
     res.json({ success: true, ...result, message: `${result.successCount} scans approved, ${result.errorCount} errors` });
   } catch (error: any) {
     res.status(400).json({ success: false, error: error?.message || 'Failed to bulk approve scans' });

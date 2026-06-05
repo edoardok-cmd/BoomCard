@@ -15,6 +15,7 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 
 import { logger } from './utils/logger';
 import { startMerchantVerificationWorker } from './queues/merchantVerification.worker';
+import { detach } from './utils/detach';
 
 async function main() {
   if (!process.env.REDIS_URL) {
@@ -39,7 +40,7 @@ async function main() {
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
 }
 
-main().catch((err) => {
+detach(main(), (err: any) => {
   logger.error(`Worker startup failed: ${err?.message ?? err}`);
   process.exit(1);
 });

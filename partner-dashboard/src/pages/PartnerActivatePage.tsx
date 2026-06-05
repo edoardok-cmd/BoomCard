@@ -3,14 +3,14 @@
  *
  * Two-phase flow:
  *   1. Verify the token (GET /api/partners/activation/:token/verify). Shows
- *      the partner name and a password-set form. The form is OPTIONAL for
- *      self-registered partners (who chose a password at /register); it is
- *      effectively REQUIRED for admin-onboarded partners (whose only
- *      credential is the temp password they were never shown). The UI keeps
- *      the field optional but encourages setting one.
+ *      the partner name and a password-set form. The password is REQUIRED for
+ *      every partner — none is collected at registration (RegisterPartnerPage
+ *      asks for no password, and admin-onboarded partners only have a random
+ *      temp password they were never shown). Every partner sets their password
+ *      here at activation.
  *   2. Submit the form (POST /api/auth/partner/activate). The backend
  *      consumes the token, stamps verifiedAt, advances PENDING → ACTIVE,
- *      and sets the password if supplied — all atomically.
+ *      and sets the password — all atomically.
  *
  * On failure (expired / already used / invalid) we point the partner to
  * office@boomcard.bg — partners have no self-service resend, only admins do.
@@ -101,10 +101,6 @@ interface VerifyResult {
   valid: boolean;
   partner?: { id: string; businessName: string };
   expiresAt?: string;
-  // Spec §5.2 v1.1 — true for admin-onboarded partners who never chose a
-  // password. UI MUST require the password form in that case or they're
-  // locked out post-consume (token spent, no usable credential).
-  mustSetPassword?: boolean;
   error?: string;
 }
 
@@ -116,7 +112,6 @@ export default function PartnerActivatePage() {
 
   const [phase, setPhase] = useState<Phase>('verifying');
   const [businessName, setBusinessName] = useState<string | null>(null);
-  const [mustSetPassword, setMustSetPassword] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -134,7 +129,6 @@ export default function PartnerActivatePage() {
         if (cancelled) return;
         if (data?.valid && data.partner) {
           setBusinessName(data.partner.businessName);
-          setMustSetPassword(data.mustSetPassword === true);
           setPhase('ready');
         } else {
           setErrorMsg(data?.error || (isBg ? 'Невалиден или изтекъл линк.' : 'Invalid or expired link.'));
@@ -155,11 +149,9 @@ export default function PartnerActivatePage() {
     e.preventDefault();
     if (!token) return;
 
-    // Spec §5.2 v1.1 — admin-onboarded partners MUST set a password here or
-    // they'll be locked out (the temp password is random and never shown).
-    // Self-registered partners may skip (they already chose one).
-    const wantsPassword = mustSetPassword || password.length > 0 || confirmPassword.length > 0;
-    if (mustSetPassword && password.length === 0) {
+    // Every partner sets their password here at activation — none is collected
+    // at registration. The password is always REQUIRED.
+    if (password.length === 0) {
       setErrorMsg(
         isBg
           ? 'Моля изберете парола за партньорския панел.'
@@ -167,22 +159,34 @@ export default function PartnerActivatePage() {
       );
       return;
     }
-    if (wantsPassword) {
-      if (password.length < 8) {
-        setErrorMsg(isBg ? 'Паролата трябва да е поне 8 символа.' : 'Password must be at least 8 characters.');
-        return;
-      }
-      if (password !== confirmPassword) {
-        setErrorMsg(isBg ? 'Паролите не съвпадат.' : 'Passwords do not match.');
-        return;
-      }
+    // Canonical password policy (matches backend registerValidation /
+    // changePasswordValidation / partner-activate): min 8 chars + uppercase +
+    // lowercase + digit + special character.
+    if (password.length < 8) {
+      setErrorMsg(isBg ? 'Паролата трябва да е поне 8 символа.' : 'Password must be at least 8 characters.');
+      return;
+    }
+    const hasLower = /[a-z]/.test(password);
+    const hasUpper = /[A-Z]/.test(password);
+    const hasNumber = /\d/.test(password);
+    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+    if (!hasLower || !hasUpper || !hasNumber || !hasSpecial) {
+      setErrorMsg(
+        isBg
+          ? 'Паролата трябва да съдържа главна, малка буква, цифра и специален символ.'
+          : 'Password must include an uppercase letter, a lowercase letter, a number, and a special character.',
+      );
+      return;
+    }
+    if (password !== confirmPassword) {
+      setErrorMsg(isBg ? 'Паролите не съвпадат.' : 'Passwords do not match.');
+      return;
     }
     setErrorMsg('');
     setPhase('submitting');
 
     try {
-      const payload: { token: string; password?: string } = { token };
-      if (wantsPassword) payload.password = password;
+      const payload: { token: string; password: string } = { token, password };
       await apiService.post('/auth/partner/activate', payload);
       setPhase('success');
     } catch (err: any) {
@@ -242,19 +246,13 @@ export default function PartnerActivatePage() {
       <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>🎉</div>
       <Title>{isBg ? 'Активирайте партньорския панел' : 'Activate your partner dashboard'}</Title>
       <Body>
-        {mustSetPassword
-          ? (isBg
-              ? `Партньорството${businessName ? ` за „${businessName}"` : ''} е одобрено. Изберете парола, за да приключите активирането и да можете да влезете в партньорския панел.`
-              : `Your partner account${businessName ? ` for "${businessName}"` : ''} has been approved. Choose a password to finish activating and access the partner dashboard.`)
-          : (isBg
-              ? `Партньорството${businessName ? ` за „${businessName}"` : ''} е одобрено. Можете да активирате с паролата, която сте задали при регистрация, или да зададете нова по-долу.`
-              : `Your partner account${businessName ? ` for "${businessName}"` : ''} has been approved. You can activate with the password you chose at registration, or set a new one below.`)}
+        {isBg
+          ? `Партньорството${businessName ? ` за „${businessName}"` : ''} е одобрено. Изберете парола, за да приключите активирането и да можете да влезете в партньорския панел.`
+          : `Your partner account${businessName ? ` for "${businessName}"` : ''} has been approved. Choose a password to finish activating and access the partner dashboard.`}
       </Body>
       <Form onSubmit={handleSubmit}>
         <Label htmlFor="password">
-          {mustSetPassword
-            ? (isBg ? 'Нова парола *' : 'New password *')
-            : (isBg ? 'Нова парола (по желание)' : 'New password (optional)')}
+          {isBg ? 'Нова парола *' : 'New password *'}
         </Label>
         <Input
           id="password"
@@ -263,13 +261,12 @@ export default function PartnerActivatePage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           minLength={8}
-          placeholder={isBg ? 'Поне 8 символа' : 'At least 8 characters'}
+          placeholder={isBg ? 'Поне 8 символа, главна, малка, цифра, символ' : 'Min 8 chars, upper, lower, number, symbol'}
           disabled={submitting}
-          required={mustSetPassword}
+          required
         />
         <Label htmlFor="confirm">
-          {isBg ? 'Потвърдете паролата' : 'Confirm password'}
-          {mustSetPassword ? ' *' : ''}
+          {isBg ? 'Потвърдете паролата' : 'Confirm password'} *
         </Label>
         <Input
           id="confirm"
@@ -279,16 +276,12 @@ export default function PartnerActivatePage() {
           onChange={(e) => setConfirmPassword(e.target.value)}
           minLength={8}
           disabled={submitting}
-          required={mustSetPassword}
+          required
         />
         <Hint>
-          {mustSetPassword
-            ? (isBg
-                ? 'Паролата е задължителна — този акаунт е създаден от администратор и няма съществуваща парола.'
-                : 'A password is required — this account was created by an admin and has no existing password.')
-            : (isBg
-                ? 'Ако вече сте задали парола при регистрация, можете да оставите полетата празни.'
-                : 'If you set a password at registration, you can leave these fields blank.')}
+          {isBg
+            ? 'Паролата е задължителна — задавате я тук при активиране на акаунта.'
+            : 'A password is required — you set it here when activating your account.'}
         </Hint>
         {errorMsg && <Error>{errorMsg}</Error>}
         <PrimaryButton type="submit" disabled={submitting}>

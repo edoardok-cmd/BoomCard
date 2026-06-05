@@ -198,6 +198,10 @@ export const SECURITY_CONFIG = {
     EMAIL_VERIFICATION_EXPIRY: 24 * 60 * 60 * 1000, // 24 hours
     // Spec §9.5 — partner activation link (admin-issued, one-time).
     PARTNER_ACTIVATION_EXPIRY_MS: 72 * 60 * 60 * 1000, // 72 hours
+    // Minimum password length enforced at every credential-setting boundary
+    // (auth route, activation link service, password-reset service). All three
+    // must reference this constant so they never drift apart.
+    MIN_PASSWORD_LENGTH: 10,
   },
 
   // Fraud Detection

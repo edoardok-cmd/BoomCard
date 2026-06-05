@@ -260,11 +260,11 @@ describe('§14.2 Cashback validity — credit() sets 60-day expiry', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('§14.3 Cashback caps — calculateCashback() enforces rolling windows', () => {
-  // Venue at 20% discount, PREMIUM plan → 16% cashback = 16 BGN on 100 BGN
+  // Venue at 20% discount, PREMIUM_MONTHLY plan → 16% cashback = 16 BGN on 100 BGN
   const baseParams = {
     venueId: 'venue-1',
     amount: 100,
-    cardTier: 'PREMIUM' as const,
+    cardTier: 'PREMIUM_MONTHLY' as const,
     userId: 'u-1',
   };
 

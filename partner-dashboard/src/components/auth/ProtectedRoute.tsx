@@ -72,6 +72,15 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   // Role-based access control
   if (requiredRole && user) {
+    // SUGGESTION-1 fix (review r2aa): when the required role is 'user', admins must
+    // NOT bypass the gate. The subscription route uses requiredRole="user" with an
+    // explicit comment that admins must be blocked from user-facing billing flows
+    // (retry-payment, cancel, reactivate mutations). The previous blanket admin bypass
+    // (user.role !== 'admin') made that enforcement aspirational — admins could reach
+    // the subscription page and trigger billing mutations.
+    if (requiredRole === 'user' && user.role !== 'user') {
+      return <Navigate to="/" replace />;
+    }
     if (user.role !== requiredRole && user.role !== 'admin') {
       return <Navigate to="/dashboard" replace />;
     }

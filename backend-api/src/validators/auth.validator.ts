@@ -3,6 +3,38 @@ import { body } from 'express-validator';
 const PHONE_REGEX = /^(\+359|0)\d{9}$/;
 
 /**
+ * Canonical password policy (single source of truth for ALL password-setting
+ * endpoints): minimum 8 characters AND at least one uppercase, one lowercase,
+ * one digit, and one special character. registerValidation /
+ * changePasswordValidation already enforce this inline; the helpers below let
+ * the non-express-validator endpoints (partner activate, complete-profile,
+ * reset-password) enforce the exact same rule instead of a length-only check.
+ */
+export const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_UPPER = /[A-Z]/;
+const PASSWORD_LOWER = /[a-z]/;
+const PASSWORD_DIGIT = /[0-9]/;
+const PASSWORD_SPECIAL = /[^A-Za-z0-9]/;
+
+/**
+ * Validate a candidate password against the canonical policy. Returns null when
+ * the password is acceptable, or a human-readable error message otherwise.
+ * Use from inline / non-express-validator paths so every endpoint shares one
+ * rule. Mirrors the messages used by registerValidation.
+ */
+export function validatePasswordPolicy(password: unknown): string | null {
+  if (typeof password !== 'string') return 'Password must be a string';
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    return `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
+  }
+  if (!PASSWORD_UPPER.test(password)) return 'Password must contain at least one uppercase letter';
+  if (!PASSWORD_LOWER.test(password)) return 'Password must contain at least one lowercase letter';
+  if (!PASSWORD_DIGIT.test(password)) return 'Password must contain at least one number';
+  if (!PASSWORD_SPECIAL.test(password)) return 'Password must contain at least one special character';
+  return null;
+}
+
+/**
  * Sanitizer: converts empty/whitespace-only phone strings to null
  */
 const phoneSanitizer = body('phone').customSanitizer(
@@ -38,14 +70,21 @@ export const registerValidation = [
     .matches(/[^A-Za-z0-9]/)
     .withMessage('Password must contain at least one special character'),
 
+  // Registration requires a name — leaving these .optional() let a missing
+  // firstName/lastName reach Prisma and surface as a 500. Required + 2-50 length
+  // (same rule as updateProfileValidation) so a missing name returns a clean 400.
   body('firstName')
-    .optional()
+    .notEmpty()
+    .withMessage('First name is required')
+    .bail()
     .trim()
     .isLength({ min: 2, max: 50 })
     .withMessage('First name must be 2-50 characters'),
 
   body('lastName')
-    .optional()
+    .notEmpty()
+    .withMessage('Last name is required')
+    .bail()
     .trim()
     .isLength({ min: 2, max: 50 })
     .withMessage('Last name must be 2-50 characters'),
@@ -146,6 +185,33 @@ export const registerValidation = [
     .optional({ values: 'falsy' })
     .isIn(['1', '2-5', '6-10', '11+'])
     .withMessage('businessInfo.requestObjectCount must be one of: 1, 2-5, 6-10, 11+'),
+
+  // Spec §2.3 — Ниво на участие (required for partner applications). Whitelisted
+  // against the three canonical values the public form renders so a tampered
+  // submission cannot persist an arbitrary string onto the Partner row.
+  body('businessInfo.participationLevel')
+    .if(body('accountType').equals('partner'))
+    .notEmpty()
+    .withMessage('businessInfo.participationLevel is required')
+    .bail()
+    .isIn(['basic', 'active', 'growth'])
+    .withMessage('businessInfo.participationLevel must be one of: basic, active, growth'),
+
+  // Spec §2.3 — free-text additional notes (optional).
+  body('businessInfo.additionalInfo')
+    .optional({ values: 'falsy' })
+    .isString()
+    .trim()
+    .isLength({ max: 2000 })
+    .withMessage('businessInfo.additionalInfo must be at most 2000 characters'),
+
+  // Spec §2.3 — Privacy Policy consent is a SEPARATE required consent from Terms
+  // for partner applications. Must be exactly true; reject the registration
+  // otherwise (acceptPrivacy is sent at the top level, alongside acceptTerms).
+  body('acceptPrivacy')
+    .if(body('accountType').equals('partner'))
+    .custom((value) => value === true)
+    .withMessage('You must accept the Privacy Policy to register as a partner'),
 ];
 
 export const loginValidation = [

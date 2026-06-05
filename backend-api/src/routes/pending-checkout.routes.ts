@@ -13,6 +13,7 @@ import { logger } from '../utils/logger';
 import crypto from 'crypto';
 import { z } from 'zod';
 import { paymentRateLimiter } from '../middleware/security.middleware';
+import { detach } from '../utils/detach';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production'
   ? (() => { throw new Error('FRONTEND_URL must be set in production'); })()
@@ -279,21 +280,21 @@ async function handleCheckoutCallback(req: Request, res: Response) {
 
       // §7.2: Send two separate emails — payment receipt first, then profile-setup invite.
       const pendingLanguage: 'bg' | 'en' = pending.language === 'en' ? 'en' : 'bg';
-      emailService.sendPaymentReceiptEmail(pending.email, {
+      detach(emailService.sendPaymentReceiptEmail(pending.email, {
         planName: pending.plan.displayName,
         planNameBg: pending.plan.displayNameBg ?? undefined,
         orderId: result.orderId,
         amount: result.amount ? result.amount / 100 : undefined,
         currency: 'EUR',
-      }, pendingLanguage).catch(err => logger.error('Failed to send payment receipt email:', err));
+      }, pendingLanguage), err => logger.error('Failed to send payment receipt email:', err));
 
-      emailService.sendCompleteProfileEmail(pending.email, {
+      detach(emailService.sendCompleteProfileEmail(pending.email, {
         planName: pending.plan.displayName,
         planNameBg: pending.plan.displayNameBg ?? undefined,
         completeProfileUrl: `${FRONTEND_URL}/complete-profile?token=${token}`,
         // Spec §7.1: BG default, EN only when the user explicitly used the EN UI at checkout.
         language: pendingLanguage,
-      }).catch(err => logger.error('Failed to send complete-profile email:', err));
+      }), err => logger.error('Failed to send complete-profile email:', err));
 
     } else if (result.status === 'failed' || result.status === 'cancelled') {
       // Only update if not already in a terminal state
@@ -306,13 +307,13 @@ async function handleCheckoutCallback(req: Request, res: Response) {
 
         // Send payment failed notification
         if (pending.email) {
-          emailService.sendPaymentFailedEmail(pending.email, {
+          detach(emailService.sendPaymentFailedEmail(pending.email, {
             customerName: pending.email.split('@')[0],
             orderId: result.orderId,
             amount: result.amount ? result.amount / 100 : 0,
             currency: 'EUR',
             reason: result.status as 'failed' | 'cancelled',
-          }).catch(err => logger.error('Failed to send checkout payment failed email:', err));
+          }), err => logger.error('Failed to send checkout payment failed email:', err));
         }
       }
     }

@@ -31,7 +31,7 @@
  */
 
 import cron from 'node-cron';
-import { WalletTransactionType, WalletTransactionStatus, SubscriptionStatus, SubscriptionPlan, CashbackEntryStatus } from '@prisma/client';
+import { WalletTransactionType, WalletTransactionStatus, SubscriptionStatus, SubscriptionPlan, CashbackEntryStatus, PartnerRequestStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { emailService } from '../services/email.service';
@@ -47,6 +47,7 @@ import { CASHBACK_VALIDITY_DAYS } from '../constants/receipt.constants';
 import { writeAudit } from '../middleware/audit.middleware';
 import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo } from '../services/ticketEmail.service';
 import { expireStalePendingCashback } from '../services/cashbackLifecycle.service';
+import { detach } from '../utils/detach';
 
 const CASHBACK_EXPIRY_BATCH = 10;
 
@@ -270,12 +271,11 @@ async function runCashbackExpiry(): Promise<void> {
     processedWallets >= CASHBACK_EXPIRY_ANOMALY_WALLETS ||
     totalExpiredBGN >= CASHBACK_EXPIRY_ANOMALY_BGN
   ) {
-    notificationService
+    detach(notificationService
       .notifyAdminCashbackExpiryAnomaly({
         walletsAffected: processedWallets,
         totalExpiredBGN,
-      })
-      .catch((err) => logger.error('[cashback-expiry] Failed to notify admin anomaly:', err));
+      }), (err) => logger.error('[cashback-expiry] Failed to notify admin anomaly:', err));
   }
 }
 
@@ -679,8 +679,7 @@ async function sendPartnerMonthlyStatements(): Promise<void> {
         cashbackOwedBGN,
       });
       if (partner.userId) {
-        fireAutomation('billing.month_end', { userId: partner.userId })
-          .catch((err) => logger.error(`[partner-monthly-statement] billing.month_end automation failed for partner ${partner.id}:`, err));
+        detach(fireAutomation('billing.month_end', { userId: partner.userId }), (err) => logger.error(`[partner-monthly-statement] billing.month_end automation failed for partner ${partner.id}:`, err));
       }
       sent++;
     } catch (err) {
@@ -833,11 +832,9 @@ async function resolveTrialPendingCashback(): Promise<void> {
         const threshold = await getPayoutThresholdBGN(plan);
         const preBal = updatedWallet.availableBalance - totalAmount;
         if (preBal < threshold && updatedWallet.availableBalance >= threshold) {
-          notificationService
-            .notifyPayoutReady({ userId: wallet.userId, availableBalance: updatedWallet.availableBalance, threshold })
-            .catch((err) => logger.error(`[trial-pending-cashback] payout-ready notify failed for ${wallet.userId}:`, err));
-          fireAutomation('cashback.threshold_reached', { userId: wallet.userId })
-            .catch((err) => logger.error(`[trial-pending-cashback] cashback.threshold_reached automation failed for ${wallet.userId}:`, err));
+          detach(notificationService
+            .notifyPayoutReady({ userId: wallet.userId, availableBalance: updatedWallet.availableBalance, threshold }), (err) => logger.error(`[trial-pending-cashback] payout-ready notify failed for ${wallet.userId}:`, err));
+          detach(fireAutomation('cashback.threshold_reached', { userId: wallet.userId }), (err) => logger.error(`[trial-pending-cashback] cashback.threshold_reached automation failed for ${wallet.userId}:`, err));
         }
       } catch (err) {
         logger.error(`[trial-pending-cashback] payout threshold check failed for ${wallet.userId}:`, err);
@@ -944,7 +941,7 @@ export async function syncMarketingListSizes(): Promise<void> {
         where: {
           marketingConsentEmail: true,
           status: { not: 'DELETED' as any },
-          subscriptions: { some: { status: { in: ['ACTIVE', 'TRIALING'] }, plan: { in: ['PREMIUM', 'PREMIUM_WEEKLY'] } } },
+          subscriptions: { some: { status: { in: ['ACTIVE', 'TRIALING'] }, plan: { in: ['PREMIUM_MONTHLY', 'PREMIUM_WEEKLY'] as any } } },
         },
       }),
     basic_holders: () =>
@@ -1009,9 +1006,8 @@ export async function syncMarketingListSizes(): Promise<void> {
 function alertSchedulerFailure(jobName: string, err: unknown): void {
   const message = err instanceof Error ? err.message : String(err);
   logger.error(`[${jobName}] Unhandled error in scheduled run:`, err);
-  notificationService
-    .notifyAdminSchedulerFailure({ jobName, errorMessage: message })
-    .catch((notifyErr) => logger.error(`[${jobName}] Failed to post scheduler-failure alert:`, notifyErr));
+  detach(notificationService
+    .notifyAdminSchedulerFailure({ jobName, errorMessage: message }), (notifyErr) => logger.error(`[${jobName}] Failed to post scheduler-failure alert:`, notifyErr));
 }
 
 // ── Cashback expiry warning ────────────────────────────────────────────────────
@@ -1068,6 +1064,26 @@ async function notifyCashbackExpiring(): Promise<void> {
     try {
       const wallet = await prisma.wallet.findUnique({ where: { id: walletId }, select: { userId: true } });
       if (!wallet) continue;
+
+      // F-019: Direct notification via notificationService — mandatory per spec.
+      // The spec requires cashback expiry warnings to reach the user regardless of
+      // automation config. This direct call ensures delivery even when the automation
+      // system is unconfigured or inactive. The automation call below is belt-and-suspenders.
+      const expiringTx = await prisma.walletTransaction.findFirst({
+        where: {
+          walletId,
+          cashbackStatus: { in: ['CLEARED', null] } as any,
+          cashbackExpiresAt: { gte: warnFrom, lte: warnUntil },
+        },
+        select: { cashbackExpiresAt: true },
+        orderBy: { cashbackExpiresAt: 'asc' },
+      });
+      if (expiringTx?.cashbackExpiresAt) {
+        detach(notificationService
+          .notifyCashbackExpiringSoon(wallet.userId, expiringTx.cashbackExpiresAt), (err) => logger.error(`[cashback-expiring-warning] notifyCashbackExpiringSoon failed for user ${wallet.userId}:`, err));
+      }
+
+      // Keep automation dispatch as secondary channel (belt-and-suspenders).
       await fireAutomation('cashback.expiring', { userId: wallet.userId });
       fired++;
     } catch (err) {
@@ -1204,17 +1220,26 @@ async function remindExpiringActivationLinks(): Promise<void> {
 // cooldown so we don't spam on every tick).
 
 async function escalateOverduePartnerSla(): Promise<void> {
+  // Spec §1.6: SLA clock starts at application submission (createdAt), not at
+  // partner activation (joinedAt). Use Prisma enum constants — after `prisma generate`
+  // with @map directives, Prisma will return the TypeScript enum key ("APPROVED"/"REJECTED")
+  // not the Bulgarian DB storage value ("ODOBRENA"/"OTKAZANA"). Raw string comparisons
+  // silently produce wrong results after regeneration (HIGH-1 r2n).
+  // The current generated client still uses the old Bulgarian keys; referencing via
+  // PartnerRequestStatus enum means only two renames are needed post-generate instead of
+  // grep-fixing scattered raw strings.
+  // TODO: after `prisma generate` rename ODOBRENA→APPROVED and OTKAZANA→REJECTED here.
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const overduePartners = await prisma.partner.findMany({
     where: {
-      joinedAt: { lte: cutoff },
+      createdAt: { lte: cutoff },
       requestStatus: {
-        notIn: ['ODOBRENA', 'OTKAZANA'],
+        notIn: [PartnerRequestStatus.APPROVED, PartnerRequestStatus.REJECTED],
         not: null,
       },
     },
-    select: { id: true, businessName: true, joinedAt: true, requestStatus: true },
+    select: { id: true, businessName: true, createdAt: true, requestStatus: true },
   });
 
   if (overduePartners.length === 0) {
@@ -1225,7 +1250,7 @@ async function escalateOverduePartnerSla(): Promise<void> {
   logger.info(`[partner-sla-escalation] ${overduePartners.length} overdue partner application(s)`);
 
   for (const partner of overduePartners) {
-    const hoursElapsed = Math.round((Date.now() - partner.joinedAt.getTime()) / 36e5 * 10) / 10;
+    const hoursElapsed = Math.round((Date.now() - partner.createdAt.getTime()) / 36e5 * 10) / 10;
     try {
       await notificationService.notifyAdminOps({
         opsType: `partner-sla-overdue-${partner.id}`,
@@ -1317,14 +1342,14 @@ export async function autoCloseResolvedTickets(): Promise<void> {
 
     // Audit one row per actually-closed ticket only.
     for (const t of closedTickets) {
-      writeAudit({
+      detach(writeAudit({
         actorUserId: null,
         action: 'ticket.auto_close',
         objectType: 'ticket',
         objectId: t.id,
         before: { status: 'RESOLVED' },
         after: { status: 'CLOSED', reason: 'auto-close: 7 days without reply after RESOLVED' },
-      }).catch(() => {});
+      }), () => {});
     }
 
     // Notify each creator — all notifications in the batch start concurrently and
@@ -1402,11 +1427,12 @@ export function registerScheduledJobs(): void {
 
   logger.info('[scheduler] Registered: cashback-expiry (0 2 * * *)');
 
-  // 2:05 AM every day — expire PENDING cashback entries older than 60 days.
-  // Spec §4.4: Pending cashback stays pending until subscription recovery OR
-  // natural expiry by the 60-day rule. Because PENDING entries have no clearedAt,
-  // we age them from createdAt. Runs 5 minutes after cashback-expiry to avoid
-  // contention on the wallet_transactions table.
+  // 2:05 AM every day — stale-pending-cashback-expiry job slot.
+  // Spec §8.2 / §1.3: Pending cashback NEVER expires — only Cleared cashback has
+  // a 60-day countdown (from clearedAt). expireStalePendingCashback() intentionally
+  // throws so this cron is a safe no-op. The cron registration is kept in case
+  // the spec position changes; alertSchedulerFailure records the throw for ops
+  // visibility. No Pending entries are modified by this run.
   cron.schedule('5 2 * * *', () => {
     expireStalePendingCashback(null).catch((err) => alertSchedulerFailure('stale-pending-cashback-expiry', err));
   }, { timezone: 'Europe/Sofia' });

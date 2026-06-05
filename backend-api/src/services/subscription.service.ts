@@ -6,6 +6,8 @@ import { cardService } from './card.service';
 import { walletService } from './wallet.service';
 import { emailService } from './email.service';
 import { writeAudit } from '../middleware/audit.middleware';
+import { AppError } from '../middleware/error.middleware';
+import { notificationService } from './notification.service';
 
 /**
  * Spec §4.2 v1.1 — when a user gains a new ACTIVE/TRIALING subscription, any
@@ -47,14 +49,14 @@ export async function clearFailedPaymentSubsForUser(
   }
 
   for (const f of failed) {
-    writeAudit({
+    detach(writeAudit({
       actorUserId,
       action: 'SUBSCRIPTION_FAILED_PAYMENT_CLEARED',
       objectType: 'Subscription',
       objectId: f.id,
       before: { status: 'FAILED_PAYMENT' },
       after: { status: 'EXPIRED', failedPaymentClearedAt: now.toISOString() },
-    }).catch((err) => logger.error(`[clearFailedPaymentSubsForUser] audit write failed for sub ${f.id}:`, err));
+    }), (err) => logger.error(`[clearFailedPaymentSubsForUser] audit write failed for sub ${f.id}:`, err));
   }
   logger.info(`[clearFailedPaymentSubsForUser] user ${userId}: cleared ${result.count} FAILED_PAYMENT sub(s)`);
   return result.count;
@@ -64,13 +66,14 @@ import {
   UPGRADE_CREDIT_WEEKLY_TO_MONTHLY,
   UPGRADE_CREDIT_BASIC_TO_PREMIUM,
 } from '../constants/receipt.constants';
+import { detach } from '../utils/detach';
 
 // Stripe Price IDs (create these in Stripe Dashboard)
 const PRICE_IDS = {
   // Env var kept as STRIPE_LIGHT_PRICE_ID for backward compat with existing deployments.
   PREMIUM_WEEKLY: process.env.STRIPE_PREMIUM_WEEKLY_PRICE_ID || process.env.STRIPE_LIGHT_PRICE_ID || 'price_PREMIUM_WEEKLY',
   BASIC: process.env.STRIPE_BASIC_PRICE_ID || 'price_BASIC',
-  PREMIUM: process.env.STRIPE_PREMIUM_PRICE_ID || 'price_PREMIUM',
+  PREMIUM_MONTHLY: process.env.STRIPE_PREMIUM_PRICE_ID || 'price_PREMIUM',
 };
 
 export class SubscriptionService {
@@ -89,7 +92,7 @@ export class SubscriptionService {
       // The Paysera webhook (POST /api/payments/paysera/callback) creates the subscription
       // directly in the DB once payment is confirmed. Allowing free creation here would
       // bypass payment entirely.
-      throw new Error('PREMIUM_WEEKLY plan must be purchased via the Paysera payment flow');
+      throw new AppError('PREMIUM_WEEKLY plan must be purchased via the Paysera payment flow', 400);
     }
 
     // Get user email for Stripe customer
@@ -99,7 +102,7 @@ export class SubscriptionService {
     });
 
     if (!user) {
-      throw new Error('User not found');
+      throw new AppError('User not found', 404);
     }
 
     const customerName = user.firstName && user.lastName
@@ -188,7 +191,7 @@ export class SubscriptionService {
     });
 
     if (!subscription) {
-      throw new Error('Subscription not found');
+      throw new AppError('Subscription not found', 404);
     }
 
     let updated: typeof subscription;
@@ -268,7 +271,7 @@ export class SubscriptionService {
     const userEmail = updated.user?.email;
     if (userEmail && !suppressEmail) {
       const lang = (updated.user?.preferredLanguage === 'en' ? 'en' : 'bg') as 'bg' | 'en';
-      emailService
+      detach(emailService
         .sendSubscriptionCancelledEmail(userEmail, {
           customerName: updated.user?.firstName || 'Customer',
           planName: updated.planDetails?.displayName || updated.plan,
@@ -276,8 +279,14 @@ export class SubscriptionService {
           accessUntil: updated.cancelAtPeriodEnd ? (updated.cancelAt ?? null) : null,
           manageUrl: `${process.env.APP_URL || 'https://mobile.boomcard.bg'}/subscription`,
           language: lang,
-        })
-        .catch((err) => logger.error(`[cancelSubscription] Failed to send cancellation email for sub ${subscriptionId}:`, err));
+        }), (err) => logger.error(`[cancelSubscription] Failed to send cancellation email for sub ${subscriptionId}:`, err));
+    }
+
+    // F-018: Spec requires an in-app notification on user-initiated subscription cancellation
+    // alongside the existing email (not instead of it). Non-fatal.
+    if (!suppressEmail) {
+      detach(notificationService
+        .notifySubscriptionCancelledInApp(updated.userId), (err) => logger.error(`[cancelSubscription] notifySubscriptionCancelledInApp failed for sub ${subscriptionId}:`, err));
     }
 
     return updated;
@@ -298,11 +307,11 @@ export class SubscriptionService {
     });
 
     if (!subscription) {
-      throw new Error('Subscription not found');
+      throw new AppError('Subscription not found', 404);
     }
 
     if (subscription.plan === newPlan) {
-      throw new Error(`Subscription is already on the ${newPlan} plan`);
+      throw new AppError(`Subscription is already on the ${newPlan} plan`, 400);
     }
 
     // Calculate and credit any applicable upgrade credit to the user's wallet
@@ -400,9 +409,9 @@ export class SubscriptionService {
 
     // Determine credit percentage
     let creditPct: number;
-    if (oldPlan === 'PREMIUM_WEEKLY' && newPlan === 'PREMIUM') {
+    if (oldPlan === 'PREMIUM_WEEKLY' && ((newPlan as string) === 'PREMIUM' || newPlan === ('PREMIUM_MONTHLY' as any))) {
       creditPct = UPGRADE_CREDIT_WEEKLY_TO_MONTHLY;
-    } else if (oldPlan === 'BASIC' && newPlan === 'PREMIUM') {
+    } else if (oldPlan === 'BASIC' && ((newPlan as string) === 'PREMIUM' || newPlan === ('PREMIUM_MONTHLY' as any))) {
       creditPct = UPGRADE_CREDIT_BASIC_TO_PREMIUM;
     } else {
       return; // No credit for other transitions
@@ -479,15 +488,15 @@ export class SubscriptionService {
       where: { id: subscriptionId },
     });
 
-    if (!subscription) throw new Error('Subscription not found');
-    if (subscription.userId !== userId) throw new Error('Forbidden');
+    if (!subscription) throw new AppError('Subscription not found', 404);
+    if (subscription.userId !== userId) throw new AppError('Forbidden', 403);
 
     if (
       subscription.status === 'CANCELLED' ||
       subscription.status === 'EXPIRED' ||
       subscription.status === 'INCOMPLETE_EXPIRED'
     ) {
-      throw new Error('Subscription is terminated and cannot be reactivated this way. Please subscribe to a new plan.');
+      throw new AppError('Subscription is terminated and cannot be reactivated this way. Please subscribe to a new plan.', 400);
     }
 
     if (subscription.stripeSubscriptionId) {
@@ -517,8 +526,8 @@ export class SubscriptionService {
       where: { id: subscriptionId },
     });
 
-    if (!subscription) throw new Error('Subscription not found');
-    if (subscription.userId !== userId) throw new Error('Forbidden');
+    if (!subscription) throw new AppError('Subscription not found', 404);
+    if (subscription.userId !== userId) throw new AppError('Forbidden', 403);
 
     if (subscription.stripeSubscriptionId) {
       await stripeService.stripe.subscriptions.update(subscription.stripeSubscriptionId, {
@@ -551,16 +560,16 @@ export class SubscriptionService {
       },
     });
 
-    if (!subscription) throw new Error('Subscription not found');
-    if (subscription.userId !== userId) throw new Error('Forbidden');
+    if (!subscription) throw new AppError('Subscription not found', 404);
+    if (subscription.userId !== userId) throw new AppError('Forbidden', 403);
     // payseraOrderId is a top-level field on subscription — no extra include needed
 
     const now = new Date();
     if (!subscription.trialRefundEligibleUntil || subscription.trialRefundEligibleUntil < now) {
-      throw new Error('Trial refund window has expired (24 hours from purchase)');
+      throw new AppError('Trial refund window has expired (24 hours from purchase)', 400);
     }
     if (subscription.trialRefundUsed) {
-      throw new Error('Trial refund has already been used');
+      throw new AppError('Trial refund has already been used', 400);
     }
 
     // Mark used immediately — prevents duplicate concurrent requests
@@ -613,13 +622,11 @@ export class SubscriptionService {
         };
 
         if (subscription.user?.email) {
-          emailService
-            .sendTrialRefundPendingEmail(subscription.user.email, refundData)
-            .catch((err) => logger.error(`[requestTrialRefund] User email failed for sub ${subscriptionId}:`, err));
+          detach(emailService
+            .sendTrialRefundPendingEmail(subscription.user.email, refundData), (err) => logger.error(`[requestTrialRefund] User email failed for sub ${subscriptionId}:`, err));
         }
-        emailService
-          .sendAdminTrialRefundAlert(refundData)
-          .catch((err) => logger.error(`[requestTrialRefund] Admin alert email failed for sub ${subscriptionId}:`, err));
+        detach(emailService
+          .sendAdminTrialRefundAlert(refundData), (err) => logger.error(`[requestTrialRefund] Admin alert email failed for sub ${subscriptionId}:`, err));
       }
     } catch (err) {
       // Undo the used flag so the user can retry if the refund API call failed
@@ -810,17 +817,17 @@ export class SubscriptionService {
       where: { id: subscriptionId },
     });
 
-    if (!subscription) throw new Error('Subscription not found');
-    if (subscription.userId !== userId) throw new Error('Forbidden');
+    if (!subscription) throw new AppError('Subscription not found', 404);
+    if (subscription.userId !== userId) throw new AppError('Forbidden', 403);
     if (subscription.status !== 'PAST_DUE') {
-      throw new Error('Subscription is not past due');
+      throw new AppError('Subscription is not past due', 400);
     }
     if (subscription.cancelAtPeriodEnd || subscription.canceledAt) {
-      throw new Error('Cannot retry payment on a subscription that has been cancelled');
+      throw new AppError('Cannot retry payment on a subscription that has been cancelled', 400);
     }
 
     if (!subscription.stripeSubscriptionId) {
-      throw new Error('Payment retry is not available for this subscription type. Please contact support.');
+      throw new AppError('Payment retry is not available for this subscription type. Please contact support.', 400);
     }
 
     const invoices = await stripeService.stripe.invoices.list({
@@ -830,7 +837,7 @@ export class SubscriptionService {
     });
 
     if (!invoices.data.length) {
-      throw new Error('No open invoice found. Please contact support.');
+      throw new AppError('No open invoice found. Please contact support.', 400);
     }
 
     const paid = await stripeService.stripe.invoices.pay(invoices.data[0].id, {
@@ -844,7 +851,7 @@ export class SubscriptionService {
       });
     }
 
-    throw new Error('Payment retry failed. Please update your payment method and try again.');
+    throw new AppError('Payment retry failed. Please update your payment method and try again.', 400);
   }
 
   /**
@@ -854,7 +861,13 @@ export class SubscriptionService {
     return prisma.subscription.findFirst({
       where: {
         userId,
-        status: { in: ['ACTIVE', 'TRIALING', 'PAST_DUE', 'PAUSED'] },
+        OR: [
+          // Spec §3.2 canonical statuses: Active (ACTIVE/TRIALING), Paused (PAUSED).
+          // PAST_DUE is Stripe-internal and maps to Failed Payment per spec — excluded.
+          { status: { in: ['ACTIVE', 'TRIALING', 'PAUSED'] } },
+          // Cancelled-within-paid-period: spec §3.3 — user retains access through period end.
+          { status: 'CANCELLED', currentPeriodEnd: { gt: new Date() } },
+        ],
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -883,8 +896,12 @@ export class SubscriptionService {
    * Get plan benefits — reads from DB Plans table (source of truth).
    */
   async getPlanBenefits(plan: SubscriptionPlan) {
+    const dbCode =
+      (plan as string) === 'PREMIUM_WEEKLY' ? 'LIGHT'
+      : (plan as string) === 'PREMIUM_MONTHLY' ? 'PREMIUM'
+      : (plan as string);
     const row = await prisma.plan.findFirst({
-      where: { planCode: plan, isActive: true },
+      where: { planCode: dbCode as any, isActive: true },
       select: { cashbackRate: true, priceMonthlyEur: true, features: true },
     });
 

@@ -54,6 +54,11 @@ const ADMIN_ONLY_VENUE_FIELDS = [
   'pendingMenuUrl',
   'menuRejectionReason',
   'menuReviewedBy',
+  // Menu-review timestamp pairs with the otherwise admin-only review workflow.
+  'menuReviewedAt',
+  // Admin-authored operational commentary (e.g. suspension reason) — internal only.
+  'venueStatusNote',
+  'venueStatusAt',
 ] as const;
 
 function stripAdminVenueFields<T extends Record<string, any>>(venue: T): T {
@@ -112,6 +117,7 @@ export const venueService = {
     // Spec §5.3 — public listings gate on partner visibility matrix.
     if (!includeHidden) {
       where.partner = { ...publicPartnerJoinFilter };
+      where.venueStatus = 'ACTIVE';
     }
 
     // Get venues
@@ -175,7 +181,7 @@ export const venueService = {
     // Spec §5.3 — public callers (default) only see venues owned by a
     // publicly-visible partner.
     const venues = await prisma.venue.findMany({
-      where: options.includeHidden ? undefined : { partner: { ...publicPartnerJoinFilter } },
+      where: options.includeHidden ? undefined : { partner: { ...publicPartnerJoinFilter }, venueStatus: 'ACTIVE' as any },
       include: {
         partner: {
           select: {
@@ -223,7 +229,11 @@ export const venueService = {
             isVisible: true,
           },
         },
-        stickerConfig: true,
+        // stickerConfig intentionally excluded: contains cashbackPercent,
+        // autoApproveThreshold, premiumBonus, platinumBonus — internal Business
+        // Formula fields that must never be surfaced via a public endpoint
+        // (spec §11.3, Clash 10.6). Admin callers that need stickerConfig should
+        // query the sticker config endpoint directly.
       },
     });
 
@@ -237,6 +247,8 @@ export const venueService = {
     // operate on the venue regardless (admin ops, partner self-service menu
     // upload) opt in via `includeHidden: true`.
     if (!options.includeHidden) {
+      // Venue-level status gate (spec §5.3) — venue must be ACTIVE, not INACTIVE/SUSPENDED.
+      if ((venue as any).venueStatus !== 'ACTIVE') return null;
       const p = venue.partner as { status: string; verifiedAt: Date | null; isVisible: boolean } | null;
       if (!p || p.status !== 'ACTIVE' || !p.verifiedAt || !p.isVisible) {
         return null;
@@ -244,7 +256,19 @@ export const venueService = {
     }
 
     logger.info(`Retrieved venue: ${venue.name}`, { venueId: id });
-    return stripAdminVenueFields(venue);
+
+    // §5.3 leak fix: partner.status / verifiedAt / isVisible are selected only
+    // to evaluate the public visibility-matrix gate above. They are internal
+    // partner control fields and must NOT reach a public (non-admin) caller —
+    // stripAdminVenueFields only handles top-level venue columns, not nested
+    // partner fields. Mirrors offers.service.getOfferById. Admins (includeHidden)
+    // legitimately keep them.
+    const stripped: any = stripAdminVenueFields(venue);
+    if (!options.includeHidden && stripped.partner) {
+      const { status: _s, verifiedAt: _v, isVisible: _iv, ...publicPartner } = stripped.partner;
+      stripped.partner = publicPartner;
+    }
+    return stripped;
   },
 
   /**
@@ -255,7 +279,7 @@ export const venueService = {
       where: {
         city: { contains: city, mode: 'insensitive' },
         // Spec §5.3 — public default gates on partner visibility matrix.
-        ...(options.includeHidden ? {} : { partner: { ...publicPartnerJoinFilter } }),
+        ...(options.includeHidden ? {} : { partner: { ...publicPartnerJoinFilter }, venueStatus: 'ACTIVE' as any }),
       },
       include: {
         partner: {
@@ -282,7 +306,7 @@ export const venueService = {
     // shows entries for suspended/hidden partners.
     const venues = await prisma.venue.groupBy({
       by: ['city'],
-      where: options.includeHidden ? undefined : { partner: { ...publicPartnerJoinFilter } },
+      where: options.includeHidden ? undefined : { partner: { ...publicPartnerJoinFilter }, venueStatus: 'ACTIVE' as any },
       _count: {
         id: true,
       },
@@ -403,7 +427,10 @@ export const venueService = {
     });
 
     logger.info(`Updated venue: ${venue.name}`, { venueId: id });
-    return venue;
+    // LOW-1: strip admin-only fields on every update return so callers cannot
+    // observe pendingMenuUrl / menuRejectionReason / menuReviewedBy from the
+    // update response (mirrors the read-path contract).
+    return stripAdminVenueFields(venue);
   },
 
   /**
@@ -432,7 +459,7 @@ export const venueService = {
           { descriptionBg: { contains: query, mode: 'insensitive' } },
         ],
         // Spec §5.3 — public default gates on partner visibility matrix.
-        ...(options.includeHidden ? {} : { partner: { ...publicPartnerJoinFilter } }),
+        ...(options.includeHidden ? {} : { partner: { ...publicPartnerJoinFilter }, venueStatus: 'ACTIVE' as any }),
       },
       take: limit,
       include: {

@@ -8,6 +8,8 @@ import type { AuthRequest } from '../middleware/auth.middleware';
 import { getClientIp } from '../utils/requestIp';
 import { emailService } from '../services/email.service';
 import { logger } from '../utils/logger';
+import { parsePagination } from '../utils/pagination';
+import { detach } from '../utils/detach';
 
 const router = Router();
 router.use(auditMiddleware);
@@ -40,14 +42,9 @@ router.get('/audit', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePer
       actorId,
       dateFrom,
       dateTo,
-      page = '1',
-      limit = '20',
     } = req.query as Record<string, string>;
 
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
-    const skip = (pageNum - 1) * limitNum;
-    const take = limitNum;
+    const { skip, take, page: pageNum } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     const where: Parameters<typeof prisma.auditLog.findMany>[0]['where'] = {};
 
@@ -111,12 +108,9 @@ router.get('/audit', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePer
 // #11 fix: use admins.read (not admins.write) — this is a read-only list
 router.get('/pending', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.read'), async (req, res, next) => {
   try {
-    const { search, page = '1', limit = '20' } = req.query as Record<string, string>;
+    const { search } = req.query as Record<string, string>;
 
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
-    const skip = (pageNum - 1) * limitNum;
-    const take = limitNum;
+    const { skip, take, page: pageNum } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     // Only surface ADMIN-role users — SUPER_ADMIN users without panel roles
     // are a degenerate state that can't be actioned here (their role is assigned
@@ -177,11 +171,7 @@ const PENDING_SUPER_ADMIN_TTL_MS = 72 * 60 * 60 * 1000; // 72h in milliseconds
 // #12 fix: use admins.read (not admins.write) — this is a read-only list
 router.get('/pending-super', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.read'), async (req, res, next) => {
   try {
-    const { page = '1', limit = '20' } = req.query as Record<string, string>;
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
-    const skip = (pageNum - 1) * limitNum;
-    const take = limitNum;
+    const { skip, take, page: pageNum } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     // N6 fix: filter out requests older than 72h — they are expired and cannot be approved.
     const expiryThreshold = new Date(Date.now() - PENDING_SUPER_ADMIN_TTL_MS);
@@ -289,9 +279,7 @@ router.get('/critical-actions', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
       return res.status(400).json({ error: `status must be one of: ${CRITICAL_ACTION_STATUSES.join(', ')}` });
     }
     const status = rawStatus;
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
-    const skip = (page - 1) * limit;
+    const { skip, page, limit } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     // Callers with only admins.actions.read (e.g. PARTNER_MANAGER) must see only
     // their own submissions; admins.read callers and SUPER_ADMIN see the full queue.
@@ -469,7 +457,7 @@ router.post('/critical-actions/:id/approve', authenticate, authorize('SUPER_ADMI
     // Write the partner-rate audit entry outside the transaction (AuditLog
     // writes are fire-and-forget and don't need to be atomic with the rate change).
     if (discountRateAudit) {
-      writeAudit({
+      detach(writeAudit({
         actorUserId: req.user!.id,
         action: 'partner.discount-rate.update',
         objectType: 'Partner',
@@ -478,7 +466,7 @@ router.post('/critical-actions/:id/approve', authenticate, authorize('SUPER_ADMI
         after: { discountRate: discountRateAudit.newRate, via: 'critical-action', requestId: item.id },
         ip: getClientIp(req) ?? null,
         userAgent: req.headers['user-agent'] ?? null,
-      }).catch((err) => logger.error('[critical-action] discount-rate audit write failed:', err));
+      }), (err) => logger.error('[critical-action] discount-rate audit write failed:', err));
     }
 
     req.skipAudit = true;
@@ -535,12 +523,9 @@ router.post('/critical-actions/:id/reject', authenticate, authorize('SUPER_ADMIN
 // GET /api/admin/admins — list all admin users with their roles
 router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.read'), async (req, res, next) => {
   try {
-    const { search, roleKey, page = '1', limit = '20' } = req.query as Record<string, string>;
+    const { search, roleKey } = req.query as Record<string, string>;
 
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
-    const skip = (pageNum - 1) * limitNum;
-    const take = limitNum;
+    const { skip, take, page: pageNum } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     const where: Parameters<typeof prisma.user.findMany>[0]['where'] = {
       role: { in: ['ADMIN', 'SUPER_ADMIN'] as UserRole[] },
@@ -642,7 +627,9 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
             lastName: lastName ?? null,
             phone: phone ?? null,
             passwordHash,
-            requestedById: req.user!.id,
+            status: 'PENDING',
+            expiresAt: new Date(Date.now() + PENDING_SUPER_ADMIN_TTL_MS),
+            requestedBy: { connect: { id: req.user!.id } },
           },
           select: { id: true, email: true, firstName: true, lastName: true, createdAt: true },
         });
@@ -728,8 +715,19 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
       });
     }
 
+    // Spec §3.9 / Clash 13.3 — anti-self-approval: the initiator cannot approve their own request.
+    // Bootstrap exception: if only one SUPER_ADMIN exists in the system, that single SA may
+    // approve their own request (otherwise the system is permanently locked out of creating
+    // the second SA). Count only ACTIVE super admins — INACTIVE/SUSPENDED/ARCHIVED cannot
+    // perform approvals so they don't count toward the quorum.
     if (request.requestedById === req.user!.id) {
-      return res.status(403).json({ error: 'The approver must be a different admin from the original requester' });
+      const activeSuperAdminCount = await prisma.user.count({
+        where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+      });
+      if (activeSuperAdminCount > 1) {
+        return res.status(403).json({ error: 'The approver must be a different admin from the original requester' });
+      }
+      // Bootstrap exception: sole SUPER_ADMIN may self-approve
     }
 
     const superAdminRole = await prisma.adminRole.findUnique({ where: { key: AdminRoleKey.SUPER_ADMIN } });
@@ -887,6 +885,11 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
   try {
     const { id } = req.params;
     const { status, reason } = req.body as { status?: string; reason?: string };
+
+    // Spec §1.5: Only a SUPER_ADMIN can change another admin's status.
+    if (req.user!.role !== 'SUPER_ADMIN') {
+      return res.status(403).json({ error: 'Only a SUPER_ADMIN can change an admin\'s status' });
+    }
 
     // Spec §1.5: valid admin statuses are Active, Inactive, Archived.
     // ARCHIVED is the canonical "no login" state (BC-SCHEMA-1); SUSPENDED retained for legacy records.

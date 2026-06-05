@@ -16,6 +16,7 @@ import { emailService } from '../services/email.service';
 import { logger } from '../utils/logger';
 import { writeAudit } from '../middleware/audit.middleware';
 import { notificationService } from '../services/notification.service';
+import { detach } from '../utils/detach';
 
 const APP_URL = process.env.APP_URL || 'https://mobile.boomcard.bg';
 
@@ -155,14 +156,14 @@ export async function processPayseraRenewals(): Promise<void> {
       });
 
       // Audit the transition (best-effort — must not block the renewal flow).
-      writeAudit({
+      detach(writeAudit({
         actorUserId: null,
         action: 'SUBSCRIPTION_FAILED_PAYMENT',
         objectType: 'Subscription',
         objectId: sub.id,
         before: { status: prevStatus },
         after: { status: 'FAILED_PAYMENT', failedPaymentAt: failedAt.toISOString() },
-      }).catch((err) => logger.error(`[paysera-renewal] audit write failed for sub ${sub.id}:`, err));
+      }), (err) => logger.error(`[paysera-renewal] audit write failed for sub ${sub.id}:`, err));
 
       // Notify the user that the auto-renewal attempt failed. Spec §4.2 v1.1: the
       // mobile app shows a renewal CTA on receiving SUBSCRIPTION_FAILED_PAYMENT.
@@ -177,14 +178,13 @@ export async function processPayseraRenewals(): Promise<void> {
         return plan.priceMonthlyEur ?? 0;
       })();
 
-      notificationService
+      detach(notificationService
         .notifyPaymentFailed({
           userId: sub.userId,
           paymentIntentId: sub.id, // no PI for Paysera renewal — surface sub id for reference
           amount: priceInCents / 100,
           currency: 'EUR',
-        })
-        .catch((err) => logger.error(`[paysera-renewal] FAILED_PAYMENT notify failed for sub ${sub.id}:`, err));
+        }), (err) => logger.error(`[paysera-renewal] FAILED_PAYMENT notify failed for sub ${sub.id}:`, err));
 
       logger.info(`[paysera-renewal] Subscription ${sub.id} → FAILED_PAYMENT (spec §4.2 v1.1, no grace)`);
     } catch (err) {
@@ -266,14 +266,12 @@ export async function processPayseraRenewals(): Promise<void> {
       }
 
       // §10 — in-app + push alongside the expiry-notice email.
-      notificationService
+      detach(notificationService
         .notifySubscriptionPaused({
           userId: sub.userId,
           pauseEndsAt,
-        })
-        .catch((err) =>
-          logger.error(`[paysera-renewal] notifySubscriptionPaused failed for sub ${sub.id}:`, err),
-        );
+        }), (err) =>
+          logger.error(`[paysera-renewal] notifySubscriptionPaused failed for sub ${sub.id}:`, err));
 
       logger.info(`[paysera-renewal] Subscription ${sub.id} paused — renewal reminder sent`);
     } catch (err) {

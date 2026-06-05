@@ -288,7 +288,7 @@ export const en = {
     emailRequired: 'Email is required',
     emailInvalid: 'Invalid email address',
     phoneRequired: 'Phone number is required',
-    phoneInvalid: 'Invalid phone number (Bulgarian format)',
+    phoneInvalid: 'Enter a Bulgarian phone number: +359XXXXXXXXX or 0XXXXXXXXX',
     passwordRequired: 'Password is required',
     passwordMinLength: 'Password must be at least 8 characters',
     passwordNeedsUppercase: 'Password must contain at least one uppercase letter',

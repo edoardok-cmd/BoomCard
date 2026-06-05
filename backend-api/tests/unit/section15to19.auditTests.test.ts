@@ -225,7 +225,7 @@ describe('§15.2 calculateCashback — DB rate override', () => {
     const result = await fraudDetectionService.calculateCashback({
       venueId: 'venue-1',
       amount: 100,
-      cardTier: 'PREMIUM',
+      cardTier: 'PREMIUM_MONTHLY',
     });
 
     expect(result.cashbackPercent).toBe(9);
@@ -260,7 +260,7 @@ describe('§15.2 calculateCashback — DB rate override', () => {
     const result = await fraudDetectionService.calculateCashback({
       venueId: 'venue-1',
       amount: 100,
-      cardTier: 'PREMIUM',
+      cardTier: 'PREMIUM_MONTHLY',
     });
 
     // Graceful fallback: CASHBACK_MATRIX[20].premium = 16
@@ -538,7 +538,7 @@ describe('§17 Merchant Whitelist — fraud score effect in checkReceipt', () =>
     imageHash: 'unique-hash-xyz',
     ocrConfidence: 0.9,
     userId: 'u-1',
-    cardTier: 'PREMIUM' as const,
+    cardTier: 'PREMIUM_MONTHLY' as const,
   };
 
   beforeEach(() => {

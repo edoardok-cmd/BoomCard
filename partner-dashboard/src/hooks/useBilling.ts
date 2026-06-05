@@ -15,12 +15,13 @@ import { apiService } from '../services/api.service';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
-export type SubscriptionPlan = 'BASIC' | 'LIGHT' | 'PREMIUM';
+// Canonical backend SubscriptionPlan enum tokens (no legacy LIGHT/PREMIUM).
+export type SubscriptionPlan = 'BASIC' | 'PREMIUM_WEEKLY' | 'PREMIUM_MONTHLY';
 
-export const PLAN_REDEEMABLE_TIERS: Record<SubscriptionPlan, ('BASIC' | 'LIGHT' | 'PREMIUM')[]> = {
-  BASIC:   ['BASIC'],
-  LIGHT:   ['BASIC', 'LIGHT'],
-  PREMIUM: ['BASIC', 'LIGHT', 'PREMIUM'],
+export const PLAN_REDEEMABLE_TIERS: Record<SubscriptionPlan, SubscriptionPlan[]> = {
+  BASIC:           ['BASIC'],
+  PREMIUM_WEEKLY:  ['BASIC', 'PREMIUM_WEEKLY'],
+  PREMIUM_MONTHLY: ['BASIC', 'PREMIUM_WEEKLY', 'PREMIUM_MONTHLY'],
 };
 
 /**
@@ -349,7 +350,7 @@ export function useUpdateSubscriptionPlan() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ subscriptionId, plan }: { subscriptionId: string; plan: 'LIGHT' | 'BASIC' | 'PREMIUM' }) =>
+    mutationFn: ({ subscriptionId, plan }: { subscriptionId: string; plan: SubscriptionPlan }) =>
       billingService.updateSubscriptionPlan(subscriptionId, plan),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['billing', 'subscription'] });

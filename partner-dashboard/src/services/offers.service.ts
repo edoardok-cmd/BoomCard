@@ -8,6 +8,9 @@ import { getCategoryName } from '../types/categories.types';
 export interface OfferDetails extends Offer {
   venueId?: string;
   partnerId?: string;
+  /** Real backend offer window (Prisma Offer.startDate / endDate). */
+  startDate?: string;
+  endDate?: string;
   validFrom?: string;
   validUntil?: string;
   termsConditions?: string;
@@ -15,6 +18,10 @@ export interface OfferDetails extends Offer {
   maxRedemptions?: number;
   currentRedemptions?: number;
   redemptionCount?: number;
+  /** Real backend redemption counter (Prisma Offer.usageCount). */
+  usageCount?: number;
+  /** Real backend redemption cap (Prisma Offer.usageLimit); null = unlimited. */
+  usageLimit?: number | null;
   views?: number;
   isActive?: boolean;
   isFeatured?: boolean;
@@ -22,9 +29,20 @@ export interface OfferDetails extends Offer {
   tags?: string[];
   createdAt?: string;
   updatedAt?: string;
-  status?: 'DRAFT' | 'ACTIVE' | 'INACTIVE' | 'EXPIRED';
+  // LOW fix: align with the Prisma OfferStatus enum (DRAFT | ACTIVE | PAUSED |
+  // EXPIRED | CANCELLED). The previous union used a non-existent INACTIVE member
+  // and omitted PAUSED / CANCELLED, so genuinely paused/cancelled offers fell
+  // through type narrowing and toggleOfferStatus() (which writes PAUSED) produced
+  // a value the type claimed was impossible.
+  status?: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'CANCELLED';
   image?: string;
   discountPercent?: number;
+  /**
+   * Tier-gating flag: when true, the offer is locked behind a higher
+   * subscription tier and the activation CTA is replaced with an upgrade
+   * prompt. Optional because not all backend responses include it.
+   */
+  isLocked?: boolean;
   /** Raw canonical category ID from partner (e.g. 'restaurants'), used for filtering */
   partnerCategoryId?: string;
   partner?: {
@@ -36,12 +54,17 @@ export interface OfferDetails extends Offer {
     logo?: string;
     rating?: number;
     partnerTypeId?: string;
+    /**
+     * LOW-1 fix (r2ad): maxDiscountRate is a contractually sensitive business
+     * parameter set by admin (spec §11.3, §12 Rule 6). It must not appear in
+     * partner-facing responses.  Only display-safe fields are declared here.
+     */
     partnerType?: {
       id: string;
       name: string;
       nameBg?: string;
       color: string;
-      maxDiscountRate: number;
+      // maxDiscountRate intentionally omitted — internal contract parameter
     };
   };
 }
@@ -63,6 +86,8 @@ export interface OfferFilters {
   partnerId?: string;
   tags?: string[];
   status?: string;
+  /** Hook-level gate — pass `false` to prevent the useOffers query from firing (e.g. for non-partner users). */
+  enabled?: boolean;
 }
 
 export interface CreateOfferData {
@@ -71,10 +96,14 @@ export interface CreateOfferData {
   titleBg?: string;
   description: string;
   descriptionBg?: string;
+  // MEDIUM-2 fix (review r2u): category was validated and previewed in CreateOfferPage
+  // but silently dropped from the payload.  Adding it here ensures it reaches the backend.
+  category?: string;
   type: 'DISCOUNT' | 'CASHBACK' | 'POINTS' | 'BUNDLE' | 'SEASONAL';
   discountPercent?: number;
   discountAmount?: number;
-  cashbackPercent?: number;
+  // cashbackPercent intentionally omitted — internal business formula component.
+  // Must never be set by partner-facing code (spec §11.3, Clash 10.6). MEDIUM-1 fix.
   pointsMultiplier?: number;
   minPurchase?: number;
   maxDiscount?: number;
@@ -115,15 +144,41 @@ class OffersService {
    * Calculates missing price fields from discountPercent and minPurchase
    */
   private mapOffer(offer: RawOffer): OfferDetails {
-    // Calculate prices if they don't exist
-    // Use minPurchase as the base price, or default to 200 BGN
-    const basePrice = offer.minPurchase || offer.originalPrice || 200;
+    // MEDIUM fix (re-audit): the backend has no price model, so absolute BGN prices
+    // were previously fabricated here — falling back to a hardcoded 200 BGN base and
+    // deriving a "discounted" price from it. That invented money the consumer view
+    // rendered as real. Only the discount PERCENTAGE is genuine. We now pass through
+    // originalPrice / discountedPrice ONLY when the backend actually provides them
+    // (leaving them undefined otherwise) and never synthesize a base price.
     const discount = offer.discount || offer.discountPercent || 0;
-    const originalPrice = offer.originalPrice || basePrice;
-    const discountedPrice = offer.discountedPrice || Math.round(originalPrice * (1 - discount / 100) * 100) / 100;
+    const originalPrice = offer.originalPrice;
+    const discountedPrice = offer.discountedPrice;
+
+    // Strip internal business fields that must never appear in partner-facing
+    // responses. Using destructuring ensures they are excluded from the spread
+    // even if the backend starts returning them (spec §11.3, Clash 10.6).
+    // MEDIUM fix (reviews r2ad MEDIUM-1 / r2u MEDIUM-2): cashbackPercent added
+    // to the strip list — it is an internal business formula component and must
+    // never be surfaced in the partner portal under any circumstances.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { marginPercent: _marginPercent, riskLevel: _riskLevel, cashbackPercent: _cashbackPercent, ...safeOffer } = offer as RawOffer & {
+      marginPercent?: unknown;
+      riskLevel?: unknown;
+      cashbackPercent?: unknown;
+    };
+
+    // LOW-1 fix (r2ad): strip maxDiscountRate from nested partner.partnerType.
+    // It is a contractually sensitive parameter set by admin and must not appear
+    // in partner-facing responses (spec §11.3, §12 Rule 6).
+    let safePartner = safeOffer.partner;
+    if (safePartner?.partnerType) {
+      const { maxDiscountRate: _maxDiscountRate, ...safePartnerType } = safePartner.partnerType as typeof safePartner.partnerType & { maxDiscountRate?: unknown };
+      safePartner = { ...safePartner, partnerType: safePartnerType };
+    }
 
     return {
-      ...offer,
+      ...safeOffer,
+      partner: safePartner,
       imageUrl: offer.image || offer.imageUrl,
       originalPrice,
       discountedPrice,
@@ -158,7 +213,10 @@ class OffersService {
    * Get all offers with optional filters
    */
   async getOffers(filters?: OfferFilters): Promise<PaginatedResponse<OfferDetails>> {
-    const response = await apiService.get<PaginatedResponse<RawOffer>>(this.baseUrl, filters);
+    // Strip the hook-only `enabled` flag — it must not be forwarded as a query param.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { enabled: _enabled, ...apiFilters } = filters ?? {};
+    const response = await apiService.get<PaginatedResponse<RawOffer>>(this.baseUrl, Object.keys(apiFilters).length ? apiFilters : undefined);
     return {
       ...response,
       data: this.mapOffers(response.data),
@@ -178,7 +236,11 @@ class OffersService {
    * Get offers by category
    */
   async getOffersByCategory(category: string, filters?: OfferFilters): Promise<PaginatedResponse<OfferDetails>> {
-    const response = await apiService.get<PaginatedResponse<RawOffer>>(`${this.baseUrl}/category/${category}`, filters);
+    // MEDIUM fix (review r2ad MEDIUM-2): strip hook-only `enabled` flag before
+    // forwarding to the API, consistent with getOffers().
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { enabled: _enabled, ...apiFilters } = filters ?? {};
+    const response = await apiService.get<PaginatedResponse<RawOffer>>(`${this.baseUrl}/category/${category}`, Object.keys(apiFilters).length ? apiFilters : undefined);
     return {
       ...response,
       data: this.mapOffers(response.data),
@@ -186,18 +248,13 @@ class OffersService {
   }
 
   /**
-   * Get offers by venue
-   */
-  async getOffersByVenue(venueId: string): Promise<OfferDetails[]> {
-    const offers = await apiService.get<RawOffer[]>(`${this.baseUrl}/venue/${venueId}`);
-    return this.mapOffers(offers);
-  }
-
-  /**
    * Get offers by partner
    */
   async getOffersByPartner(partnerId: string, filters?: OfferFilters): Promise<PaginatedResponse<OfferDetails>> {
-    const response = await apiService.get<PaginatedResponse<RawOffer>>(`${this.baseUrl}/partner/${partnerId}`, filters);
+    // MEDIUM fix (review r2ad MEDIUM-2): strip hook-only `enabled` flag.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { enabled: _enabled, ...apiFilters } = filters ?? {};
+    const response = await apiService.get<PaginatedResponse<RawOffer>>(`${this.baseUrl}/partner/${partnerId}`, Object.keys(apiFilters).length ? apiFilters : undefined);
     return {
       ...response,
       data: this.mapOffers(response.data),
@@ -224,7 +281,10 @@ class OffersService {
    * Get offers by city
    */
   async getOffersByCity(city: string, filters?: OfferFilters): Promise<PaginatedResponse<OfferDetails>> {
-    const response = await apiService.get<PaginatedResponse<RawOffer>>(`${this.baseUrl}/city/${city}`, filters);
+    // MEDIUM fix (review r2ad MEDIUM-2): strip hook-only `enabled` flag.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { enabled: _enabled, ...apiFilters } = filters ?? {};
+    const response = await apiService.get<PaginatedResponse<RawOffer>>(`${this.baseUrl}/city/${city}`, Object.keys(apiFilters).length ? apiFilters : undefined);
     return {
       ...response,
       data: this.mapOffers(response.data),
@@ -243,7 +303,10 @@ class OffersService {
    * Search offers
    */
   async searchOffers(query: string, filters?: OfferFilters): Promise<PaginatedResponse<OfferDetails>> {
-    const response = await apiService.get<PaginatedResponse<RawOffer>>(`${this.baseUrl}/search`, { q: query, ...filters });
+    // MEDIUM fix (review r2ad MEDIUM-2): strip hook-only `enabled` flag.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { enabled: _enabled, ...apiFilters } = filters ?? {};
+    const response = await apiService.get<PaginatedResponse<RawOffer>>(`${this.baseUrl}/search`, { q: query, ...apiFilters });
     return {
       ...response,
       data: this.mapOffers(response.data),
@@ -280,10 +343,40 @@ class OffersService {
   }
 
   /**
-   * Activate/deactivate offer
+   * Enable / disable an offer (admin-only on the backend).
+   *
+   * LOW fix: the previous implementation called `POST /offers/:id/activate` to
+   * "toggle status" — but that route REDEEMS the offer (increments usageCount
+   * and issues a one-time code via offersService.redeemOffer). It does not
+   * enable/disable anything, so using it here both failed to change the active
+   * state AND silently consumed a redemption on every toggle.
+   *
+   * The correct route to change an offer's active state is `PUT /offers/:id`
+   * (offers.routes.ts ~L309 → offersService.updateOffer), which passes the
+   * `status` field straight through to prisma.offer.update. The Prisma
+   * `OfferStatus` enum exposes ACTIVE / DRAFT / PAUSED / EXPIRED / CANCELLED —
+   * there is no `INACTIVE` member — so disabling maps to PAUSED and enabling to
+   * ACTIVE. (MyOffersPage renders an offer as active only when status==='ACTIVE'
+   * and as inactive otherwise, so PAUSED reads back correctly as "inactive".)
+   *
+   * Note: `PUT /offers/:id` is admin-only (authorize ADMIN/SUPER_ADMIN). The
+   * MyOffersPage toggle is already gated behind canEditOffers (admin role), so
+   * this is consistent; partner-role users never reach this call.
+   *
+   * The legacy `location` argument is dropped — it has no meaning for a status
+   * change. The response is shaped `{ data }` on this route's wrapper-less PUT,
+   * so we unwrap defensively to match the other methods here.
    */
-  async toggleOfferStatus(id: string, isActive: boolean): Promise<OfferDetails> {
-    return apiService.put<OfferDetails>(`${this.baseUrl}/${id}/status`, { isActive });
+  async toggleOfferStatus(
+    id: string,
+    isActive: boolean,
+  ): Promise<OfferDetails> {
+    const status = isActive ? 'ACTIVE' : 'PAUSED';
+    const res = await apiService.put<{ success: boolean; data: OfferDetails } | OfferDetails>(
+      `${this.baseUrl}/${id}`,
+      { status },
+    );
+    return (res as { data?: OfferDetails }).data ?? (res as OfferDetails);
   }
 
   /**
@@ -315,27 +408,23 @@ class OffersService {
   }
 
   /**
-   * Redeem offer
+   * Redeem offer.
+   *
+   * LOW fix: the previous implementation targeted `POST /offers/:id/redeem`,
+   * which does NOT exist on the backend (offers.routes.ts) and always returned
+   * 404. The real redemption endpoint is `POST /offers/:id/activate` — it calls
+   * offersService.redeemOffer server-side, increments usageCount, and returns a
+   * one-time redemption code. The route only reads an optional
+   * `{ latitude, longitude }` body (it does not read a client-supplied `code`),
+   * so the legacy `code` argument is no longer forwarded.
    */
   async redeemOffer(id: string, code?: string): Promise<{ success: boolean; message: string; redemptionId?: string }> {
+    // `code` is intentionally not sent — the activate route does not read it.
+    void code;
     return apiService.post<{ success: boolean; message: string; redemptionId?: string }>(
-      `${this.baseUrl}/${id}/redeem`,
-      { code }
+      `${this.baseUrl}/${id}/activate`,
+      {}
     );
-  }
-
-  /**
-   * Get redemption history
-   */
-  async getRedemptionHistory(offerId: string): Promise<unknown[]> {
-    return apiService.get<unknown[]>(`${this.baseUrl}/${offerId}/redemptions`);
-  }
-
-  /**
-   * Get user's redeemed offers
-   */
-  async getUserRedemptions(): Promise<OfferDetails[]> {
-    return apiService.get<OfferDetails[]>(`${this.baseUrl}/user/redemptions`);
   }
 
   /**

@@ -15,6 +15,8 @@ import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { emailService } from '../services/email.service';
 import { notificationService } from '../services/notification.service';
+import { parsePagination } from '../utils/pagination';
+import { detach } from '../utils/detach';
 
 const router = Router();
 
@@ -83,9 +85,7 @@ adminVenueMenuRouter.get(
   '/',
   requirePermission('partners.locations.read'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 25));
-    const skip = (page - 1) * limit;
+    const { skip, page, limit } = parsePagination(req.query, { defaultLimit: 25, maxLimit: 100 });
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
     const city = typeof req.query.city === 'string' ? req.query.city.trim() : '';
     const menuStatus = typeof req.query.menuStatus === 'string' ? req.query.menuStatus.trim() : '';
@@ -220,22 +220,22 @@ adminVenueMenuRouter.post(
 
     const partnerUserId = venue.partner?.user?.id;
     if (partnerUserId && updated.menuUrl) {
-      notificationService.notifyMenuApproved({
+      detach(notificationService.notifyMenuApproved({
         partnerUserId,
         venueId: id,
         venueName: venue.name,
         menuUrl: updated.menuUrl,
-      }).catch((err) => logger.error('[menu-audit] Failed to send approval notification:', err));
+      }), (err) => logger.error('[menu-audit] Failed to send approval notification:', err));
     }
 
     const partnerEmail = venue.partner?.user?.email;
     if (partnerEmail) {
-      emailService.sendMenuApprovedEmail(partnerEmail, {
+      detach(emailService.sendMenuApprovedEmail(partnerEmail, {
         partnerName: venue.partner!.businessName,
         venueName: venue.name,
         menuUrl: updated.menuUrl!,
         dashboardUrl: process.env.PARTNER_DASHBOARD_URL,
-      }).catch((err) => logger.error('[menu-audit] Failed to send approval email:', err));
+      }), (err) => logger.error('[menu-audit] Failed to send approval email:', err));
     }
 
     res.json({
@@ -303,23 +303,23 @@ adminVenueMenuRouter.post(
 
     const partnerUserId = venue.partner?.user?.id;
     if (partnerUserId) {
-      notificationService.notifyMenuRejected({
+      detach(notificationService.notifyMenuRejected({
         partnerUserId,
         venueId: id,
         venueName: venue.name,
         reason,
-      }).catch((err) => logger.error('[menu-audit] Failed to send rejection notification:', err));
+      }), (err) => logger.error('[menu-audit] Failed to send rejection notification:', err));
     }
 
     const partnerEmail = venue.partner?.user?.email;
     if (partnerEmail) {
-      emailService.sendMenuRejectedEmail(partnerEmail, {
+      detach(emailService.sendMenuRejectedEmail(partnerEmail, {
         partnerName: venue.partner!.businessName,
         venueName: venue.name,
         rejectedUrl: venue.pendingMenuUrl,
         reason,
         dashboardUrl: process.env.PARTNER_DASHBOARD_URL,
-      }).catch((err) => logger.error('[menu-audit] Failed to send rejection email:', err));
+      }), (err) => logger.error('[menu-audit] Failed to send rejection email:', err));
     }
 
     res.json({

@@ -4,6 +4,7 @@ import { authenticate, authorize, requirePermission } from '../middleware/auth.m
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { deriveCashbackEntryStatus } from '../services/adminCashback.service';
+import { parsePagination } from '../utils/pagination';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -78,12 +79,7 @@ function buildWhere(query: Record<string, unknown>): TxWhere {
 // GET /api/admin/transactions?page=1&limit=20&search=...&type=TOP_UP&status=COMPLETED&dateFrom=...&dateTo=...&userId=...
 router.get('/', requirePermission('transactions.read'), async (req, res, next) => {
   try {
-    const page = qs(req.query.page) ?? '1';
-    const limit = qs(req.query.limit) ?? '20';
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(Math.max(1, parseInt(limit) || 20), 100);
-    const skip = (pageNum - 1) * limitNum;
-    const take = limitNum;
+    const { skip, take, page: pageNum } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     const where = buildWhere(req.query);
 
@@ -350,11 +346,7 @@ function buildBusinessWhere(query: Record<string, unknown>): BusinessTxWhere {
 // Партньор / Локация / Кешбек / Марджин / Risk score / Receipt link / dual timestamps.
 router.get('/business', requirePermission('transactions.read'), async (req, res, next) => {
   try {
-    const page = qs(req.query.page) ?? '1';
-    const limit = qs(req.query.limit) ?? '20';
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(Math.max(1, parseInt(limit) || 20), 100);
-    const skip = (pageNum - 1) * limitNum;
+    const { skip, page: pageNum, limit: limitNum } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     const where = buildBusinessWhere(req.query);
 

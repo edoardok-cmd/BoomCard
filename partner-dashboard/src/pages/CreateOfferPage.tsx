@@ -4,11 +4,23 @@ import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
-import { Upload, X, Check, ArrowLeft, ArrowRight } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { Upload, X, Check, ArrowLeft, ArrowRight, AlertTriangle } from 'lucide-react';
 import Button from '../components/common/Button/Button';
 import { offersService } from '../services/offers.service';
 import { apiService } from '../services/api.service';
 import { DISCOUNT_STEPS } from '../utils/discountSteps';
+
+/**
+ * SPEC §8a — UNSPECIFIED FEATURE
+ * Offer and menu management is NOT defined in the BoomCard partner spec
+ * (07-partner-spec-extracted.md §8a). This page must not be accessible in
+ * production without an approved product specification.
+ *
+ * Gate: set VITE_OFFER_MANAGEMENT_ENABLED=true to unlock this page in
+ * non-production environments only.
+ */
+const OFFER_MANAGEMENT_ENABLED = import.meta.env.VITE_OFFER_MANAGEMENT_ENABLED === 'true';
 
 const content = {
   en: {
@@ -111,16 +123,37 @@ const CreateOfferPage: React.FC = () => {
   const navigate = useNavigate();
   const { language } = useLanguage();
   const t = content[language as keyof typeof content];
+  // LOW-3 fix (r2u): isInactive is technically unreachable because App.tsx wraps
+  // this route with <PartnerStatusRoute allowedStatuses={['Active']}>, which
+  // redirects Inactive partners to /dashboard?status=inactive before this component
+  // renders. The check is kept as defence-in-depth — it prevents button interaction
+  // for edge-case sessions where the status gate is bypassed (e.g. stale React Query
+  // cache) — but developers must NOT assume it provides primary enforcement.
+  const { user } = useAuth();
+  const isInactive = user?.partner_account_status === 'Inactive';
 
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [partnerId, setPartnerId] = useState<string | null>(null);
+
+  // LOW-1 fix: track object URLs so they can be revoked when images are removed
+  // or the component unmounts, preventing memory leaks from repeated add/remove.
+  const objectUrlsRef = React.useRef<Map<File, string>>(new Map());
 
   // Fetch the logged-in user's partner ID on mount
   useEffect(() => {
     apiService.get<{ success: boolean; data: { id: string } }>('/partners/me')
       .then(res => setPartnerId(res.data?.id ?? null))
       .catch(() => setPartnerId(null));
+  }, []);
+
+  // LOW-1 fix: revoke all tracked object URLs on unmount to prevent memory leaks.
+  useEffect(() => {
+    const urlMap = objectUrlsRef.current;
+    return () => {
+      urlMap.forEach(url => URL.revokeObjectURL(url));
+      urlMap.clear();
+    };
   }, []);
 
   const [formData, setFormData] = useState<OfferFormData>({
@@ -156,8 +189,20 @@ const CreateOfferPage: React.FC = () => {
       if (!formData.description.trim()) newErrors.description = t.required;
       if (!formData.validFrom) newErrors.validFrom = t.required;
       if (!formData.validUntil) newErrors.validUntil = t.required;
-      if (formData.validFrom && formData.validUntil && formData.validFrom >= formData.validUntil) {
+      // LOW-1 fix (r2u): use Date objects so the comparison is explicit and
+      // remains correct if the input format ever changes from ISO YYYY-MM-DD.
+      if (formData.validFrom && formData.validUntil &&
+          new Date(formData.validFrom) >= new Date(formData.validUntil)) {
         newErrors.validUntil = t.invalidDate;
+      }
+      // LOW-2 fix (r2u): reject offers backdated before today — a partner
+      // could otherwise inflate apparent offer duration.
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (formData.validFrom && new Date(formData.validFrom) < today) {
+        newErrors.validFrom = language === 'bg'
+          ? 'Началната дата не може да е в миналото'
+          : 'Start date cannot be in the past';
       }
     }
 
@@ -223,16 +268,76 @@ const CreateOfferPage: React.FC = () => {
   };
 
   const removeImage = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      images: prev.images.filter((_, i) => i !== index),
-    }));
+    setFormData(prev => {
+      // LOW-1 fix: revoke the object URL for the removed file to free memory.
+      const file = prev.images[index];
+      if (file) {
+        const url = objectUrlsRef.current.get(file);
+        if (url) {
+          URL.revokeObjectURL(url);
+          objectUrlsRef.current.delete(file);
+        }
+      }
+      return { ...prev, images: prev.images.filter((_, i) => i !== index) };
+    });
   };
 
   const handleSubmit = async () => {
-    if (!validateStep(3)) return;
+    // MEDIUM-2 fix: validate all three steps before submitting, not just step 3.
+    // handleNext validates each step during navigation, but a programmatic call to
+    // handleSubmit (or future UI changes) could bypass those checks.
+    // We collect errors across all steps in a single pass to avoid setErrors
+    // being called three times in sequence (each call would overwrite the prior).
+    const allErrors: Partial<Record<keyof OfferFormData, string>> = {};
+    // Step 1
+    if (!formData.title.trim()) allErrors.title = t.required;
+    if (!formData.category) allErrors.category = t.required;
+    if (!formData.discount) allErrors.discount = t.required;
+    // Step 2
+    if (!formData.description.trim()) allErrors.description = t.required;
+    if (!formData.validFrom) allErrors.validFrom = t.required;
+    if (!formData.validUntil) allErrors.validUntil = t.required;
+    // LOW-1 fix (r2u): explicit Date comparison
+    if (formData.validFrom && formData.validUntil &&
+        new Date(formData.validFrom) >= new Date(formData.validUntil)) {
+      allErrors.validUntil = t.invalidDate;
+    }
+    // LOW (backstop gap fix): mirror the step-2 backdated-start-date rule here.
+    // validateStep(2) rejects a validFrom before today, but the consolidated
+    // re-validation previously omitted it — so a programmatic/bypassed submit
+    // could slip a backdated offer through. Re-check it so this defence-in-depth
+    // path genuinely covers every rule the step-by-step path enforces.
+    {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (formData.validFrom && new Date(formData.validFrom) < today) {
+        allErrors.validFrom = language === 'bg'
+          ? 'Началната дата не може да е в миналото'
+          : 'Start date cannot be in the past';
+      }
+    }
+    // Step 3
+    if (!formData.terms.trim()) allErrors.terms = t.required;
+    if (Object.keys(allErrors).length > 0) {
+      setErrors(allErrors);
+      return;
+    }
     if (!partnerId) {
       toast.error(language === 'bg' ? 'Партньорският профил не е намерен.' : 'Partner profile not found.');
+      return;
+    }
+
+    // LOW-2 fix: reject negative or zero maxRedemptions before sending to backend.
+    const maxRedemptionsInt = formData.maxRedemptions ? parseInt(formData.maxRedemptions, 10) : undefined;
+    if (maxRedemptionsInt !== undefined && (isNaN(maxRedemptionsInt) || maxRedemptionsInt < 1)) {
+      toast.error(language === 'bg' ? 'Максималният брой използвания трябва да е поне 1.' : 'Max redemptions must be at least 1.');
+      return;
+    }
+
+    // LOW-2 / MEDIUM-2 fix: also add radix to parseInt for discount.
+    const discountInt = parseInt(formData.discount, 10);
+    if (isNaN(discountInt)) {
+      toast.error(language === 'bg' ? 'Изберете валидна отстъпка.' : 'Please select a valid discount.');
       return;
     }
 
@@ -242,11 +347,15 @@ const CreateOfferPage: React.FC = () => {
         partnerId,
         title: formData.title,
         description: formData.description,
+        // MEDIUM-2 fix (review r2u): include category in the payload.
+        // Previously this field was validated and previewed but silently dropped,
+        // causing offers to be created without a category regardless of selection.
+        category: formData.category,
         type: 'DISCOUNT',
-        discountPercent: parseInt(formData.discount),
+        discountPercent: discountInt,
         startDate: formData.validFrom,
         endDate: formData.validUntil,
-        usageLimit: formData.maxRedemptions ? parseInt(formData.maxRedemptions) : undefined,
+        usageLimit: maxRedemptionsInt,
         termsConditions: formData.terms,
         status: 'ACTIVE',
       });
@@ -295,11 +404,14 @@ const CreateOfferPage: React.FC = () => {
     >
       <FormGroup>
         <Label>{t.offerTitle}</Label>
+        {/* MEDIUM-1 fix (review r2u): add maxLength so unbounded strings cannot
+            be submitted to the database if backend authorization is ever restored. */}
         <Input
           type="text"
           value={formData.title}
           onChange={e => handleInputChange('title', e.target.value)}
           placeholder={t.offerTitlePlaceholder}
+          maxLength={200}
           error={!!errors.title}
         />
         {errors.title && <ErrorText>{errors.title}</ErrorText>}
@@ -349,11 +461,13 @@ const CreateOfferPage: React.FC = () => {
     >
       <FormGroup>
         <Label>{t.description}</Label>
+        {/* MEDIUM-1 fix (review r2u): maxLength to prevent unbounded string submissions. */}
         <TextArea
           value={formData.description}
           onChange={e => handleInputChange('description', e.target.value)}
           placeholder={t.descriptionPlaceholder}
           rows={5}
+          maxLength={2000}
           error={!!errors.description}
         />
         {errors.description && <ErrorText>{errors.description}</ErrorText>}
@@ -419,14 +533,30 @@ const CreateOfferPage: React.FC = () => {
 
         {formData.images.length > 0 && (
           <ImagePreviewGrid>
-            {formData.images.map((file, index) => (
-              <ImagePreview key={index}>
-                <img src={URL.createObjectURL(file)} alt={`Preview ${index + 1}`} />
+            {formData.images.map((file, index) => {
+              // LOW-2 fix: use a stable key derived from file identity instead of
+              // array index, so removing an image from the middle of the list does
+              // not cause React to reuse DOM nodes for the wrong file.
+              const stableKey = `${file.name}-${file.size}-${file.lastModified}`;
+              return (
+              <ImagePreview key={stableKey}>
+                {/* LOW-1 fix: reuse cached object URL to avoid creating a new
+                    one on every render and leaking the previous one. */}
+                <img
+                  src={(() => {
+                    if (!objectUrlsRef.current.has(file)) {
+                      objectUrlsRef.current.set(file, URL.createObjectURL(file));
+                    }
+                    return objectUrlsRef.current.get(file)!;
+                  })()}
+                  alt={`Preview ${index + 1}`}
+                />
                 <RemoveButton onClick={() => removeImage(index)}>
                   <X size={16} />
                 </RemoveButton>
               </ImagePreview>
-            ))}
+              );
+            })}
           </ImagePreviewGrid>
         )}
       </FormGroup>
@@ -441,11 +571,13 @@ const CreateOfferPage: React.FC = () => {
     >
       <FormGroup>
         <Label>{t.terms}</Label>
+        {/* MEDIUM-1 fix (review r2u): maxLength to prevent unbounded string submissions. */}
         <TextArea
           value={formData.terms}
           onChange={e => handleInputChange('terms', e.target.value)}
           placeholder={t.termsPlaceholder}
           rows={6}
+          maxLength={5000}
           error={!!errors.terms}
         />
         {errors.terms && <ErrorText>{errors.terms}</ErrorText>}
@@ -473,8 +605,40 @@ const CreateOfferPage: React.FC = () => {
     </StepContent>
   );
 
+  if (!OFFER_MANAGEMENT_ENABLED) {
+    return (
+      <Container>
+        <SpecBlockBanner>
+          <AlertTriangle size={24} />
+          <div>
+            <SpecBlockTitle>
+              {language === 'bg'
+                ? 'Функцията не е налична'
+                : 'Feature not available'}
+            </SpecBlockTitle>
+            <SpecBlockDesc>
+              {language === 'bg'
+                ? 'Управлението на оферти е в очакване на продуктова спецификация (spec §8a). Свържете се с продуктовия екип преди активиране.'
+                : 'This feature is pending product specification (spec §8a). Contact the product team before enabling.'}
+            </SpecBlockDesc>
+          </div>
+        </SpecBlockBanner>
+      </Container>
+    );
+  }
+
   return (
     <Container>
+      {/* Spec §8a warning banner — always visible while OFFER_MANAGEMENT_ENABLED is true */}
+      <SpecWarningBanner>
+        <AlertTriangle size={18} />
+        <SpecWarningText>
+          {language === 'bg'
+            ? 'Тази функция е в очакване на продуктова спецификация (spec §8a). Свържете се с продуктовия екип преди активиране.'
+            : 'This feature is pending product specification (spec §8a). Contact the product team before enabling.'}
+        </SpecWarningText>
+      </SpecWarningBanner>
+
       <Header>
         <BackButton onClick={() => navigate('/partners/offers')}>
           <ArrowLeft size={20} />
@@ -503,11 +667,13 @@ const CreateOfferPage: React.FC = () => {
             </Button>
           )}
           {currentStep < 3 ? (
-            <Button onClick={handleNext}>
+            // MEDIUM-2 fix (r2u): Inactive partners have read-only access (§5.1, §11.2).
+            // Disable Next on steps 1 and 2 so the UX accurately conveys read-only from start.
+            <Button onClick={handleNext} disabled={isInactive}>
               {t.next} <ArrowRight size={18} />
             </Button>
           ) : (
-            <Button onClick={handleSubmit} disabled={isSubmitting}>
+            <Button onClick={handleSubmit} disabled={isSubmitting || isInactive}>
               <Check size={18} /> {isSubmitting ? '...' : t.submit}
             </Button>
           )}
@@ -1034,6 +1200,66 @@ const Actions = styled.div`
 const ActionButtons = styled.div`
   display: flex;
   gap: 1rem;
+`;
+
+// Spec §8a — shown when VITE_OFFER_MANAGEMENT_ENABLED is not set; blocks the
+// entire page and instructs operators to contact the product team.
+const SpecBlockBanner = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 2rem;
+  background: #fef3c7;
+  border: 2px solid #f59e0b;
+  border-radius: 1rem;
+  margin-top: 2rem;
+
+  svg {
+    color: #b45309;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+`;
+
+const SpecBlockTitle = styled.p`
+  font-size: 1rem;
+  font-weight: 700;
+  color: #92400e;
+  margin: 0 0 0.375rem;
+`;
+
+const SpecBlockDesc = styled.p`
+  font-size: 0.875rem;
+  color: #92400e;
+  line-height: 1.5;
+  margin: 0;
+`;
+
+// Spec §8a warning banner — visible when the flag is enabled (non-production
+// use) to remind operators the feature lacks an approved product spec.
+const SpecWarningBanner = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.875rem 1.25rem;
+  background: #fef3c7;
+  border: 2px solid #f59e0b;
+  border-radius: 0.75rem;
+  margin-bottom: 1.5rem;
+
+  svg {
+    color: #b45309;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+`;
+
+const SpecWarningText = styled.p`
+  font-size: 0.875rem;
+  color: #92400e;
+  line-height: 1.5;
+  font-weight: 500;
+  margin: 0;
 `;
 
 export default CreateOfferPage;
