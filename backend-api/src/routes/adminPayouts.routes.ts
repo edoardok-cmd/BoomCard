@@ -9,6 +9,7 @@ import { notificationService } from '../services/notification.service';
 import { logger } from '../utils/logger';
 import { runWithConcurrency } from '../utils/concurrency';
 import { parsePagination } from '../utils/pagination';
+import { detach } from '../utils/detach';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -130,15 +131,16 @@ async function notifySubscriber(
     // §11 — in-app notification + push alongside the email.
     // Non-fatal: run fire-and-forget so an in-app failure never rolls back the
     // status transition or prevents the email from being sent first.
-    notificationService
-      .notifyPayoutEvent({
+    detach(
+      notificationService.notifyPayoutEvent({
         userId: tx.wallet.userId,
         payoutId,
         event,
         amount: Math.abs(tx.amount),
         currency: tx.currency,
-      })
-      .catch((err) => logger.error(`[adminPayouts] notifyPayoutEvent failed for ${payoutId}:`, err));
+      }),
+      (err) => logger.error(`[adminPayouts] notifyPayoutEvent failed for ${payoutId}:`, err),
+    );
   } catch (err) {
     // Non-fatal — log and continue
     console.error('[adminPayouts] email notification failed', err);
@@ -331,14 +333,14 @@ router.patch(
             alreadyProcessed++;
           } else {
             approved++;
-            notifySubscriber(payout.id, 'approved');
+            detach(notifySubscriber(payout.id, 'approved'), () => {});
           }
         } else {
           failed++;
           const reason = result.reason as any;
           logger.error(`[bulk-approve] transfer for payout ${payout.id} failed: ${reason?.message ?? reason}`);
           // executePayoutTransfer has already reverted balance + marked FAILED.
-          notifySubscriber(payout.id, 'failed', reason?.message);
+          detach(notifySubscriber(payout.id, 'failed', reason?.message), () => {});
         }
       }
 
@@ -418,7 +420,7 @@ router.patch(
         return;
       }
 
-      notifySubscriber(id, 'approved');
+      detach(notifySubscriber(id, 'approved'), () => {});
       res.json(updated);
     } catch (error) {
       next(error);
@@ -495,7 +497,7 @@ router.patch(
         reason ?? 'admin rejection',
       );
 
-      notifySubscriber(id, 'rejected', reason);
+      detach(notifySubscriber(id, 'rejected', reason), () => {});
       res.json({ ok: true });
     } catch (error) {
       next(error);
@@ -537,7 +539,7 @@ router.patch(
         (req as AuthRequest).user?.id ?? null,
       );
 
-      notifySubscriber(id, 'completed');
+      detach(notifySubscriber(id, 'completed'), () => {});
       res.json(updated);
     } catch (error) {
       next(error);
@@ -574,7 +576,7 @@ router.patch(
         },
       });
 
-      notifySubscriber(id, 'held', reason);
+      detach(notifySubscriber(id, 'held', reason), () => {});
       res.json(updated);
     } catch (error) {
       next(error);
@@ -610,7 +612,7 @@ router.patch(
         data: { status: 'PENDING', description: releasedDesc },
       });
 
-      notifySubscriber(id, 'released');
+      detach(notifySubscriber(id, 'released'), () => {});
       res.json(updated);
     } catch (error) {
       next(error);
@@ -762,7 +764,7 @@ router.patch(
           (req as AuthRequest).user?.id ?? null,
           reason ?? 'bank transfer failure',
         );
-        notifySubscriber(id, 'failed', reason);
+        detach(notifySubscriber(id, 'failed', reason), () => {});
       }
 
       res.json({ ok: true });

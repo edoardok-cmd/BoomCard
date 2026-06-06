@@ -26,43 +26,122 @@ process.env.AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID || 'test';
 process.env.AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY || 'test';
 process.env.STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
 process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+// Inbound-email webhook: integration tests post unsigned payloads and rely on
+// the dev auth bypass. The bypass is now an explicit opt-in (no longer implied
+// by merely unset secrets — see emailWebhook.routes.ts verifyAuth, FIX 2), so
+// turn it on here for the test suite. emailWebhookAuth.test.ts overrides this
+// per-case to exercise the fail-closed path.
+process.env.ALLOW_UNSIGNED_WEBHOOK = process.env.ALLOW_UNSIGNED_WEBHOOK || '1';
 
+import http from 'http';
 import { prisma } from '../src/lib/prisma';
 import { drainDetached } from '../src/utils/detach';
 
-// ─── Partial flake mitigation: supertest transport race under host contention ─
+// ─── supertest transport-race fix: persistent server per app per file ─────────
 //
-// HONEST STATUS (do not over-claim): the residual intermittent failures are a
-// supertest/Node transport race, NOT in-process async leakage, and this mitigation
-// REDUCES but does not fully ELIMINATE them on a contended host. See the block
-// comment in jest.config.js for the full determinism caveat.
+// Cause: stock supertest 6.x, given an Express app (a Function, not an
+// already-listening server), calls `http.createServer(app)` then `app.listen(0)`
+// to spin up a NEW ephemeral server PER `request(app)` call and closes it right
+// after the response (index.js + lib/test.js serverAddress). With 376 call sites
+// across the suite that is 376 ephemeral listen/close cycles in quick succession.
+// Node 19+ defaults `http.globalAgent` to `keepAlive: true`, pooling sockets that
+// the NEXT request may try to reuse against a DIFFERENT, already-closed ephemeral
+// server. Under this machine's heavy parallel-agent load (many node procs, high
+// load avg, lots of TIME_WAIT sockets) that reuse-against-closed-server race
+// surfaced intermittently as `socket hang up`, `ECONNRESET`, `426 Upgrade
+// Required`, and stray `401/403/404`/`200` with the route's service mock showing
+// "Number of calls: 0" (the request never reached the mounted router).
 //
-// Mechanism: supertest 6.x, given an Express app (not an already-listening
-// server), calls `app.listen(0)` to spin up a NEW ephemeral server PER REQUEST
-// and closes it right after the response (lib/test.js serverAddress + end). A
-// suite that fires dozens of `request(app)` calls churns dozens of ephemeral
-// servers/ports in quick succession. Node 19+ also defaults `http.globalAgent`
-// to `keepAlive: true`, pooling sockets that the NEXT request may try to reuse
-// against a DIFFERENT (already-closed) server. Symptoms observed: `socket hang
-// up`, `ECONNRESET`, `426 Upgrade Required`, and stray `401/403/404`/`200` with
-// the route's service mock showing "Number of calls: 0" (the request never
-// reached the mounted router).
+// Fix (test-only, ZERO production impact, NO test call-site edits): transparently
+// wrap supertest's default export via jest.mock below so that when it is called
+// with a Function `app`, we get-or-create ONE persistent listening server for
+// that app and delegate to the REAL supertest with that already-listening server
+// (index.js sees a Server object, skips createServer, and serverAddress never
+// re-listens or closes it). Every `request(app)` in a file therefore reuses the
+// SAME stable server/port, so Node's keepAlive pool only ever reuses sockets
+// against a server that is STILL UP — the documented race disappears — and churn
+// drops from 376 ephemeral listen/close cycles to ~one per app per file.
 //
-// Measured driver of the BATCH-TO-BATCH variance: HOST CONTENTION. This machine
-// runs many parallel agents (observed ~230 node procs, load ~5-8, 200-700+
-// sockets in TIME_WAIT). The same suite measured 0/80 then 11/80 solo across
-// back-to-back batches purely as load shifted — ephemeral-port/TIME_WAIT pressure
-// and CPU-scheduling jitter intermittently break supertest's per-request sockets.
+// FD-leak guard: tests/setup.ts `afterAll` calls `jest.resetModules()` every
+// file, so `app` (imported from src/server) is a NEW object per file; keyed by
+// app, the registry holds one server per app per file. We CLOSE every server at
+// the file boundary (afterAll, below) and clear the registry, bounding live FDs
+// to ~1-2 at a time. (A previous naive persistent-server attempt that never
+// closed them leaked 42 listening servers across a full run → FD exhaustion →
+// segfault; closing at the file boundary is what makes this safe.)
 //
-// Mitigation note (purely test-only, zero production impact): several transport
-// configs were measured head-to-head under load on this host. A supertest-
-// internal "persistent server per app" patch was prototyped and REJECTED (no
-// reliable improvement, and FD exhaustion → segfault in the single-worker full
-// run). Toggling keep-alive off was also measured and did NOT beat Node's default
-// agent under load (keepAlive:false creates more short-lived sockets → more
-// TIME_WAIT → more ephemeral-port pressure). We therefore leave Node's default
-// HTTP agent in place and accept the residual host-dependent transport flake,
-// documented in jest.config.js. No HTTP-agent override is applied here.
+// The registry is anchored on `globalThis` so it survives `jest.resetModules()`
+// and so the jest.mock factory (which is hoisted and may only reference globals /
+// require / jest.requireActual) can reach it without an outer-scope variable.
+// Non-function args (an already-listening Server, or a base-URL string) are
+// passed straight through unchanged. The wrapper preserves the `.Test` and
+// `.agent` statics. Determinism under heavy host contention should be verified by
+// running the suite — no fixed "N/N clean" rate is claimed.
+jest.mock('supertest', () => {
+  const actualRequest = jest.requireActual('supertest');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const httpMod = require('http');
+
+  type Srv = import('http').Server;
+  const getServers = (): Map<unknown, Srv> => {
+    const g = globalThis as { __supertestServers?: Map<unknown, Srv> };
+    return (g.__supertestServers ??= new Map());
+  };
+
+  // How supertest 6.x handles an app/server (lib/test.js):
+  //   serverAddress(): `const addr = app.address(); if (!addr) this._server = app.listen(0);`
+  //   end():           `if (server && server._handle) return server.close(...)`
+  // i.e. on the FIRST request against a not-yet-listening server it calls
+  // `server.listen(0)`, records `_server`, and CLOSES it after the response.
+  //
+  // On this Node, `server.address()` IS populated synchronously right after
+  // `listen(0)` returns — supertest depends on this, reading `address().port`
+  // synchronously in `serverAddress` on the line after it may call `listen(0)`.
+  // Our wrapper creates ONE server per app but does NOT listen it itself; it
+  // hands the un-listened server to the REAL supertest, which calls `listen(0)`
+  // on the first request. We neutralise `server.close()` so supertest's
+  // per-request teardown cannot stop our persistent server; the real `close` is
+  // stashed and run at the file boundary (afterAll). Because the address is
+  // available synchronously, supertest never re-listens and never sets `_server`:
+  // every subsequent `request(app)` reuses the SAME listening port.
+  // (Listening it ourselves would also work given the sync address; letting
+  // supertest do it keeps the wrapper minimal and avoids a double-listen.)
+  //
+  // The returned object is the REAL supertest request object built around a real
+  // http.Server, so all superagent chaining (.set/.send/.field/.attach/.expect/
+  // callbacks/await) behaves exactly as stock supertest — no proxy in the path.
+  const wrapped = function (app: unknown, options?: unknown) {
+    if (typeof app !== 'function') {
+      // Already-listening Server or base-URL string: delegate unchanged.
+      return actualRequest(app, options);
+    }
+    const servers = getServers();
+    let server = servers.get(app);
+    if (!server) {
+      server = httpMod.createServer(app as never) as Srv;
+      // Neutralise supertest's per-request close so the FIRST request (which
+      // makes supertest listen this server) cannot also tear it down. The real
+      // close is stashed for the file-boundary teardown in afterAll.
+      const realClose = server.close.bind(server);
+      (server as Srv & { __realClose?: () => void }).__realClose = realClose;
+      // close(cb) is called by supertest's end(); keep the cb contract (invoke
+      // it on next tick) but DO NOT actually stop listening.
+      (server as unknown as { close: (cb?: () => void) => Srv }).close = (cb?: () => void) => {
+        if (cb) process.nextTick(cb);
+        return server as Srv;
+      };
+      // Never keep the process alive on a lingering persistent server.
+      server.unref();
+      servers.set(app, server);
+    }
+    return actualRequest(server, options);
+  } as typeof actualRequest;
+
+  // Preserve statics so `request.Test` / `request.agent` keep working.
+  wrapped.Test = actualRequest.Test;
+  wrapped.agent = actualRequest.agent;
+  return wrapped;
+});
 
 // Increase test timeout for integration tests
 jest.setTimeout(30000);
@@ -226,6 +305,34 @@ afterAll(async () => {
   // file as a whole, including anything spawned by afterAll-ordered hooks.
   restoreTimers();
   await drainAll();
+  // Close every persistent supertest server created during THIS file before
+  // resetModules drops the `app` objects they are keyed by. Without this, each
+  // file leaks one listening server per app; across 42 files that exhausts FDs
+  // (→ segfault). closeAllConnections() first so idle keepAlive sockets cannot
+  // hang close(). Failures are swallowed so teardown never throws.
+  {
+    const servers = (globalThis as { __supertestServers?: Map<unknown, http.Server> })
+      .__supertestServers;
+    if (servers) {
+      for (const server of servers.values()) {
+        try {
+          (server as http.Server & { closeAllConnections?: () => void }).closeAllConnections?.();
+        } catch {
+          /* non-fatal */
+        }
+        try {
+          // Use the REAL close stashed at creation — the per-request `close`
+          // override is a no-op, so calling it here would leak the FD.
+          const realClose = (server as http.Server & { __realClose?: () => void }).__realClose;
+          if (realClose) realClose();
+          else server.close();
+        } catch {
+          /* non-fatal */
+        }
+      }
+      servers.clear();
+    }
+  }
   // Drop this file's cached module instances so the NEXT file's jest.mock
   // factories rebind fresh. Without this, a route module first required by an
   // earlier file stays cached in the shared worker registry (maxWorkers:1, no

@@ -51,6 +51,9 @@ const EditOfferPage = lazy(() => import('./pages/EditOfferPage'));
 const PartnerMenusPage = lazy(() => import('./pages/PartnerMenusPage'));
 const PartnerStickersPage = lazy(() => import('./pages/PartnerStickersPage'));
 const PartnerHelpPage = lazy(() => import('./pages/PartnerHelpPage'));
+// BC-PARTNER-PORTAL-SCOPE-B — §6 transactions + §7 finance
+const PartnerTransactionsPage = lazy(() => import('./pages/PartnerTransactionsPage'));
+const PartnerFinancePage = lazy(() => import('./pages/PartnerFinancePage'));
 const NearbyOffersPage = lazy(() => import('./pages/NearbyOffersPage'));
 const RewardsPage = lazy(() => import('./pages/RewardsPage'));
 const PromotionsPage = lazy(() => import('./pages/PromotionsPage'));
@@ -329,6 +332,24 @@ function App() {
                       element={
                         <PartnerStatusRoute allowedStatuses={['Active', 'Inactive']}>
                           <CashbackPage />
+                        </PartnerStatusRoute>
+                      }
+                    />
+                    {/* BC-PARTNER-PORTAL-SCOPE-B §6 — partner transactions (read-only, Active + Inactive) */}
+                    <Route
+                      path="transactions"
+                      element={
+                        <PartnerStatusRoute allowedStatuses={['Active', 'Inactive']}>
+                          <PartnerTransactionsPage />
+                        </PartnerStatusRoute>
+                      }
+                    />
+                    {/* BC-PARTNER-PORTAL-SCOPE-B §7 — partner finance (read-only, Active + Inactive) */}
+                    <Route
+                      path="finance"
+                      element={
+                        <PartnerStatusRoute allowedStatuses={['Active', 'Inactive']}>
+                          <PartnerFinancePage />
                         </PartnerStatusRoute>
                       }
                     />

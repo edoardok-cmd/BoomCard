@@ -108,6 +108,12 @@ export function buildTicketHeaders(args: {
   // must pass `audience` to emailService.sendEmail() rather than relying on this
   // function to hard-code an inbound address.
   const headers: Record<string, string> = {
+    // §6.2 / Clash 7.1: X-BoomCard-Request-ID is the canonical PRIMARY threading
+    // marker. Emit it on every outbound message so a spec-literal external
+    // integrator threading on X-BoomCard-Request-ID resolves at Priority 1.
+    // X-BoomCard-Ticket-ID is retained (same value) as the legacy alias the
+    // system has historically emitted — kept for backward compatibility.
+    'X-BoomCard-Request-ID': args.ticketId,
     'X-BoomCard-Ticket-ID': args.ticketId,
     'Message-ID': messageId,
   };

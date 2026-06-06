@@ -87,18 +87,11 @@ const payoutAccountSchema = z.object({
 router.put('/payout-account', asyncHandler(async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
 
-  // F-002: Spec §1.2 — INACTIVE users must not be able to perform operational writes.
-  // Payout account update is an operational write path; block INACTIVE accounts.
-  const liveUser = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { status: true },
-  }).catch(() => null);
-  if ((liveUser?.status as string) === 'INACTIVE') {
-    return res.status(403).json({
-      success: false,
-      message: 'ACCOUNT_INACTIVE: Account is inactive. Contact support to reactivate.',
-    });
-  }
+  // Spec §1.2 + §13.1: "Enter or update IBAN" = Yes for Inactive accounts.
+  // This is read-mostly account maintenance, not an operational scanning/payout write,
+  // so INACTIVE users are explicitly permitted to enter/update their payout account.
+  // (Reverses the prior F-002 decision, which misread §1.2.) Scanning and
+  // payout-initiation remain blocked for INACTIVE accounts elsewhere.
 
   const parseResult = payoutAccountSchema.safeParse(req.body);
   if (!parseResult.success) {

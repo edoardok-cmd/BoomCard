@@ -4,6 +4,7 @@ import { authenticate, authorize, requirePermission, AuthRequest } from '../midd
 import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { stripeService } from '../services/stripe.service';
+import { notificationService } from '../services/notification.service';
 import { getSubscriberCashbackEntries } from '../services/adminCashback.service';
 import { computeRiskForUsers, persistRiskAssessments } from '../services/userRisk.service';
 import { planDisplayName } from '../utils/planDisplayName';
@@ -524,6 +525,15 @@ router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
           canceledAt: now,
           cancelAt: now,
           autoRenewal: false,
+          // Reset retryAttempt so the resulting customer.subscription.deleted
+          // webhook does NOT classify this as wasPaymentFailure
+          // (stripe.service: retryAttempt > 0 → EXPIRED + PAYMENT_FAILED
+          // access-ended notification). Without this the user would receive
+          // both "cancellation confirmed" (this handler) and the contradictory
+          // "subscription ended — payment not received". This is an explicit
+          // admin cancel, not the renewal/invoice-failure flow the M3
+          // single-attempt guard governs, so resetting here is safe.
+          retryAttempt: 0,
           // Mark the payment failure as resolved-by-cancellation so that
           // list-view projections (which surface failedPaymentAt /
           // failedPaymentClearedAt) don't show an open failure on a subscription
@@ -571,6 +581,18 @@ router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
       ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
     }), () => {});
+
+    // BC-USER-SPEC-FIX-002 (F-018): "Subscription cancellation confirmed" is a
+    // mandatory Payment notification (spec §11.1/§11.2) and is NOT exempted by the
+    // §11.3 intentional-asymmetry list. The admin-cancel handler stamps canceledAt,
+    // which makes every downstream path (Stripe webhook M2 branch, Paysera job,
+    // scheduler.expireCancelledSubscriptions) suppress on the already-cancelled
+    // guard — so the user is otherwise never notified. Fire the same in-app
+    // notification the user-initiated cancelSubscription path uses. The cancel
+    // succeeded (all three branches above committed without throwing) by the time
+    // we reach here, so this fires once, only on a genuine CANCELLED transition.
+    detach(notificationService
+      .notifySubscriptionCancelledInApp(userId), (err) => logger.error(`[admin cancelSubscription] notifySubscriptionCancelledInApp failed for sub ${subscription.id}:`, err));
 
     res.json({ ok: true });
   } catch (error) {

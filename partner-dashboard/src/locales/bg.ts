@@ -78,6 +78,11 @@ export const bg: TranslationKey = {
     uploadReceipt: 'Качи бележка',
     subscription: 'Абонамент и плащания',
     help: 'Помощ',
+    // §5.2 canonical partner menu sections
+    transactions: 'Транзакции',
+    finance: 'Финанси',
+    profileAndPartnership: 'Профил и партньорство',
+    myRequests: 'Моите заявки',
     downloadApp: 'Изтегли приложение',
     adminDashboard: 'Административно табло',
     managePartners: 'Управление на партньори',

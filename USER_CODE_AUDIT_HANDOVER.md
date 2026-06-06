@@ -125,3 +125,40 @@ The `firstName`, `lastName`, `phone` NOT NULL constraint backfills existing null
 - BGN/EUR dual-currency display (spec §17) — implementation deferred per spec §16.
 - `LoyaltyAccount`/`LoyaltyTransaction` models — deferred features per spec §16, schema comments added.
 - Nearby venues API (`/api/venues/nearby`) — live but deferred per spec §16; not removed as it may be needed for internal testing.
+
+---
+
+## Re-audit 2026-06-06 — BC-USER-SPEC-FIX-002 (user-triggered)
+
+Independent re-audit of the H1–L4 user-spec conformance fixes. The original sign-off
+(`-impl-r1` / `-task-r1` / `-audit-r1-*`) was **mostly confirmed** but missed one genuine
+defect:
+
+- **MEDIUM (M1) — fixed.** Trial-pending-cashback release job (`scheduler.ts` ~835) fired
+  `notifyPayoutReady` **unconditionally** on threshold crossing, with no IBAN check — unlike the
+  canonical `wallet.service.credit` path. A no-IBAN user crossing the payout threshold via the
+  trial-release path (the canonical path for trial cashback) got a misleading "you can cash out"
+  message instead of the mandatory §7.3/§11.2 "add your bank account" prompt, and no payout
+  occurred (auto-payout cron filters null-IBAN wallets). Fixed by mirroring the wallet.service
+  IBAN branch (`notifyPayoutHeldNoIban` when absent).
+  - *Why the original audit missed it:* the first-pass reviewer verified the credit-path threshold
+    notification (wallet.service) and the auto-payout cron, but did not cross-check that the second,
+    parallel threshold-crossing producer (the trial-release cron) had the same IBAN branching. A
+    mandatory notification is only correct if **every** path that should fire it does.
+
+Also fixed alongside (LOW, opportunistic):
+- `subscription.service.ts:326` — plan downgrade to PREMIUM_WEEKLY called
+  `cancelSubscription(id, false)` which fired a spurious "subscription cancelled" notification;
+  now passes `suppressEmail=true` (3rd positional arg — note signature is
+  `(id, cancelAtPeriodEnd=true, suppressEmail=false)`).
+- `auth.service.ts:1774` — stale comment claiming reset-abuse alerts fire "only for ADMIN" (they
+  fire for all roles); corrected.
+
+Left as noted suggestion (NOT changed — product-copy decision): `notifyPayoutReady` copy says
+"Request your payout anytime / Cash out", implying a user-initiated payout that §7.1 says does not
+exist (payouts are auto-only). Reword to "Your payout will be sent automatically" if desired.
+
+Re-audit trail (separate namespace, alongside the original files): `*-reaudit-r1.md`
+(request-changes), `*-reaudit-r1-impl-r1.md` (fix verification, approve), `*-reaudit-r2.md`
+(independent task-level re-verify, approve). Both audit loops clean. All changes are uncommitted
+in the working tree (the whole BC-USER-SPEC-FIX-002 task was never committed).

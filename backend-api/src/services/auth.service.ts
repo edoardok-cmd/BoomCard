@@ -8,7 +8,7 @@ import { AppError } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
 import { cardService } from './card.service';
 import { walletService } from './wallet.service';
-import { PartnerStatus, Prisma, UserStatus } from '@prisma/client';
+import { PartnerRequestStatus, PartnerStatus, Prisma, UserStatus } from '@prisma/client';
 import { emailService } from './email.service';
 import { notificationService } from './notification.service';
 import { SECURITY_CONFIG } from '../config/security.config';
@@ -391,6 +391,13 @@ export class AuthService {
               category: primaryCategory,
               categories: categoriesList,
               status: PartnerStatus.PENDING,
+              // Spec §2.4 — self-registered applications must enter the same
+              // request-pipeline as admin-created ones (adminPartners.routes
+              // initialises requestStatus=NEW for PENDING partners). Without this
+              // the row has requestStatus=null and the 24h internal-SLA escalation
+              // query (scheduler escalateOverduePartnerSla, filters `not: null`)
+              // silently skips it. NEW is the canonical pipeline entry state.
+              requestStatus: PartnerRequestStatus.NEW,
               email: normalizedEmail,
               phone: sanitizedPhone,
               website: info.website?.trim() || null,
@@ -1240,11 +1247,32 @@ export class AuthService {
       throw new AppError('Incorrect password', 401);
     }
 
-    const updated = await prisma.user.update({
-      where: { id: userId },
-      data: { email: user.pendingEmail, pendingEmail: null, pendingEmailToken: null, pendingEmailExpiry: null },
-      select: { id: true, email: true, firstName: true, lastName: true, phone: true, city: true, country: true, avatar: true, role: true, status: true },
+    // Spec §13.5 step 4 — re-check the new email for uniqueness at confirm time.
+    // requestEmailChange validated this, but another account could have claimed the
+    // address in the interval. Explicit pre-check inside the confirm step, plus a
+    // P2002 catch on the update as a backstop for the residual race window.
+    const collision = await prisma.user.findFirst({
+      where: { email: user.pendingEmail, deletedAt: null, NOT: { id: userId } },
+      select: { id: true },
     });
+    if (collision) {
+      throw new AppError('Email already in use', 409);
+    }
+
+    let updated;
+    try {
+      updated = await prisma.user.update({
+        where: { id: userId },
+        data: { email: user.pendingEmail, pendingEmail: null, pendingEmailToken: null, pendingEmailExpiry: null },
+        select: { id: true, email: true, firstName: true, lastName: true, phone: true, city: true, country: true, avatar: true, role: true, status: true },
+      });
+    } catch (err) {
+      // Backstop for the race between the pre-check above and the write.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new AppError('Email already in use', 409);
+      }
+      throw err;
+    }
 
     logger.info(`Email changed for user ${userId} → ${updated.email}`);
     return updated;
@@ -1743,7 +1771,7 @@ export class AuthService {
       }
 
       // Spec §10.4 — log every password reset request to LinkResendLog + AuditLog, not
-      // just admin accounts. Alert logic below still only fires for ADMIN/SUPER_ADMIN.
+      // just admin accounts. The reset-abuse alert/suspension below applies to all roles.
       await prisma.linkResendLog.create({
         data: { linkType: 'PASSWORD_RESET', subjectId: user.id, actorId: user.id },
       }).catch((err: unknown) => logger.error('[forgotPassword] linkResendLog.create failed', err));
@@ -1791,22 +1819,21 @@ export class AuthService {
           }
         }
 
-        // Spec Part 9, Tier 3 — suspend account at 5 resets in 24h, pending Super Admin review.
-        // Only suspend once (when count exactly hits the threshold) to avoid redundant DB writes.
+        // Spec §19 atomic rule #12 — suspend account at 5 resets in 24h, pending
+        // Super Admin review. The rule lives in the USER domain and carries no role
+        // exception, so it applies to USER / PARTNER accounts as well as ADMIN /
+        // SUPER_ADMIN (the audit H3 corrected the prior admin-only scoping).
+        // Only suspend once (when the count first reaches the threshold) to avoid
+        // redundant DB writes.
         //
-        // SECURITY (unauthenticated-account-disable fix): this branch is reached
-        // from the PUBLIC /auth/forgot-password endpoint with no authentication.
-        // A role-agnostic status flip let an attacker disable an arbitrary
-        // PARTNER/USER account just by spamming reset requests for its email.
-        // Spec Part 9 Tier 3 documents this auto-suspension for ADMIN accounts
-        // only (admin reset abuse is the threat model — see the "Admin account"
-        // wording in the alert/notification copy). Scope the status change to
-        // ADMIN / SUPER_ADMIN so the unauthenticated path can never disable a
-        // customer or partner account. For USER/PARTNER, the per-IP authRateLimiter
-        // plus the Tier-1 super-admin alert (fired above at >= 3) remain the
-        // defence — no account-status side effect from an unauthenticated caller.
-        const isAdminAccount = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
-        if (recentCount >= SUSPENSION_THRESHOLD && user.status === 'ACTIVE' && isAdminAccount) {
+        // NOTE: this branch is reached from the PUBLIC /auth/forgot-password
+        // endpoint. The unauthenticated-DoS surface (an attacker spamming resets to
+        // disable an account) is mitigated by the per-IP authRateLimiter in front of
+        // this route plus the Tier-1 super-admin alert fired above at >= 3, which
+        // surfaces the abuse for Super Admin review. Suspension transitions status to
+        // INACTIVE (pending Super Admin review), the same transition admin
+        // suspension uses.
+        if (recentCount >= SUSPENSION_THRESHOLD && user.status === 'ACTIVE') {
           await prisma.user.update({
             where: { id: user.id },
             data: { status: 'INACTIVE' },
@@ -1856,8 +1883,8 @@ export class AuthService {
           }
 
           logger.warn(
-            `[forgotPassword] Admin account ${user.id} (${user.email}) suspended after ` +
-            `${recentCount} password resets in ${ALERT_WINDOW_HOURS}h — Spec Part 9 Tier 3`
+            `[forgotPassword] Account ${user.id} (${user.email}, role ${user.role}) suspended after ` +
+            `${recentCount} password resets in ${ALERT_WINDOW_HOURS}h — Spec §19 rule #12`
           );
         }
       }

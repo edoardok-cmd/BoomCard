@@ -89,7 +89,9 @@ router.post(
     // IMPORTANT: call buildTicketHeaders() once and use threading.messageId for
     // rootMessageId. Two separate newMessageId() calls produce different IDs,
     // which breaks Priority-2 In-Reply-To threading for any subsequent email reply.
-    (async () => {
+    // Routed through detach() so the detached DB writes settle inside this suite
+    // under test (no cross-suite mock-queue leak); no-op .catch in prod.
+    detach((async () => {
       try {
         const threading = buildTicketHeaders({ ticketId: ticket.id });
         await prisma.helpTicket.update({
@@ -127,7 +129,7 @@ router.post(
       } catch (err) {
         logger.error('[help] failed to send ticket confirmation email:', err);
       }
-    })();
+    })(), () => {});
 
     return res.status(201).json({ success: true, data: ticket });
   })

@@ -7,7 +7,6 @@ import { Router, Response } from 'express';
 import multer from 'multer';
 import { asyncHandler } from '../middleware/error.middleware';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
-import { requireActivePartnerForWrites } from '../middleware/partnerStatus.middleware';
 import { prisma } from '../lib/prisma';
 import { venueService } from '../services/venue.service';
 import { imageUploadService } from '../services/imageUpload.service';
@@ -354,14 +353,20 @@ router.delete(
 
 /**
  * POST /api/venues/:id/menu
- * Upload menu images for a venue (Admin or owning Partner)
+ * Upload menu images for a venue (Admin only).
  * multipart/form-data field: images (up to 20 files)
+ *
+ * §8a / MED-1: Offer & menu management is not a partner-owned self-service
+ * workflow. PARTNER removed here to align with the sibling /menu/submit and
+ * /menu/withdraw routes (which already removed PARTNER per §8a). Previously a
+ * partner got 403 on /menu/submit but 200 on this image-upload path — an
+ * inconsistency. Only admins may write venue menu content until a product spec
+ * authorizes partner self-service.
  */
 router.post(
   '/:id/menu',
   authenticate,
-  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
-  requireActivePartnerForWrites,
+  authorize('ADMIN', 'SUPER_ADMIN'),
   menuUpload.array('images', 20),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
@@ -371,23 +376,9 @@ router.post(
       return res.status(400).json({ success: false, error: 'At least one image file is required (field: images)' });
     }
 
-    // Authenticated partner/admin endpoint — admins legitimately operate on
-    // venues whose partner is suspended/archived; the per-role owner check
-    // below is the actual authorization gate.
     const venue = await venueService.getVenueById(id, { includeHidden: true });
     if (!venue) {
       return res.status(404).json({ success: false, error: 'Venue not found' });
-    }
-
-    // PARTNER role: verify they own this venue
-    if (req.user!.role === 'PARTNER') {
-      const venueRecord = await prisma.venue.findUnique({
-        where: { id },
-        include: { partner: { select: { userId: true } } },
-      });
-      if (!venueRecord || venueRecord.partner?.userId !== req.user!.id) {
-        return res.status(403).json({ success: false, error: 'You do not have permission to upload menu images for this venue' });
-      }
     }
 
     // Upload each image to S3
@@ -447,33 +438,21 @@ router.post(
 
 /**
  * DELETE /api/venues/:id/menu
- * Clear all menu images for a venue (Admin or owning Partner)
+ * Clear all menu images for a venue (Admin only).
+ *
+ * §8a / MED-1: aligned with /menu/submit and /menu/withdraw — menu management
+ * is not a partner self-service workflow. PARTNER removed; admin-only.
  */
 router.delete(
   '/:id/menu',
   authenticate,
-  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
-  requireActivePartnerForWrites,
+  authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
-    // Authenticated partner/admin endpoint — admins legitimately operate on
-    // venues whose partner is suspended/archived; the per-role owner check
-    // below is the actual authorization gate.
     const venue = await venueService.getVenueById(id, { includeHidden: true });
     if (!venue) {
       return res.status(404).json({ success: false, error: 'Venue not found' });
-    }
-
-    // PARTNER role: verify they own this venue
-    if (req.user!.role === 'PARTNER') {
-      const venueRecord = await prisma.venue.findUnique({
-        where: { id },
-        include: { partner: { select: { userId: true } } },
-      });
-      if (!venueRecord || venueRecord.partner?.userId !== req.user!.id) {
-        return res.status(403).json({ success: false, error: 'You do not have permission to delete menu images for this venue' });
-      }
     }
 
     await venueService.updateVenue(id, { menuImages: null });

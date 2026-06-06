@@ -324,6 +324,42 @@ describe('BUG-4 — unassigned ticket triggers ops notification fallback', () =>
   });
 });
 
+// ─── FIX-1: CANCELLED is terminal in the admin path ──────────────────────────
+
+describe('FIX-1 — admin cannot reply on a CANCELLED (withdrawn) ticket', () => {
+  it('POST /api/admin/help/:id/reply returns 400 on a CANCELLED ticket', async () => {
+    // SUPER_ADMIN has full access and bypasses the assignee gate, so a 400 here
+    // proves the terminal guard (not an access check) is what blocks the reply.
+    const superAdmin = await createUser({ role: 'SUPER_ADMIN' });
+    const token = await loginAs(superAdmin.email);
+
+    const owner = await createUser({ role: 'USER' });
+    const cancelled = await prisma.helpTicket.create({
+      data: {
+        subject: `FIX-1 cancelled ticket ${uid()}`,
+        body: 'withdrawn by the requester',
+        category: 'OTHER',
+        status: 'CANCELLED',
+        priority: 'MEDIUM',
+        userId: owner.id,
+      },
+    });
+    ticketIds.push(cancelled.id);
+
+    const res = await request(app)
+      .post(`/api/admin/help/${cancelled.id}/reply`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ body: 'This reply must be rejected because the ticket is terminal.' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('крайно състояние');
+
+    // No reply row should have been written.
+    const replyCount = await prisma.ticketReply.count({ where: { ticketId: cancelled.id } });
+    expect(replyCount).toBe(0);
+  });
+});
+
 // ─── GAP-1: GET /api/admin/help filters ──────────────────────────────────────
 
 describe('GAP-1 — GET /api/admin/help date range and assigneeId filters', () => {

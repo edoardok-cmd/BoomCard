@@ -111,6 +111,14 @@ jest.mock('../../src/services/partner.service', () => ({
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
 import { stickerService } from '../../src/services/sticker.service';
+import { isPartnerOperationallyActive } from '../../src/services/partner.service';
+
+// Typed handle to the mocked operational-active gate (mocked above to return true
+// by default). Individual tests flip it to false to exercise the §8.1 rule 5
+// manual-activation guard.
+const mockIsPartnerOperationallyActive = isPartnerOperationallyActive as jest.MockedFunction<
+  typeof isPartnerOperationallyActive
+>;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -320,6 +328,47 @@ describe('§18.1 activateSticker() — state transitions', () => {
     mockPrisma.sticker.findUnique.mockResolvedValueOnce(null);
 
     await expect(stickerService.activateSticker('NONEXISTENT')).rejects.toThrow();
+  });
+
+  // §8.1 rule 5 / §1.5 rule 4 / Clash 2.4 — QR codes CANNOT be manually
+  // activated while the owning partner is Inactive or Archived. activateSticker()
+  // resolves venue → partner and refuses the transition when the partner is not
+  // operationally active. isPartnerOperationallyActive is the single source of
+  // truth (status===ACTIVE && verifiedAt!=null) — it is mocked here, so we drive
+  // it to false to assert the guard fires and no status write happens.
+  it('§8.1 rule 5: refuses manual activation when owning partner is Inactive', async () => {
+    mockIsPartnerOperationallyActive.mockReturnValue(false);
+    mockPrisma.sticker.findUnique.mockResolvedValueOnce(
+      makePendingSticker({
+        status: 'PENDING',
+        venue: { partner: { status: 'INACTIVE', verifiedAt: new Date() } },
+      }),
+    );
+
+    await expect(stickerService.activateSticker(EXPECTED_STICKER_ID)).rejects.toThrow(
+      /partner status is not Active/i,
+    );
+    // Guard must short-circuit before any status write.
+    expect(mockPrisma.sticker.update).not.toHaveBeenCalled();
+
+    mockIsPartnerOperationallyActive.mockReturnValue(true); // restore default for sibling tests
+  });
+
+  it('§8.1 rule 5: refuses manual activation when owning partner is Archived', async () => {
+    mockIsPartnerOperationallyActive.mockReturnValue(false);
+    mockPrisma.sticker.findUnique.mockResolvedValueOnce(
+      makePendingSticker({
+        status: 'PENDING',
+        venue: { partner: { status: 'ARCHIVED', verifiedAt: null } },
+      }),
+    );
+
+    await expect(stickerService.activateSticker(EXPECTED_STICKER_ID)).rejects.toThrow(
+      /partner status is not Active/i,
+    );
+    expect(mockPrisma.sticker.update).not.toHaveBeenCalled();
+
+    mockIsPartnerOperationallyActive.mockReturnValue(true);
   });
 });
 

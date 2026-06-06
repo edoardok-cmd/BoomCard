@@ -639,10 +639,13 @@ router.patch('/campaigns/:id/status', ...WRITE, async (req, res, next) => {
           });
         }), (err) => {
           logger.error('[marketing] dispatch error:', err);
-          return prisma.marketingCampaign.update({
+          // The audience-reset write is a fire-and-forget DB call in the error
+          // branch; register it through detach() so it settles inside this
+          // request's test boundary instead of a later, unrelated suite's.
+          detach(prisma.marketingCampaign.update({
             where: { id: req.params.id },
             data: { audience: 0 },
-          }).catch((dbErr) => logger.error('[marketing] failed to reset audience on dispatch error:', dbErr));
+          }), (dbErr) => logger.error('[marketing] failed to reset audience on dispatch error:', dbErr));
         });
     }
 

@@ -43,8 +43,18 @@ export interface InboundEmailPayload {
   inReplyTo?: string;
   /** RFC 5322 References chain */
   references?: string[];
-  /** Our custom header, when the email is a reply to a system-sent message */
+  /**
+   * Our custom threading header, when the email is a reply to a system-sent
+   * message. The system emits/reads `X-BoomCard-Ticket-ID` (field
+   * `xBoomCardTicketId`). Spec §6.2 / Clash 7.1 name the canonical marker
+   * `X-BoomCard-Request-ID`; a spec-literal external integrator may emit that
+   * instead. The webhook layer normalizes `xBoomCardRequestId` → this field, and
+   * `resolveTicket` falls back to it directly so the alias also threads when the
+   * service is called outside the webhook (e.g. internal callers / tests).
+   */
   xBoomCardTicketId?: string;
+  /** Canonical spec alias (§6.2 / Clash 7.1) for `xBoomCardTicketId`. */
+  xBoomCardRequestId?: string;
   /** RFC 3834 Auto-Submitted ("auto-replied" → out-of-office) */
   autoSubmitted?: string;
 }
@@ -96,10 +106,13 @@ async function resolveTicket(payload: InboundEmailPayload): Promise<{
   ticket: Awaited<ReturnType<typeof prisma.helpTicket.findUnique>> | null;
   matchedBy: 'header' | 'in-reply-to' | 'plus-address' | 'subject-prefix' | null;
 }> {
-  // Priority 1: X-BoomCard-Ticket-ID
-  if (payload.xBoomCardTicketId) {
+  // Priority 1: X-BoomCard-Ticket-ID (system header) OR its canonical spec
+  // alias X-BoomCard-Request-ID (§6.2 / Clash 7.1). Prefer whichever is present;
+  // the ticket-id header wins when both are supplied.
+  const headerTicketId = payload.xBoomCardTicketId || payload.xBoomCardRequestId;
+  if (headerTicketId) {
     const t = await prisma.helpTicket.findUnique({
-      where: { id: payload.xBoomCardTicketId },
+      where: { id: headerTicketId },
     });
     if (t) return { ticket: t, matchedBy: 'header' };
   }
@@ -322,7 +335,7 @@ export async function ingestInboundEmail(
 
         // Fall back to ops notification if no assignee or no ticket resolved.
         if (!alertedAssignee) {
-          notificationService
+          detach(notificationService
             .notifyAdminOps({
               opsType: `bounce_alert_${relatedTicketId ?? normalizeAddress(payload.from)}`,
               title: 'Многократни bounce-и',
@@ -332,8 +345,7 @@ export async function ingestInboundEmail(
                 { label: 'Адрес', value: normalizeAddress(payload.from) },
                 ...(relatedTicketId ? [{ label: 'Ticket ID', value: relatedTicketId }] : []),
               ],
-            })
-            .catch(() => {});
+            }), () => {});
         }
       }
     } catch (err) {
@@ -576,11 +588,15 @@ export async function ingestInboundEmail(
     },
   });
 
-  // Reopen-on-reply (§11.4 + §11.2 edge cases): a CLOSED or RESOLVED ticket
-  // transitions back to OPEN when the customer replies via email.
+  // Reopen-on-reply (§11.4 + §11.2 edge cases): a CLOSED, RESOLVED or WAITING
+  // ticket transitions back to OPEN when the customer replies via email.
   // RESOLVED is included for symmetry with the WEB-channel handlers in
   // adminHelp.routes.ts and partnerHelp.routes.ts (both handle RESOLVED→OPEN).
   // resolvedAt is cleared so the auto-close job doesn't immediately re-fire.
+  // CANCELLED and REJECTED are intentionally EXCLUDED — they are terminal
+  // (spec §1.7/§7.1: "withdrawn or invalid" / rejected). An inbound reply on a
+  // withdrawn ticket must NOT silently revive it; the message is still captured
+  // as a TicketReply for the record, but the ticket stays terminal.
   // Capture previousStatus before the update — the in-memory object may be
   // mutated by the ORM layer before writeAudit reads t.status.
   const previousStatus = t.status;
@@ -651,7 +667,7 @@ export async function ingestInboundEmail(
   } else {
     // No assignee (or self-assigned) — alert ops so the reply isn't silently
     // missed. Mirrors the unassigned-reply fallback in adminHelp.routes.ts.
-    notificationService
+    detach(notificationService
       .notifyAdminOps({
         opsType: `help_ticket_inbound_unassigned_${t.id}`,
         title: 'Нов имейл отговор на заявка без отговорник',
@@ -661,8 +677,7 @@ export async function ingestInboundEmail(
           { label: 'От', value: fromEmail },
           { label: 'Ticket ID', value: t.id },
         ],
-      })
-      .catch(() => {});
+      }), () => {});
   }
 
   return { ticketId: t.id, replyId: reply.id, created: false };

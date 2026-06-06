@@ -5,17 +5,18 @@
  *   "Pending cashback NEVER expires — only Cleared cashback has a 60-day
  *    countdown (from clearedAt)."
  *
- * expireStalePendingCashback() is now an intentional no-op that throws so the
- * 2:05 AM `stale-pending-cashback-expiry` cron (scheduler.ts) is a safe no-op:
- * the throw is caught by alertSchedulerFailure for ops visibility and NO Pending
- * entries are ever modified. The cron registration is retained only in case the
- * spec position changes.
+ * expireStalePendingCashback() is now an intentional TRUE no-op that RESOLVES
+ * with { count: 0 } (it does NOT throw). Rationale: the 2:05 AM
+ * `stale-pending-cashback-expiry` cron (scheduler.ts) routes any rejection into
+ * alertSchedulerFailure, so a throwing-but-disabled job paged ops every single
+ * night. Returning { count: 0 } reports a clean run (zero entries modified) and
+ * keeps the cron registration in case the spec position changes.
  *
  * These tests pin the disabled contract so the function cannot silently regain
  * Pending-expiry behaviour (which would violate the earned-rights model):
- *   1. It throws (does not resolve) for any actor argument.
- *   2. The error message names spec §5 so the disabled reason is discoverable.
- *   3. It never reads or writes the database (no findMany / updateMany / audit).
+ *   1. It resolves with { count: 0 } for any actor argument (no false alerts).
+ *   2. It never reads or writes the database (no findMany / updateMany).
+ *   3. It never writes an audit entry (no Pending entry is modified).
  */
 
 // ── Shared mutable state ──────────────────────────────────────────────────────
@@ -69,27 +70,27 @@ describe('expireStalePendingCashback — disabled per spec §5 (Pending never ex
     jest.clearAllMocks();
   });
 
-  it('throws (does not resolve) when called with a null actor', async () => {
-    await expect(expireStalePendingCashback(null)).rejects.toThrow();
+  it('resolves with { count: 0 } (does NOT throw) when called with a null actor', async () => {
+    await expect(expireStalePendingCashback(null)).resolves.toEqual({ count: 0 });
   });
 
-  it('throws when called with a concrete actor id', async () => {
-    await expect(expireStalePendingCashback('admin-1')).rejects.toThrow();
+  it('resolves with { count: 0 } when called with a concrete actor id', async () => {
+    await expect(expireStalePendingCashback('admin-1')).resolves.toEqual({ count: 0 });
   });
 
-  it('error message names spec §5 so the disabled reason is discoverable', async () => {
-    await expect(expireStalePendingCashback(null)).rejects.toThrow(/disabled/i);
-    await expect(expireStalePendingCashback(null)).rejects.toThrow(/§5/);
+  it('never rejects — a disabled job must not trip the scheduler failure alert', async () => {
+    await expect(expireStalePendingCashback(null)).resolves.not.toThrow;
+    await expect(expireStalePendingCashback('admin-1')).resolves.toBeDefined();
   });
 
   it('never touches the database — no findMany / updateMany call', async () => {
-    await expect(expireStalePendingCashback(null)).rejects.toThrow();
+    await expireStalePendingCashback(null);
     expect(mp.walletTransaction.findMany).not.toHaveBeenCalled();
     expect(mp.walletTransaction.updateMany).not.toHaveBeenCalled();
   });
 
   it('never writes an audit entry (no Pending entry is modified)', async () => {
-    await expect(expireStalePendingCashback(null)).rejects.toThrow();
+    await expireStalePendingCashback(null);
     expect(auditCalls).toHaveLength(0);
   });
 });

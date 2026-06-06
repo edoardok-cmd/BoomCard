@@ -217,6 +217,16 @@ class FraudDetectionService {
       }
 
       // 4. OCR confidence check (20 points)
+      // L4 (user-spec audit): the +20 here is INTENTIONALLY different from the
+      // spec-canonical computeSpecRiskLevel() weight of +30 (see Signal 2 below in
+      // this file). checkReceipt() is the LEGACY additive model used only for admin
+      // triage; it has its own internal weighting scale (GPS 25/15, OCR 20/10,
+      // rate-limit 30) that is calibrated independently of the spec five-signal model
+      // (40/30/20/20/10). The spec-canonical computeSpecRiskLevel() — which uses +30
+      // and is what gates the user flow / manual-review queue — is unchanged. Bumping
+      // this to +30 would silently re-weight legacy admin triage against its own scale,
+      // so the split is kept deliberately. Do NOT "unify" without re-calibrating the
+      // legacy thresholds.
       if (config?.ocrVerificationEnabled !== false) {
         if (params.ocrConfidence < OCR_LOW_CONFIDENCE_THRESHOLD) {
           score += 20;

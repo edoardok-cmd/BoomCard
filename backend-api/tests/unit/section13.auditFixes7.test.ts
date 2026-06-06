@@ -238,6 +238,23 @@ beforeEach(() => {
   mockUser = null;
   mockRolesUpdatedAt = null;
   jest.clearAllMocks();
+  // jest.clearAllMocks() clears call history but NOT queued mockResolvedValueOnce
+  // values. Under heavy host load a supertest transport hiccup can make a request
+  // return 401 at the persistent-server layer before it reaches the router, so the
+  // criticalActionRequest.findUnique value that test queued is never consumed. The
+  // stranded once-value then resolves the NEXT test's findUnique, shifting every
+  // subsequent Bug-3/Bug-4 test's payload by one (the requestId one-test offset).
+  // mockReset() drains the once-queue (and the default impl, which is empty here —
+  // every test that needs a result queues its own mockResolvedValueOnce), making
+  // the suite deterministic regardless of a stranded transport request.
+  m.criticalActionRequest.findUnique.mockReset();
+  m.partner.findUnique.mockReset();
+  // Same once-queue-strand risk for findMany/count (used by the critical-action
+  // list paths). Drain and re-seat the factory defaults.
+  m.criticalActionRequest.findMany.mockReset();
+  m.criticalActionRequest.findMany.mockImplementation(async () => []);
+  m.criticalActionRequest.count.mockReset();
+  m.criticalActionRequest.count.mockImplementation(async () => 0);
 });
 
 // ─── Fix 1: SUPPORT permission set ───────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { stickerService } from '../services/sticker.service';
+import { VOID_REASON_CATEGORIES } from '../services/cashbackLifecycle.service';
 import {
   ACTIVE_SCAN_STATUSES,
   SUSPICIOUS_EXACT_CODES,
@@ -978,15 +979,42 @@ router.post('/admin/approve/:scanId', authenticate, authorize('ADMIN', 'SUPER_AD
 /**
  * POST /api/stickers/admin/reject/:scanId
  * Reject a scan
- * Body: { notes?: string } - Optional admin notes
+ * Body: { notes?: string, category?: string } - Optional admin note + optional
+ *   controlled void-reason category (one of VOID_REASON_CATEGORIES per §2.2).
+ *   When omitted, sticker.service defaults the category to FRAUD.
  * Requires authentication (Admin role)
  */
 router.post('/admin/reject/:scanId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
     const { scanId } = req.params;
-    const { notes } = req.body;
+    const { notes, category } = req.body ?? {};
 
-    const reason = notes || 'Rejected by admin';
+    // Spec §2.2 (Risk Review — "Record marked Voided with reason category and
+    // optional internal note") + §8.1 rule 6: the void reason must carry a
+    // controlled category. The admin may supply one explicitly; otherwise
+    // sticker.service normalizes to the FRAUD default (a rejected flagged scan
+    // is treated as fraudulent/invalid). Validate an explicitly-supplied
+    // category against the canonical vocabulary and 400 on an invalid value so
+    // the bad reason never reaches — and gets silently dropped by —
+    // cashbackLifecycle.markVoided.
+    let category_norm: string | undefined;
+    if (category !== undefined && category !== null && category !== '') {
+      if (typeof category !== 'string') {
+        return res.status(400).json({ success: false, error: 'category must be a string' });
+      }
+      category_norm = category.trim().toUpperCase();
+      if (!(VOID_REASON_CATEGORIES as readonly string[]).includes(category_norm)) {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid category. Must be one of: ${VOID_REASON_CATEGORIES.join(', ')}`,
+        });
+      }
+    }
+
+    const note = (typeof notes === 'string' && notes.trim().length > 0) ? notes.trim() : 'Rejected by admin';
+    // When a category is supplied, compose "CATEGORY: note"; otherwise pass the
+    // bare note and let sticker.service apply the FRAUD default.
+    const reason = category_norm ? `${category_norm}: ${note}` : note;
 
     const scan = await stickerService.rejectScan(scanId, reason, req.user?.id ?? null);
 

@@ -76,6 +76,11 @@ export const en = {
     uploadReceipt: 'Upload Receipt',
     subscription: 'Subscription & Payments',
     help: 'Help',
+    // §5.2 canonical partner menu sections
+    transactions: 'Transactions',
+    finance: 'Finance',
+    profileAndPartnership: 'Profile & Partnership',
+    myRequests: 'My Requests',
     downloadApp: 'Download App',
     adminDashboard: 'Admin Dashboard',
     managePartners: 'Manage Partners',

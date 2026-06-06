@@ -36,15 +36,22 @@ jest.mock('../../src/lib/prisma', () => {
   return { __esModule: true, default: client, prisma: client };
 });
 
-jest.mock('../../src/services/cashbackLifecycle.service', () => ({
-  cashbackLifecycleService: {
-    markVoided: jest.fn(),
-    recordRejectedAsVoided: jest.fn(),
-    promotePendingToCleared: jest.fn(),
-    expireOverdueCashback: jest.fn(),
-    markVoidedBatch: jest.fn(),
-  },
-}));
+jest.mock('../../src/services/cashbackLifecycle.service', () => {
+  const actual = jest.requireActual('../../src/services/cashbackLifecycle.service');
+  return {
+    // Keep the real named exports the service-under-test imports
+    // (VOID_REASON_CATEGORIES, assertVoidReasonCategory) so normalizeVoidReason
+    // exercises the real canonical list; only the service object is mocked.
+    ...actual,
+    cashbackLifecycleService: {
+      markVoided: jest.fn(),
+      recordRejectedAsVoided: jest.fn(),
+      promotePendingToCleared: jest.fn(),
+      expireOverdueCashback: jest.fn(),
+      markVoidedBatch: jest.fn(),
+    },
+  };
+});
 
 // Stub out all other heavy deps so the module loads without a real DB/queue.
 jest.mock('../../src/services/wallet.service', () => ({
@@ -140,8 +147,9 @@ describe('Fix 1 — rejectScan void guard', () => {
     await stickerService.rejectScan('scan-1', 'fake receipt', 'admin-1');
 
     expect(lifecycleMock.markVoided).toHaveBeenCalledTimes(1);
+    // F-008: free-text reason is now normalized to a controlled category prefix.
     expect(lifecycleMock.markVoided).toHaveBeenCalledWith(
-      expect.objectContaining({ walletTransactionId: 'wt-1', reason: 'fake receipt', actorUserId: 'admin-1' }),
+      expect.objectContaining({ walletTransactionId: 'wt-1', reason: 'OTHER: fake receipt', actorUserId: 'admin-1' }),
     );
     expect(lifecycleMock.recordRejectedAsVoided).not.toHaveBeenCalled();
   });
@@ -152,8 +160,9 @@ describe('Fix 1 — rejectScan void guard', () => {
     await stickerService.rejectScan('scan-1', 'duplicate receipt', 'admin-1');
 
     expect(lifecycleMock.markVoided).toHaveBeenCalledTimes(1);
+    // F-008: free-text reason is now normalized to a controlled category prefix.
     expect(lifecycleMock.markVoided).toHaveBeenCalledWith(
-      expect.objectContaining({ walletTransactionId: 'wt-1', reason: 'duplicate receipt', actorUserId: 'admin-1' }),
+      expect.objectContaining({ walletTransactionId: 'wt-1', reason: 'OTHER: duplicate receipt', actorUserId: 'admin-1' }),
     );
     expect(lifecycleMock.recordRejectedAsVoided).not.toHaveBeenCalled();
   });
@@ -174,6 +183,65 @@ describe('Fix 1 — rejectScan void guard', () => {
 
     expect(lifecycleMock.recordRejectedAsVoided).toHaveBeenCalledTimes(1);
     expect(lifecycleMock.markVoided).not.toHaveBeenCalled();
+  });
+
+  // F-008 / §2.2 + §8.1 rule 6 regression — the latent silent void-drop:
+  // markVoided now enforces a controlled void-reason vocabulary
+  // (assertVoidReasonCategory). The admin reject path used to pass free-text
+  // ("Rejected by admin" / arbitrary notes), which made markVoided throw, and
+  // the catch swallowed every non-LOCKED/PAID error — so the wallet entry was
+  // NEVER voided despite success:true. sticker.service must now normalize the
+  // reason to carry a controlled category before it reaches markVoided.
+  const VOID_CATEGORIES = ['DUPLICATE', 'FRAUD', 'SYSTEM_ERROR', 'ADMIN_CORRECTION', 'PARTNER_DISPUTE', 'OTHER'];
+  const startsWithCategory = (reason: string) =>
+    VOID_CATEGORIES.includes(reason.split(':')[0].trim().toUpperCase());
+
+  it('passes a category-prefixed reason to markVoided for a PENDING entry (no silent drop)', async () => {
+    pm.walletTransaction.findFirst.mockResolvedValue(makeEntry('PENDING'));
+
+    // Free-text reason from the route ("Rejected by admin") — previously dropped.
+    await stickerService.rejectScan('scan-1', 'Rejected by admin', 'admin-1');
+
+    expect(lifecycleMock.markVoided).toHaveBeenCalledTimes(1);
+    const arg = lifecycleMock.markVoided.mock.calls[0][0];
+    expect(startsWithCategory(arg.reason)).toBe(true);
+    expect(arg.reason).toBe('OTHER: Rejected by admin');
+  });
+
+  it('passes a category-prefixed reason to recordRejectedAsVoided (ghost path)', async () => {
+    pm.walletTransaction.findFirst.mockResolvedValue(null);
+
+    await stickerService.rejectScan('scan-1', 'no receipt found', 'admin-1');
+
+    expect(lifecycleMock.recordRejectedAsVoided).toHaveBeenCalledTimes(1);
+    const arg = lifecycleMock.recordRejectedAsVoided.mock.calls[0][0];
+    expect(startsWithCategory(arg.reason)).toBe(true);
+    expect(arg.reason).toBe('OTHER: no receipt found');
+  });
+
+  it('preserves an already-controlled category prefix supplied by the caller', async () => {
+    pm.walletTransaction.findFirst.mockResolvedValue(makeEntry('CLEARED'));
+
+    await stickerService.rejectScan('scan-1', 'DUPLICATE: same receipt twice', 'admin-1');
+
+    const arg = lifecycleMock.markVoided.mock.calls[0][0];
+    expect(arg.reason).toBe('DUPLICATE: same receipt twice');
+  });
+
+  it('the normalized reason actually passes the real assertVoidReasonCategory gate (proves it is not swallowed)', async () => {
+    // Use the REAL validator (the mocked lifecycle service replaces the methods
+    // but the named export of the gate is independent). Import directly.
+    const { assertVoidReasonCategory } = jest.requireActual(
+      '../../src/services/cashbackLifecycle.service',
+    );
+    pm.walletTransaction.findFirst.mockResolvedValue(makeEntry('PENDING'));
+
+    await stickerService.rejectScan('scan-1', 'totally free text note', 'admin-1');
+    const reason = lifecycleMock.markVoided.mock.calls[0][0].reason;
+
+    // Before the fix this would throw "Invalid voidedReason category" and the
+    // catch would swallow it → void silently dropped.
+    expect(() => assertVoidReasonCategory(reason)).not.toThrow();
   });
 
   it('throws when the scan is already APPROVED (updateMany returns count=0)', async () => {

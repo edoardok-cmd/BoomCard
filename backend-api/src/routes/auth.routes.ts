@@ -16,6 +16,7 @@ import QRCode from 'qrcode';
 import { cardService } from '../services/card.service';
 import { walletService } from '../services/wallet.service';
 import { emailService } from '../services/email.service';
+import { notificationService } from '../services/notification.service';
 import { writeAudit } from '../middleware/audit.middleware';
 import { getClientIp } from '../utils/requestIp';
 import { fireAutomation } from '../lib/automationDispatcher';
@@ -277,14 +278,14 @@ router.post(
     const userAgent = req.headers['user-agent'];
     const result = await AuthService.login({ email, password, clientType, ip, userAgent, totpCode });
 
-    writeAudit({
+    detach(writeAudit({
       actorUserId: result.user?.id ?? null,
       action: 'auth.login',
       objectType: 'user',
       objectId: result.user?.id ?? null,
       ip: ip ?? null,
       userAgent: userAgent ?? null,
-    }).catch(() => undefined);
+    }), () => undefined);
 
     res.json({
       success: true,
@@ -342,14 +343,14 @@ router.post(
       await AuthService.logout(refreshToken);
 
       if (storedToken?.userId) {
-        writeAudit({
+        detach(writeAudit({
           actorUserId: storedToken.userId,
           action: 'auth.logout',
           objectType: 'user',
           objectId: storedToken.userId,
           ip: ip ?? null,
           userAgent: userAgent ?? null,
-        }).catch(() => undefined);
+        }), () => undefined);
       }
     }
 
@@ -1164,6 +1165,11 @@ router.post(
       email: user.email,
       dashboardUrl: process.env.APP_URL || 'https://mobile.boomcard.bg',
     }, lang), (err) => logger.error('Failed to send welcome email:', err));
+
+    // L1: Spec §11.2 "Profile created" → Transactional notification. The welcome
+    // email above covers the email channel; this writes the mandatory in-app
+    // transactional record so the trigger matches every other transactional event.
+    detach(notificationService.notifyProfileCreated(user.id), (err) => logger.error('Failed to send profile-created notification:', err));
 
     // Transactional welcome email is sent above via emailService.sendWelcomeEmail().
     // user.signup / card.issued automation triggers are not wired to active templates

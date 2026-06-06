@@ -151,7 +151,9 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
 
     // Spec §11.6: send auto-reply confirmation to the admin who created the ticket
     // (same pattern as partner and user web-form tickets).
-    ;(async () => {
+    // Routed through detach() so the detached DB writes settle inside this suite
+    // under test (no cross-suite mock-queue leak); no-op .catch in prod.
+    ;detach((async () => {
       try {
         // Generate threading headers first so rootMessageId matches the actual
         // Message-ID sent in the email (a second newMessageId() call would
@@ -186,7 +188,7 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
       } catch (err) {
         logger.error('[adminHelp] Failed to send auto-reply to ticket creator:', err);
       }
-    })();
+    })(), () => {});
 
     const adminEmail = req.user!.email;
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -454,6 +456,11 @@ router.post('/:id/assign', requirePermission('help.write'), async (req: AuthRequ
       return res.json({ ok: true });
     }
 
+    // Terminal-state reassignment (CANCELLED / CLOSED / REJECTED) is intentionally
+    // permitted, per §3.8 (Super Admin may reassign historical tickets). It is NOT
+    // a state-machine violation: newStatus below only promotes NEW/OPEN → IN_REVIEW
+    // and leaves every other state — including the terminal ones — untouched, so a
+    // terminal ticket's assigneeId can change without the ticket being revived.
     const newStatus =
       resolvedAssigneeId !== null && (ticket.status === 'NEW' || ticket.status === 'OPEN')
         ? 'IN_REVIEW'
@@ -507,7 +514,7 @@ router.post('/:id/reject', requirePermission('help.write'), async (req: AuthRequ
 
     const ticket = await prisma.helpTicket.findUnique({
       where: { id: req.params.id },
-      include: { user: { select: { email: true, firstName: true, role: true } } },
+      include: { user: { select: { id: true, email: true, firstName: true, role: true } } },
     });
     if (!ticket) return res.status(404).json({ error: 'Заявката не е намерена' });
     // Policy (confirmed audit-fix [7]): only the assignee or SUPER_ADMIN can reject.
@@ -519,8 +526,11 @@ router.post('/:id/reject', requirePermission('help.write'), async (req: AuthRequ
       return res.status(403).json({ error: 'Отказан достъп — само отговорникът или SUPER_ADMIN може да отхвърли' });
     }
     // Terminal states cannot transition further. CLOSED is the success-side
-    // terminal; REJECTED is the failure-side terminal — both are immutable.
-    if (ticket.status === 'CLOSED' || ticket.status === 'REJECTED') {
+    // terminal; REJECTED is the failure-side terminal; CANCELLED is the
+    // withdrawn/invalid terminal (spec §1.7/§7.1) — all immutable. CANCELLED
+    // is added here so the admin path matches the user/partner terminal guards
+    // (help.routes.ts:247, partnerHelp.routes.ts:299).
+    if (ticket.status === 'CLOSED' || ticket.status === 'REJECTED' || ticket.status === 'CANCELLED') {
       return res.status(400).json({ error: 'Заявката вече е в крайно състояние' });
     }
 
@@ -544,14 +554,14 @@ router.post('/:id/reject', requirePermission('help.write'), async (req: AuthRequ
     });
 
     req.skipAudit = true;
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'ticket.reject',
       objectType: 'ticket',
       objectId: req.params.id,
       before: { status: ticket.status },
       after: { status: 'REJECTED', reason: trimmedReason },
-    }).catch(() => {});
+    }), () => {});
 
     // Notify the creator (non-fatal; do not block the response).
     if (ticket.user.email) {
@@ -588,6 +598,29 @@ router.post('/:id/reject', requirePermission('help.write'), async (req: AuthRequ
         }), (err) => logger.error('[adminHelp] reject notification email failed:', err));
     }
 
+    // Spec §9.1 template #5 "Request Updates" — partner in-app bell. Parity with the
+    // PATCH /:id status-update handler: the reject email above covers the email channel;
+    // this adds the in-app channel for PARTNER creators so both fire coherently (distinct
+    // channels — no double-send vs the reject email). Gated on PARTNER role (subscriber/
+    // user creators have no partner dashboard). The terminal-state guard above guarantees
+    // this is a real status change (prior status was not already REJECTED).
+    if (ticket.user.role === 'PARTNER') {
+      const REJECT_STATUS_BG: Record<string, string> = {
+        NEW: 'Нова', OPEN: 'Отворена', IN_REVIEW: 'В преглед', WAITING: 'Чака отговор',
+        RESOLVED: 'Решена', CLOSED: 'Затворена', REJECTED: 'Отказана', CANCELLED: 'Отменена',
+      };
+      const rejectFromLabel = REJECT_STATUS_BG[ticket.status] ?? ticket.status;
+      const rejectToLabel = REJECT_STATUS_BG['REJECTED'];
+      detach(notificationService
+        .notifyPartnerRequestUpdate({
+          partnerUserId: ticket.user.id,
+          ticketId: req.params.id,
+          subject: ticket.subject,
+          fromStatus: rejectFromLabel,
+          toStatus: rejectToLabel,
+        }), (err) => logger.error('[adminHelp] Failed to send partner in-app request-update notification (reject):', err));
+    }
+
     res.json({ ok: true });
   } catch (error) {
     next(error);
@@ -601,17 +634,19 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
 
     const ticket = await prisma.helpTicket.findUnique({
       where: { id: req.params.id },
-      include: { user: { select: { email: true, firstName: true, role: true } } },
+      include: { user: { select: { id: true, email: true, firstName: true, role: true } } },
     });
     if (!ticket) return res.status(404).json({ error: 'Заявката не е намерена' });
     if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
       return res.status(403).json({ error: 'Отказан достъп' });
     }
-    // Both CLOSED and REJECTED are terminal — no further status or priority
-    // changes are allowed for any role (spec §11.4). Use the dedicated reject
-    // endpoint to create a REJECTED ticket; use the reopen flow (POST /:id/reply
-    // from the ticket owner) to reopen a CLOSED ticket.
-    if (ticket.status === 'CLOSED' || ticket.status === 'REJECTED') {
+    // CLOSED, REJECTED and CANCELLED are all terminal — no further status or
+    // priority changes are allowed for any role (spec §11.4 / §1.7 / §7.1). Use
+    // the dedicated reject endpoint to create a REJECTED ticket; use the reopen
+    // flow (POST /:id/reply from the ticket owner) to reopen a CLOSED ticket.
+    // CANCELLED ("withdrawn or invalid") is added so admin matches the
+    // user/partner terminal guards.
+    if (ticket.status === 'CLOSED' || ticket.status === 'REJECTED' || ticket.status === 'CANCELLED') {
       return res.status(400).json({ error: 'Не може да се променя заявка в крайно състояние' });
     }
     // Spec §11.4: REJECTED requires a reason (enforced by POST /:id/reject).
@@ -665,7 +700,7 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
     await prisma.helpTicket.update({ where: { id: req.params.id }, data });
 
     req.skipAudit = true;
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'ticket.update',
       objectType: 'ticket',
@@ -675,7 +710,7 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
         ...(data.priority !== undefined ? { priority: ticket.priority } : {}),
       },
       after: data as object,
-    }).catch(() => {});
+    }), () => {});
 
     // Spec §11.6: notify the ticket creator on every status change.
     // Guard old-status !== new-status to avoid duplicate emails if an admin
@@ -731,6 +766,22 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
           })(),
           text: `Здравей, ${ticket.user.firstName || ticket.user.email},\n\nСтатусът на вашата заявка беше обновен на: ${newStatusLabel}\n\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG_NOTIFY[ticket.category] ?? ticket.category}\n\nTicket ID: ${ticket.id}`,
         }), (err) => logger.error('[adminHelp] Failed to send status-change notification to creator:', err));
+
+      // Spec §9.1 template #5 "Request Updates" — partner in-app bell. The email
+      // above covers the email channel; this adds the in-app channel for PARTNER
+      // creators so both fire coherently (no double-send: distinct channels).
+      // Subscriber/user creators have no partner dashboard, so this is gated on role.
+      if (ticket.user.role === 'PARTNER') {
+        const fromLabel = STATUS_BG_NOTIFY[ticket.status] ?? ticket.status;
+        detach(notificationService
+          .notifyPartnerRequestUpdate({
+            partnerUserId: ticket.user.id,
+            ticketId: req.params.id,
+            subject: ticket.subject,
+            fromStatus: fromLabel,
+            toStatus: newStatusLabel,
+          }), (err) => logger.error('[adminHelp] Failed to send partner in-app request-update notification:', err));
+      }
     }
 
     res.json({ ok: true });
@@ -762,7 +813,10 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
     if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
       return res.status(403).json({ error: 'Отказан достъп' });
     }
-    if (ticket.status === 'CLOSED' || ticket.status === 'REJECTED') {
+    // CLOSED, REJECTED and CANCELLED are terminal — replies are blocked for all
+    // roles (spec §1.7/§7.1). CANCELLED ("withdrawn or invalid") is added so the
+    // admin path matches the user/partner guards (help.routes.ts:247).
+    if (ticket.status === 'CLOSED' || ticket.status === 'REJECTED' || ticket.status === 'CANCELLED') {
       return res.status(400).json({ error: 'Не може да се отговаря на заявка в крайно състояние' });
     }
 
@@ -854,7 +908,7 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
     }
 
     req.skipAudit = true;
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'ticket.reply',
       objectType: 'ticket',
@@ -865,7 +919,7 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
         isAdmin: !isCreator,
         replyId: reply.id,
       },
-    }).catch(() => {});
+    }), () => {});
 
     // Spec §8.2 / §11 — fire support.reply automation when staff replies to a ticket.
     // skipEmail=true: the direct rich email below always carries the reply body,

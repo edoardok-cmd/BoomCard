@@ -9,7 +9,7 @@ import { fraudDetectionService } from './fraudDetection.service';
 import { recognizeReceiptImage } from './ocr.service';
 import { imageUploadService } from './imageUpload.service';
 import { enqueueMerchantVerification } from '../queues/merchantVerification.queue';
-import { cashbackLifecycleService } from './cashbackLifecycle.service';
+import { cashbackLifecycleService, VOID_REASON_CATEGORIES } from './cashbackLifecycle.service';
 import { writeAudit } from '../middleware/audit.middleware';
 import { getSystemSettingStr } from '../utils/systemSettings';
 import { isPartnerOperationallyActive } from './partner.service';
@@ -1381,7 +1381,7 @@ class StickerService {
       const enqueued = await enqueueMerchantVerification(scanId);
       if (!enqueued && imageBuffer) {
         // Fallback: in-process detached promise (legacy). No restart durability.
-        void this.runMerchantVerificationFromBuffer(scanId, imageBuffer, candidateNames, scan.venue?.name ?? '');
+        detach(this.runMerchantVerificationFromBuffer(scanId, imageBuffer, candidateNames, scan.venue?.name ?? ''), () => {});
       }
     }
 
@@ -1434,15 +1434,19 @@ class StickerService {
       locationMismatch,
     });
 
-    // Persist the spec risk level on the scan record so admin dashboard can filter/display.
-    // specRiskLevel is stored as a dedicated column (added in BC-SCHEMA-1) for clean
-    // filtering. specRiskTag is also pushed to fraudReasons for backward compat with
-    // existing callers that read fraudReasons for spec risk info.
-    const specRiskTag = `SPEC_RISK:${specRisk.riskLevel}:${specRisk.riskScore}`;
+    // Persist the spec risk level on the scan record so the admin dashboard can
+    // filter/display. specRiskLevel is the dedicated column (added in BC-SCHEMA-1) and
+    // is the single source of truth for spec risk.
+    //
+    // L3 (user-spec audit): the SPEC_RISK:<level>:<score> tag is no longer pushed into
+    // fraudReasons. fraudReasons is an internal fraud-rule enum array; mixing semantic
+    // risk metadata into it was fragile (a serializer change could leak the risk level
+    // to users). Nothing downstream parses "SPEC_RISK:" out of fraudReasons (verified by
+    // grep), so dropping the tag has no consumers to repoint.
     await prisma.stickerScan.update({
       where: { id: scanId },
-      data: { specRiskLevel: specRisk.riskLevel, fraudReasons: { push: specRiskTag } },
-    }).catch((err: unknown) => logger.error(`[uploadReceipt] failed to store spec risk tag:`, err));
+      data: { specRiskLevel: specRisk.riskLevel },
+    }).catch((err: unknown) => logger.error(`[uploadReceipt] failed to store spec risk level:`, err));
 
     // Spec §9.4 (amendment 2026-06-04): only High risk → manual review queue.
     // Low and Medium auto-process via the auto-approval (within 24h) path.
@@ -2011,6 +2015,31 @@ class StickerService {
   }
 
   /**
+   * F-008 / Spec §2.2 + §8.1 rule 6: ensure a void reason carries a controlled
+   * category prefix so cashbackLifecycle.assertVoidReasonCategory accepts it.
+   *
+   * - If the reason already starts with a canonical category ("DUPLICATE",
+   *   "FRAUD: foo", etc.) it is returned trimmed and unchanged.
+   * - Otherwise the free-text reason is prefixed with the neutral default
+   *   category (OTHER — per §8.1 rule 6 the voided record stays visible to the
+   *   user with the reason shown, so an un-categorized admin rejection must not
+   *   default to an unwarranted FRAUD accusation), producing e.g.
+   *   "OTHER: Rejected by admin".
+   *
+   * Reuses VOID_REASON_CATEGORIES from cashbackLifecycle.service — the canonical
+   * list is never redefined here.
+   */
+  private normalizeVoidReason(reason: string): string {
+    const trimmed = (reason ?? '').trim();
+    const firstToken = trimmed.split(':')[0].trim().toUpperCase();
+    if ((VOID_REASON_CATEGORIES as readonly string[]).includes(firstToken)) {
+      return trimmed;
+    }
+    const body = trimmed.length > 0 ? trimmed : 'Rejected by admin';
+    return `OTHER: ${body}`;
+  }
+
+  /**
    * Reject a scan.
    *
    * Spec §4.4 / §7.1 v1.1: also record a Voided cashback ghost row so the user
@@ -2033,6 +2062,21 @@ class StickerService {
     if (result.count === 0) {
       throw new Error('Scan has already been approved and cannot be rejected');
     }
+
+    // F-008 / Spec §2.2 + §8.1 rule 6: cashbackLifecycle.markVoided (and the
+    // ghost path) enforce a controlled void-reason vocabulary via
+    // assertVoidReasonCategory — a free-text reason ("Rejected by admin", admin
+    // notes, etc.) makes markVoided THROW, and the catch below swallows every
+    // non-LOCKED/PAID error, silently dropping the void (the wallet entry is
+    // never voided despite success:true). Normalize here so every reason carries
+    // a controlled category before it reaches the lifecycle service. Per §8.1
+    // rule 6 the voided record stays user-visible with its reason shown, so an
+    // un-categorized rejection defaults to the neutral category OTHER (NOT
+    // FRAUD — do not change this back to FRAUD; an un-categorized admin
+    // rejection must not become an unwarranted fraud accusation). If the caller
+    // already supplied a controlled category prefix (e.g. "DUPLICATE: ...") it
+    // is preserved.
+    const voidReason = this.normalizeVoidReason(reason);
 
     // Spec §4.4 — visible Voided record with the rejection reason. Non-fatal:
     // a ghost write failure must not leave the scan in an inconsistent state.
@@ -2072,13 +2116,13 @@ class StickerService {
         await cashbackLifecycleService.markVoided({
           walletTransactionId: pendingEntry.id,
           actorUserId,
-          reason,
+          reason: voidReason,
         });
       } else {
         await cashbackLifecycleService.recordRejectedAsVoided({
           userId: scan.userId,
           amount: scan.cashbackAmount ?? 0,
-          reason,
+          reason: voidReason,
           actorUserId,
           description: `Кешбек анулиран след риск преглед`,
           stickerScanId: scan.id,
@@ -2428,9 +2472,10 @@ class StickerService {
    * Get stickers for a venue — partner-safe projection.
    *
    * IMPORTANT: uses an explicit select to exclude:
-   *   - qrCode: spec §11.3 / §4.3 — raw QR token must NEVER reach the partner.
-   *     A partner can already see the physical label; serving the raw token via
-   *     API enables token cloning attacks.
+   *   - both raw token fields, stickerId AND qrCode: spec §4.3 / §11.3 — the raw
+   *     QR tokens must NEVER reach the partner. A partner can already see the
+   *     physical label; serving either raw token via API enables token cloning /
+   *     forged /validate|/session|/scan calls.
    *   - nested scans: removed entirely. The scan listing is served by
    *     getScansByVenue() which applies its own safe select. Including full
    *     StickerScan rows here would expose fraudScore, fraudReasons,
@@ -2445,7 +2490,10 @@ class StickerService {
         id: true,
         venueId: true,
         locationId: true,
-        stickerId: true,
+        // stickerId AND qrCode both omitted — raw QR token fields, spec §4.3/§11.3.
+        // A partner can see the physical label, but serving either raw token via API
+        // enables token cloning / forged /validate|/session|/scan calls. Mirrors
+        // /me/stickers.
         locationType: true,
         status: true,
         printedAt: true,

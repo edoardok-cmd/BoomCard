@@ -778,12 +778,12 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
     // Notify the requester so they know their request was approved.
     if (request.requestedBy.email) {
       const requesterName = request.requestedBy.firstName || request.requestedBy.email;
-      emailService.sendEmail({
+      detach(emailService.sendEmail({
         to: request.requestedBy.email,
         subject: 'SUPER_ADMIN creation request approved — BoomCard',
         html: `<p>Здравей, ${requesterName},</p><p>Вашата заявка за нов SUPER_ADMIN акаунт (<strong>${request.email}</strong>) беше одобрена. Акаунтът е създаден.</p>`,
         text: `Здравей, ${requesterName},\n\nВашата заявка за нов SUPER_ADMIN акаунт (${request.email}) беше одобрена. Акаунтът е създаден.`,
-      }).catch(() => {});
+      }), () => {});
     }
 
     res.status(201).json({ ok: true, user });
@@ -804,6 +804,15 @@ router.delete('/pending-super/:id', authenticate, authorize('SUPER_ADMIN'), requ
     });
     if (!request) return res.status(404).json({ error: 'Pending request not found' });
 
+    // Spec §3.9 step 4 — only the initiating Super Admin may cancel/withdraw their own
+    // pending request. The approval path is the separate second-actor action and remains
+    // available to other SUPER_ADMINs; cancellation is initiator-restricted.
+    if (request.requestedById !== (req as AuthRequest).user!.id) {
+      return res.status(403).json({
+        error: 'Only the SUPER_ADMIN who initiated this request may cancel it',
+      });
+    }
+
     await prisma.pendingSuperAdminRequest.delete({ where: { id } });
     req.skipAudit = true;
     await writeAudit({
@@ -820,12 +829,12 @@ router.delete('/pending-super/:id', authenticate, authorize('SUPER_ADMIN'), requ
     // Notify the requester so they know their request was rejected/cancelled.
     if (request.requestedBy.email) {
       const requesterName = request.requestedBy.firstName || request.requestedBy.email;
-      emailService.sendEmail({
+      detach(emailService.sendEmail({
         to: request.requestedBy.email,
         subject: 'SUPER_ADMIN creation request rejected — BoomCard',
         html: `<p>Здравей, ${requesterName},</p><p>Вашата заявка за нов SUPER_ADMIN акаунт (<strong>${request.email}</strong>) беше отказана или анулирана.</p>`,
         text: `Здравей, ${requesterName},\n\nВашата заявка за нов SUPER_ADMIN акаунт (${request.email}) беше отказана или анулирана.`,
-      }).catch(() => {});
+      }), () => {});
     }
 
     res.json({ ok: true });

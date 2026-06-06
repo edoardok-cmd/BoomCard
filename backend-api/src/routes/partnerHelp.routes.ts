@@ -178,7 +178,9 @@ router.post('/ticket', requireNonArchivedPartner, asyncHandler(async (req: AuthR
   }
 
   // Fire-and-forget: set rootMessageId + persist TicketReply anchor + send confirmation email
-  (async () => {
+  // Routed through detach() so the detached DB writes settle inside this suite
+  // under test (no cross-suite mock-queue leak); no-op .catch in prod.
+  detach((async () => {
     try {
       const subject_built = buildTicketSubject(ticket.id, 'Вашата заявка е получена');
       const ref = subject_built.match(/\[#[a-f0-9]+\]/i)?.[0] ?? '';
@@ -217,7 +219,7 @@ router.post('/ticket', requireNonArchivedPartner, asyncHandler(async (req: AuthR
     } catch (err) {
       logger.error('[partnerHelp] failed to send confirmation email:', err);
     }
-  })();
+  })(), () => {});
 
   // Return raw DB enums on the wire; the partner dashboard maps them to labels.
   return res.status(201).json({ success: true, data: ticket });

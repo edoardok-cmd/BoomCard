@@ -44,6 +44,58 @@ export const VOID_REASON_CATEGORIES = [
 ] as const;
 export type VoidReasonCategory = typeof VOID_REASON_CATEGORIES[number];
 
+/**
+ * F-008 / Spec §8.1 rule 6 + §1.3: every Voided cashback record requires a
+ * controlled-vocabulary reason category. The reason must be non-empty and start
+ * with one of the canonical category codes (or be one exactly). Allows
+ * "DUPLICATE: receipt was already approved" while requiring the prefix to be
+ * canonical.
+ *
+ * Shared by ALL void paths (markVoided here, the inline Locked→Voided branch in
+ * adminCashback.service.ts) so Pending/Cleared→Voided and Locked→Voided enforce
+ * identical rules. Returns the trimmed reason so callers can persist a single
+ * normalized value.
+ *
+ * @throws Error when the reason is empty or its category prefix is not canonical.
+ */
+export function assertVoidReasonCategory(reason: string): string {
+  if (!reason || reason.trim().length === 0) {
+    throw new Error('VOIDED transition requires a non-empty reason');
+  }
+  const trimmed = reason.trim();
+  const reasonCategory = trimmed.split(':')[0].trim().toUpperCase();
+  if (!(VOID_REASON_CATEGORIES as readonly string[]).includes(reasonCategory)) {
+    throw new Error(
+      `Invalid voidedReason category "${reasonCategory}". ` +
+      `Must be one of: ${VOID_REASON_CATEGORIES.join(', ')}. ` +
+      `Format: "CATEGORY" or "CATEGORY: description".`
+    );
+  }
+  return trimmed;
+}
+
+/**
+ * F-008 / Spec §8.1 rule 6 + §1.3: normalize a (possibly free-text) void reason
+ * so it always carries a controlled-vocabulary category prefix. If the reason
+ * already starts with a canonical category it is returned trimmed unchanged;
+ * otherwise it is prefixed with the neutral default `OTHER:` (NOT FRAUD —
+ * voided reasons are user-visible per §8.1 rule 6, so an un-categorized
+ * rejection must not become an unwarranted fraud accusation).
+ *
+ * This is the module-level counterpart to sticker.service's private
+ * normalizeVoidReason; both reuse the canonical VOID_REASON_CATEGORIES so the
+ * controlled list is never redefined.
+ */
+export function normalizeVoidReasonCategory(reason: string): string {
+  const trimmed = (reason ?? '').trim();
+  const firstToken = trimmed.split(':')[0].trim().toUpperCase();
+  if ((VOID_REASON_CATEGORIES as readonly string[]).includes(firstToken)) {
+    return trimmed;
+  }
+  const body = trimmed.length > 0 ? trimmed : 'Rejected';
+  return `OTHER: ${body}`;
+}
+
 async function getValidityDays(): Promise<number> {
   return getSystemSettingInt('cashback_expiry_days', CASHBACK_VALIDITY_DAYS_DEFAULT);
 }
@@ -118,22 +170,10 @@ export async function markVoided(params: {
   forceVoidLockedEntry?: boolean;
 }) {
   const { walletTransactionId, reason, actorUserId, forceVoidLockedEntry } = params;
-  if (!reason || reason.trim().length === 0) {
-    throw new Error('VOIDED transition requires a non-empty reason');
-  }
 
-  // F-008: Validate reason against controlled vocabulary.
-  // The reason must start with one of the canonical category codes, or be one of them exactly.
-  // This allows reasons like "DUPLICATE: receipt was already approved" while requiring
-  // the category prefix to be canonical.
-  const reasonCategory = reason.trim().split(':')[0].trim().toUpperCase();
-  if (!(VOID_REASON_CATEGORIES as readonly string[]).includes(reasonCategory)) {
-    throw new Error(
-      `Invalid voidedReason category "${reasonCategory}". ` +
-      `Must be one of: ${VOID_REASON_CATEGORIES.join(', ')}. ` +
-      `Format: "CATEGORY" or "CATEGORY: description".`
-    );
-  }
+  // F-008 / Spec §8.1 rule 6: validate reason against controlled vocabulary via
+  // the shared helper so every void path enforces identical category rules.
+  assertVoidReasonCategory(reason);
 
   const existing = await prisma.walletTransaction.findUnique({
     where: { id: walletTransactionId },
@@ -461,7 +501,17 @@ export async function recordRejectedAsVoided(params: {
   stickerScanId?: string;
   receiptId?: string;
 }) {
-  const { userId, amount, reason, actorUserId, description, metadata, stickerScanId, receiptId } = params;
+  const { userId, amount, actorUserId, description, metadata, stickerScanId, receiptId } = params;
+
+  // F-008 / Spec §8.1 rule 6 + §1.3: enforce the controlled void-reason
+  // vocabulary INSIDE this function so the guarantee holds regardless of caller.
+  // The sticker-reject path pre-normalizes, but the receipt-reject caller
+  // (receipt.service.ts) passes raw free-text (e.g. a Bulgarian rejection
+  // message); without this, the ghost row's voidedReason would not be a
+  // controlled category — a §8.1-rule-6 bypass. Normalizing here prefixes a
+  // neutral `OTHER:` when no canonical category is present (never FRAUD, since
+  // voided reasons are user-visible).
+  const reason = normalizeVoidReasonCategory(params.reason);
 
   if (amount < 0) {
     // Defensive — negative amounts make no sense for a cashback record.
@@ -683,10 +733,14 @@ export async function promotePendingToCleared(params: {
   return row;
 }
 
-// Spec §5 / §4.4: Pending cashback NEVER expires — this function is disabled.
-// The nightly scheduler must not call it.
+// Spec §5 / §4.4 / §1.3: Pending cashback NEVER expires. This job is
+// intentionally inert — it is a TRUE no-op, not a throw. The nightly scheduler
+// registers it and routes any rejection into an admin scheduler-failure alert,
+// so throwing here paged ops every single night for a deliberately-disabled
+// job. Returning { count: 0 } reports a clean run (zero entries modified) and
+// keeps the cron slot registered in case the spec position changes.
 export async function expireStalePendingCashback(_actorUserId: string | null = null): Promise<{ count: number }> {
-  throw new Error('expireStalePendingCashback is disabled per spec §5: Pending cashback never expires.');
+  return { count: 0 };
 }
 
 export const cashbackLifecycleService = {

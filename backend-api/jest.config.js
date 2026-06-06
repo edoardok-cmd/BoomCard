@@ -28,10 +28,10 @@ module.exports = {
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
-  // ── Flake mitigation (NOT yet fully deterministic — read this) ────────────
-  // The unit suite is green-but-flaky: full runs fail intermittently, a different
-  // unrelated suite each time, deep in the run. There are TWO distinct causes,
-  // and only the first is fully solved here:
+  // ── Flake mitigation (two distinct causes, both addressed) ────────────────
+  // The unit suite was green-but-flaky: full runs failed intermittently, a
+  // different unrelated suite each time, deep in the run. There are TWO distinct
+  // causes:
   //
   //  1. In-process async leakage (SOLVED, deterministically). Production paths
   //     fire-and-forget side effects (`notifyPartnerStatusChange(...).catch()`,
@@ -50,24 +50,24 @@ module.exports = {
   //     behaviour is unchanged. Backed by maxWorkers:1 + clearMocks + the
   //     afterAll jest.resetModules + fake-timer flush-and-restore.
   //
-  //  2. supertest/Node transport race under HOST CONTENTION (PARTIAL). Supertest
-  //     spins up a fresh ephemeral server PER `request(app)` call and tears it
-  //     down after the response; under this machine's heavy parallel-agent load
-  //     (observed load ~5-8, ~230 node procs, 200-700+ TIME_WAIT sockets) those
-  //     per-request sockets intermittently break (`socket hang up` / `ECONNRESET`
-  //     / `426` / stray 401/403/404 with "Number of calls: 0"). This reproduces
-  //     even when a heavy supertest suite runs in COMPLETE ISOLATION, so it is NOT
-  //     async leakage. No HTTP-agent override is applied (keep-alive toggling and
-  //     a persistent-server patch were both measured and REJECTED — see the
-  //     block comment at the top of tests/setup.ts); no setup-level transport
-  //     tuning measured here drives it to zero on a contended host (rates swung
-  //     0/80 ↔ 11/80 solo as load shifted). After the cause-1 fix above, a 20x
-  //     full-run determinism sweep on this contended host produced clean runs
-  //     except for contiguous bursts where ALL failures fell in supertest suites
-  //     (stray 401/403 before the handler ran) — i.e. this cause, not leakage.
-  //     Fully deterministic CI requires a quiet host / dedicated runner, or a
-  //     per-suite persistent-server refactor across the supertest suites. Tracked
-  //     as task BC-SUPERTEST-TRANSPORT-FLAKE.
+  //  2. supertest/Node transport race under HOST CONTENTION (ADDRESSED via a
+  //     persistent-server layer in tests/setup.ts). Stock supertest 6.x, given
+  //     an Express app, calls `http.createServer(app).listen(0)` per `request()`
+  //     call and tears it down after the response. With 376 call sites that is
+  //     376 ephemeral listen/close cycles; Node 19+ keepAlive pools sockets that
+  //     get reused against an already-closed ephemeral server, which under this
+  //     machine's heavy parallel-agent load surfaced as `socket hang up` /
+  //     `ECONNRESET` / `426 Upgrade Required` / stray 401/403/404 with the
+  //     route mock showing "Number of calls: 0" (the request never reached the
+  //     mounted router). tests/setup.ts now transparently wraps supertest so
+  //     each app reuses ONE persistent listening server per file (closed at the
+  //     file boundary), so keepAlive sockets only ever reuse against a server
+  //     that is still up. This removes the documented reuse-against-closed-server
+  //     race and cuts churn from 376 cycles to ~one per app per file. It is
+  //     test-only; production code is untouched. Determinism under heavy host
+  //     contention should still be verified by running the suite under load —
+  //     no fixed "N/N clean" rate is claimed here. Tracked as task
+  //     BC-SUPERTEST-TRANSPORT-FLAKE.
   //
   //   • maxWorkers:1  — removes parallel event-loop + test-DB contention and
   //     gives the per-test async drain a stable single-threaded loop.
@@ -75,8 +75,10 @@ module.exports = {
   //     stray call cannot pollute the next test's count/argument assertions. It
   //     does NOT reset implementations, so module-level mock behaviour survives.
   //
-  // NB: earlier revisions of this comment falsely claimed "deterministic 10/10".
-  // That was aspirational and is corrected above — cause (2) is load-dependent.
+  // NB: do not re-introduce any hardcoded "deterministic N/N clean" claim here.
+  // Cause (2)'s persistent-server layer removes the documented transport race;
+  // residual determinism under heavy host contention is established by running
+  // the suite, not asserted in this comment.
   maxWorkers: 1,
   clearMocks: true,
   testTimeout: 30000, // 30 seconds for integration tests

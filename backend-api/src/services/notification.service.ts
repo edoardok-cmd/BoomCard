@@ -910,6 +910,33 @@ export class NotificationService {
   }
 
   /**
+   * Audit L1 — Spec §11.2 "Profile created" → Transactional notification (mandatory).
+   * The welcome EMAIL is already sent from auth.routes.ts; this adds the in-app
+   * transactional notification record so the trigger is consistent with every other
+   * transactional event (cashback approved, transaction rejected, QR session), all of
+   * which create an in-app record. Transactional category → not opt-out gated.
+   */
+  async notifyProfileCreated(userId: string): Promise<void> {
+    try {
+      await this.createNotification({
+        userId,
+        type: 'SYSTEM',
+        title: 'Welcome to BoomCard',
+        titleBg: 'Добре дошли в BoomCard',
+        message: 'Your BoomCard profile is ready. Scan a venue QR sticker to start earning cashback.',
+        messageBg: 'Профилът ви в BoomCard е готов. Сканирайте QR стикер в обект, за да започнете да печелите кешбек.',
+        priority: 'medium',
+        actionUrl: '/dashboard',
+        actionText: 'Open dashboard',
+        actionTextBg: 'Към таблото',
+        data: { type: 'profile_created' },
+      });
+    } catch (error) {
+      logger.error('[notifyProfileCreated] failed:', error);
+    }
+  }
+
+  /**
    * Cashback payout threshold reached — fires reactively from wallet credit
    * whenever availableBalance crosses the plan's payout threshold on that
    * specific credit (pre-credit below → post-credit at/above). Users who
@@ -1121,6 +1148,32 @@ export class NotificationService {
       );
     } catch (error) {
       logger.error('[notifySubscriptionPaused] failed:', error);
+    }
+  }
+
+  /**
+   * Audit L2 — Spec §11.2 "Payment method updated" → Payment notification (mandatory).
+   * Paysera already sends a payment confirmation on card update; the Stripe card
+   * paths did not. Payment-category (PAYMENT_SUCCESS) in-app notification so it is
+   * exempt from opt-out, mirroring the other Payment-category notifications.
+   */
+  async notifyPaymentMethodUpdated(userId: string): Promise<void> {
+    try {
+      await this.createNotification({
+        userId,
+        type: 'PAYMENT_SUCCESS',
+        title: 'Payment method updated',
+        titleBg: 'Платежният метод е обновен',
+        message: 'Your payment method has been updated. Future subscription charges will use this card.',
+        messageBg: 'Платежният ви метод е обновен. Бъдещите такси за абонамент ще използват тази карта.',
+        priority: 'medium',
+        actionUrl: '/subscription',
+        actionText: 'View subscription',
+        actionTextBg: 'Виж абонамент',
+        data: { type: 'payment_method_updated' },
+      });
+    } catch (error) {
+      logger.error('[notifyPaymentMethodUpdated] failed:', error);
     }
   }
 
@@ -1390,7 +1443,7 @@ export class NotificationService {
         message: `Your request "${params.subject}" has moved from ${params.fromStatus} to ${params.toStatus}.`,
         messageBg: `Вашата заявка „${params.subject}" е преминала от статус ${params.fromStatus} на ${params.toStatus}.`,
         priority: 'medium',
-        actionUrl: `/partners/support/${params.ticketId}`,
+        actionUrl: `/partners/help`,
         actionText: 'View request',
         actionTextBg: 'Виж заявката',
         relatedEntityType: 'help_ticket',
@@ -1688,8 +1741,18 @@ export class NotificationService {
     jobName: string;
     errorMessage: string;
   }): Promise<void> {
+    // Derive a PER-JOB opsType so each distinct scheduled job owns its own
+    // cooldown slot. A single fixed 'scheduler_failure' opsType meant the FIRST
+    // job to fail in a 24h window occupied the only cooldown slot, silently
+    // swallowing genuine failures of every OTHER job that day (cross-job alert
+    // suppression). The dedup/cooldown match in notifyAdminOps keys on the full
+    // opsType string, so per-job keys give each job an independent slot while
+    // repeated failures of the SAME job within the window are still deduped.
+    // Sanitize jobName to a stable key (lowercase, non-alphanumerics → '_') so
+    // it forms a safe, collision-free dedup token.
+    const jobKey = params.jobName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
     return this.notifyAdminOps({
-      opsType: 'scheduler_failure',
+      opsType: `scheduler_failure_${jobKey}`,
       title: `Scheduled job failed: ${params.jobName}`,
       message: `The ${params.jobName} job errored during its scheduled run. Investigate before the next run.`,
       severity: 'warning',
@@ -1697,6 +1760,10 @@ export class NotificationService {
         { label: 'Job', value: params.jobName },
         { label: 'Error', value: params.errorMessage.slice(0, 500) },
       ],
+      // Defense-in-depth: a flapping cron must not page every admin on every run.
+      // The first failure still alerts immediately (cooldown only dedupes repeats
+      // within the window); matches the cooldown of sibling ops alerts (ocr_backlog).
+      cooldownHours: 24,
     });
   }
 
@@ -2140,25 +2207,67 @@ export class NotificationService {
   }
 
   /**
-   * F-018 — In-app notification on user-initiated subscription cancellation.
-   * Called from subscription.service.ts cancelSubscription() alongside the existing email.
-   * Spec requires both channels; this covers the in-app channel.
+   * F-018 / Audit M2 — Subscription-cancellation confirmation.
+   * Spec §11.1/§11.2: "Subscription cancellation confirmed" is a MANDATORY Payment
+   * notification (no opt-out) and must be accompanied by an email. Classified under
+   * the Payment category (PAYMENT_SUCCESS) so it is exempt from notification opt-out
+   * filtering, and a mandatory confirmation email is sent here so the user gets the
+   * email regardless of whether the caller also sends one.
+   *
+   * Callers (each fires exactly once per cancellation; see each caller's double-fire
+   * guard so a single cancellation never produces two notifications):
+   *   - subscriptionService.cancelSubscription (user-initiated via our API), and
+   *   - stripeService.handleSubscriptionDeleted when finalStatus === 'CANCELLED'
+   *     and canceledAt was not already set (i.e. a cancel made directly in the
+   *     Stripe customer portal that never passed through cancelSubscription).
+   * The Paysera grace-expiry job reaches CANCELLED only for subs already cancelled
+   * via cancelSubscription (which already notified), so it intentionally does not
+   * re-emit. This is a "cancellation confirmed" event only — EXPIRED / FAILED_PAYMENT
+   * (payment-failure) transitions are a different Failed Payment notification (§3.4).
+   *
+   * @param sendEmail When true (default) this method also sends its own plain
+   *   confirmation email — correct for the admin-cancel and Stripe-webhook paths
+   *   which have no other cancellation email. cancelSubscription (the user path)
+   *   passes false because it already sends a richer templated email via
+   *   emailService.sendSubscriptionCancelledEmail (plan name + access-until date +
+   *   manage URL); suppressing here avoids double-sending while still creating the
+   *   in-app record.
    */
-  async notifySubscriptionCancelledInApp(userId: string): Promise<void> {
+  async notifySubscriptionCancelledInApp(userId: string, sendEmail: boolean = true): Promise<void> {
     try {
+      // Payment-category in-app notification (mandatory, no opt-out per §11.1).
       await this.createNotification({
         userId,
-        type: 'SYSTEM',
-        title: 'Subscription cancelled',
-        titleBg: 'Абонаментът е отменен',
+        type: 'PAYMENT_SUCCESS',
+        title: 'Subscription cancellation confirmed',
+        titleBg: 'Отмяната на абонамента е потвърдена',
         message: 'Your BoomCard subscription has been cancelled. You will retain access until the end of your current billing period.',
         messageBg: 'Абонаментът ви BoomCard е отменен. Ще запазите достъп до края на платения период.',
-        priority: 'medium',
+        priority: 'high',
         actionUrl: '/subscription',
         actionText: 'View subscription',
         actionTextBg: 'Виж абонамент',
         data: { type: 'subscription_cancelled' },
       });
+
+      // Mandatory Payment-category email (§11.2). Best-effort send — the in-app
+      // record above is the durable record; the email is the second channel.
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, firstName: true },
+      });
+      if (sendEmail && user?.email) {
+        detach(emailService.sendEmail({
+          to: user.email,
+          subject: 'Your BoomCard subscription has been cancelled',
+          html: `
+            <p>Hi ${user.firstName || ''},</p>
+            <p>This confirms that your BoomCard subscription has been cancelled.</p>
+            <p>You will retain access until the end of your current billing period.</p>
+            <p>You can review your subscription status any time on your <a href="${process.env.APP_URL || 'https://mobile.boomcard.bg'}/subscription">subscription page</a>.</p>
+          `,
+        }), (err) => logger.error('[notifySubscriptionCancelledInApp] confirmation email failed:', err));
+      }
     } catch (error) {
       logger.error('[notifySubscriptionCancelledInApp] failed:', error);
     }

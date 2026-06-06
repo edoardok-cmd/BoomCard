@@ -13,6 +13,7 @@
  *   pending-subscription-cleanup     — 30 3 * * *   (3:30 AM daily)
  *   menu-expiry                      — 0 5 * * *    (5:00 AM daily)
  *   trial-pending-cashback           — 30 5 * * *   (5:30 AM daily)
+ *   auto-payout                      — 0 6 * * *    (6:00 AM daily — §7.1 nightly threshold payout initiation)
  *   paysera-renewal                  — 0 6 * * *    (6:00 AM UTC daily)
  *   renewal-reminders                — 0 7 * * *    (7:00 AM daily — auto-renew OFF 3d/1d/0d cadence)
  *   stale-session-cleanup            — 15 7 * * *   (7:15 AM daily)
@@ -832,9 +833,19 @@ async function resolveTrialPendingCashback(): Promise<void> {
         const threshold = await getPayoutThresholdBGN(plan);
         const preBal = updatedWallet.availableBalance - totalAmount;
         if (preBal < threshold && updatedWallet.availableBalance >= threshold) {
-          detach(notificationService
-            .notifyPayoutReady({ userId: wallet.userId, availableBalance: updatedWallet.availableBalance, threshold }), (err) => logger.error(`[trial-pending-cashback] payout-ready notify failed for ${wallet.userId}:`, err));
-          detach(fireAutomation('cashback.threshold_reached', { userId: wallet.userId }), (err) => logger.error(`[trial-pending-cashback] cashback.threshold_reached automation failed for ${wallet.userId}:`, err));
+          // Spec §3.7 / §7.3 / §11.2 — if no IBAN on file when the threshold is
+          // crossed, hold the payout and prompt the user to add bank details
+          // instead of telling them they can cash out (auto-payout cron filters
+          // out null-IBAN wallets). Mirrors wallet.service credit path.
+          const hasIban = !!updatedWallet.payoutIban && updatedWallet.payoutIban.trim().length > 0;
+          if (!hasIban) {
+            detach(notificationService
+              .notifyPayoutHeldNoIban({ userId: wallet.userId, availableBalance: updatedWallet.availableBalance, threshold }), (err) => logger.error(`[trial-pending-cashback] payout-held-no-iban notify failed for ${wallet.userId}:`, err));
+          } else {
+            detach(notificationService
+              .notifyPayoutReady({ userId: wallet.userId, availableBalance: updatedWallet.availableBalance, threshold }), (err) => logger.error(`[trial-pending-cashback] payout-ready notify failed for ${wallet.userId}:`, err));
+            detach(fireAutomation('cashback.threshold_reached', { userId: wallet.userId }), (err) => logger.error(`[trial-pending-cashback] cashback.threshold_reached automation failed for ${wallet.userId}:`, err));
+          }
         }
       } catch (err) {
         logger.error(`[trial-pending-cashback] payout threshold check failed for ${wallet.userId}:`, err);
@@ -845,6 +856,108 @@ async function resolveTrialPendingCashback(): Promise<void> {
   }
 
   logger.info(`[trial-pending-cashback] Done — released ${resolved} wallet(s), voided ${voided} (refund-used)`);
+}
+
+// ── Nightly auto-payout initiation (spec §7.1) ────────────────────────────────
+// Spec §7.1: "An automatic payout is triggered by the nightly scheduler when the
+// user's Cleared cashback balance reaches the plan-specific payout threshold."
+//
+// The IBAN-save path (wallet.service.updatePayoutAccount) only triggers a payout
+// for the user who has *just* saved an IBAN while already over threshold. The
+// common case — a user with an IBAN already on file who accrues past threshold
+// through normal cashback clearing — was never auto-initiated; the scheduler only
+// sent a notifyPayoutReady notification. This job closes that gap.
+//
+// Idempotency: requestPayout() itself enforces a single in-flight payout per
+// wallet (it throws if a PENDING/PROCESSING WITHDRAWAL exists, and an in-flight
+// payout is exactly what holds cashback in LOCKED). We additionally pre-filter on
+// availableBalance >= threshold and !isLocked, and swallow the "already pending"
+// / "below threshold" races so a concurrent IBAN-save or balance change can never
+// double-initiate. All eligibility (subscription, FAILED_PAYMENT, IBAN presence)
+// is delegated to requestPayout() — we do not reimplement it.
+
+async function runAutoPayouts(): Promise<void> {
+  const now = new Date();
+  logger.info(`[auto-payout] Starting run at ${now.toISOString()}`);
+
+  // Candidate wallets: not locked, an IBAN on file, and a positive available
+  // balance. The precise plan-specific threshold + subscription eligibility are
+  // resolved per-wallet (and re-checked atomically inside requestPayout()).
+  const candidates = await prisma.wallet.findMany({
+    where: {
+      isLocked: false,
+      availableBalance: { gt: 0 },
+      payoutIban: { not: null },
+    },
+    select: { id: true, userId: true, availableBalance: true },
+  });
+
+  if (candidates.length === 0) {
+    logger.info('[auto-payout] No candidate wallets — done');
+    return;
+  }
+
+  const { walletService } = await import('../services/wallet.service');
+
+  let initiated = 0;
+  let skipped = 0;
+  for (const wallet of candidates) {
+    try {
+      // IBAN may be an empty/whitespace string even when non-null.
+      // requestPayout() re-validates, but skip obvious non-candidates cheaply.
+
+      // Resolve the eligible subscription + plan threshold the same way
+      // requestPayout() does. ACTIVE / TRIALING, or CANCELLED-within-paid-period.
+      const subscription = await prisma.subscription.findFirst({
+        where: {
+          userId: wallet.userId,
+          OR: [
+            { status: { in: ['ACTIVE', 'TRIALING'] } },
+            { status: 'CANCELLED', currentPeriodEnd: { gt: now } },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { plan: true },
+      });
+      if (!subscription) {
+        skipped++;
+        continue;
+      }
+
+      const threshold = await getPayoutThresholdBGN(subscription.plan);
+      if (wallet.availableBalance < threshold) {
+        skipped++;
+        continue;
+      }
+
+      // Idempotency guard: skip if an in-flight payout already exists for this
+      // wallet (requestPayout would throw otherwise — this avoids the noisy log).
+      const inFlight = await prisma.walletTransaction.findFirst({
+        where: {
+          walletId: wallet.id,
+          type: WalletTransactionType.WITHDRAWAL,
+          status: { in: [WalletTransactionStatus.PENDING, WalletTransactionStatus.PROCESSING] },
+        },
+        select: { id: true },
+      });
+      if (inFlight) {
+        skipped++;
+        continue;
+      }
+
+      await walletService.requestPayout(wallet.userId);
+      initiated++;
+      logger.info(`[auto-payout] Initiated payout for user ${wallet.userId} (threshold ${threshold.toFixed(2)} BGN, balance ${wallet.availableBalance.toFixed(2)} BGN)`);
+    } catch (err: any) {
+      // Eligibility / race errors (already pending, below threshold after prune,
+      // INACTIVE, FAILED_PAYMENT, missing IBAN) are expected and non-fatal — they
+      // mean the wallet simply isn't payout-eligible this run.
+      skipped++;
+      logger.warn(`[auto-payout] Skipped user ${wallet.userId}: ${err?.message ?? err}`);
+    }
+  }
+
+  logger.info(`[auto-payout] Done — initiated ${initiated} payout(s), skipped ${skipped}`);
 }
 
 async function checkPaymentFailureSpike(): Promise<void> {
@@ -1221,14 +1334,11 @@ async function remindExpiringActivationLinks(): Promise<void> {
 
 async function escalateOverduePartnerSla(): Promise<void> {
   // Spec §1.6: SLA clock starts at application submission (createdAt), not at
-  // partner activation (joinedAt). Use Prisma enum constants — after `prisma generate`
-  // with @map directives, Prisma will return the TypeScript enum key ("APPROVED"/"REJECTED")
-  // not the Bulgarian DB storage value ("ODOBRENA"/"OTKAZANA"). Raw string comparisons
-  // silently produce wrong results after regeneration (HIGH-1 r2n).
-  // The current generated client still uses the old Bulgarian keys; referencing via
-  // PartnerRequestStatus enum means only two renames are needed post-generate instead of
-  // grep-fixing scattered raw strings.
-  // TODO: after `prisma generate` rename ODOBRENA→APPROVED and OTKAZANA→REJECTED here.
+  // partner activation (joinedAt). We compare via the Prisma enum constants
+  // (PartnerRequestStatus.APPROVED / .REJECTED): the generated client exposes the
+  // TypeScript enum keys (APPROVED/REJECTED), while the Bulgarian values (ODOBRENA/
+  // OTKAZANA) are only the @map'd DB storage strings. Verified against the generated
+  // client — the keys are correct; never compare against raw Bulgarian strings here.
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const overduePartners = await prisma.partner.findMany({
@@ -1523,6 +1633,16 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: trial-pending-cashback (30 5 * * *)');
+
+  // 6:00 AM every day — auto-initiate payouts for wallets that have crossed the
+  // plan-specific payout threshold with an IBAN on file (spec §7.1). Runs after
+  // cashback-expiry (2 AM) and trial-pending promotion (5:30 AM) so the cleared
+  // balance is final for the day. Idempotent against in-flight payouts.
+  cron.schedule('0 6 * * *', () => {
+    runAutoPayouts().catch((err) => alertSchedulerFailure('auto-payout', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: auto-payout (0 6 * * *)');
 
   // Every hour — scan for payment failure rate spikes
   cron.schedule('0 * * * *', () => {

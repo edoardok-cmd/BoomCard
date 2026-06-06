@@ -122,6 +122,10 @@ export class WalletService {
             expiringBalanceBGN: expiringBalance,
             balanceEUR: parseFloat((wallet.balance / EUR_TO_BGN_RATE).toFixed(2)),
             availableBalanceEUR: parseFloat((wallet.availableBalance / EUR_TO_BGN_RATE).toFixed(2)),
+            // Spec §17/§6.6: during the BGN→EUR window all amounts are shown in both
+            // currencies, including pending and expiring balances.
+            pendingBalanceEUR: parseFloat((computedPendingBalance / EUR_TO_BGN_RATE).toFixed(2)),
+            expiringBalanceEUR: parseFloat((expiringBalance / EUR_TO_BGN_RATE).toFixed(2)),
           }
         : {
             balanceEUR: parseFloat((wallet.balance / EUR_TO_BGN_RATE).toFixed(2)),

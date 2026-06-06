@@ -448,7 +448,8 @@ describe('Gap 3 — SUPER_ADMIN request approve/reject notifies the requester', 
   });
 
   it('sends a rejection email to the requester when SUPER_ADMIN request is rejected', async () => {
-    pendingRequestFindUniqueResult = baseRequest;
+    // Spec §3.9 step 4 — only the initiator may cancel; the test SUPER_ADMIN actor is u-super.
+    pendingRequestFindUniqueResult = { ...baseRequest, requestedById: 'u-super' };
 
     const res = await request(app)
       .delete('/api/admin/admins/pending-super/psa-1')
@@ -481,6 +482,7 @@ describe('Gap 3 — SUPER_ADMIN request approve/reject notifies the requester', 
   it('does not throw when requester has no email (reject path)', async () => {
     pendingRequestFindUniqueResult = {
       ...baseRequest,
+      requestedById: 'u-super',
       requestedBy: { email: null, firstName: 'Alice', lastName: 'Smith' },
     };
 
@@ -490,6 +492,19 @@ describe('Gap 3 — SUPER_ADMIN request approve/reject notifies the requester', 
 
     expect(res.status).toBe(200);
     // No email sent when requester has no email address
+    expect(emailSendCalls).toHaveLength(0);
+  });
+
+  it('returns 403 when a non-initiator SUPER_ADMIN tries to cancel the request (spec §3.9 step 4)', async () => {
+    // Request was initiated by u-other; acting SUPER_ADMIN is u-super (not the initiator).
+    pendingRequestFindUniqueResult = { ...baseRequest, requestedById: 'u-other' };
+
+    const res = await request(app)
+      .delete('/api/admin/admins/pending-super/psa-1')
+      .set('x-test-role', 'SUPER_ADMIN');
+
+    expect(res.status).toBe(403);
+    // The pending request must not be deleted and no rejection email sent.
     expect(emailSendCalls).toHaveLength(0);
   });
 });

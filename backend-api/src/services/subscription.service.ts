@@ -285,8 +285,11 @@ export class SubscriptionService {
     // F-018: Spec requires an in-app notification on user-initiated subscription cancellation
     // alongside the existing email (not instead of it). Non-fatal.
     if (!suppressEmail) {
+      // Pass sendEmail=false: cancelSubscription already sends the richer templated
+      // cancellation email above (sendSubscriptionCancelledEmail). The in-app record
+      // is still created; only the notification's duplicate plain email is suppressed.
       detach(notificationService
-        .notifySubscriptionCancelledInApp(updated.userId), (err) => logger.error(`[cancelSubscription] notifySubscriptionCancelledInApp failed for sub ${subscriptionId}:`, err));
+        .notifySubscriptionCancelledInApp(updated.userId, false), (err) => logger.error(`[cancelSubscription] notifySubscriptionCancelledInApp failed for sub ${subscriptionId}:`, err));
     }
 
     return updated;
@@ -320,7 +323,9 @@ export class SubscriptionService {
     if (newPlan === 'PREMIUM_WEEKLY') {
       // Downgrade to light - cancel current subscription
       if (subscription.stripeSubscriptionId) {
-        await this.cancelSubscription(subscriptionId, false);
+        // suppressEmail=true: this is a plan downgrade, not a cancellation, so do
+        // not fire the "subscription cancelled" email or in-app notification.
+        await this.cancelSubscription(subscriptionId, false, /* suppressEmail */ true);
       }
 
       await cardService.syncCardTypeWithSubscription(subscription.userId, 'PREMIUM_WEEKLY');

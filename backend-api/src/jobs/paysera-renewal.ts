@@ -76,6 +76,19 @@ export async function processPayseraRenewals(): Promise<void> {
         `[paysera-renewal] Subscription ${sub.id} ${finalStatus.toLowerCase()} after 7-day grace period${alreadyCancelled ? ' (user had already cancelled, no email)' : ''}`
       );
 
+      // Audit M2 / spec §11.1+§11.2: "Subscription cancellation confirmed" is a
+      // mandatory Payment notification on every cancellation channel. In this job
+      // a row reaches finalStatus=CANCELLED only when the user had already
+      // cancelled via subscriptionService.cancelSubscription (alreadyCancelled =
+      // canceledAt is set), which ALREADY fired notifySubscriptionCancelledInApp at
+      // cancel time. Firing again here would double-notify for a single
+      // cancellation, so we intentionally do NOT re-emit it.
+      //
+      // The EXPIRED branch (natural billing-period lapse, canceledAt null) is NOT a
+      // "cancellation confirmed" event and correctly gets no cancellation
+      // notification here. A separate Failed Payment notification (§3.4) is emitted
+      // by step 1b for the FAILED_PAYMENT path.
+
       // Sync the BoomCard loyalty card type to match the user's remaining active
       // BoomCard subscription, or downgrade to PREMIUM_WEEKLY if none exists. Mirrors the
       // same pattern in subscription-expiry (scheduler.ts), which handles the
@@ -140,6 +153,16 @@ export async function processPayseraRenewals(): Promise<void> {
 
   for (const sub of failedRenewals) {
     try {
+      // Spec §3.4: ONE renewal attempt, no retry period. The selection above
+      // already restricts to status=ACTIVE, so a sub that has already failed its
+      // single renewal (now FAILED_PAYMENT) is never re-processed. This explicit
+      // guard documents and hardens that invariant against future query changes —
+      // only an ACTIVE sub on its first (and only) renewal attempt may transition.
+      if (sub.status !== SubscriptionStatus.ACTIVE) {
+        logger.info(`[paysera-renewal] Subscription ${sub.id} not ACTIVE (${sub.status}) — skipping repeat renewal failure (spec §3.4 no-retry)`);
+        continue;
+      }
+
       const prevStatus = sub.status;
       const failedAt = new Date();
 

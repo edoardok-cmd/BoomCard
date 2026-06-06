@@ -16,7 +16,7 @@ import { asyncHandler } from '../middleware/error.middleware';
 import { authenticate, authorize, optionalAuthenticate, AuthRequest } from '../middleware/auth.middleware';
 import { requireActivePartnerForWritesAuthed } from '../middleware/partnerStatus.middleware';
 import { prisma } from '../lib/prisma';
-import { LocationType, OfferStatus, PartnerRequestStatus, PartnerStatus, ScanStatus, UserStatus } from '@prisma/client';
+import { CashbackPaymentStatus, LocationType, OfferStatus, PartnerRequestStatus, PartnerStatus, ScanStatus, UserStatus } from '@prisma/client';
 import { partnerTypeService } from '../services/partnerType.service';
 import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
 import { emailService } from '../services/email.service';
@@ -581,6 +581,198 @@ router.get(
 );
 
 // ----------------------------------------------------------------
+// GET /api/partners/me/transactions — spec §6 / BC-PARTNER-PORTAL-SCOPE-B B1
+// Partner-scoped, read-only list of StickerScan rows across the partner's own
+// venues. Paginated + filterable (date range, venue, status, amount).
+//
+// Security (spec §11.3 / prior partner-portal audit): an explicit `select`
+// allowlist is used so NO internal field (cashbackPercent, cashbackAmount,
+// fraudScore, fraudReasons, specRiskLevel, ipAddress, userAgent, latitude,
+// longitude, distance, deviceFingerprint*, ocrData, stickerId, userId, cardId,
+// receiptImage*) can ever leak. Scoped strictly to Partner.userId === req.user.id
+// — there is no :id param, so cross-partner access is structurally impossible.
+// Per-scan cashbackPercent is internal and is NOT exposed; an offer-level
+// discount is not cheaply joinable per scan (StickerScan has no offer FK), so
+// the optional `discountPercent` column is omitted entirely (frontend shows "—").
+// ----------------------------------------------------------------
+router.get(
+  '/me/transactions',
+  authenticate,
+  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const partner = await prisma.partner.findUnique({
+      where: { userId: req.user!.id },
+      select: { id: true },
+    });
+
+    if (!partner) {
+      return res.status(403).json({ success: false, error: 'No partner context for this account' });
+    }
+
+    const { page, limit, skip, take } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
+
+    const {
+      dateFrom, dateTo, venueId, status, minAmount, maxAmount,
+    } = req.query as Record<string, string>;
+
+    // Scope every scan to a venue owned by THIS partner.
+    const where: any = { venue: { partnerId: partner.id } };
+
+    // Optional venue filter — additionally constrained to ownership above, so a
+    // foreign venueId simply yields zero rows (no cross-partner leak).
+    if (venueId) where.venueId = venueId;
+
+    if (status) {
+      const validStatuses = Object.values(ScanStatus) as string[];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid status value. Must be one of: ${validStatuses.join(', ')}`,
+        });
+      }
+      where.status = status;
+    }
+
+    // Date range on createdAt (ISO strings). Invalid dates are ignored.
+    const createdAt: any = {};
+    if (dateFrom) {
+      const from = new Date(dateFrom);
+      if (!isNaN(from.getTime())) createdAt.gte = from;
+    }
+    if (dateTo) {
+      const to = new Date(dateTo);
+      if (!isNaN(to.getTime())) createdAt.lte = to;
+    }
+    if (Object.keys(createdAt).length > 0) where.createdAt = createdAt;
+
+    // Amount filters apply to the partner-visible amount, which is
+    // verifiedAmount ?? billAmount. Prisma cannot express the COALESCE in a
+    // single field filter, so we OR the two candidates: a row matches if its
+    // verifiedAmount is in range, or (verifiedAmount is null and billAmount is
+    // in range). This keeps server-side filtering consistent with the rendered
+    // `amount` value.
+    const minNum = minAmount !== undefined && minAmount !== '' ? Number(minAmount) : undefined;
+    const maxNum = maxAmount !== undefined && maxAmount !== '' ? Number(maxAmount) : undefined;
+    const hasMin = minNum !== undefined && Number.isFinite(minNum);
+    const hasMax = maxNum !== undefined && Number.isFinite(maxNum);
+    if (hasMin || hasMax) {
+      const range: any = {};
+      if (hasMin) range.gte = minNum;
+      if (hasMax) range.lte = maxNum;
+      where.AND = [
+        ...(where.AND ?? []),
+        {
+          OR: [
+            { verifiedAmount: range },
+            { verifiedAmount: null, billAmount: range },
+          ],
+        },
+      ];
+    }
+
+    const [scans, total] = await Promise.all([
+      prisma.stickerScan.findMany({
+        where,
+        // Explicit allowlist — internal fields are intentionally absent.
+        select: {
+          id: true,
+          createdAt: true,
+          venueId: true,
+          billAmount: true,
+          verifiedAmount: true,
+          status: true,
+          transactionId: true,
+          venue: { select: { name: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      prisma.stickerScan.count({ where }),
+    ]);
+
+    const data = scans.map((s) => ({
+      id: s.id,
+      createdAt: s.createdAt,
+      venueId: s.venueId,
+      venueName: s.venue?.name ?? null,
+      amount: s.verifiedAmount ?? s.billAmount,
+      status: s.status,
+      transactionId: s.transactionId,
+    }));
+
+    res.json({
+      success: true,
+      data,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    });
+  }),
+);
+
+// ----------------------------------------------------------------
+// GET /api/partners/me/finance — spec §7.1 / BC-PARTNER-PORTAL-SCOPE-B B2
+// Partner-scoped PartnerCashbackPayment rows, newest month first, joined to the
+// ReportingPeriod.status (by month) for the §7.2 period state.
+//
+// Security: explicit `select` allowlist omits the internal fields marginAmount,
+// paidBy, notes, partnerId. Scoped to Partner.userId === req.user.id; no :id
+// param. Feeds BOTH §7.1 tables (Месечни справки + История на плащания).
+// ----------------------------------------------------------------
+router.get(
+  '/me/finance',
+  authenticate,
+  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const partner = await prisma.partner.findUnique({
+      where: { userId: req.user!.id },
+      select: { id: true },
+    });
+
+    if (!partner) {
+      return res.status(403).json({ success: false, error: 'No partner context for this account' });
+    }
+
+    const payments = await prisma.partnerCashbackPayment.findMany({
+      where: { partnerId: partner.id },
+      // Explicit allowlist — marginAmount / paidBy / notes / partnerId omitted.
+      select: {
+        month: true,
+        turnoverAmount: true,
+        contractedRate: true,
+        totalCashbackOwed: true,
+        status: true,
+        paidAt: true,
+        invoiceNumber: true,
+      },
+      orderBy: { month: 'desc' },
+    });
+
+    // Join ReportingPeriod.status by month (global per-month period state).
+    const months = payments.map((p) => p.month);
+    const periods = months.length > 0
+      ? await prisma.reportingPeriod.findMany({
+          where: { month: { in: months } },
+          select: { month: true, status: true },
+        })
+      : [];
+    const periodStatusByMonth = new Map(periods.map((p) => [p.month, p.status]));
+
+    const data = payments.map((p) => ({
+      month: p.month,
+      turnoverAmount: p.turnoverAmount,
+      contractedRate: p.contractedRate,
+      totalCashbackOwed: p.totalCashbackOwed,
+      status: p.status,
+      paidAt: p.paidAt,
+      invoiceNumber: p.invoiceNumber,
+      periodStatus: periodStatusByMonth.get(p.month) ?? null,
+    }));
+
+    res.json({ success: true, data });
+  }),
+);
+
+// ----------------------------------------------------------------
 // GET /api/partners/:id/stats
 // Owner (PARTNER role + own record) or ADMIN — aggregate KPIs for the partner dashboard.
 // ----------------------------------------------------------------
@@ -607,7 +799,7 @@ router.get(
     const monthAgo = new Date(now);
     monthAgo.setDate(monthAgo.getDate() - 30);
 
-    const [venues, totalOffers, activeOffers, approvedScans, monthScans] = await Promise.all([
+    const [venues, totalOffers, activeOffers, approvedScans, monthScans, totalVisits, expectedAgg] = await Promise.all([
       prisma.venue.findMany({ where: { partnerId: partner.id }, select: { id: true } }),
       prisma.offer.count({ where: { partnerId: partner.id } }),
       prisma.offer.count({
@@ -632,9 +824,27 @@ router.get(
           createdAt: { gte: monthAgo },
         },
       }),
+      // BC-PARTNER-PORTAL-SCOPE-B B3 — §5.3 "Брой посещения": total scans for
+      // this partner across ALL statuses (every visit/scan event, not only
+      // approved). This is the truest "visits" count; totalRedemptions above
+      // remains the approved-only KPI used elsewhere.
+      prisma.stickerScan.count({
+        where: { venue: { partnerId: partner.id } },
+      }),
+      // BC-PARTNER-PORTAL-SCOPE-B B3 — §5.3 "Очаквани суми": sum of cashback
+      // owed that is not yet paid (PENDING or OVERDUE). Uses totalCashbackOwed
+      // only — marginAmount and other internal fields are never read here.
+      prisma.partnerCashbackPayment.aggregate({
+        where: {
+          partnerId: partner.id,
+          status: { in: [CashbackPaymentStatus.PENDING, CashbackPaymentStatus.OVERDUE] },
+        },
+        _sum: { totalCashbackOwed: true },
+      }),
     ]);
 
     const revenue = approvedScans.reduce((sum, s) => sum + s.cashbackAmount, 0);
+    const expectedAmount = expectedAgg._sum.totalCashbackOwed ?? 0;
 
     res.json({
       success: true,
@@ -647,6 +857,9 @@ router.get(
         totalReviews: partner.reviewCount,
         monthlyRedemptions: monthScans,
         revenue: Math.round(revenue * 100) / 100,
+        // BC-PARTNER-PORTAL-SCOPE-B B3 — new §5.3 KPI fields.
+        expectedAmount: Math.round(expectedAmount * 100) / 100,
+        totalVisits,
       },
     });
   }),
@@ -1251,7 +1464,7 @@ router.put(
         }
       }
       if (Object.keys(after).length > 0) {
-        writeAudit({
+        detach(writeAudit({
           actorUserId: req.user!.id,
           action: 'partner.update',
           objectType: 'Partner',
@@ -1260,7 +1473,7 @@ router.put(
           after,
           ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? null,
           userAgent: req.headers['user-agent'] ?? null,
-        }).catch(() => {});
+        }), () => {});
       }
     }
 
@@ -1862,7 +2075,10 @@ router.post(
           })
             .then(() => stampEmailOutcome(linkId, { sent: true })), (err) => {
               logger.error('[partner-activation] onboard email failed:', err);
-              stampEmailOutcome(linkId, { sent: false, error: String((err as Error)?.message ?? err) });
+              // Register the failure-stamp write so it cannot settle during a
+              // later, unrelated test and consume that suite's prisma mock queue.
+              detach(stampEmailOutcome(linkId, { sent: false, error: String((err as Error)?.message ?? err) }),
+                (e) => logger.error('[partner-activation] stampEmailOutcome (onboard-fail) failed:', e));
             });
         } else {
           logger.warn(`[onboard] partner ${result.partner.id} has no email — activation link issued but not sent`);

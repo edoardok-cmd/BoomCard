@@ -698,6 +698,9 @@ const DashboardPage: React.FC = () => {
     monthlyRedemptions: 0,
     revenue: 0,
     totalVenues: 0,
+    // §5.3 extended KPIs (BC-PARTNER-PORTAL-SCOPE-B). Undefined → render "—".
+    expectedAmount: undefined as number | undefined,
+    totalVisits: undefined as number | undefined,
   };
 
   const displayStats = stats || (isStatsError || isPartnerError ? fallbackStats : null);
@@ -891,8 +894,8 @@ const DashboardPage: React.FC = () => {
                   </StatLabel>
                   <StatValue>
                     {isLoading ? '...' : (
-                      (displayStats as any)?.totalVisits !== undefined
-                        ? ((displayStats as any).totalVisits as number).toLocaleString()
+                      displayStats?.totalVisits !== undefined
+                        ? displayStats.totalVisits.toLocaleString()
                         : '—'
                     )}
                   </StatValue>
@@ -979,8 +982,8 @@ const DashboardPage: React.FC = () => {
                   </StatLabel>
                   <StatValue>
                     {isLoading ? '...' : (
-                      (displayStats as any)?.expectedAmount !== undefined
-                        ? formatCurrency((displayStats as any).expectedAmount as number)
+                      displayStats?.expectedAmount !== undefined
+                        ? formatCurrency(displayStats.expectedAmount)
                         : '—'
                     )}
                   </StatValue>

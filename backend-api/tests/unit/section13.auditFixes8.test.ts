@@ -263,6 +263,24 @@ beforeEach(() => {
   mockRolesUpdatedAt      = null;
   mockExpiredAdminRoles   = [];
   jest.clearAllMocks();
+  // jest.clearAllMocks() clears call history but NOT queued mockResolvedValueOnce
+  // values. A supertest transport hiccup under load can return 401 before a request
+  // reaches the router, leaving the criticalActionRequest.findUnique value that test
+  // queued unconsumed; it then resolves the next test's findUnique and shifts every
+  // subsequent payload by one (the requestId one-test offset). mockReset() drains the
+  // stranded once-queue so the suite is deterministic regardless of a dropped request.
+  m.criticalActionRequest.findUnique.mockReset();
+  m.partner.findUnique.mockReset();
+  // findMany/count carry the same risk: the Gap-2 / Gap-2-follow-up tests queue
+  // criticalActionRequest.findMany.mockResolvedValueOnce (and count.*Once), and a
+  // transport-stranded request leaves that once-value to resolve the next test's
+  // call — shifting the response payload by one (toHaveLength(0) on a should-be-
+  // populated array, or a stale `where` shape). Drain those once-queues too. They
+  // have default impls in the mock factory, so re-seat the defaults after reset.
+  m.criticalActionRequest.findMany.mockReset();
+  m.criticalActionRequest.findMany.mockImplementation(async () => []);
+  m.criticalActionRequest.count.mockReset();
+  m.criticalActionRequest.count.mockImplementation(async () => 0);
   // Restore default findUnique behaviour after each test resets it.
   m.user.findUnique.mockImplementation(async () => ({
     rolesUpdatedAt: mockRolesUpdatedAt,

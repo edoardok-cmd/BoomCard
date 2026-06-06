@@ -34,7 +34,28 @@ const IS_TEST = process.env.NODE_ENV === 'test';
 // Test-only registry of detached promises awaiting drain. Never populated in
 // production (the push is behind the IS_TEST gate), so it retains nothing and
 // cannot leak memory outside tests.
-const registry: Promise<unknown>[] = [];
+//
+// CRITICAL (test correctness): the registry MUST be a single instance shared
+// across every (re)evaluation of this module. The jest harness calls
+// `jest.resetModules()` at each test-file boundary (see tests/setup.ts afterAll),
+// which clears the module registry so the NEXT file's `import` of this module
+// re-executes it and would otherwise create a BRAND-NEW `registry` array. But
+// `tests/setup.ts` imported `drainDetached` exactly once (in setupFilesAfterEnv,
+// evaluated a single time), so its drain closure is bound to the FIRST module
+// instance's registry. If route code in a later file pushed onto a fresh
+// per-file registry, the harness would drain the wrong (empty) array and the
+// detached work would settle during an unrelated later test — re-introducing
+// exactly the cross-suite mock-leak flake this seam exists to kill. Anchoring
+// the registry on `globalThis` (which survives `jest.resetModules()`) guarantees
+// every module re-instance and the harness all share ONE registry.
+//
+// Outside the test environment this is a plain module-local array (no global
+// state), so production behaviour and memory profile are unchanged.
+const REGISTRY_KEY = '__boomcardDetachRegistry__';
+type RegistryHolder = { [REGISTRY_KEY]?: Promise<unknown>[] };
+const registry: Promise<unknown>[] = IS_TEST
+  ? ((globalThis as RegistryHolder)[REGISTRY_KEY] ??= [])
+  : [];
 
 /**
  * Dispatch a detached (fire-and-forget) promise with an error handler.

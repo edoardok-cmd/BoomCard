@@ -1,51 +1,52 @@
 import { prisma } from '../lib/prisma';
 import { RiskBucket } from '@prisma/client';
 
-// Spec §4.1 + §7.2 — behaviour-based risk profile per subscriber.
-// Rule-sum scorer (0-100). Buckets use the canonical RiskBucket ranges:
+// Spec §2.1 — canonical five-signal risk profile per subscriber.
+// Additive rule-sum scorer (0-100). Buckets use the canonical RiskBucket ranges:
 //   0-20  → LOW_0_20      (auto-approve)
 //   21-50 → MEDIUM_21_50  (manual review)
 //   51+   → HIGH_51_PLUS  (high risk)
 //
-// Each rule contributes a fixed score when its signal fires. The total is
-// capped at 100. If new signals are added, keep the cap so a single
-// catastrophic rule cannot single-handedly classify every account as HIGH.
+// BC-CASHBACK-RISK FIX 2: the previous implementation used a divergent set of
+// behaviour signals (failed logins, tx frequency, disputes, subscription dunning,
+// new-account velocity, receipt fraudScore roll-up) with non-spec weights. Those
+// are NOT the spec §2.1 canonical set. This module now implements the five
+// canonical signals with the spec additive weights, mirroring the per-record
+// scorer in fraudDetection.service.ts::computeSpecRiskLevel so the per-user
+// roll-up and the per-record gate agree.
+//
+// The total is capped at 100 (the five spec weights already sum to 120, so a
+// user firing every signal lands at HIGH regardless).
 
 const SCORE_CAP = 100;
 
+// Spec §2.1 additive weights (identical to fraudDetection.service.ts constants).
 const RULES = {
-  // 3+ failed login attempts in the past 7 days
-  RECENT_FAILED_LOGINS: 15,
-  // IBAN was rotated within the past 7 days (cash-out fraud signal per §7.2)
-  RECENT_IBAN_CHANGE: 10,
-  // 10+ transactions in the trailing 24 hours
-  HIGH_TX_FREQUENCY_24H: 25,
-  // 1+ transactions failed in the past 30 days
-  RECENT_FAILED_TX: 10,
-  // Subscription is in PAST_DUE / UNPAID
-  SUBSCRIPTION_DUE: 20,
-  // 1+ open or in-review dispute against this user
-  OPEN_DISPUTE: 30,
-  // Account younger than 7 days with 3+ transactions already
-  NEW_ACCOUNT_HIGH_VELOCITY: 20,
-  // Spec §7.2 "Receipt match" — 3+ receipts in last 30d that scored above the
-  // per-receipt review threshold (fraudScore >= 31, the same boundary as §7.1).
-  // Rolls up transaction-level mismatches into the user profile.
-  RECENT_RECEIPT_MISMATCHES: 15,
+  // Signal 1 — IBAN changed in the last 24h.
+  IBAN_CHANGED_24H: 40,
+  // Signal 2 — at least one receipt with OCR match confidence < 60%.
+  RECEIPT_MATCH_LOW_CONFIDENCE: 30,
+  // Signal 3 — at least one QR location mismatch on a recent scan.
+  QR_LOCATION_MISMATCH: 20,
+  // Signal 4 — user has 3 or more Voided cashback records.
+  USER_HAS_3_PLUS_VOIDED: 20,
+  // Signal 5 — user transacted at a partner carrying an active risk flag.
+  PARTNER_ACTIVE_RISK_FLAG: 10,
 } as const;
 
-// Per-receipt review threshold lifted from spec §7.1's review band (31-60).
-// In spec terminology "транзакция" refers to a receipt-cashback claim under
-// fraud review (Receipt.fraudScore), NOT the codebase's `Transaction` model
-// (Stripe/Paysera charges). Same 31 boundary keeps the operator's mental model
-// uniform across receipt review and the user-risk roll-up.
-const RECEIPT_REVIEW_FRAUD_THRESHOLD = 31;
+// Signal 2 boundary: OCR match confidence below 60% fires the +30 signal
+// (spec §2.1 "Receipt match confidence < 60%"). Receipt.ocrConfidence is stored
+// as a 0–100 percentage.
+const RECEIPT_MATCH_CONFIDENCE_THRESHOLD = 60;
 
-// Threshold for HIGH_TX_FREQUENCY_24H. Used both to fire the rule and to
-// suppress NEW_ACCOUNT_HIGH_VELOCITY for the same user — keep them in lockstep
-// (else a user with N tx in 24h could double-count both rules). Exported so
-// tests assert against the constant rather than a string literal.
-export const HIGH_TX_24H_THRESHOLD = 10;
+// Signal 3 marker: the per-scan fraud detector (fraudDetection.service.ts) writes
+// 'LOCATION_MISMATCH' into StickerScan.fraudReasons when GPS distance exceeds the
+// venue radius. We roll that up to the user here rather than recomputing Haversine.
+const LOCATION_MISMATCH_REASON = 'LOCATION_MISMATCH';
+
+// Signal 1 window: IBAN change must be within the trailing 24 hours (spec §2.1),
+// NOT the previous 7-day window.
+const IBAN_CHANGE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 // NOTE on thresholds: the canonical RiskBucket ranges (0-20 / 21-50 / 51+) are
 // the source of truth, encoded directly in the RiskBucket enum names. Spec §4.1
@@ -67,25 +68,33 @@ export interface RiskAssessment {
 
 interface UserSlice {
   id: string;
-  createdAt: Date;
+  /** Retained for caller-signature compatibility; no longer used by the spec §2.1 signals. */
+  createdAt?: Date;
   ibanLastChangedAt: Date | null;
 }
 
-const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
-const ONE_DAY = 24 * 60 * 60 * 1000;
-const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+// Lookback window for the receipt-confidence and location-mismatch signals.
+// Spec §2.1 frames both as "recent" without a fixed window; we use 30 days so a
+// single stale event doesn't pin a user at risk forever. Tune here if product
+// fixes a window.
+const SIGNAL_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
 
-// Compute risk for a batch of users in O(rules) DB queries (not O(rules*users)).
+// Compute risk for a batch of users in O(signals) DB queries (not O(signals*users)).
 // Used by the admin subscribers list to render fresh scores without per-row work.
+//
+// Signal → data source mapping (spec §2.1):
+//   1. IBAN change 24h (+40)        ← User.ibanLastChangedAt (passed in via UserSlice)
+//   2. Receipt confidence <60% (+30)← Receipt.ocrConfidence (DATA SOURCE: present)
+//   3. QR location mismatch (+20)   ← StickerScan.fraudReasons contains 'LOCATION_MISMATCH'
+//   4. 3+ Voided records (+20)      ← WalletTransaction.cashbackStatus = VOIDED
+//   5. Partner active risk flag (+10)← StickerScan.venue.partner.hasRiskFlag = true
 export async function computeRiskForUsers(users: UserSlice[]): Promise<Map<string, RiskAssessment>> {
   const out = new Map<string, RiskAssessment>();
   if (users.length === 0) return out;
 
   const now = Date.now();
   const ids = users.map((u) => u.id);
-  const sevenDaysAgo = new Date(now - SEVEN_DAYS);
-  const oneDayAgo = new Date(now - ONE_DAY);
-  const thirtyDaysAgo = new Date(now - THIRTY_DAYS);
+  const lookbackFrom = new Date(now - SIGNAL_LOOKBACK_MS);
 
   // Initialise every user with a 0/empty assessment so users without any
   // signals still get an explicit LOW bucket (not undefined).
@@ -93,47 +102,46 @@ export async function computeRiskForUsers(users: UserSlice[]): Promise<Map<strin
     out.set(u.id, { userId: u.id, score: 0, bucket: 'LOW_0_20', reasons: [] });
   }
 
-  // Rule batches — one groupBy per rule across the input set.
-  const [failedLogins, txCounts24h, failedTx30d, dueSubs, openDisputes, totalTx, recentReceiptMismatches] =
+  // Signal batches — one grouped query per signal across the input set.
+  const [lowConfidenceReceipts, locationMismatchScans, voidedCounts, partnerFlaggedScans] =
     await Promise.all([
-      prisma.loginHistory.groupBy({
-        by: ['userId'],
-        where: { userId: { in: ids }, success: false, createdAt: { gte: sevenDaysAgo } },
-        _count: { _all: true },
-      }),
-      prisma.transaction.groupBy({
-        by: ['userId'],
-        where: { userId: { in: ids }, createdAt: { gte: oneDayAgo } },
-        _count: { _all: true },
-      }),
-      prisma.transaction.groupBy({
-        by: ['userId'],
-        where: { userId: { in: ids }, status: 'FAILED', createdAt: { gte: thirtyDaysAgo } },
-        _count: { _all: true },
-      }),
-      prisma.subscription.groupBy({
-        by: ['userId'],
-        where: { userId: { in: ids }, status: { in: ['PAST_DUE', 'UNPAID'] } },
-        _count: { _all: true },
-      }),
-      prisma.dispute.groupBy({
-        by: ['userId'],
-        where: { userId: { in: ids }, status: { in: ['OPEN', 'IN_REVIEW'] } },
-        _count: { _all: true },
-      }),
-      prisma.transaction.groupBy({
-        by: ['userId'],
-        where: { userId: { in: ids } },
-        _count: { _all: true },
-      }),
+      // Signal 2: users with at least one recent receipt below the confidence threshold.
       prisma.receipt.groupBy({
         by: ['userId'],
         where: {
           userId: { in: ids },
-          fraudScore: { gte: RECEIPT_REVIEW_FRAUD_THRESHOLD },
-          createdAt: { gte: thirtyDaysAgo },
+          ocrConfidence: { lt: RECEIPT_MATCH_CONFIDENCE_THRESHOLD },
+          createdAt: { gte: lookbackFrom },
         },
         _count: { _all: true },
+      }),
+      // Signal 3: users with at least one recent scan flagged for QR location mismatch.
+      prisma.stickerScan.groupBy({
+        by: ['userId'],
+        where: {
+          userId: { in: ids },
+          fraudReasons: { has: LOCATION_MISMATCH_REASON },
+          createdAt: { gte: lookbackFrom },
+        },
+        _count: { _all: true },
+      }),
+      // Signal 4: count of Voided cashback records per user (3+ fires).
+      prisma.walletTransaction.groupBy({
+        by: ['walletId'],
+        where: {
+          cashbackStatus: 'VOIDED',
+          wallet: { userId: { in: ids } },
+        },
+        _count: { _all: true },
+      }),
+      // Signal 5: users who scanned at a venue whose partner has an active risk flag.
+      prisma.stickerScan.findMany({
+        where: {
+          userId: { in: ids },
+          venue: { partner: { hasRiskFlag: true } },
+        },
+        select: { userId: true },
+        distinct: ['userId'],
       }),
     ]);
 
@@ -144,44 +152,46 @@ export async function computeRiskForUsers(users: UserSlice[]): Promise<Map<strin
     a.reasons.push(reason);
   };
 
-  for (const r of failedLogins) {
-    if (r._count._all >= 3) apply(r.userId, RULES.RECENT_FAILED_LOGINS, '3+ failed logins / 7d');
-  }
-  for (const r of txCounts24h) {
-    if (r._count._all >= HIGH_TX_24H_THRESHOLD) {
-      apply(r.userId, RULES.HIGH_TX_FREQUENCY_24H, `${HIGH_TX_24H_THRESHOLD}+ transactions / 24h`);
-    }
-  }
-  for (const r of failedTx30d) {
-    if (r._count._all >= 1) apply(r.userId, RULES.RECENT_FAILED_TX, 'failed transactions / 30d');
-  }
-  for (const r of dueSubs) {
-    if (r._count._all >= 1) apply(r.userId, RULES.SUBSCRIPTION_DUE, 'subscription past due / unpaid');
-  }
-  for (const r of openDisputes) {
-    if (r._count._all >= 1) apply(r.userId, RULES.OPEN_DISPUTE, 'open dispute against user');
-  }
-  for (const r of recentReceiptMismatches) {
-    if (r._count._all >= 3) apply(r.userId, RULES.RECENT_RECEIPT_MISMATCHES, '3+ flagged receipts / 30d');
-  }
-
-  // Track which users already triggered HIGH_TX_FREQUENCY_24H so we don't
-  // double-count them under NEW_ACCOUNT_HIGH_VELOCITY (a new-account 24h burst
-  // satisfies both rules, but they describe the same underlying signal).
-  const fired24hFreq = new Set(
-    txCounts24h.filter((r) => r._count._all >= HIGH_TX_24H_THRESHOLD).map((r) => r.userId),
-  );
-
-  const txTotalByUser = new Map(totalTx.map((r) => [r.userId, r._count._all]));
+  // Signal 1: IBAN changed within the last 24h.
   for (const u of users) {
-    if (u.ibanLastChangedAt && now - u.ibanLastChangedAt.getTime() < SEVEN_DAYS) {
-      apply(u.id, RULES.RECENT_IBAN_CHANGE, 'IBAN changed / 7d');
+    if (u.ibanLastChangedAt && now - u.ibanLastChangedAt.getTime() < IBAN_CHANGE_WINDOW_MS) {
+      apply(u.id, RULES.IBAN_CHANGED_24H, 'IBAN changed / 24h');
     }
-    const accountAgeMs = now - u.createdAt.getTime();
-    const txCount = txTotalByUser.get(u.id) ?? 0;
-    if (accountAgeMs < SEVEN_DAYS && txCount >= 3 && !fired24hFreq.has(u.id)) {
-      apply(u.id, RULES.NEW_ACCOUNT_HIGH_VELOCITY, 'new account, 3+ transactions');
+  }
+
+  // Signal 2: receipt match confidence < 60%.
+  for (const r of lowConfidenceReceipts) {
+    if (r._count._all >= 1) {
+      apply(r.userId, RULES.RECEIPT_MATCH_LOW_CONFIDENCE, 'receipt match confidence < 60%');
     }
+  }
+
+  // Signal 3: QR location mismatch.
+  for (const r of locationMismatchScans) {
+    if (r._count._all >= 1) {
+      apply(r.userId, RULES.QR_LOCATION_MISMATCH, 'QR location mismatch');
+    }
+  }
+
+  // Signal 4: 3+ Voided records. groupBy is keyed by walletId, so map back to userId.
+  if (voidedCounts.length > 0) {
+    const flaggedWalletIds = voidedCounts
+      .filter((r) => r._count._all >= 3)
+      .map((r) => r.walletId);
+    if (flaggedWalletIds.length > 0) {
+      const wallets = await prisma.wallet.findMany({
+        where: { id: { in: flaggedWalletIds } },
+        select: { id: true, userId: true },
+      });
+      for (const w of wallets) {
+        apply(w.userId, RULES.USER_HAS_3_PLUS_VOIDED, '3+ voided cashback records');
+      }
+    }
+  }
+
+  // Signal 5: partner active risk flag.
+  for (const s of partnerFlaggedScans) {
+    apply(s.userId, RULES.PARTNER_ACTIVE_RISK_FLAG, 'partner has active risk flag');
   }
 
   for (const a of out.values()) {

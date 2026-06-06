@@ -15,7 +15,7 @@ import { logger } from '../utils/logger';
 import { AppError } from '../middleware/error.middleware';
 import { emailService } from './email.service';
 import { CASHBACK_MATRIX, CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
-import { cashbackLifecycleService } from './cashbackLifecycle.service';
+import { cashbackLifecycleService, assertVoidReasonCategory } from './cashbackLifecycle.service';
 import { writeAudit } from '../middleware/audit.middleware';
 import { getSystemSettingInt } from '../utils/systemSettings';
 
@@ -1233,6 +1233,16 @@ export async function approveEntry(entryId: string, adminUserId: string): Promis
 export async function voidEntry(entryId: string, adminUserId: string, reason: string): Promise<void> {
   if (!reason || reason.trim().length === 0) {
     throw new AppError('Void reason is required', 400);
+  }
+  // F-008 / Spec §8.1 rule 6 + §1.3: enforce the controlled void-reason vocabulary
+  // on EVERY void path — including the inline Locked→Voided branch below, which
+  // previously accepted arbitrary text. Validate once here before branching so
+  // Pending/Cleared→Voided and Locked→Voided enforce identical rules.
+  // markVoided (called for the non-LOCKED path) re-validates idempotently.
+  try {
+    assertVoidReasonCategory(reason);
+  } catch (err: any) {
+    throw new AppError(err?.message || 'Invalid void reason category', 400);
   }
   const entry = await prisma.walletTransaction.findUnique({
     where: { id: entryId },

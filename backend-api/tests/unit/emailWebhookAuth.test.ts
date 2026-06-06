@@ -5,8 +5,9 @@
  *   - HMAC path: valid signature → 200; mismatched → 401
  *   - Shared-secret path: valid header → 200; mismatched → 401
  *   - Constant-time compare: a wrong-length provided value does not throw
- *   - No secret + NODE_ENV=production → 401 (fail closed)
- *   - No secret + NODE_ENV=test/development → 200 (dev convenience)
+ *   - No secret, any NODE_ENV → 401 (fail closed by default everywhere)
+ *   - No secret + ALLOW_UNSIGNED_WEBHOOK=1 (and NODE_ENV≠production) → 200
+ *     (explicit dev opt-in only; the mere absence of secrets never bypasses auth)
  *
  * The ticketInbound service is mocked so the test focuses purely on auth.
  */
@@ -141,15 +142,34 @@ describe('§11.2 v1.1 emailWebhook auth', () => {
     expect(res.status).toBe(401);
   });
 
-  it('bypasses auth when neither secret is configured outside production', async () => {
+  it('bypasses auth outside production only when ALLOW_UNSIGNED_WEBHOOK=1', async () => {
     delete process.env.INBOUND_EMAIL_HMAC_SECRET;
     delete process.env.EMAIL_WEBHOOK_SECRET;
     process.env.NODE_ENV = 'test';
+    process.env.ALLOW_UNSIGNED_WEBHOOK = '1';
 
     const res = await request(buildApp())
       .post('/api/email/inbound')
       .send(payload);
 
     expect(res.status).toBe(201);
+  });
+
+  it('fails closed outside production when no secret is set and the opt-in flag is absent', async () => {
+    // A misconfigured staging box: NODE_ENV≠production, secrets unset, and
+    // ALLOW_UNSIGNED_WEBHOOK unset. A forged request bearing a deliberately
+    // wrong shared-secret header must be rejected (FIX 2 — no implicit dev bypass).
+    delete process.env.INBOUND_EMAIL_HMAC_SECRET;
+    delete process.env.EMAIL_WEBHOOK_SECRET;
+    delete process.env.ALLOW_UNSIGNED_WEBHOOK;
+    process.env.NODE_ENV = 'staging';
+
+    const res = await request(buildApp())
+      .post('/api/email/inbound')
+      .set('x-webhook-secret', 'forged-secret')
+      .send(payload);
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('invalid_signature');
   });
 });

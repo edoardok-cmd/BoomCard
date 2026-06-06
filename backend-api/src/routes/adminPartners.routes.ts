@@ -689,12 +689,17 @@ router.post(
       })
         .then(() => stampEmailOutcome(linkId, { sent: true })), (err) => {
           logger.error('[partner-activation] email failed:', err);
-          stampEmailOutcome(linkId, { sent: false, error: String((err as Error)?.message ?? err) });
+          // The failure-stamp is itself a fire-and-forget DB write; register it
+          // through detach() so it settles inside this request's test boundary
+          // and cannot consume a later, unrelated suite's prisma mock queue.
+          detach(stampEmailOutcome(linkId, { sent: false, error: String((err as Error)?.message ?? err) }),
+            (e) => logger.error('[partner-activation] stampEmailOutcome (fail) failed:', e));
         });
     } else if (issued && !recipientEmail) {
       // Link issued but no email to send to — stamp the row so the drawer
       // shows the failure state and an admin can fix the email + resend.
-      stampEmailOutcome(issued.linkId, { sent: false, error: 'No recipient email on partner record' });
+      detach(stampEmailOutcome(issued.linkId, { sent: false, error: 'No recipient email on partner record' }),
+        (e) => logger.error('[partner-activation] stampEmailOutcome (no-recipient) failed:', e));
     }
 
     // partner.approved automation fires when the partner clicks the activation link
@@ -796,7 +801,8 @@ router.post(
     })
       .then(() => stampEmailOutcome(linkId, { sent: true })), (err) => {
         logger.error('[partner-activation] resend email failed:', err);
-        stampEmailOutcome(linkId, { sent: false, error: String((err as Error)?.message ?? err) });
+        detach(stampEmailOutcome(linkId, { sent: false, error: String((err as Error)?.message ?? err) }),
+          (e) => logger.error('[partner-activation] stampEmailOutcome (resend-fail) failed:', e));
       });
 
     // Spec §10.4 — record an explicit AuditLog entry with useful context.

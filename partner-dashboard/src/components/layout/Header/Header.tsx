@@ -1478,6 +1478,56 @@ export const Header: React.FC<HeaderProps> = ({
                           </>
                         ) : user.role === 'partner' || isImpersonating ? (
                           <>
+                            {/* ── §5.2 canonical partner menu sections ── */}
+                            {/* Табло */}
+                            <UserMenuItem
+                              to="/dashboard"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                                />
+                              </svg>
+                              {t('header.dashboard')}
+                            </UserMenuItem>
+
+                            {/* Транзакции (F2 — /transactions) */}
+                            <UserMenuItem
+                              to="/transactions"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                                />
+                              </svg>
+                              {t('header.transactions')}
+                            </UserMenuItem>
+
+                            {/* Финанси (F3 — /finance) */}
+                            <UserMenuItem
+                              to="/finance"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M12 7v10m-5 4h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                                />
+                              </svg>
+                              {t('header.finance')}
+                            </UserMenuItem>
+
+                            {/* Профил и партньорство (/profile) */}
                             <UserMenuItem
                               to="/profile"
                               onClick={() => setUserMenuOpen(false)}
@@ -1490,9 +1540,44 @@ export const Header: React.FC<HeaderProps> = ({
                                   d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
                                 />
                               </svg>
-                              {t('header.profile')}
+                              {t('header.profileAndPartnership')}
                             </UserMenuItem>
 
+                            {/* Помощ (§5.2 — exactly "Помощ", → /partners/help) */}
+                            <UserMenuItem
+                              to="/partners/help"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                              </svg>
+                              {t('header.help')}
+                            </UserMenuItem>
+
+                            {/* §5.5 — Моите заявки (own help-request history) */}
+                            <UserMenuItem
+                              to="/partners/help"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                                />
+                              </svg>
+                              {t('header.myRequests')}
+                            </UserMenuItem>
+
+                            <UserMenuDivider />
+
+                            {/* ── Secondary functional links (may remain per §5.2) ── */}
                             <UserMenuItem
                               to="/partners/menus"
                               onClick={() => setUserMenuOpen(false)}

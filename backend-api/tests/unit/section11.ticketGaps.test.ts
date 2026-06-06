@@ -613,6 +613,48 @@ describe('Gap 4 — ingestInboundEmail assignee notification', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// §6.2 / Clash 7.1 — canonical X-BoomCard-Request-ID alias resolves at Priority 1
+//
+// A spec-literal external integrator threads on the canonical header
+// X-BoomCard-Request-ID and normalises it into `xBoomCardRequestId`, with NO
+// `xBoomCardTicketId` present. The webhook route aliases it onto
+// xBoomCardTicketId, and resolveTicket() also falls back to xBoomCardRequestId
+// directly. Either way, Priority-1 header threading must resolve the ticket.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('§6.2 canonical X-BoomCard-Request-ID alias threading', () => {
+  it('resolves the ticket at Priority 1 when ONLY xBoomCardRequestId is supplied (no ticket-id)', async () => {
+    const owner = makeUser('owner-req-1');
+    userRows['owner-req-1'] = owner;
+
+    ticketRow = makeTicket({
+      id: 'ticket-req-canonical',
+      userId: 'owner-req-1',
+      externalEmail: 'external@example.com',
+    });
+
+    const result = await ingestInboundEmail({
+      from: 'external@example.com',
+      to: 'support@boomcard.bg',
+      // No [#] subject prefix, no in-reply-to/references, no plus-address →
+      // header threading is the ONLY path that can match this ticket.
+      subject: 'No reference subject',
+      text: 'Reply via canonical header only',
+      messageId: '<msg-canonical@external.com>',
+      // Canonical spec header only — the legacy ticket-id field is absent.
+      xBoomCardRequestId: 'ticket-req-canonical',
+    } as any);
+
+    // Priority-1 header match → attached to the existing ticket, NOT a new one.
+    expect(result.ticketId).toBe('ticket-req-canonical');
+    expect(result.created).toBe(false);
+    // A reply row was persisted against the resolved ticket.
+    expect(ticketReplyRow).not.toBeNull();
+    expect(ticketReplyRow.ticketId).toBe('ticket-req-canonical');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // initialize-defaults: support.reply should be ACTIVE by default
 // ─────────────────────────────────────────────────────────────────────────────
 

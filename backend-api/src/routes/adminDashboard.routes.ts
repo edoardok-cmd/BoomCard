@@ -194,7 +194,11 @@ router.get(
         .reduce((sum, r) => sum + Number(r.cnt), 0);
 
     const activeSubscribers      = Number(activeSubscribersRaw[0]?.cnt ?? 0n);
-    const expiredSubscribers     = countByStatuses(['CANCELLED', 'EXPIRED', 'INCOMPLETE_EXPIRED']);
+    // Spec §1.2/§7.1 treat Cancelled and Expired as distinct subscription_status
+    // values with different scanning/payout gates, so surface them separately.
+    // `expired` keeps EXPIRED + INCOMPLETE_EXPIRED; CANCELLED moves to its own tile.
+    const expiredSubscribers     = countByStatuses(['EXPIRED', 'INCOMPLETE_EXPIRED']);
+    const cancelledSubscribers   = countByStatuses(['CANCELLED']);
     const pausedSubscribers      = countByStatuses(['PAUSED']);
     // Spec §4.2 v1.1 — FAILED_PAYMENT is the canonical no-grace failed state
     // written by the Paysera renewal cron. PAST_DUE / UNPAID are the legacy
@@ -214,6 +218,7 @@ router.get(
           active: activeSubscribers,
           newLast30Days: newSubscribers,
           expired: expiredSubscribers,
+          cancelled: cancelledSubscribers,
           paused: pausedSubscribers,
           failedPayment: failedPaymentSubscribers,
         },
