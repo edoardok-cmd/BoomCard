@@ -29,6 +29,11 @@ const SUBSCRIBER_SELECT = {
   deletedAt: true,
   riskScore: true,
   riskBucket: true,
+  // §4.1 / M1 — when an admin manually edits a subscriber's risk profile we stamp
+  // riskOverriddenAt so the periodic behaviour recompute does NOT clobber it. The
+  // list GET must read this flag to decide whether to display the stored override
+  // value or the freshly computed one.
+  riskOverriddenAt: true,
   lastLoginAt: true,
   lastActivityAt: true,
   ibanLastChangedAt: true,
@@ -261,12 +266,24 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
     // Spec §4.1 — Risk column must reflect a behaviour-based score, not the
     // never-updated DB default. Recompute for the visible page only (cheap; one
     // groupBy per rule across ≤ limit users) and persist so filters converge.
-    let subscribers = users.map(flattenSubscriber);
+    const flat = users.map(flattenSubscriber);
+    // M1 — surface the override as a boolean and drop the raw internal timestamp
+    // from the response shape (rows don't otherwise expose internal timestamps).
+    // For overridden rows we keep the stored DB risk values; non-overridden rows
+    // get the fresh behaviour-based score below.
+    let subscribers = flat.map((s) => {
+      const { riskOverriddenAt, ...rest } = s;
+      return { ...rest, riskOverridden: !!riskOverriddenAt };
+    });
     try {
       const assessments = await computeRiskForUsers(
         users.map((u) => ({ id: u.id, createdAt: u.createdAt, ibanLastChangedAt: u.ibanLastChangedAt })),
       );
       subscribers = subscribers.map((s) => {
+        // Admin manual risk edits are durable: for overridden rows KEEP the stored
+        // DB risk values (already carried through flattenSubscriber) and ignore the
+        // recomputed assessment. Only non-overridden rows get the fresh score.
+        if (s.riskOverridden) return s;
         const a = assessments.get(s.id);
         return a ? { ...s, riskScore: a.score, riskBucket: a.bucket } : s;
       });
@@ -313,7 +330,13 @@ router.get('/export', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePe
     if (truncatedCandidates) {
       res.setHeader('X-Truncated-Result', `candidates capped at ${MAX_CANDIDATES}`);
     }
-    res.json({ subscribers: users.map(flattenSubscriber), limit: EXPORT_MAX });
+    // Mirror the list GET convention: expose the override as a boolean and drop the
+    // raw internal riskOverriddenAt timestamp from the response shape.
+    const subscribers = users.map(flattenSubscriber).map((s) => {
+      const { riskOverriddenAt, ...rest } = s as typeof s & { riskOverriddenAt?: Date | null };
+      return { ...rest, riskOverridden: !!riskOverriddenAt };
+    });
+    res.json({ subscribers, limit: EXPORT_MAX });
   } catch (error) {
     next(error);
   }
@@ -361,6 +384,9 @@ router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
         lastName: true,
         email: true,
         phone: true,
+        // §3.2 — address is an admin-editable field and the profile PATCH writes
+        // it, so the detail GET must return it for the UI to prefill before edit.
+        address: true,
         iban: true,
         role: true,
         status: true,
@@ -506,6 +532,12 @@ router.patch('/:userId/profile', authenticate, authorize('ADMIN', 'SUPER_ADMIN')
       iban?: unknown;
       riskBucket?: unknown;
       riskScore?: unknown;
+      // M1 clear-override contract: `riskOverride: false` reverts the subscriber to
+      // automatic behaviour-based recompute (clears riskOverriddenAt/By) WITHOUT
+      // requiring a score/bucket. It must be a strict boolean; only `false` clears,
+      // `true` is a no-op (the override is set implicitly when a risk value is
+      // edited, not via this flag). Any non-boolean is rejected.
+      riskOverride?: unknown;
     };
 
     const user = await prisma.user.findUnique({ where: { id: userId }, include: { wallet: { select: { id: true } } } });
@@ -585,6 +617,10 @@ router.patch('/:userId/profile', authenticate, authorize('ADMIN', 'SUPER_ADMIN')
     }
 
     // --- Risk profile ---
+    // M1 — track whether this request actually writes a risk value. If it does, we
+    // stamp riskOverriddenAt/By below so the periodic behaviour recompute
+    // (persistRiskAssessments) skips this user and the manual edit is durable.
+    let riskValueChanged = false;
     if (body.riskScore !== undefined) {
       const score = Number(body.riskScore);
       if (!Number.isFinite(score) || !Number.isInteger(score) || score < 0 || score > 120) {
@@ -595,6 +631,7 @@ router.patch('/:userId/profile', authenticate, authorize('ADMIN', 'SUPER_ADMIN')
       // Keep the bucket consistent with the score unless an explicit bucket is also
       // supplied below (which overrides this derivation).
       data.riskBucket = bucketForScore(score);
+      riskValueChanged = true;
     }
     if (body.riskBucket !== undefined) {
       if (body.riskBucket === null) {
@@ -607,6 +644,37 @@ router.patch('/:userId/profile', authenticate, authorize('ADMIN', 'SUPER_ADMIN')
         data.riskBucket = body.riskBucket;
         before.riskBucket = user.riskBucket;
       }
+      riskValueChanged = true;
+    }
+
+    // M1 clear-override path: `riskOverride: false` reverts to auto-recompute by
+    // clearing the override stamp, independent of any score/bucket edit. Validate
+    // strictly (only a boolean is accepted) and record it in the audit before/after.
+    let clearRiskOverride = false;
+    if (body.riskOverride !== undefined) {
+      if (typeof body.riskOverride !== 'boolean') {
+        return res.status(400).json({ error: 'riskOverride must be a boolean' });
+      }
+      if (body.riskOverride === false) {
+        clearRiskOverride = true;
+      }
+    }
+
+    if (riskValueChanged) {
+      // An admin manually edited the risk profile — make it durable. The behaviour
+      // recompute in persistRiskAssessments skips users whose riskOverriddenAt is
+      // set, so the manual value survives the next list GET / daily sweep.
+      data.riskOverriddenAt = new Date();
+      data.riskOverriddenBy = (req as AuthRequest).user?.id ?? null;
+      before.riskOverriddenAt = user.riskOverriddenAt;
+      before.riskOverriddenBy = user.riskOverriddenBy;
+    } else if (clearRiskOverride) {
+      // Revert to automatic recompute. Don't also set it via riskValueChanged — the
+      // two paths are mutually exclusive (a value edit re-establishes the override).
+      data.riskOverriddenAt = null;
+      data.riskOverriddenBy = null;
+      before.riskOverriddenAt = user.riskOverriddenAt;
+      before.riskOverriddenBy = user.riskOverriddenBy;
     }
 
     const ibanChanged = newIban !== undefined && newIban !== (user.iban ?? null);

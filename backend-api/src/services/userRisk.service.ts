@@ -229,6 +229,18 @@ export async function persistRiskAssessments(assessments: RiskAssessment[]): Pro
   // A single IN-query across the whole batch is cheaper than per-user lookups and
   // avoids inflating the concurrency cap with extra DB round-trips.
   const userIds = assessments.map((a) => a.userId);
+
+  // M1 — admin manual risk edits are durable. Users with riskOverriddenAt set have
+  // had their riskScore/riskBucket edited by an admin (PATCH /subscribers/:id/profile);
+  // the behaviour recompute MUST NOT overwrite that. Look up the overridden subset in
+  // one IN-query (mirroring the RISK_HOLD batch-lookup just below) and filter them out
+  // of the update batch entirely, so the stored override is left untouched.
+  const overriddenRows = await prisma.user.findMany({
+    where: { id: { in: userIds }, riskOverriddenAt: { not: null } },
+    select: { id: true },
+  }).catch(() => [] as Array<{ id: string }>);
+  const overriddenUserIds = new Set(overriddenRows.map((r) => r.id));
+
   const riskHoldWallets = await prisma.walletTransaction.findMany({
     where: {
       type: 'WITHDRAWAL',
@@ -242,12 +254,16 @@ export async function persistRiskAssessments(assessments: RiskAssessment[]): Pro
 
   // Apply RISK_HOLD floor: if the live-signal score is below the HIGH boundary
   // but the user has an open RISK_HOLD payout, clamp to RISK_HOLD_FLOOR_SCORE.
-  const floored = assessments.map((a) => {
-    if (usersWithRiskHold.has(a.userId) && a.score < RISK_HOLD_FLOOR_SCORE) {
-      return { ...a, score: RISK_HOLD_FLOOR_SCORE, bucket: 'HIGH_51_PLUS' as RiskBucket };
-    }
-    return a;
-  });
+  // M1: drop admin-overridden users first so neither the floor nor the recompute
+  // touches their stored values — the manual edit is authoritative until cleared.
+  const floored = assessments
+    .filter((a) => !overriddenUserIds.has(a.userId))
+    .map((a) => {
+      if (usersWithRiskHold.has(a.userId) && a.score < RISK_HOLD_FLOOR_SCORE) {
+        return { ...a, score: RISK_HOLD_FLOOR_SCORE, bucket: 'HIGH_51_PLUS' as RiskBucket };
+      }
+      return a;
+    });
 
   for (let i = 0; i < floored.length; i += PERSIST_CONCURRENCY) {
     const chunk = floored.slice(i, i + PERSIST_CONCURRENCY);

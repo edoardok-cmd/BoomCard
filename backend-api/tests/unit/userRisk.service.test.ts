@@ -14,19 +14,21 @@ jest.mock('../../src/lib/prisma', () => ({
   prisma: {
     receipt:           { groupBy: jest.fn() },
     stickerScan:       { groupBy: jest.fn(), findMany: jest.fn() },
-    walletTransaction: { groupBy: jest.fn() },
+    walletTransaction: { groupBy: jest.fn(), findMany: jest.fn() },
     wallet:            { findMany: jest.fn() },
+    user:              { findMany: jest.fn(), updateMany: jest.fn() },
   },
 }));
 
 import { prisma } from '../../src/lib/prisma';
-import { computeRiskForUsers, bucketFor } from '../../src/services/userRisk.service';
+import { computeRiskForUsers, persistRiskAssessments, bucketFor, RiskAssessment } from '../../src/services/userRisk.service';
 
 const mockedPrisma = prisma as unknown as {
   receipt:           { groupBy: jest.Mock };
   stickerScan:       { groupBy: jest.Mock; findMany: jest.Mock };
-  walletTransaction: { groupBy: jest.Mock };
+  walletTransaction: { groupBy: jest.Mock; findMany: jest.Mock };
   wallet:            { findMany: jest.Mock };
+  user:              { findMany: jest.Mock; updateMany: jest.Mock };
 };
 
 const NONE = () => Promise.resolve([]);
@@ -36,7 +38,10 @@ function setBaselineMocks() {
   mockedPrisma.stickerScan.groupBy.mockImplementation(NONE);
   mockedPrisma.stickerScan.findMany.mockImplementation(NONE);
   mockedPrisma.walletTransaction.groupBy.mockImplementation(NONE);
+  mockedPrisma.walletTransaction.findMany.mockImplementation(NONE);
   mockedPrisma.wallet.findMany.mockImplementation(NONE);
+  mockedPrisma.user.findMany.mockImplementation(NONE);
+  mockedPrisma.user.updateMany.mockImplementation(() => Promise.resolve({ count: 1 }));
 }
 
 const baseUser = (overrides: Partial<{ id: string; ibanLastChangedAt: Date | null }> = {}) => ({
@@ -169,6 +174,54 @@ describe('userRisk.service (spec §2.1 canonical five signals)', () => {
       ]);
       expect(out.get('u1')!.score).toBe(0);
       expect(out.get('u2')!.score).toBe(10);
+    });
+  });
+
+  // M1 (BC-ADMIN-USERMGMT-SPEC-FIX) — admin manual risk edits must be durable:
+  // persistRiskAssessments skips users flagged with riskOverriddenAt so the
+  // behaviour recompute never clobbers a manually-edited score/bucket.
+  describe('persistRiskAssessments — admin override durability', () => {
+    const assess = (userId: string, score: number): RiskAssessment => ({
+      userId, score, bucket: bucketFor(score), reasons: [],
+    });
+
+    it('skips updating users whose riskOverriddenAt is set', async () => {
+      // u1 is admin-overridden; u2 is not.
+      mockedPrisma.user.findMany.mockResolvedValueOnce([{ id: 'u1' }]);
+      await persistRiskAssessments([assess('u1', 5), assess('u2', 5)]);
+
+      const updatedIds = mockedPrisma.user.updateMany.mock.calls.map((c) => c[0].where.id);
+      expect(updatedIds).toContain('u2');
+      expect(updatedIds).not.toContain('u1');
+    });
+
+    it('updates all users when none are overridden', async () => {
+      mockedPrisma.user.findMany.mockResolvedValueOnce([]);
+      await persistRiskAssessments([assess('u1', 5), assess('u2', 30)]);
+
+      const updatedIds = mockedPrisma.user.updateMany.mock.calls.map((c) => c[0].where.id);
+      expect(updatedIds).toEqual(expect.arrayContaining(['u1', 'u2']));
+    });
+
+    it('preserves the RISK_HOLD floor (61/HIGH) for non-overridden users with an open hold', async () => {
+      // u1 has an open RISK_HOLD payout and a low live score → floored to 61/HIGH.
+      mockedPrisma.user.findMany.mockResolvedValueOnce([]); // no overrides
+      mockedPrisma.walletTransaction.findMany.mockResolvedValueOnce([{ wallet: { userId: 'u1' } }]);
+      await persistRiskAssessments([assess('u1', 10)]);
+
+      const call = mockedPrisma.user.updateMany.mock.calls.find((c) => c[0].where.id === 'u1');
+      expect(call?.[0].data).toEqual({ riskScore: 61, riskBucket: 'HIGH_51_PLUS' });
+    });
+
+    it('does NOT apply the RISK_HOLD floor to an overridden user (override wins)', async () => {
+      // u1 is overridden AND has an open hold — it must be filtered out entirely,
+      // so no floor write happens and the stored manual value is left untouched.
+      mockedPrisma.user.findMany.mockResolvedValueOnce([{ id: 'u1' }]);
+      mockedPrisma.walletTransaction.findMany.mockResolvedValueOnce([{ wallet: { userId: 'u1' } }]);
+      await persistRiskAssessments([assess('u1', 10)]);
+
+      const updatedIds = mockedPrisma.user.updateMany.mock.calls.map((c) => c[0].where.id);
+      expect(updatedIds).not.toContain('u1');
     });
   });
 });

@@ -45,6 +45,8 @@ model User {
   marketingConsentPhoneAt   DateTime?
   riskBucket                RiskBucket?
   riskScore                 Int                        @default(0)
+  riskOverriddenAt          DateTime?
+  riskOverriddenBy          String?
   totpEnabledAt             DateTime?
   totpSecret                String?
   totpPendingSecret         String?
@@ -1931,11 +1933,11 @@ enum AdminRoleKey {
 enum UserStatus {
   ACTIVE
   INACTIVE
-  SUSPENDED        // Operational extension: admin-suspended. Maps to Inactive for users.
-  PENDING_VERIFICATION  // Operational: email not yet verified. Not a canonical spec state.
-  PENDING_PAYMENT  // Operational: awaiting initial payment. Not a canonical spec state.
-  DELETED          // Operational: soft-delete. Not a canonical spec state.
-  ARCHIVED         // Operational: permanently deactivated. Not a canonical spec state.
+  SUSPENDED // Operational extension: admin-suspended. Maps to Inactive for users.
+  PENDING_VERIFICATION // Operational: email not yet verified. Not a canonical spec state.
+  PENDING_PAYMENT // Operational: awaiting initial payment. Not a canonical spec state.
+  DELETED // Operational: soft-delete. Not a canonical spec state.
+  ARCHIVED // Operational: permanently deactivated. Not a canonical spec state.
 }
 
 // Spec §2.1, §14.1 — partner application status lifecycle.
@@ -2142,13 +2144,13 @@ enum SubscriptionPlan {
 // user-friendly label before surfacing in any API response or notification.
 enum SubscriptionStatus {
   ACTIVE
-  PAST_DUE       // Stripe-operational: payment overdue, retrying. Not user-facing.
+  PAST_DUE // Stripe-operational: payment overdue, retrying. Not user-facing.
   CANCELLED
-  INCOMPLETE     // Stripe-operational: initial payment not yet confirmed. Not user-facing.
+  INCOMPLETE // Stripe-operational: initial payment not yet confirmed. Not user-facing.
   INCOMPLETE_EXPIRED // Stripe-operational: payment window expired. Not user-facing.
-  TRIALING       // Stripe-operational extension: trial period. Maps to "Active" for users.
-  UNPAID         // Stripe-operational: all retries exhausted. Not user-facing.
-  PAUSED         // Operational extension: auto-renew off, grace window. Not user-facing.
+  TRIALING // Stripe-operational extension: trial period. Maps to "Active" for users.
+  UNPAID // Stripe-operational: all retries exhausted. Not user-facing.
+  PAUSED // Operational extension: auto-renew off, grace window. Not user-facing.
   EXPIRED
   // Spec §4.2 v1.1 — single attempt, no retry, no grace period. On entry: scanning
   // blocked, CTA shown in mobile app, payouts gated (§6.1 subscription_gate).

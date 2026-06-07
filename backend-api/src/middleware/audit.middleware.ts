@@ -7,6 +7,12 @@ const SENSITIVE_KEYS = new Set([
   'password', 'passwordHash', 'newPassword', 'currentPassword',
   'oldPassword', 'confirmPassword', 'totpSecret', 'token',
   'secret', 'passwordResetToken',
+  // Spec §1.1 IMPORTANT / §8.1 — bank account details must NEVER appear in the
+  // audit log in plaintext. This middleware writes the redacted request body to
+  // AuditLog.after on every non-GET; without these keys a route that accepts an
+  // IBAN in the body (e.g. PATCH /subscribers/:userId/profile) would leak the raw
+  // value. Redacting at the middleware level defends EVERY route, not just one.
+  'iban', 'payoutIban', 'beneficiaryName',
 ]);
 
 function redactSensitive(value: unknown): unknown {
