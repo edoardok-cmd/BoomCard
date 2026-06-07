@@ -1236,36 +1236,53 @@ router.put(
       amenities,
     };
 
-    // PARTNER role: save changes as pending, await admin approval.
+    // PARTNER role: stage public-content display changes as pending, await
+    // admin approval.
     //
-    // Spec §5.5 post-contract change control: the `features` column is the
-    // contract/legal metadata blob (contractSigned, contractSignedAt, etc.) and
-    // is managed exclusively by admins via PATCH /admin/partners/:id/contract.
-    // Partners MUST NOT be able to propose changes to it — not even via the
-    // pending-changes approval flow — because a careless admin approval could
-    // silently unset contractSigned or alter the contract date. For the same
-    // reason, discountRate / partnerTypeId / status are already omitted from
-    // this block (they are admin-only fields). Profile info and public-facing
-    // content (description, contact, amenities) are the only partner-editable
-    // fields here. Rate / type / location / contract changes must go through
-    // §11 Help tickets (DATA_CHANGE / CONTRACT_CHANGE / LOCATION_CHANGE).
+    // Spec §5.1 / §5.4 / §10.7 / §12 rules 3 & 4: a partner CANNOT directly
+    // edit critical fields (commission, business parameters, location details,
+    // QR codes, payment information, contact information, business name,
+    // categories). The Change Request via the Help system is the ONLY
+    // partner-initiated modification channel for those fields. The
+    // pending-changes approval flow is therefore restricted to the genuinely
+    // self-service public-content DISPLAY fields only:
+    //   description, descriptionBg, amenities, openingHours.
+    // Any attempt to change identity / contact / location / business fields
+    // (businessName, businessNameBg, category, categories, city, region,
+    // address, phone, email, website) — or the admin-managed contract metadata
+    // blob `features` — is rejected with 403 PARTNER_USE_CHANGE_REQUEST,
+    // mirroring auth.routes PUT /profile and POST /change-email/request. We do
+    // NOT silently drop disallowed fields. Rate / type / status remain
+    // admin-only and are handled in the isAdmin branch below.
     if (!isAdmin) {
+      // Critical fields a partner may NOT edit here — presence in the body is
+      // an attempt to change, even when set to null/empty.
+      const disallowedPresent =
+        businessName !== undefined ||
+        businessNameBg !== undefined ||
+        category !== undefined ||
+        categories !== undefined ||
+        city !== undefined ||
+        region !== undefined ||
+        address !== undefined ||
+        phone !== undefined ||
+        email !== undefined ||
+        website !== undefined ||
+        features !== undefined;
+
+      if (disallowedPresent) {
+        return res.status(403).json({
+          success: false,
+          error:
+            'Partners cannot directly edit business name, categories, location, contact or payment details. Please submit a change request via the Help system.',
+          code: 'PARTNER_USE_CHANGE_REQUEST',
+        });
+      }
+
       const partnerUpdates: Record<string, unknown> = {};
-      if (businessName !== undefined) partnerUpdates.businessName = businessName;
-      if (businessNameBg !== undefined) partnerUpdates.businessNameBg = businessNameBg;
-      if (category !== undefined) partnerUpdates.category = category;
-      if (validatedCategories !== undefined) partnerUpdates.categories = validatedCategories;
       if (description !== undefined) partnerUpdates.description = description;
       if (descriptionBg !== undefined) partnerUpdates.descriptionBg = descriptionBg;
-      if (city !== undefined) partnerUpdates.city = city;
-      if (region !== undefined) partnerUpdates.region = region;
-      if (address !== undefined) partnerUpdates.address = address;
-      if (phone !== undefined) partnerUpdates.phone = phone;
-      if (email !== undefined) partnerUpdates.email = email;
-      if (website !== undefined) partnerUpdates.website = website;
       if (openingHours !== undefined) partnerUpdates.openingHours = openingHours;
-      // `features` intentionally excluded: it is the contract/legal metadata
-      // blob and is admin-managed only (PATCH /admin/partners/:id/contract).
       if (amenities !== undefined) partnerUpdates.amenities = amenities;
 
       await prisma.partner.update({

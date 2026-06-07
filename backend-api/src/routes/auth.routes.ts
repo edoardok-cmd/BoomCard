@@ -434,6 +434,115 @@ router.put(
 );
 
 /**
+ * GET /api/auth/marketing-consent
+ * Read the caller's own marketing-consent state.
+ *
+ * Spec §11.1 ("Marketing consent — Partner: Yes"): unlike the rest of the
+ * profile surface (PUT /profile is blocked for partners via
+ * PARTNER_USE_CHANGE_REQUEST), marketing consent is explicitly self-service for
+ * partners. This endpoint is therefore open to all authenticated roles and is
+ * NOT gated by the partner change-request flow. It operates only on the
+ * caller's own req.user.id.
+ */
+router.get(
+  '/marketing-consent',
+  authenticate,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { marketingConsentEmail: true, marketingConsentPhone: true },
+    });
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    return res.json({
+      success: true,
+      data: {
+        marketingConsentEmail: user.marketingConsentEmail,
+        marketingConsentPhone: user.marketingConsentPhone,
+      },
+    });
+  })
+);
+
+/**
+ * PUT /api/auth/marketing-consent
+ * Self-service update of the caller's own marketing-consent state.
+ *
+ * Spec §11.1: partners may toggle marketing consent themselves. Body accepts
+ * an optional boolean per channel: { marketingConsentEmail?: boolean,
+ * marketingConsentPhone?: boolean }. Consent-field semantics mirror
+ * registration (auth.routes complete-profile) and unsubscribe.routes:
+ *   - the per-channel *At timestamp is stamped on any change,
+ *   - marketingConsent (the legacy aggregate flag) is kept as the OR of the
+ *     channel flags,
+ *   - marketingConsentAt is stamped whenever the aggregate is touched.
+ * Operates only on req.user.id — no admin scope, no other-user writes.
+ */
+router.put(
+  '/marketing-consent',
+  authenticate,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { marketingConsentEmail, marketingConsentPhone } = req.body ?? {};
+
+    if (marketingConsentEmail !== undefined && typeof marketingConsentEmail !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'marketingConsentEmail must be a boolean' });
+    }
+    if (marketingConsentPhone !== undefined && typeof marketingConsentPhone !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'marketingConsentPhone must be a boolean' });
+    }
+    if (marketingConsentEmail === undefined && marketingConsentPhone === undefined) {
+      return res.status(400).json({
+        success: false,
+        error: 'At least one of marketingConsentEmail or marketingConsentPhone is required',
+      });
+    }
+
+    const current = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { marketingConsentEmail: true, marketingConsentPhone: true },
+    });
+    if (!current) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    const now = new Date();
+    const data: Record<string, unknown> = {};
+
+    if (marketingConsentEmail !== undefined) {
+      data.marketingConsentEmail = marketingConsentEmail;
+      data.marketingConsentEmailAt = now;
+    }
+    if (marketingConsentPhone !== undefined) {
+      data.marketingConsentPhone = marketingConsentPhone;
+      data.marketingConsentPhoneAt = now;
+    }
+
+    // Resolve the next channel state, then mirror the legacy aggregate as the
+    // OR of the channel flags (consistent with complete-profile registration).
+    const nextEmail = marketingConsentEmail ?? current.marketingConsentEmail;
+    const nextPhone = marketingConsentPhone ?? current.marketingConsentPhone;
+    data.marketingConsent = !!(nextEmail || nextPhone);
+    data.marketingConsentAt = now;
+
+    const updated = await prisma.user.update({
+      where: { id: req.user!.id },
+      data,
+      select: { marketingConsentEmail: true, marketingConsentPhone: true },
+    });
+
+    return res.json({
+      success: true,
+      message: 'Marketing consent updated',
+      data: {
+        marketingConsentEmail: updated.marketingConsentEmail,
+        marketingConsentPhone: updated.marketingConsentPhone,
+      },
+    });
+  })
+);
+
+/**
  * POST /api/auth/change-email/request
  * Initiate email change — sends a 6-char code to the new address (§5.8)
  * Spec §5.1: Email changes for PARTNER accounts must go through the Help system,

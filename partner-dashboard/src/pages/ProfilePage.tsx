@@ -1,10 +1,13 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
+import toast from 'react-hot-toast';
 import Button from '../components/common/Button/Button';
+import NotificationPreferences from '../components/common/NotificationPreferences/NotificationPreferences';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import { apiService } from '../services/api.service';
 import { normalizePhone } from '../utils/validators';
 
 const PageContainer = styled.div`
@@ -314,6 +317,70 @@ const PasswordButton = styled.button`
   }
 `;
 
+const ConsentRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+
+  @media (max-width: 640px) {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+`;
+
+const ConsentInfo = styled.div`
+  flex: 1;
+`;
+
+const ConsentLabel = styled.div`
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 0.25rem;
+`;
+
+const ConsentDesc = styled.div`
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+`;
+
+const ConsentToggle = styled.button<{ $active: boolean }>`
+  width: 52px;
+  height: 28px;
+  border-radius: 14px;
+  background: ${props => (props.$active ? '#10b981' : 'var(--color-border)')};
+  border: none;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: ${props => (props.$active ? '26px' : '2px')};
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #fff;
+    transition: left 0.2s;
+  }
+`;
+
+const NotificationPrefsWrapper = styled.div`
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border);
+`;
+
 const EmailChangeSection = styled.div`
   margin-top: 1.5rem;
   padding-top: 1.5rem;
@@ -479,6 +546,69 @@ const ProfilePage: React.FC = () => {
   const [deletePassword, setDeletePassword] = useState('');
   const [deletePasswordError, setDeletePasswordError] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Marketing consent (spec §5.4 "Маркетингов консент" — partner-toggleable
+  // under "Профил и партньорство"). This is a SEPARATE legal flag from the
+  // notificationPreferences routing — it maps to User.marketingConsentEmail and
+  // is persisted via the dedicated /auth/marketing-consent endpoints.
+  const [marketingConsentEmail, setMarketingConsentEmail] = useState(false);
+  // Only enable Save once the persisted state has loaded, so we never write a
+  // false default back over a real consent row before the GET resolves.
+  const [marketingLoaded, setMarketingLoaded] = useState(false);
+  const [isSavingConsent, setIsSavingConsent] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await apiService.get<{
+          marketingConsentEmail?: boolean;
+          marketingConsentPhone?: boolean;
+        }>('/auth/marketing-consent');
+        // apiService.get returns the HTTP body { success, data: {…} }.
+        const data = (response as any)?.data ?? response ?? {};
+        if (cancelled) return;
+        setMarketingConsentEmail(!!data.marketingConsentEmail);
+        setMarketingLoaded(true);
+      } catch (err) {
+        console.error('Failed to load marketing consent state:', err);
+        // Leave marketingLoaded false so the toggle stays disabled and Save is a no-op.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleToggleMarketingConsent = async () => {
+    if (!marketingLoaded || isSavingConsent) return;
+    const next = !marketingConsentEmail;
+    setMarketingConsentEmail(next); // optimistic
+    setIsSavingConsent(true);
+    try {
+      const response = await apiService.put<{
+        marketingConsentEmail?: boolean;
+        marketingConsentPhone?: boolean;
+      }>('/auth/marketing-consent', { marketingConsentEmail: next });
+      const data = (response as any)?.data ?? response ?? {};
+      // Reconcile with the server's authoritative value.
+      if (typeof data.marketingConsentEmail === 'boolean') {
+        setMarketingConsentEmail(data.marketingConsentEmail);
+      }
+      setSuccessMessage(
+        language === 'bg' ? 'Настройките за маркетинг са запазени.' : 'Marketing preferences saved.',
+      );
+      setTimeout(() => setSuccessMessage(''), 5000);
+    } catch (err) {
+      console.error('Failed to update marketing consent:', err);
+      setMarketingConsentEmail(!next); // revert optimistic update
+      toast.error(
+        language === 'bg'
+          ? 'Неуспешно запазване на настройките за маркетинг.'
+          : 'Failed to save marketing preferences.',
+      );
+    } finally {
+      setIsSavingConsent(false);
+    }
+  };
 
   const [formData, setFormData] = useState({
     firstName: user?.firstName || '',
@@ -1018,6 +1148,48 @@ const ProfilePage: React.FC = () => {
           </Button>
         </ChangeRequestCard>
       )}
+
+      {/* Communications & Marketing Card — spec §5.4 "Маркетингов консент" +
+          §5.1 notification preferences (email/SMS). These are the partner's
+          self-service editable communication controls; surfaced here under
+          "Профил и партньорство" so they are reachable from the partner menu. */}
+      <ProfileCard
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.18 }}
+      >
+        <SectionTitle>
+          {language === 'bg' ? 'Комуникация и маркетинг' : 'Communications & Marketing'}
+        </SectionTitle>
+
+        <ConsentRow>
+          <ConsentInfo>
+            <ConsentLabel>
+              {language === 'bg' ? 'Маркетингов консент' : 'Marketing Consent'}
+            </ConsentLabel>
+            <ConsentDesc>
+              {language === 'bg'
+                ? 'Съгласие за получаване на партньорски съобщения и кампании от BoomCard.'
+                : 'Consent to receive partner communications and campaigns from BoomCard.'}
+            </ConsentDesc>
+          </ConsentInfo>
+          <ConsentToggle
+            type="button"
+            $active={marketingConsentEmail}
+            onClick={handleToggleMarketingConsent}
+            disabled={!marketingLoaded || isSavingConsent}
+            aria-pressed={marketingConsentEmail}
+            aria-label={language === 'bg' ? 'Маркетингов консент' : 'Marketing consent'}
+          />
+        </ConsentRow>
+
+        {/* Notification preferences (email/SMS) — spec §5.1 self-service field.
+            Reuses the shared NotificationPreferences component (same one rendered
+            on SettingsPage) rather than duplicating its logic. */}
+        <NotificationPrefsWrapper>
+          <NotificationPreferences />
+        </NotificationPrefsWrapper>
+      </ProfileCard>
 
       {/* Security Card */}
       <ProfileCard
