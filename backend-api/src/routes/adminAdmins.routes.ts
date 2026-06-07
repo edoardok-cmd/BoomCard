@@ -912,17 +912,27 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
       return res.status(403).json({ error: 'Only a SUPER_ADMIN can change an admin\'s status' });
     }
 
-    // Spec §1.5: valid admin statuses are Active, Inactive, Archived.
-    // ARCHIVED is the canonical "no login" state (BC-SCHEMA-1); SUSPENDED retained for legacy records.
-    const VALID_ADMIN_STATUSES = ['ACTIVE', 'INACTIVE', 'SUSPENDED', 'ARCHIVED'] as const;
-    if (!VALID_ADMIN_STATUSES.includes(status as typeof VALID_ADMIN_STATUSES[number])) {
+    // L5 — SUSPENDED is legacy-only (spec §1.5: "new decommissions should use
+    // ARCHIVED"). Reject it as a NEW input value here so this endpoint cannot
+    // mint fresh SUSPENDED writes. Existing SUSPENDED rows are unaffected — this
+    // only blocks the write path; reads elsewhere still surface legacy records.
+    if (status === 'SUSPENDED') {
       return res.status(400).json({
-        error: 'status must be one of: ACTIVE (Active), INACTIVE (Inactive — read-only), SUSPENDED (Suspended — legacy), ARCHIVED (Archived — no login)',
+        error: 'SUSPENDED is a legacy status and can no longer be set. Use ARCHIVED to decommission an admin account (no login), or INACTIVE for read-only access.',
       });
     }
-    // Require a reason when deactivating or archiving (INACTIVE, SUSPENDED, or ARCHIVED)
-    if ((status === 'INACTIVE' || status === 'SUSPENDED' || status === 'ARCHIVED') && !reason?.trim()) {
-      return res.status(400).json({ error: 'reason is required when setting an admin account to INACTIVE, SUSPENDED, or ARCHIVED' });
+
+    // Spec §1.5: valid admin statuses are Active, Inactive, Archived.
+    // ARCHIVED is the canonical "no login" state (BC-SCHEMA-1).
+    const VALID_ADMIN_STATUSES = ['ACTIVE', 'INACTIVE', 'ARCHIVED'] as const;
+    if (!VALID_ADMIN_STATUSES.includes(status as typeof VALID_ADMIN_STATUSES[number])) {
+      return res.status(400).json({
+        error: 'status must be one of: ACTIVE (Active), INACTIVE (Inactive — read-only), ARCHIVED (Archived — no login)',
+      });
+    }
+    // Require a reason when deactivating or archiving (INACTIVE or ARCHIVED)
+    if ((status === 'INACTIVE' || status === 'ARCHIVED') && !reason?.trim()) {
+      return res.status(400).json({ error: 'reason is required when setting an admin account to INACTIVE or ARCHIVED' });
     }
 
     // Prevent self-demotion
@@ -935,14 +945,17 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
       return res.status(404).json({ error: 'Admin not found' });
     }
 
-    // Only a SUPER_ADMIN may change the status of another SUPER_ADMIN.
-    // An ADMIN with admins.write cannot demote or deactivate a higher-privilege account.
-    if (target.role === 'SUPER_ADMIN' && req.user!.role !== 'SUPER_ADMIN') {
-      return res.status(403).json({ error: 'Only a SUPER_ADMIN can change another SUPER_ADMIN\'s status' });
-    }
+    // L4 — the former "target is SUPER_ADMIN && actor is not SUPER_ADMIN" guard
+    // was dead code: line ~911 already 403s any non-SUPER_ADMIN actor before we
+    // reach here, so req.user.role is always SUPER_ADMIN at this point. Removed
+    // without changing observable behaviour (the cross-privilege protection is
+    // fully provided by the earlier actor-role check).
 
-    // Prevent archiving the last active SUPER_ADMIN (SUSPENDED / ARCHIVED / INACTIVE all block login)
-    if (target.role === 'SUPER_ADMIN' && (status === 'SUSPENDED' || status === 'INACTIVE' || status === 'ARCHIVED')) {
+    // Prevent deactivating/archiving the last active SUPER_ADMIN (ARCHIVED / INACTIVE both block full access).
+    // L5/LOW-2: SUSPENDED is no longer reachable here — it is rejected at the top of this
+    // handler and excluded from VALID_ADMIN_STATUSES — so the former `status === 'SUSPENDED'`
+    // disjunct was dead and has been removed.
+    if (target.role === 'SUPER_ADMIN' && (status === 'INACTIVE' || status === 'ARCHIVED')) {
       const activeSuperAdmins = await prisma.user.count({
         where: { role: 'SUPER_ADMIN', status: 'ACTIVE', id: { not: id } },
       });
@@ -959,7 +972,9 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
         status: status as UserStatus,
         // Stamp rolesUpdatedAt whenever status changes to a no-login state so the
         // authenticate middleware invalidates any existing access tokens immediately.
-        ...(status === 'SUSPENDED' || status === 'ARCHIVED' ? { rolesUpdatedAt: new Date() } : {}),
+        // L5/LOW-2: SUSPENDED is unreachable here (rejected above + off the whitelist),
+        // so only ARCHIVED remains as a settable no-login state.
+        ...(status === 'ARCHIVED' ? { rolesUpdatedAt: new Date() } : {}),
       },
       select: { id: true, status: true },
     });
@@ -974,7 +989,10 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
       // Spec §1.5: include spec-level label in audit for clarity
       after: {
         status,
-        specLabel: status === 'ACTIVE' ? 'Active' : status === 'INACTIVE' ? 'Inactive (read-only)' : status === 'SUSPENDED' ? 'Suspended (no login — legacy)' : 'Archived (no login)',
+        // L5/LOW-2: SUSPENDED is unreachable here (rejected above + off the whitelist),
+        // so the SUSPENDED specLabel branch was dead and has been removed. Only
+        // ACTIVE / INACTIVE / ARCHIVED can reach this point.
+        specLabel: status === 'ACTIVE' ? 'Active' : status === 'INACTIVE' ? 'Inactive (read-only)' : 'Archived (no login)',
         reason: reason?.trim() || null,
       },
       ip: getClientIp(req) ?? null,

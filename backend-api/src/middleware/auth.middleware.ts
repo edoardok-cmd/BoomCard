@@ -116,7 +116,12 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
         select: { status: true },
       }).catch(() => null);
       const s = freshUser?.status as string | undefined;
-      if (s === 'ARCHIVED' || s === 'DELETED' || s === 'PENDING_VERIFICATION' || s === 'PENDING_PAYMENT') {
+      // M1 — SUSPENDED must reject here too. The admin branch (above), login
+      // (auth.service.ts) and refresh-rotation all block SUSPENDED; without it
+      // here a USER auto-suspended by the password-reset abuse lockout
+      // (forgotPassword sets status=SUSPENDED) would keep an existing access
+      // token valid until natural expiry, defeating the lockout.
+      if (s === 'SUSPENDED' || s === 'ARCHIVED' || s === 'DELETED' || s === 'PENDING_VERIFICATION' || s === 'PENDING_PAYMENT') {
         return res.status(401).json({ error: 'Account not accessible.' });
       }
     }

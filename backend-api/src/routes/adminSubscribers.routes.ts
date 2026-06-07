@@ -99,6 +99,21 @@ function buildSubscriberQuery(q: Record<string, string | undefined>) {
   }
 
   // Spec §2.1 Clash 5.1 — additive risk thresholds: 0–20 Low, 21–50 Medium, 51+ High.
+  //
+  // L3 — EVENTUAL-CONSISTENCY NOTE: this filter runs in Postgres against the
+  // *stored* User.riskScore, but the GET handler recomputes a fresh behaviour-
+  // based score for each visible row (non-overridden rows only) and may show a
+  // value that differs from the stored one. The recompute is page-scoped and
+  // post-query by design (cheap: one groupBy per rule over ≤ limit users), so we
+  // cannot filter on it at the DB level without recomputing the entire universe
+  // before pagination — which would defeat that design and the count/total math.
+  // Instead the handler persists the recomputed scores asynchronously
+  // (persistRiskAssessments) and the daily sweep (jobs/user-risk-sweep.ts) writes
+  // any rows missed, so the stored value the filter reads converges to the shown
+  // value. Until convergence a row can transiently appear in / drop out of a
+  // riskLevel filter relative to its displayed score. Overridden rows are exempt
+  // (their stored value is authoritative and is what is shown), so for them the
+  // filter and the display always agree.
   if (riskLevel === 'low') where.riskScore = { lte: 20 };
   else if (riskLevel === 'medium') where.riskScore = { gt: 20, lte: 50 };
   else if (riskLevel === 'high') where.riskScore = { gt: 50 };

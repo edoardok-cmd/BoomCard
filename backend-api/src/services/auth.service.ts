@@ -1799,10 +1799,27 @@ export class AuthService {
           },
         }).catch(() => 0);
 
-        // Spec §19 rule 12 — alert when count reaches threshold. Use >= to handle
-        // concurrent requests that might both see count N-1 and both increment past the
-        // boundary — alerts on N+1 are preferable to no alert at all.
-        if (recentCount >= ALERT_THRESHOLD) {
+        // Spec §19 rule 12 — fire the SA alert email ONCE, at exactly the
+        // threshold (3). L1 fix: the prior `>= ALERT_THRESHOLD` re-fired on
+        // every subsequent reset (3,4,5+), spamming Super Admins. The spec
+        // intent (and the comment on ALERT_THRESHOLD) is a single alert.
+        //
+        // L1 (round 2) — silent-gap analysis: under a rare concurrent
+        // double-increment two requests could both skip the exact boundary at
+        // 3, so this Tier-1 alert may not fire. That gap is CLOSED downstream,
+        // not here: the Tier-3 suspension path below (recentCount >= 5) fires
+        // the SAME `sendAdminPasswordResetAlert` email + an in-app
+        // notifyAdminOps to all active Super Admins UNCONDITIONALLY — it runs
+        // whether the suspension is applied or skipped by the last-SA guard.
+        // Therefore at least one Super-Admin alert is GUARANTEED before/at
+        // suspension for any account that crosses the abuse threshold, even if
+        // the exact `=== 3` edge is missed. We deliberately keep `=== 3`
+        // one-shot here (rather than a band like `=== 3 || === 4`, which would
+        // re-spam) because the suspension-path alert is the robust floor. The
+        // only behaviour the `=== 3` edge-miss changes is the *timing* of the
+        // first alert (at suspension instead of at 3), not whether an SA is
+        // alerted at all.
+        if (recentCount === ALERT_THRESHOLD) {
           const superAdmins = await prisma.user.findMany({
             where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
             select: { email: true },
@@ -1836,30 +1853,98 @@ export class AuthService {
         // lockout. SUSPENDED blocks login (treated as no-login, equivalent to Archived
         // for access purposes), so it is the correct abuse-lockout status.
         if (recentCount >= SUSPENSION_THRESHOLD && user.status === 'ACTIVE') {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { status: 'SUSPENDED' },
-          }).catch((err: unknown) => logger.error('[forgotPassword] suspension update failed', err));
+          // M2 — last-active-SUPER_ADMIN guard. The manual admin status route
+          // (adminAdmins.routes.ts) refuses to deactivate the last active
+          // SUPER_ADMIN (409). This automated lockout must honour the same
+          // invariant, or an attacker spamming the sole super-admin's
+          // forgot-password could suspend the last SA and require DB
+          // intervention to recover. We mirror the manual route's exact
+          // definition of "active SUPER_ADMIN": role === SUPER_ADMIN AND
+          // status === ACTIVE, excluding this user. If suspending would leave
+          // zero, SKIP the suspension — but still fire the SA alert below so the
+          // abuse remains visible.
+          let suspensionBlockedByLastSAGuard = false;
+          if (user.role === 'SUPER_ADMIN') {
+            const activeSuperAdmins = await prisma.user.count({
+              where: { role: 'SUPER_ADMIN', status: 'ACTIVE', id: { not: user.id } },
+            }).catch(() => 0); // fail-closed: on count failure, assume NO other active SA → guard trips → suspension SKIPPED
+            if (activeSuperAdmins === 0) {
+              suspensionBlockedByLastSAGuard = true;
+            }
+          }
 
-          detach(writeAudit({
-            actorUserId: null,
-            action: 'auth.password-reset.suspension',
-            objectType: 'user',
-            objectId: user.id,
-            after: {
-              reason: `Spec Part 9 Tier 3: ${recentCount} password resets within ${ALERT_WINDOW_HOURS}h — account suspended pending Super Admin review`,
-              resetCount: recentCount,
-              windowHours: ALERT_WINDOW_HOURS,
-            },
-          }), (err: unknown) => logger.error('[forgotPassword] suspension audit failed', err));
+          if (!suspensionBlockedByLastSAGuard) {
+            await prisma.user.update({
+              where: { id: user.id },
+              data: { status: 'SUSPENDED' },
+            }).catch((err: unknown) => logger.error('[forgotPassword] suspension update failed', err));
 
-          // Notify all SUPER_ADMINs about the suspension (separate from the alert email).
+            detach(writeAudit({
+              actorUserId: null,
+              action: 'auth.password-reset.suspension',
+              objectType: 'user',
+              objectId: user.id,
+              after: {
+                reason: `Spec Part 9 Tier 3: ${recentCount} password resets within ${ALERT_WINDOW_HOURS}h — account suspended pending Super Admin review`,
+                resetCount: recentCount,
+                windowHours: ALERT_WINDOW_HOURS,
+              },
+            }), (err: unknown) => logger.error('[forgotPassword] suspension audit failed', err));
+          } else {
+            // M2 — suspension skipped to preserve the last active SUPER_ADMIN.
+            // Record the skip so the abuse + the non-action are auditable.
+            detach(writeAudit({
+              actorUserId: null,
+              action: 'auth.password-reset.suspension-skipped',
+              objectType: 'user',
+              objectId: user.id,
+              after: {
+                reason: `Spec Part 9 Tier 3 suspension SKIPPED: target is the last active SUPER_ADMIN (${recentCount} password resets within ${ALERT_WINDOW_HOURS}h). Account left ACTIVE to avoid lockout; flagged for Super Admin review.`,
+                resetCount: recentCount,
+                windowHours: ALERT_WINDOW_HOURS,
+              },
+            }), (err: unknown) => logger.error('[forgotPassword] suspension-skipped audit failed', err));
+          }
+
+          // Notify all SUPER_ADMINs (separate from the alert email). This fires
+          // whether or not the suspension was applied — when skipped by the
+          // last-SA guard the abuse must still be surfaced for manual review.
           const superAdmins = await prisma.user.findMany({
             where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
             select: { email: true, id: true },
           }).catch(() => [] as { email: string; id: string }[]);
 
-          if (superAdmins.length > 0) {
+          // LOW-1 — skip-path alert dedupe. When the last-SA guard SKIPS the
+          // suspension the account stays ACTIVE, so it crosses `recentCount >= 5`
+          // on EVERY subsequent forgot-password request inside the 24h window and
+          // would re-fire the SA alert email + in-app notification each time
+          // (re-introducing the alert-spam class L1's `=== 3` one-shot prevents).
+          // The actual-suspension branch is naturally one-shot (status flips to
+          // SUSPENDED, so the `user.status === 'ACTIVE'` guard above stops re-entry),
+          // so dedupe is only needed on the skip path. We use a DISTINCT opsType
+          // for the skip case and pass `cooldownHours` to notifyAdminOps (which
+          // already supports opsType-scoped cooldown — see notification.service.ts),
+          // and gate the parallel email on the same prior-notification check so the
+          // first skip alert fires but in-window repeats are suppressed for both
+          // channels consistently.
+          const SKIP_OPS_TYPE = 'account_suspension_password_reset_skipped';
+          let suppressSkipAlert = false;
+          if (suspensionBlockedByLastSAGuard) {
+            const since = new Date(Date.now() - ALERT_WINDOW_HOURS * 60 * 60 * 1000);
+            const priorSkipNotice = await prisma.notification.findFirst({
+              where: {
+                createdAt: { gte: since },
+                OR: [
+                  { data: { contains: `"opsType":"${SKIP_OPS_TYPE}",` } },
+                  { data: { contains: `"opsType":"${SKIP_OPS_TYPE}"}` } },
+                ],
+              },
+              select: { id: true },
+            }).catch(() => null);
+            suppressSkipAlert = priorSkipNotice !== null;
+          }
+
+          if (superAdmins.length > 0 && !suppressSkipAlert) {
             detach(emailService.sendAdminPasswordResetAlert({
               targetEmail: user.email,
               targetName:  `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email,
@@ -1868,13 +1953,22 @@ export class AuthService {
               recipientEmails: superAdmins.map((a) => a.email),
             }), (err: unknown) => logger.error('[forgotPassword] suspension alert email failed', err));
 
-            // F-002: In-app notification to Super Admins when suspension fires.
-            // This ensures admins who live in the dashboard see the event in the bell
-            // icon even if they miss the email.
+            // F-002: In-app notification to Super Admins. M2: message reflects
+            // whether the account was actually suspended or the suspension was
+            // skipped to protect the last active SUPER_ADMIN. LOW-1: skip-path
+            // uses a distinct opsType + cooldownHours so repeated skip alerts in
+            // the window are deduped (consistent with the email gate above).
             detach(notificationService.notifyAdminOps({
-              opsType: 'account_suspension_password_reset',
-              title: 'Account suspended: excessive password resets',
-              message: `Account ${user.email} was automatically suspended after ${recentCount} password reset requests in ${ALERT_WINDOW_HOURS}h (Spec Part 9 Tier 3). Pending Super Admin review.`,
+              opsType: suspensionBlockedByLastSAGuard
+                ? SKIP_OPS_TYPE
+                : 'account_suspension_password_reset',
+              ...(suspensionBlockedByLastSAGuard ? { cooldownHours: ALERT_WINDOW_HOURS } : {}),
+              title: suspensionBlockedByLastSAGuard
+                ? 'Password-reset abuse on last SUPER_ADMIN (suspension skipped)'
+                : 'Account suspended: excessive password resets',
+              message: suspensionBlockedByLastSAGuard
+                ? `Account ${user.email} hit ${recentCount} password reset requests in ${ALERT_WINDOW_HOURS}h (Spec Part 9 Tier 3) but auto-suspension was SKIPPED because it is the last active SUPER_ADMIN. Manual Super Admin review required.`
+                : `Account ${user.email} was automatically suspended after ${recentCount} password reset requests in ${ALERT_WINDOW_HOURS}h (Spec Part 9 Tier 3). Pending Super Admin review.`,
               severity: 'warning',
               fields: [
                 { label: 'Account', value: user.email },
@@ -1885,7 +1979,8 @@ export class AuthService {
           }
 
           logger.warn(
-            `[forgotPassword] Account ${user.id} (${user.email}, role ${user.role}) suspended after ` +
+            `[forgotPassword] Account ${user.id} (${user.email}, role ${user.role}) ` +
+            `${suspensionBlockedByLastSAGuard ? 'suspension SKIPPED (last active SUPER_ADMIN)' : 'suspended'} after ` +
             `${recentCount} password resets in ${ALERT_WINDOW_HOURS}h — Spec §19 rule #12`
           );
         }

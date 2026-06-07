@@ -215,10 +215,15 @@ export async function computeRiskForUsers(users: UserSlice[]): Promise<Map<strin
 // Concurrency is capped at PERSIST_CONCURRENCY (default 10) so the daily
 // 200-row sweep doesn't saturate the Prisma connection pool at 04:00.
 
-// Minimum score that keeps a user in the HIGH bucket (spec §7.1 boundary: 61+).
+// Minimum score that keeps a user in the HIGH bucket. Canonical HIGH threshold
+// is 51+ (spec §2.1 / Clash 5.1: 0–20 Low, 21–50 Medium, 51+ High) — used
+// everywhere else in the codebase. L2 fix: the previous value 61 cited a
+// non-existent "spec §7.1 boundary: 61+"; aligned to 51 to match the canonical
+// HIGH floor. The clamp pairs this score with the HIGH_51_PLUS bucket below, so
+// 51 is the correct lowest score that still lands the user in HIGH.
 // Used as the RISK_HOLD floor: a user with an open RISK_HOLD payout must not be
 // downgraded below HIGH by periodic recomputes (spec §3.7 / FIX-B).
-const RISK_HOLD_FLOOR_SCORE = 61;
+const RISK_HOLD_FLOOR_SCORE = 51;
 
 const PERSIST_CONCURRENCY = 10;
 
