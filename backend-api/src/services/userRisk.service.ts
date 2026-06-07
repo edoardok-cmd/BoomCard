@@ -4,8 +4,10 @@ import { RiskBucket } from '@prisma/client';
 // Spec §2.1 — canonical five-signal risk profile per subscriber.
 // Additive rule-sum scorer (0-100). Buckets use the canonical RiskBucket ranges:
 //   0-20  → LOW_0_20      (auto-approve)
-//   21-50 → MEDIUM_21_50  (manual review)
-//   51+   → HIGH_51_PLUS  (high risk)
+//   21-50 → MEDIUM_21_50  (auto-approve — amended per BC-USER-SPEC-FIX-010 §9.4,
+//                          2026-06-04: Medium no longer enters mandatory manual
+//                          review; only High (51+) does)
+//   51+   → HIGH_51_PLUS  (high risk — mandatory manual review)
 //
 // BC-CASHBACK-RISK FIX 2: the previous implementation used a divergent set of
 // behaviour signals (failed logins, tx frequency, disputes, subscription dunning,

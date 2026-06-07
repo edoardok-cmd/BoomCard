@@ -523,6 +523,34 @@ router.post('/activate/:stickerId', authenticate, authorize('ADMIN', 'SUPER_ADMI
 });
 
 /**
+ * POST /api/stickers/:stickerId/reactivate
+ * H2 (Spec §1.4 / §3.6 / Clash 2.4) — explicit per-QR reactivation of a sticker
+ * left INACTIVE after the owning partner was reactivated from Archived. No
+ * auto-reactivation: this acts on a single sticker per explicit admin action, and
+ * only succeeds once the partner is operationally Active again. Admin-only.
+ */
+router.post('/:stickerId/reactivate', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('stickers.write'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { stickerId } = req.params;
+    const actorUserId = req.user?.id ?? null;
+
+    const sticker = await stickerService.reactivateInactiveSticker(stickerId, actorUserId);
+
+    res.json({
+      success: true,
+      data: sticker,
+      message: 'Sticker reactivated successfully',
+    });
+  } catch (error: any) {
+    const status = error.message?.includes('not found') ? 404 : 400;
+    res.status(status).json({
+      success: false,
+      error: error.message || 'Failed to reactivate sticker',
+    });
+  }
+});
+
+/**
  * PATCH /api/stickers/:stickerId/processing
  * Advance a PENDING sticker to PROCESSING (label printed, awaiting deployment).
  * Spec §5.4 — admin-only management.

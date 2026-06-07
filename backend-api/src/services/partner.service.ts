@@ -82,6 +82,61 @@ export function isPartnerOperationallyActive(partner: { status: string; verified
   return partner.status === PartnerStatus.ACTIVE && partner.verifiedAt !== null;
 }
 
+/**
+ * M3 (Spec §1.4) — canonical Inactive sub_type metadata.
+ *
+ * The spec models voluntary pause (Пауза) vs admin-imposed deactivation (Спрян)
+ * as a metadata `sub_type` field on the canonical Inactive status, NOT as separate
+ * enum members. The DB enum still carries PAUSED/SUSPENDED (legacy, can't be
+ * changed without a migration), so we derive the spec sub_type at the application
+ * layer from the raw status + the `statusReason` metadata column.
+ *
+ *   PAUSED     → VOLUNTARY_PAUSE   (Пауза)
+ *   SUSPENDED  → ADMIN_SUSPENSION  (Спрян)
+ *   INACTIVE   → from statusReason marker, else GENERIC_INACTIVE
+ *   PENDING    → ONBOARDING_INACTIVE (the §1.6 onboarding read-only stage)
+ */
+export type PartnerInactiveSubType =
+  | 'VOLUNTARY_PAUSE'
+  | 'ADMIN_SUSPENSION'
+  | 'ONBOARDING_INACTIVE'
+  | 'GENERIC_INACTIVE'
+  | null;
+
+/** Canonical statusReason marker written when a partner enters PAUSED/SUSPENDED. */
+export const PARTNER_STATUS_SUBTYPE_REASON: Record<string, string> = {
+  PAUSED: 'VOLUNTARY_PAUSE',
+  SUSPENDED: 'ADMIN_SUSPENSION',
+};
+
+/**
+ * Derive the canonical Inactive sub_type for a partner from its raw status and
+ * the `statusReason` metadata. Returns null for ACTIVE/ARCHIVED partners (the
+ * sub_type only applies within the canonical Inactive status).
+ */
+export function derivePartnerInactiveSubType(partner: {
+  status: string;
+  statusReason?: string | null;
+}): PartnerInactiveSubType {
+  switch (partner.status) {
+    case 'PAUSED':
+      return 'VOLUNTARY_PAUSE';
+    case 'SUSPENDED':
+      return 'ADMIN_SUSPENSION';
+    case 'PENDING':
+      return 'ONBOARDING_INACTIVE';
+    case 'INACTIVE': {
+      const r = partner.statusReason ?? '';
+      if (r.startsWith('VOLUNTARY_PAUSE')) return 'VOLUNTARY_PAUSE';
+      if (r.startsWith('ADMIN_SUSPENSION')) return 'ADMIN_SUSPENSION';
+      if (r.startsWith('ONBOARDING_INACTIVE')) return 'ONBOARDING_INACTIVE';
+      return 'GENERIC_INACTIVE';
+    }
+    default:
+      return null;
+  }
+}
+
 export interface SetPartnerStatusParams {
   partnerId: string;
   toStatus: PartnerStatus;
@@ -158,10 +213,28 @@ export class PartnerService {
       const isArchivedReactivation =
         fromStatus === PartnerStatus.ARCHIVED && toStatus === PartnerStatus.ACTIVE;
 
+      // M3 (§1.4) — stamp the canonical Inactive sub_type metadata on statusReason.
+      // PAUSED → VOLUNTARY_PAUSE (Пауза); SUSPENDED → ADMIN_SUSPENSION (Спрян).
+      // A free-text admin reason is appended after the marker so both the
+      // structured sub_type and the human note are retained:
+      //   "ADMIN_SUSPENSION: repeated chargebacks".
+      // Leaving Inactive for ACTIVE/ARCHIVED clears the marker.
+      const subTypeMarker = PARTNER_STATUS_SUBTYPE_REASON[toStatus as string];
+      const trimmedReason = reason?.trim() || '';
+      let statusReasonUpdate: { statusReason?: string | null } = {};
+      if (subTypeMarker) {
+        statusReasonUpdate = {
+          statusReason: trimmedReason ? `${subTypeMarker}: ${trimmedReason}` : subTypeMarker,
+        };
+      } else if (toStatus === PartnerStatus.ACTIVE || toStatus === PartnerStatus.ARCHIVED) {
+        statusReasonUpdate = { statusReason: null };
+      }
+
       await tx.partner.update({
         where: { id: partnerId },
         data: {
           status: toStatus,
+          ...statusReasonUpdate,
           ...(isArchivedReactivation
             ? { requestStatus: PartnerRequestStatus.ONBOARDING, verifiedAt: null }
             : {}),

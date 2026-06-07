@@ -99,9 +99,12 @@ describe('partnerService.setPartnerStatus', () => {
       changedById: 'admin-1',
     });
 
+    // M3 (§1.4): SUSPENDED now also stamps the canonical Inactive sub_type marker
+    // (ADMIN_SUSPENSION = Спрян) into statusReason, with the free-text reason
+    // appended after the marker.
     expect(mockTx.partner.update).toHaveBeenCalledWith({
       where: { id: 'p-1' },
-      data: { status: PartnerStatus.SUSPENDED },
+      data: { status: PartnerStatus.SUSPENDED, statusReason: 'ADMIN_SUSPENSION: Fraud investigation' },
     });
     expect(mockTx.partnerStatusChange.create).toHaveBeenCalledWith({
       data: {

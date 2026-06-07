@@ -10,6 +10,7 @@ import { logger } from '../utils/logger';
 import { runWithConcurrency } from '../utils/concurrency';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
+import { reasonIndicatesIbanProblem } from '../utils/payoutFailureReason';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -76,9 +77,13 @@ function subGateMessage(gate: SubGateResult): string {
 // concurrency tolerates batches up to ~300 payouts before the proxy intervenes.
 const BULK_APPROVE_CONCURRENCY = 5;
 
+// L1 — `reasonIndicatesIbanProblem` now lives in ../utils/payoutFailureReason
+// so the admin /fail path and the Paysera auto-fail path (wallet.service.ts)
+// classify failure reasons identically (single source of truth).
+
 async function notifySubscriber(
   payoutId: string,
-  event: 'approved' | 'completed' | 'rejected' | 'held' | 'released' | 'failed',
+  event: 'approved' | 'completed' | 'rejected' | 'held' | 'released' | 'failed' | 'failed_other',
   note?: string,
 ) {
   try {
@@ -100,9 +105,10 @@ async function notifySubscriber(
       approved:  `Плащането ви от ${amt} ${currency} е одобрено`,
       completed: `Плащането ви от ${amt} ${currency} е изпратено`,
       rejected:  `Плащането ви от ${amt} ${currency} е отхвърлено`,
-      held:      `Плащането ви от ${amt} ${currency} е задържано за проверка`,
-      released:  `Плащането ви от ${amt} ${currency} е освободено`,
-      failed:    `Плащането ви от ${amt} ${currency} не беше успешно`,
+      held:        `Плащането ви от ${amt} ${currency} е задържано за проверка`,
+      released:    `Плащането ви от ${amt} ${currency} е освободено`,
+      failed:      `Плащането ви от ${amt} ${currency} не беше успешно`,
+      failed_other: `Плащането ви от ${amt} ${currency} не беше успешно`,
     };
 
     const bodyMap: Record<typeof event, string> = {
@@ -110,8 +116,12 @@ async function notifySubscriber(
       completed: 'Паричният превод беше изпратен успешно. Средствата ще постъпят по сметката ви в рамките на 1–3 работни дни.',
       rejected:  `Заявката ви за плащане беше отхвърлена и балансът ви е възстановен.${note ? ` Причина: ${note}` : ''}`,
       held:      'Заявката ви за плащане е задържана за допълнителна проверка съгласно нашата политика за сигурност. Ще се свържем с вас при необходимост.',
-      released:  'Заявката ви за плащане беше освободена от задържане и ще бъде обработена нормално.',
-      failed:    `Плащането не беше успешно. Моля, проверете и коригирайте своя IBAN / банкова сметка в профила си, за да може следващото изплащане да бъде обработено успешно. Балансът ви е възстановен.${note ? ` Причина: ${note}` : ''}`,
+      released:    'Заявката ви за плащане беше освободена от задържане и ще бъде обработена нормално.',
+      // §3.7 first-failure "(invalid IBAN)" wording — used only when the failure
+      // reason indicates a bank-account / IBAN problem.
+      failed:      `Плащането не беше успешно. Моля, проверете и коригирайте своя IBAN / банкова сметка в профила си, за да може следващото изплащане да бъде обработено успешно. Балансът ви е възстановен.${note ? ` Причина: ${note}` : ''}`,
+      // Neutral first-failure wording — used when the reason is not IBAN-related.
+      failed_other: `Плащането не беше успешно и може да се наложи действие от ваша страна. Балансът ви е възстановен.${note ? ` Причина: ${note}` : ''}`,
     };
 
     await emailService.sendEmail({
@@ -135,7 +145,9 @@ async function notifySubscriber(
       notificationService.notifyPayoutEvent({
         userId: tx.wallet.userId,
         payoutId,
-        event,
+        // The in-app payout-event tier has no separate "failed_other" variant —
+        // both IBAN and non-IBAN first failures map to the single 'failed' event.
+        event: event === 'failed_other' ? 'failed' : event,
         amount: Math.abs(tx.amount),
         currency: tx.currency,
       }),
@@ -678,11 +690,14 @@ router.patch(
       try {
         txResult = await prisma.$transaction(async (tx) => {
           // Fix B — count inside the transaction.
+          // M4 — count BOTH FAILED and RISK_HOLD prior withdrawals so the strike
+          // count stays consistent with the Paysera auto-fail path (a prior
+          // second-strike produces a RISK_HOLD row, not a FAILED one).
           const previousFailedCount = await tx.walletTransaction.count({
             where: {
               walletId: payout.walletId,
               type: 'WITHDRAWAL',
-              status: 'FAILED',
+              status: { in: ['FAILED', 'RISK_HOLD'] as WalletTransactionStatus[] },
             },
           });
 
@@ -756,6 +771,22 @@ router.patch(
           `escalated to RISK_HOLD and user marked HIGH risk (spec §3.7). ` +
           `Wallet balance NOT restored (will be restored by /reject when admin resolves RISK_HOLD).`,
         );
+        // M4 / MEDIUM-1 — notification parity with the Paysera auto-fail path
+        // (wallet.service.ts executePayoutTransfer second-failure branch): fire the
+        // same admin-ops alert so a RISK_HOLD escalated via the admin /fail route is
+        // visible to ops and not missed indefinitely. Same payload shape + severity.
+        const escalatedUserId = payout.wallet.userId;
+        detach(notificationService
+          .notifyAdminOps({
+            opsType: 'payout_failure_high_risk',
+            title: 'User flagged high-risk after repeated payout failures',
+            message: `User ${escalatedUserId} had a repeated payout failure. Payout escalated to RISK_HOLD and flagged for manual admin review per spec §3.7.`,
+            severity: 'warning',
+            fields: [
+              { label: 'User ID', value: escalatedUserId },
+              { label: 'Last error', value: (reason ?? 'bank transfer failure').slice(0, 200) },
+            ],
+          }), (err) => logger.error(`[adminPayouts] admin notification failed for user ${escalatedUserId}:`, err));
       } else {
         // Spec §4.4 v1.1 — mirrors the /reject handler for the first-failure path.
         // These side effects run outside the transaction (DB-independent).
@@ -764,7 +795,10 @@ router.patch(
           (req as AuthRequest).user?.id ?? null,
           reason ?? 'bank transfer failure',
         );
-        detach(notifySubscriber(id, 'failed', reason), () => {});
+        // L1 — use IBAN-correction wording only when the reason points at an IBAN /
+        // bank-account problem; otherwise neutral "action may be required" wording.
+        const failEvent = reasonIndicatesIbanProblem(reason) ? 'failed' : 'failed_other';
+        detach(notifySubscriber(id, failEvent, reason), () => {});
       }
 
       res.json({ ok: true });

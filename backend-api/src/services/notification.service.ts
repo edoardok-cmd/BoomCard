@@ -2207,6 +2207,60 @@ export class NotificationService {
   }
 
   /**
+   * L1 — neutral first-failure payout notification.
+   *
+   * Used when the payout failure reason does NOT indicate an IBAN / bank-account
+   * problem. Mirrors notifyPayoutFailedInvalidIban (in-app + push + email) but
+   * with neutral "action may be required" wording instead of IBAN-correction
+   * copy, matching the failed_other branch of the admin /fail path's
+   * notifySubscriber. This keeps the Paysera auto-fail path and the admin /fail
+   * path consistent.
+   */
+  async notifyPayoutFailedGeneric(userId: string): Promise<void> {
+    try {
+      await this.createNotification({
+        userId,
+        type: 'PAYMENT_FAILED',
+        title: 'Payout failed — action may be required',
+        titleBg: 'Изплащането не успя — възможно е да е необходимо действие',
+        message: 'Your payout could not be processed and some action may be required on your side. Your balance has been restored.',
+        messageBg: 'Изплащането ви не успя и може да се наложи действие от ваша страна. Балансът ви е възстановен.',
+        priority: 'high',
+        actionUrl: '/profile/bank',
+        actionText: 'Review bank account',
+        actionTextBg: 'Прегледай банкова сметка',
+        data: { type: 'payout_failed_generic', reason: 'PAYOUT_FAILED' },
+      });
+
+      await this.sendPushNotification({
+        userId,
+        title: 'Изплащането не успя',
+        body: 'Може да се наложи действие от ваша страна. Балансът ви е възстановен.',
+        data: { type: 'payout_failed_generic', url: '/profile/bank' },
+      }).catch((err) => logger.error('[notifyPayoutFailedGeneric] push failed:', err));
+
+      const payoutUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, firstName: true },
+      });
+      if (payoutUser?.email) {
+        detach(emailService.sendEmail({
+          to: payoutUser.email,
+          subject: 'Payout failed — BoomCard',
+          html: `
+            <p>Hi ${payoutUser.firstName || 'there'},</p>
+            <p>Your BoomCard cashback payout could not be processed and some action may be required on your side.</p>
+            <p>Your balance has been restored. Please open the app to review your payout details and try again.</p>
+            <p>— The BoomCard Team</p>
+          `,
+        }), (err) => logger.error('[notifyPayoutFailedGeneric] email failed:', err));
+      }
+    } catch (error) {
+      logger.error('[notifyPayoutFailedGeneric] failed:', error);
+    }
+  }
+
+  /**
    * F-018 / Audit M2 — Subscription-cancellation confirmation.
    * Spec §11.1/§11.2: "Subscription cancellation confirmed" is a MANDATORY Payment
    * notification (no opt-out) and must be accompanied by an email. Classified under

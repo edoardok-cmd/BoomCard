@@ -52,6 +52,10 @@ router.get(
       approvedCashback,
       pendingCashback,
       expiringCashback,
+      // Кешбек §3.1 — per-status breakdown across all 7 CashbackEntryStatus values
+      // (PENDING, TRIAL_PENDING, CLEARED, LOCKED, PAID, EXPIRED, VOIDED). Single
+      // groupBy over cashbackStatus; the value tiles above stay as-is for back-compat.
+      cashbackStatusGroups,
 
       // Партньори
       activePartners,
@@ -158,6 +162,15 @@ router.get(
         _sum: { amount: true },
       }),
 
+      // Кешбек §3.1 — count + amount per cashbackStatus. Scoped to CASHBACK_CREDIT
+      // (the cashback-bearing wallet rows that carry a cashbackStatus). One query.
+      prisma.walletTransaction.groupBy({
+        by: ['cashbackStatus'],
+        where: { type: 'CASHBACK_CREDIT', cashbackStatus: { not: null } },
+        _count: { _all: true },
+        _sum: { amount: true },
+      }),
+
       // Партньори
       prisma.partner.count({ where: { status: 'ACTIVE' } }),
       prisma.partner.count({ where: { status: 'PENDING' } }),
@@ -211,6 +224,26 @@ router.get(
       : 0;
     const payoutsDue = Math.abs(payoutsDueAgg._sum.amount ?? 0);
 
+    // §3.1 cashback status breakdown — zero-fill all 7 canonical statuses so the
+    // tile always renders every state even when no rows exist for it.
+    const CASHBACK_STATUSES = [
+      'PENDING',
+      'TRIAL_PENDING',
+      'CLEARED',
+      'LOCKED',
+      'PAID',
+      'EXPIRED',
+      'VOIDED',
+    ] as const;
+    const cashbackStatusBreakdown = CASHBACK_STATUSES.map((status) => {
+      const row = cashbackStatusGroups.find((g) => g.cashbackStatus === status);
+      return {
+        status,
+        count: row?._count?._all ?? 0,
+        amount: row?._sum?.amount ?? 0,
+      };
+    });
+
     res.json({
       success: true,
       data: {
@@ -233,6 +266,7 @@ router.get(
           approved: approvedCashback._sum.amount ?? 0,
           pending: pendingCashback._sum.amount ?? 0,
           expiringSoon: expiringCashback._sum.amount ?? 0,
+          statusBreakdown: cashbackStatusBreakdown,
         },
         partners: {
           active: activePartners,

@@ -25,7 +25,7 @@ import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { writeAudit } from '../middleware/audit.middleware';
 import { emailService } from './email.service';
-import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef } from './ticketEmail.service';
+import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef, isPlusAddressingEnabled } from './ticketEmail.service';
 import { notificationService } from './notification.service';
 import { detach } from '../utils/detach';
 
@@ -150,7 +150,11 @@ async function resolveTicket(payload: InboundEmailPayload): Promise<{
   // (e.g. a TicketCC join table). The current allowed-set (owner + assignee +
   // externalEmail + prior externalFrom senders) is strictly more permissive for
   // known participants and is an acceptable interim posture.
-  if (payload.to) {
+  // H3 (Spec Part 6 / Clash 7.1): plus-addressing is DEFERRED to v1.3. In v1.2
+  // (the default, flag OFF) this resolution path is disabled entirely so threading
+  // relies ONLY on the header (Priority 1) and subject (Priority 4) fallbacks.
+  // The path is preserved behind TICKET_PLUS_ADDRESSING_ENABLED for v1.3 preview.
+  if (isPlusAddressingEnabled() && payload.to) {
     const plusMatch = /[^@+\s]+\+([a-f0-9]{8,32})@/i.exec(payload.to);
     if (plusMatch) {
       const ref = plusMatch[1].toLowerCase();
@@ -222,13 +226,56 @@ async function getSystemOwnerId(): Promise<string | null> {
 }
 
 /**
- * Heuristic mapping of the destination mailbox to a default `requestType`.
- * Both support@ and office@ inbounds are support requests — the distinction
- * between "User support" and "Partner support" queues (§11.6) is determined
- * by the ticket owner's role, not by the destination address. The admin can
- * re-classify to DATA_CHANGE / CONTRACT_CHANGE etc. once they've read the email.
+ * M5 (Spec §1.7 / §3.8) — classify an inbound email into the canonical Request
+ * Type set: Support / Dispute / Change / Other. The earlier implementation always
+ * returned SUPPORT; the spec requires office@/support@ inbounds be parsed into a
+ * typed Help Request. Classification is a best-effort keyword heuristic over the
+ * subject + body (BG + EN terms); the admin can always reclassify later (§7.2 the
+ * type only affects the suggested team, all tickets land in the shared queue).
+ *
+ * Precedence: Dispute > Change > Support, with Other reserved for inbounds that
+ * match no signal AND carry no usable text. The destination mailbox is retained
+ * as a tie-break input (office@ → partner-leaning, but type is still text-driven).
+ *
+ * Keep keyword lists conservative and high-precision: a false SUPPORT default is
+ * cheap to fix in the UI, a false DISPUTE/CHANGE mis-routes the suggested team.
  */
-function inferRequestType(_toAddress: string): TicketRequestType {
+const DISPUTE_KEYWORDS = [
+  // EN
+  'dispute', 'chargeback', 'fraud', 'unauthori', 'refund', 'complaint', 'wrong charge',
+  'incorrect cashback', 'not received', "didn't receive", 'did not receive', 'missing cashback',
+  // BG
+  'оспор', 'измам', 'възражение', 'жалба', 'не получих', 'грешна сума', 'грешно начислен',
+  'неоторизиран', 'възстановяване на сум', 'рекламация', 'спор',
+];
+const CHANGE_KEYWORDS = [
+  // EN
+  'change', 'update', 'modify', 'edit my', 'amend', 'cancel my subscription', 'contract',
+  'commission', 'new address', 'change iban', 'update iban', 'change bank', 'rename',
+  // BG
+  'промян', 'промен', 'актуализ', 'редактир', 'смяна', 'смени', 'обнови', 'договор',
+  'комисион', 'нов адрес', 'смяна на iban', 'промяна на iban', 'анекс',
+];
+
+function classifyKeywords(haystack: string, keywords: string[]): boolean {
+  return keywords.some((kw) => haystack.includes(kw));
+}
+
+export function inferRequestType(payload: Pick<InboundEmailPayload, 'subject' | 'text' | 'html' | 'to'>): TicketRequestType {
+  const subject = (payload.subject || '').toLowerCase();
+  const bodyText = (payload.text || (payload.html ? payload.html.replace(/<[^>]+>/g, ' ') : '')).toLowerCase();
+  const haystack = `${subject} ${bodyText}`.trim();
+
+  // No usable text to classify → Other (admin triages from the raw email).
+  if (!haystack) return 'OTHER';
+
+  // Dispute has the highest mis-route cost downstream, so it wins on overlap.
+  if (classifyKeywords(haystack, DISPUTE_KEYWORDS)) return 'DISPUTE';
+  // Generic Change classification — admin narrows to DATA_CHANGE / CONTRACT_CHANGE
+  // / LOCATION_CHANGE sub-types once they read the email.
+  if (classifyKeywords(haystack, CHANGE_KEYWORDS)) return 'CHANGE';
+
+  // Default: Support (the safe, lowest-cost default for any operational question).
   return 'SUPPORT';
 }
 
@@ -410,7 +457,7 @@ export async function ingestInboundEmail(
       source: 'EMAIL',
       externalEmail: fromEmail,
       rootMessageId: payload.messageId || null,
-      requestType: inferRequestType(payload.to || ''),
+      requestType: inferRequestType(payload),
     };
     const ticket = await prisma.helpTicket.create({ data: newTicketData });
     // Gap 8: backfill shortRef immediately after creation (computed from the UUID
@@ -443,7 +490,7 @@ export async function ingestInboundEmail(
     // Gap 9 fix: §11.6 routing — email tickets default to SUPPORT; admin can
     // reclassify. Surface the destination mailbox so the admin can see which
     // channel it arrived on (support@ vs. office@).
-    const emailReqType = inferRequestType(payload.to || '');
+    const emailReqType = inferRequestType(payload);
     const emailQueue = payload.to?.includes('office@') ? 'Partner support' : 'User support';
     detach(notificationService
       .notifyAdminOps({
@@ -518,7 +565,7 @@ export async function ingestInboundEmail(
         source: 'EMAIL',
         externalEmail: fromEmail,
         rootMessageId: payload.messageId || null,
-        requestType: inferRequestType(payload.to || ''),
+        requestType: inferRequestType(payload),
         linkedTicketId: t.id,
       },
     });

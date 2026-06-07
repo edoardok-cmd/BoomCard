@@ -48,7 +48,7 @@ import { logger } from '../utils/logger';
 import { fireAutomation } from '../lib/automationDispatcher';
 import { issueActivationLink, sendActivationEmail, stampEmailOutcome } from '../services/partnerActivation.service';
 import { emailService } from '../services/email.service';
-import { partnerService } from '../services/partner.service';
+import { partnerService, derivePartnerInactiveSubType } from '../services/partner.service';
 import { computePartnerSla } from '../services/partnerSla.helper';
 import { getClientIp } from '../utils/requestIp';
 import {
@@ -83,6 +83,11 @@ const PARTNER_SELECT = {
   joinedAt: true,
   verifiedAt: true,
   onboardingCompletedAt: true,
+  // M2/M3 (§1.4/§1.6) — sub-type metadata on the Inactive status: distinguishes
+  // ONBOARDING_INACTIVE (Onboarding stage) and VOLUNTARY_PAUSE/ADMIN_SUSPENSION
+  // (Пауза/Спрян). Surfaced so the admin UI can render the correct sub-state label
+  // without the canonical status enum being extended.
+  statusReason: true,
   // Spec §5.1 v1.1 — declared venue count bucket and activation state.
   requestObjectCount: true,
   partnerType: { select: { id: true, name: true, color: true } },
@@ -161,6 +166,8 @@ router.get(
         features,
         assignedAdmin: p.assignedAdminId ? adminMap.get(p.assignedAdminId) ?? null : null,
         sla: computePartnerSla(p.joinedAt as Date, p.requestStatus ?? null),
+        // M3 (§1.4) — canonical Inactive sub_type derived from status + statusReason.
+        inactiveSubType: derivePartnerInactiveSubType(p),
       };
     });
 
@@ -306,6 +313,8 @@ router.get(
         assignedAdmin,
         features,
         sla: computePartnerSla(partner.joinedAt as Date, partner.requestStatus ?? null),
+        // M3 (§1.4) — canonical Inactive sub_type derived from status + statusReason.
+        inactiveSubType: derivePartnerInactiveSubType(partner),
       },
     });
   })
@@ -347,6 +356,22 @@ router.patch(
     const isOdobrenaTransition =
       requestStatus === PartnerRequestStatus.APPROVED && current !== PartnerRequestStatus.APPROVED;
 
+    // M2 (Spec §1.6) — at the Onboarding stage the partner account exists in a
+    // distinct "Inactive, read-only" operational state. The canonical partner
+    // status enum is Active|Inactive|Archived and the partner row stays PENDING
+    // until activation (the approve flow keys on status===PENDING, so we must NOT
+    // flip the enum here — that would also need a migration we're not allowed to
+    // make). Instead we record the Onboarding-Inactive operational sub-state as a
+    // structured marker on `statusReason` (the same metadata field used for the
+    // Пауза/Спрян sub-types — §1.4). Read surfaces already map PENDING → canonical
+    // "Inactive" (partners.routes.toCanonicalPartnerStatus / partnerStatus
+    // middleware), and writes are already blocked for non-ACTIVE partners, so the
+    // operational behavior (Inactive + read-only) is enforced; this marker makes
+    // the state explicit and queryable. Cleared once the partner is approved.
+    const isOnboardingTransition =
+      requestStatus === PartnerRequestStatus.ONBOARDING && current !== PartnerRequestStatus.ONBOARDING;
+    const ONBOARDING_INACTIVE_MARKER = 'ONBOARDING_INACTIVE';
+
     const updated = await prisma.partner.update({
       where: { id: req.params.id },
       data: {
@@ -355,6 +380,11 @@ router.patch(
         // Stamp once on the first ODOBRENA transition; later edits don't reset it.
         ...(isOdobrenaTransition && !partner.onboardingCompletedAt
           ? { onboardingCompletedAt: new Date() }
+          : {}),
+        // M2 — stamp/clear the Onboarding-Inactive sub-state marker.
+        ...(isOnboardingTransition ? { statusReason: ONBOARDING_INACTIVE_MARKER } : {}),
+        ...(isOdobrenaTransition && partner.statusReason === ONBOARDING_INACTIVE_MARKER
+          ? { statusReason: null }
           : {}),
       },
       select: PARTNER_SELECT,

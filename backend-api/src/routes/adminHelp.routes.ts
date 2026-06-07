@@ -5,7 +5,7 @@ import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { notificationService } from '../services/notification.service';
 import { emailService } from '../services/email.service';
-import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef } from '../services/ticketEmail.service';
+import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef, withCanonicalRequestStatus } from '../services/ticketEmail.service';
 import { fireAutomation } from '../lib/automationDispatcher';
 import { logger } from '../utils/logger';
 import { parsePagination } from '../utils/pagination';
@@ -67,10 +67,13 @@ function hasFullAccess(req: AuthRequest): boolean {
   return req.user!.role === 'SUPER_ADMIN' || (req.user!.permissions ?? []).includes('help.read.all');
 }
 
-// Spec §11.3: valid requestTypes for admin internal tickets.
-// DATA_CHANGE / LOCATION_CHANGE are partner-facing; admins may still classify
-// an internal ticket with any type for flexibility.
-const ADMIN_VALID_REQUEST_TYPES = ['SUPPORT', 'DISPUTE', 'DATA_CHANGE', 'LOCATION_CHANGE', 'CONTRACT_CHANGE', 'OTHER'];
+// Spec §1.7 / §11.3: valid requestTypes for admin internal tickets.
+// The canonical spec Request Type enum is Support / Dispute / Change / Other.
+// CHANGE is the bare canonical "Change" classification; DATA_CHANGE /
+// LOCATION_CHANGE / CONTRACT_CHANGE are its sub-types (all partner-facing).
+// L5 fix: include the bare CHANGE member so admins can classify a generic
+// change request that does not fit a specific sub-type.
+const ADMIN_VALID_REQUEST_TYPES = ['SUPPORT', 'DISPUTE', 'CHANGE', 'DATA_CHANGE', 'LOCATION_CHANGE', 'CONTRACT_CHANGE', 'OTHER'];
 
 // POST /api/admin/help — G8: admin creates a new help ticket (Spec §11 "Нова заявка")
 router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, next) => {
@@ -298,7 +301,8 @@ router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
       prisma.helpTicket.count({ where }),
     ]);
 
-    res.json({ tickets, total, page: pageNum, limit: take });
+    // M6 (§1.7): surface the canonical request_status alongside the raw enum token.
+    res.json({ tickets: tickets.map(withCanonicalRequestStatus), total, page: pageNum, limit: take });
   } catch (error) {
     next(error);
   }
@@ -346,7 +350,8 @@ router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res
       prisma.helpTicket.count({ where }),
     ]);
 
-    res.json({ tickets, total, page: pageNum, limit: take });
+    // M6 (§1.7): surface the canonical request_status alongside the raw enum token.
+    res.json({ tickets: tickets.map(withCanonicalRequestStatus), total, page: pageNum, limit: take });
   } catch (error) {
     next(error);
   }
@@ -390,7 +395,8 @@ router.get('/:id', requirePermission('help.read'), async (req: AuthRequest, res,
       });
     }
 
-    res.json({ ticket: { ...ticket, bounceCount } });
+    // M6 (§1.7): surface the canonical request_status alongside the raw enum token.
+    res.json({ ticket: { ...withCanonicalRequestStatus(ticket), bounceCount } });
   } catch (error) {
     next(error);
   }
@@ -619,6 +625,117 @@ router.post('/:id/reject', requirePermission('help.write'), async (req: AuthRequ
           fromStatus: rejectFromLabel,
           toStatus: rejectToLabel,
         }), (err) => logger.error('[adminHelp] Failed to send partner in-app request-update notification (reject):', err));
+    }
+
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/admin/help/:id/cancel — Spec §1.7 "Cancelled = withdrawn/invalid".
+// L4 fix: the CANCELLED TicketStatus was defined and guarded as a terminal state
+// but had no writer — it was unreachable. This endpoint exposes an explicit admin
+// withdraw/cancel action (terminal transition → CANCELLED), distinct from REJECTED
+// ("admin declined with reason"). Used when a ticket is a duplicate, spam, or the
+// requester withdrew it. An optional note is recorded; unlike /reject it does not
+// require a long reason because a cancellation is not an adverse decision.
+router.post('/:id/cancel', requirePermission('help.write'), async (req: AuthRequest, res, next) => {
+  try {
+    const { reason } = req.body as { reason?: string };
+    const trimmedReason = reason?.trim() || '';
+    if (trimmedReason.length > 1000) {
+      return res.status(400).json({ error: 'Причината е твърде дълга (максимум 1000 символа)' });
+    }
+
+    const ticket = await prisma.helpTicket.findUnique({
+      where: { id: req.params.id },
+      include: { user: { select: { id: true, email: true, firstName: true, role: true } } },
+    });
+    if (!ticket) return res.status(404).json({ error: 'Заявката не е намерена' });
+    // Mirror /reject's access policy: only the assignee or SUPER_ADMIN may cancel a
+    // ticket — a terminal action that should be owned by someone accountable.
+    if (req.user!.role !== 'SUPER_ADMIN' && ticket.assigneeId !== req.user!.id) {
+      return res.status(403).json({ error: 'Отказан достъп — само отговорникът или SUPER_ADMIN може да отмени заявка' });
+    }
+    // Terminal states cannot transition further (CLOSED / REJECTED / CANCELLED).
+    if (ticket.status === 'CLOSED' || ticket.status === 'REJECTED' || ticket.status === 'CANCELLED') {
+      return res.status(400).json({ error: 'Заявката вече е в крайно състояние' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.helpTicket.update({
+        where: { id: req.params.id },
+        data: { status: 'CANCELLED' as TicketStatus },
+      });
+      await tx.ticketReply.create({
+        data: {
+          ticketId: req.params.id,
+          authorId: req.user!.id,
+          body: trimmedReason ? `[ОТМЕНЕНА] ${trimmedReason}` : '[ОТМЕНЕНА] Заявката беше отменена.',
+          isAdmin: true,
+          channel: 'INTERNAL',
+        },
+      });
+    });
+
+    req.skipAudit = true;
+    detach(writeAudit({
+      actorUserId: req.user!.id,
+      action: 'ticket.cancel',
+      objectType: 'ticket',
+      objectId: req.params.id,
+      before: { status: ticket.status },
+      after: { status: 'CANCELLED', reason: trimmedReason || null },
+    }), () => {});
+
+    // Notify the creator (non-fatal). Spec §1.7: Cancelled tickets remain in history.
+    if (ticket.user.email) {
+      const cancelPriorMsgs = await prisma.ticketReply.findMany({
+        where: { ticketId: req.params.id, messageId: { not: null } },
+        orderBy: { createdAt: 'asc' },
+        select: { messageId: true },
+      });
+      const cancelRefChain: string[] = [
+        ticket.rootMessageId,
+        ...cancelPriorMsgs.map((r) => r.messageId),
+      ].filter((id): id is string => !!id);
+      const escC = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const cancelAudience = ticket.user.role === 'PARTNER' ? 'partner' : 'subscriber';
+      detach(emailService
+        .sendEmail({
+          to: ticket.user.email,
+          audience: ticket.user.role === 'PARTNER' ? 'partner' : undefined,
+          subject: buildTicketSubject(ticket.id, `[Заявката отменена] ${ticket.subject}`),
+          headers: buildTicketHeaders({
+            ticketId: req.params.id,
+            inReplyTo: cancelRefChain.at(-1) ?? null,
+            references: cancelRefChain,
+          }).headers,
+          replyTo: buildPlusReplyTo(ticket.id, cancelAudience),
+          html: `<p>Здравей, ${escC(ticket.user.firstName || ticket.user.email)},</p>
+<p>Вашата заявка беше отменена.</p>${trimmedReason ? `
+<p><strong>Бележка:</strong></p>
+<blockquote style="border-left:3px solid #e5e7eb;padding-left:12px;color:#555;">${escC(trimmedReason)}</blockquote>` : ''}
+<p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id}</p>`,
+          text: `Здравей, ${ticket.user.firstName || ticket.user.email},\n\nВашата заявка беше отменена.${trimmedReason ? `\n\nБележка: ${trimmedReason}` : ''}\n\nTicket ID: ${ticket.id}`,
+        }), (err) => logger.error('[adminHelp] cancel notification email failed:', err));
+    }
+
+    // Spec §9.1 template #5 "Request Updates" — partner in-app bell parity.
+    if (ticket.user.role === 'PARTNER') {
+      const CANCEL_STATUS_BG: Record<string, string> = {
+        NEW: 'Нова', OPEN: 'Отворена', IN_REVIEW: 'В преглед', WAITING: 'Чака отговор',
+        RESOLVED: 'Решена', CLOSED: 'Затворена', REJECTED: 'Отказана', CANCELLED: 'Отменена',
+      };
+      detach(notificationService
+        .notifyPartnerRequestUpdate({
+          partnerUserId: ticket.user.id,
+          ticketId: req.params.id,
+          subject: ticket.subject,
+          fromStatus: CANCEL_STATUS_BG[ticket.status] ?? ticket.status,
+          toStatus: CANCEL_STATUS_BG['CANCELLED'],
+        }), (err) => logger.error('[adminHelp] Failed to send partner in-app request-update notification (cancel):', err));
     }
 
     res.json({ ok: true });

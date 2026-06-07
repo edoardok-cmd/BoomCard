@@ -683,6 +683,53 @@ router.delete(
 const VALID_TIERS = new Set(Object.values(FraudRuleTier));
 
 /**
+ * U3 (Spec §2.1 / Clash 5.4) — limits-table bounds enforcement.
+ *
+ * "The Risk Review role can adjust signal thresholds within pre-defined bounds;
+ * only a Super Admin can exceed those bounds." These engineering-default bounds
+ * are the conservative go-live values. A SUPER_ADMIN may set ANY value (they can
+ * exceed bounds); any non-SUPER_ADMIN writer is clamped to these bounds (rejected
+ * with 422 if out of range). This is the application-layer half of U3.
+ *
+ * NOTE (schema/permission escalation — see task summary): the spec also wants the
+ * RISK_REVIEW role to be able to perform this bounded write. Today the write
+ * routes gate on `control.rules.write`, which RISK_REVIEW does NOT hold (read-only
+ * via `control.rules.read`). Granting RISK_REVIEW a bounded-write capability needs
+ * a permission-catalog seed change (a new `control.rules.write.bounded` key + role
+ * mapping), which is outside the no-migration application-layer scope. Until then
+ * this guard still correctly bounds any non-SUPER_ADMIN writer that holds the key.
+ */
+const FRAUD_RULE_BOUNDS: Record<string, { min: number; max: number }> = {
+  dailyScanLimit: { min: 1, max: 500 },
+  minTransactionValue: { min: 0, max: 100000 },
+  maxTransactionValue: { min: 0, max: 1000000 },
+  autoApproveThreshold: { min: 0, max: 120 }, // risk-score scale (spec §2.1 max additive 120)
+};
+
+/**
+ * Returns an error message string if a non-SUPER_ADMIN actor supplied a value
+ * outside the pre-defined bounds, else null. SUPER_ADMIN always returns null
+ * (may exceed bounds). null/undefined values are not bounds-checked (clearing).
+ */
+function checkFraudRuleBounds(
+  actorRole: string,
+  fields: Record<string, number | null | undefined>,
+): string | null {
+  if (actorRole === 'SUPER_ADMIN') return null;
+  for (const [key, bound] of Object.entries(FRAUD_RULE_BOUNDS)) {
+    const v = fields[key];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== 'number' || !Number.isFinite(v)) {
+      return `${key} must be a number`;
+    }
+    if (v < bound.min || v > bound.max) {
+      return `${key}=${v} is outside the permitted bounds (${bound.min}–${bound.max}). Only a Super Admin may set values beyond these bounds (spec §2.1 / Clash 5.4).`;
+    }
+  }
+  return null;
+}
+
+/**
  * GET /api/admin/settings/fraud-rules
  * Query: tier, targetId, active (true|false)
  * Accessible to RISK_REVIEW admins (control.rules.read) as well as ADMIN (settings.read).
@@ -736,6 +783,12 @@ router.post(
       return res.status(400).json({ success: false, error: 'targetId is required for non-SYSTEM tier rules' });
     }
 
+    // U3 — bounds enforcement: non-SUPER_ADMIN writers may only set within-bounds values.
+    const boundsError = checkFraudRuleBounds(req.user!.role, {
+      dailyScanLimit, minTransactionValue, maxTransactionValue, autoApproveThreshold,
+    });
+    if (boundsError) return res.status(422).json({ success: false, error: boundsError });
+
     const rule = await prisma.fraudRule.create({
       data: {
         tier: tier as FraudRuleTier,
@@ -773,6 +826,12 @@ router.patch(
 
     const rule = await prisma.fraudRule.findUnique({ where: { id: req.params.id } });
     if (!rule) return res.status(404).json({ success: false, error: 'Fraud rule not found' });
+
+    // U3 — bounds enforcement: non-SUPER_ADMIN writers may only set within-bounds values.
+    const boundsError = checkFraudRuleBounds(req.user!.role, {
+      dailyScanLimit, minTransactionValue, maxTransactionValue, autoApproveThreshold,
+    });
+    if (boundsError) return res.status(422).json({ success: false, error: boundsError });
 
     const updated = await prisma.fraudRule.update({
       where: { id: req.params.id },

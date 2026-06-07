@@ -91,7 +91,15 @@ jest.mock('../../src/lib/prisma', () => {
         const eff = { ...t, ...(last ?? {}) };
         if (w.walletId !== undefined && eff.walletId !== w.walletId) return false;
         if (w.type !== undefined && eff.type !== w.type) return false;
-        if (w.status !== undefined && eff.status !== w.status) return false;
+        if (w.status !== undefined) {
+          // status may be a scalar or a Prisma `{ in: [...] }` operator (the
+          // strike-count query filters FAILED + RISK_HOLD via `in`).
+          if (w.status && typeof w.status === 'object' && Array.isArray(w.status.in)) {
+            if (!w.status.in.includes(eff.status)) return false;
+          } else if (eff.status !== w.status) {
+            return false;
+          }
+        }
         return true;
       }).length;
     }),
@@ -178,6 +186,11 @@ jest.mock('../../src/services/notification.service', () => ({
     // F-014 payout-failure escalation (spec §7.4): first failure notifies the
     // user to correct their IBAN; second+ failure notifies admin ops.
     notifyPayoutFailedInvalidIban: jest.fn(async () => undefined),
+    // Second+ failure with a non-IBAN cause: generic "could not be processed"
+    // notice (mirrors notifyPayoutFailedInvalidIban). Added when wallet.service
+    // gained the generic-failure branch.
+    notifyPayoutFailedGeneric: jest.fn(async () => undefined),
+    notifyPayoutHeldNoIban: jest.fn(async () => undefined),
     notifyAdminOps: jest.fn(async () => undefined),
   },
 }));
@@ -240,6 +253,8 @@ beforeEach(() => {
   const { notificationService } = jest.requireMock('../../src/services/notification.service');
   notificationService.notifyPayoutReady.mockClear();
   notificationService.notifyPayoutFailedInvalidIban.mockClear();
+  notificationService.notifyPayoutFailedGeneric.mockClear();
+  notificationService.notifyPayoutHeldNoIban.mockClear();
   notificationService.notifyAdminOps.mockClear();
 });
 
@@ -406,7 +421,9 @@ describe('§6.1 v1.1 executePayoutTransfer (admin /approve helper)', () => {
     const { payseraService } = jest.requireMock('../../src/services/paysera.service');
     const { notificationService } = jest.requireMock('../../src/services/notification.service');
     payseraService.isTransferConfigured.mockReturnValue(true);
-    payseraService.createTransfer.mockRejectedValueOnce(new Error('Paysera 503 — unavailable'));
+    // L1 classifier: an IBAN-indicating failure reason routes to IBAN-correction
+    // wording (notifyPayoutFailedInvalidIban), matching this test's intent.
+    payseraService.createTransfer.mockRejectedValueOnce(new Error('Invalid IBAN — beneficiary account rejected'));
 
     await walletService.requestPayout('user-1');
     const pending = txCreated.find((t) => t.status === 'PENDING' && t.type === 'WITHDRAWAL');
@@ -416,6 +433,7 @@ describe('§6.1 v1.1 executePayoutTransfer (admin /approve helper)', () => {
 
     // Exactly one FAILED withdrawal (the one just reversed) → first-failure branch.
     expect(notificationService.notifyPayoutFailedInvalidIban).toHaveBeenCalledWith('user-1');
+    expect(notificationService.notifyPayoutFailedGeneric).not.toHaveBeenCalled();
     expect(notificationService.notifyAdminOps).not.toHaveBeenCalled();
     // A first failure must not touch the risk profile.
     expect(userStore.riskScore).toBe(0);

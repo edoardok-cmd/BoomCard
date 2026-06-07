@@ -111,6 +111,9 @@ jest.mock('../../src/services/ticketEmail.service', () => ({
   buildTicketHeaders: jest.fn(() => ({ messageId: '<mid@test>', headers: {} })),
   buildPlusReplyTo: jest.fn(() => 'support+abc1234@boomcard.bg'),
   computeShortRef: jest.fn(() => '#abc1234'),
+  // M6 (§1.7): the help list/detail routes map results through this to attach the
+  // canonical requestStatus. Pass-through is sufficient for these RBAC tests.
+  withCanonicalRequestStatus: jest.fn((t) => t),
 }));
 
 // Stub for adminAlerts.routes.ts

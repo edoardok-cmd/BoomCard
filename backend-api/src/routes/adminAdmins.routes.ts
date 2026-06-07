@@ -607,6 +607,13 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
     }
 
     if (roleKey === AdminRoleKey.SUPER_ADMIN) {
+      // Spec §3.9 step 1 — only a Super Admin may INITIATE a Super-Admin creation
+      // request. A Standard Admin holding admins.write can create regular admins but
+      // must not be able to start the dual-approval flow for a new Super Admin.
+      // (Approval is already SUPER_ADMIN-only on the /approve route.)
+      if (req.user!.role !== 'SUPER_ADMIN') {
+        return res.status(403).json({ error: 'Only a Super Admin may initiate a Super Admin creation request' });
+      }
       // Double-approval gate: store the request for a second admin to approve.
       // Pre-check: reject immediately if a SUPER_ADMIN with this email already exists as a User.
       const existingUser = await prisma.user.findFirst({ where: { email, role: 'SUPER_ADMIN' } });

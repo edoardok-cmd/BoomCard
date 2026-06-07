@@ -471,6 +471,214 @@ router.patch('/:userId/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
   }
 });
 
+// PATCH /api/admin/subscribers/:userId/profile — edit a subscriber's profile.
+// Spec §1.1 / §3.2 "Editable Fields": admin may edit profile (name, email, phone,
+// address, IBAN) and the risk profile (risk bucket/score). Account status has its
+// own endpoint (PATCH /status); subscription/cashback history is view-only here.
+//
+// Fields are all OPTIONAL — only the keys present in the body are updated (PATCH
+// semantics). Risk bucket and score are kept in sync: setting one without the
+// other re-derives the missing value from the spec §2.1 thresholds so the stored
+// riskScore/riskBucket pair never drifts.
+//
+// IBAN authority (schema note): Wallet.payoutIban is the authoritative payout IBAN;
+// User.iban is a legacy mirror. We write BOTH for consistency and stamp
+// User.ibanLastChangedAt (a §2.1 risk signal) when the IBAN value actually changes.
+const IBAN_RE = /^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/;
+const RISK_BUCKETS = ['LOW_0_20', 'MEDIUM_21_50', 'HIGH_51_PLUS'] as const;
+type RiskBucketValue = (typeof RISK_BUCKETS)[number];
+
+function bucketForScore(score: number): RiskBucketValue {
+  if (score <= 20) return 'LOW_0_20';
+  if (score <= 50) return 'MEDIUM_21_50';
+  return 'HIGH_51_PLUS';
+}
+
+router.patch('/:userId/profile', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.write'), async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const body = (req.body ?? {}) as {
+      firstName?: unknown;
+      lastName?: unknown;
+      email?: unknown;
+      phone?: unknown;
+      address?: unknown;
+      iban?: unknown;
+      riskBucket?: unknown;
+      riskScore?: unknown;
+    };
+
+    const user = await prisma.user.findUnique({ where: { id: userId }, include: { wallet: { select: { id: true } } } });
+    if (!user || user.role !== 'USER') {
+      return res.status(404).json({ error: 'Subscriber not found' });
+    }
+    if (user.deletedAt) {
+      return res.status(400).json({ error: 'Cannot edit a deleted account' });
+    }
+
+    const data: Record<string, unknown> = {};
+    const before: Record<string, unknown> = {};
+
+    // --- Name ---
+    const validateOptionalString = (v: unknown, field: string, max: number): string | null | undefined => {
+      if (v === undefined) return undefined;
+      if (v === null || v === '') return null;
+      if (typeof v !== 'string') throw { status: 400, msg: `${field} must be a string` };
+      const trimmed = v.trim();
+      if (trimmed.length > max) throw { status: 400, msg: `${field} is too long (max ${max})` };
+      return trimmed;
+    };
+
+    try {
+      const firstName = validateOptionalString(body.firstName, 'firstName', 100);
+      if (firstName !== undefined) { data.firstName = firstName; before.firstName = user.firstName; }
+      const lastName = validateOptionalString(body.lastName, 'lastName', 100);
+      if (lastName !== undefined) { data.lastName = lastName; before.lastName = user.lastName; }
+      const phone = validateOptionalString(body.phone, 'phone', 32);
+      if (phone !== undefined) { data.phone = phone; before.phone = user.phone; }
+      const address = validateOptionalString(body.address, 'address', 500);
+      if (address !== undefined) { data.address = address; before.address = user.address; }
+    } catch (e: any) {
+      return res.status(e.status ?? 400).json({ error: e.msg ?? 'Invalid field' });
+    }
+
+    // --- Email (unique on [email, role]) ---
+    if (body.email !== undefined) {
+      if (typeof body.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim())) {
+        return res.status(400).json({ error: 'email must be a valid email address' });
+      }
+      const normalizedEmail = body.email.trim().toLowerCase();
+      if (normalizedEmail !== (user.email ?? '').toLowerCase()) {
+        // Composite unique key is [email, role] — a USER email collides only with
+        // another USER row. Block to avoid a P2002 surfacing as a 500.
+        const collision = await prisma.user.findFirst({
+          where: { email: normalizedEmail, role: 'USER', id: { not: userId } },
+          select: { id: true },
+        });
+        if (collision) {
+          return res.status(409).json({ error: 'Another subscriber already uses this email' });
+        }
+        data.email = normalizedEmail;
+        before.email = user.email;
+        // Changing email invalidates prior verification state — the new address is
+        // unverified until re-confirmed. Mirrors the self-service email-change flow.
+        data.emailVerified = false;
+        data.emailVerifiedAt = null;
+      }
+    }
+
+    // --- IBAN (authoritative on Wallet.payoutIban; legacy mirror on User.iban) ---
+    let newIban: string | null | undefined;
+    if (body.iban !== undefined) {
+      if (body.iban === null || body.iban === '') {
+        newIban = null;
+      } else {
+        if (typeof body.iban !== 'string') {
+          return res.status(400).json({ error: 'iban must be a string' });
+        }
+        const normalized = body.iban.replace(/\s+/g, '').toUpperCase();
+        if (!IBAN_RE.test(normalized)) {
+          return res.status(400).json({ error: 'Invalid IBAN format' });
+        }
+        newIban = normalized;
+      }
+    }
+
+    // --- Risk profile ---
+    if (body.riskScore !== undefined) {
+      const score = Number(body.riskScore);
+      if (!Number.isFinite(score) || !Number.isInteger(score) || score < 0 || score > 120) {
+        return res.status(400).json({ error: 'riskScore must be an integer between 0 and 120' });
+      }
+      data.riskScore = score;
+      before.riskScore = user.riskScore;
+      // Keep the bucket consistent with the score unless an explicit bucket is also
+      // supplied below (which overrides this derivation).
+      data.riskBucket = bucketForScore(score);
+    }
+    if (body.riskBucket !== undefined) {
+      if (body.riskBucket === null) {
+        data.riskBucket = null;
+        before.riskBucket = user.riskBucket;
+      } else {
+        if (typeof body.riskBucket !== 'string' || !RISK_BUCKETS.includes(body.riskBucket as RiskBucketValue)) {
+          return res.status(400).json({ error: `riskBucket must be one of: ${RISK_BUCKETS.join(', ')}` });
+        }
+        data.riskBucket = body.riskBucket;
+        before.riskBucket = user.riskBucket;
+      }
+    }
+
+    const ibanChanged = newIban !== undefined && newIban !== (user.iban ?? null);
+    if (ibanChanged) {
+      data.iban = newIban;
+      // F1 — NEVER write the raw IBAN (old or new) to the audit log. `writeAudit`
+      // persists `before`/`after` verbatim with no redaction (redactSensitive runs
+      // only on the auto-middleware path, and `iban` is not a SENSITIVE_KEY). We
+      // therefore record only that the IBAN changed — mirroring the scrubbed
+      // `after` block — never the cleartext value.
+      before.ibanChanged = true;
+      data.ibanLastChangedAt = new Date();
+    }
+
+    if (Object.keys(data).length === 0 && newIban === undefined) {
+      return res.status(400).json({ error: 'No editable fields supplied' });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const u = Object.keys(data).length
+        ? await tx.user.update({
+            where: { id: userId },
+            data: data as any,
+            select: {
+              id: true, firstName: true, lastName: true, email: true, phone: true,
+              address: true, iban: true, riskScore: true, riskBucket: true,
+              emailVerified: true,
+            },
+          })
+        : await tx.user.findUniqueOrThrow({
+            where: { id: userId },
+            select: {
+              id: true, firstName: true, lastName: true, email: true, phone: true,
+              address: true, iban: true, riskScore: true, riskBucket: true,
+              emailVerified: true,
+            },
+          });
+      // Mirror the IBAN to the authoritative Wallet.payoutIban. Upsert so a
+      // subscriber without a wallet row still gets the IBAN saved.
+      if (ibanChanged) {
+        await tx.wallet.upsert({
+          where: { userId },
+          update: { payoutIban: newIban ?? null },
+          create: { userId, balance: 0, availableBalance: 0, pendingBalance: 0, payoutIban: newIban ?? null },
+        });
+      }
+      return u;
+    });
+
+    // Spec §10.4 — audit every admin profile mutation with before/after context.
+    // IBAN is recorded as changed/unchanged only — never log the raw IBAN value.
+    detach(writeAudit({
+      actorUserId: (req as AuthRequest).user?.id ?? null,
+      action: 'subscriber.profile.update',
+      objectType: 'subscriber',
+      objectId: userId,
+      before,
+      after: {
+        fields: Object.keys(data).filter((k) => k !== 'emailVerified' && k !== 'emailVerifiedAt' && k !== 'ibanLastChangedAt'),
+        ibanChanged,
+        emailReverified: data.emailVerified === false ? false : undefined,
+      },
+      ip: getClientIp(req) ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    }), () => {});
+
+    res.json({ ok: true, subscriber: updated });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // PATCH /api/admin/subscribers/:userId/cancel
 // #13 fix: :userId is the subscriber (User) ID — find their active subscription
 router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscriptions.write'), async (req, res, next) => {

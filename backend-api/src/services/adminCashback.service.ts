@@ -1390,7 +1390,11 @@ export async function lockEntry(entryId: string, adminUserId: string): Promise<v
 /**
  * Force-expire a cashback entry (cashbackExpiresAt = now, CANCELLED → Expired).
  */
-export async function expireEntry(entryId: string, adminUserId: string): Promise<void> {
+export async function expireEntry(
+  entryId: string,
+  adminUserId: string,
+  opts?: { allowPendingOverride?: boolean },
+): Promise<void> {
   const entry = await prisma.walletTransaction.findUnique({
     where: { id: entryId },
     select: {
@@ -1404,6 +1408,16 @@ export async function expireEntry(entryId: string, adminUserId: string): Promise
   // Only the scheduler resolves them (resolveTrialPendingCashback at 5:30 AM).
   if (entry.cashbackStatus === 'TRIAL_PENDING' || entry.status === 'TRIAL_PENDING') {
     throw new AppError('Cannot manually expire a TrialPending record — only the scheduler resolves these.', 400);
+  }
+  // L3 / Spec §8.1 rule 2 — "Pending cashback never expires." A Pending record has
+  // no 60-day countdown, so expiring it contradicts the lifecycle. The §3.4 admin
+  // force-expire carve-out still allows an explicit override, but it must be opted
+  // into deliberately — default behavior refuses to expire a Pending record.
+  if (entry.cashbackStatus === 'PENDING' && !opts?.allowPendingOverride) {
+    throw new AppError(
+      'Pending cashback never expires (spec §8.1). Pass adminOverride=true to force-expire a Pending record.',
+      400,
+    );
   }
   // Block terminal states that cannot be expired.
   if (['VOIDED', 'PAID', 'EXPIRED'].includes(entry.cashbackStatus ?? '')) {

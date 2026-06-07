@@ -258,6 +258,21 @@ class StickerService {
     const now = new Date();
     const status = latest.status;
 
+    // L1 (Spec §1.2) — the source spec DEFERS the admin handling of the Stripe-
+    // mapped statuses (TRIALING, PAST_DUE, PAUSED, etc.) to product confirmation.
+    // Decisions made here, documented as the current spec-aligned defaults:
+    //   • TRIALING ≡ Active: a user in the Stripe trial has a live, paid-intent
+    //     subscription, so scanning is allowed (treated identically to ACTIVE).
+    //   • PAST_DUE does NOT block scanning (handled below by NOT matching any
+    //     blocking branch → falls through to the generic SUBSCRIPTION_INACTIVE
+    //     guard only if it is also not ACTIVE/TRIALING/CANCELLED-in-period). It is
+    //     a Stripe-internal dunning state that may self-recover without user action;
+    //     §1.2's terminal block-states are Expired / Failed Payment / Cancelled-
+    //     post-period only.
+    //   • PAUSED blocks payout (enforced in wallet.service, not here) but is not a
+    //     scan state in §1.2.
+    // If product later defines different rules, change these branches and update
+    // this note — they are the single documented decision point for the §1.2 gap.
     if (status === SubscriptionStatus.ACTIVE || (status as string) === 'TRIALING') {
       return;
     }
@@ -507,6 +522,77 @@ class StickerService {
         activatedAt: new Date(),
       },
     });
+  }
+
+  /**
+   * H2 (Spec §1.4 / §3.6 / Clash 2.4) — explicit per-QR reactivation of an
+   * INACTIVE sticker.
+   *
+   * After a partner is reactivated FROM Archived, `syncQrCodesForPartner` Case 3
+   * deliberately does NOT auto-reactivate that partner's stickers — they stay
+   * INACTIVE and each must be "explicitly reactivated by an admin per code".
+   * `activateSticker` only accepts PENDING/PROCESSING sources, so those stranded
+   * INACTIVE stickers had no reachable reactivation path. This method provides it
+   * WITHOUT introducing auto-reactivation: it operates on one sticker at a time
+   * and is only invoked by an explicit admin action.
+   *
+   * Guards (mirror activateSticker):
+   *   - Sticker must currently be INACTIVE (the Archived-phase auto-deactivated
+   *     state). Other states are rejected — PENDING/PROCESSING go through
+   *     activateSticker; ACTIVE/REPLACED/etc. are not reactivatable here.
+   *   - The owning partner must be operationally Active (status=ACTIVE AND
+   *     verifiedAt set). Spec §3.6: "QR codes cannot be manually activated while
+   *     the partner is Inactive or Archived." So an admin can only reactivate a
+   *     sticker once the re-onboarding completed and the partner re-verified.
+   *
+   * Clears autoDeactivatedAt so the sticker is no longer considered part of any
+   * future bulk auto-reactivation set.
+   */
+  async reactivateInactiveSticker(stickerId: string, actorUserId?: string | null): Promise<Sticker> {
+    const sticker = await prisma.sticker.findUnique({
+      where: { stickerId },
+      select: {
+        id: true,
+        status: true,
+        venue: {
+          select: {
+            partner: { select: { status: true, verifiedAt: true } },
+          },
+        },
+      },
+    });
+    if (!sticker) throw new Error(`Sticker ${stickerId} not found`);
+    if (sticker.status !== StickerStatus.INACTIVE) {
+      throw new Error(
+        `Sticker ${stickerId} cannot be reactivated from ${sticker.status} state. ` +
+        `This endpoint reactivates an INACTIVE sticker (e.g. one stranded after an ` +
+        `Archived→Active partner reactivation). Use POST /activate for PENDING/PROCESSING stickers.`
+      );
+    }
+    // Spec §3.6: block manual activation unless the owning partner is operationally
+    // Active. F3 — fail CLOSED on orphan stickers: if the venue/partner relation
+    // cannot be resolved we cannot confirm the partner is operationally Active, so
+    // we reject rather than reactivate unconditionally.
+    if (!sticker.venue?.partner || !isPartnerOperationallyActive(sticker.venue.partner)) {
+      throw new Error('Cannot reactivate QR code while partner status is not Active');
+    }
+    const updated = await prisma.sticker.update({
+      where: { stickerId },
+      data: {
+        status: StickerStatus.ACTIVE,
+        activatedAt: new Date(),
+        autoDeactivatedAt: null,
+      },
+    });
+    detach(writeAudit({
+      actorUserId: actorUserId ?? null,
+      action: 'STICKER_REACTIVATED',
+      objectType: 'Sticker',
+      objectId: sticker.id,
+      before: { status: StickerStatus.INACTIVE },
+      after: { status: StickerStatus.ACTIVE, reason: 'explicit admin reactivation (Clash 2.4)' },
+    }), (err) => logger.error('[sticker.reactivateInactiveSticker] audit write failed:', err));
+    return updated;
   }
 
   /**
@@ -1817,6 +1903,9 @@ class StickerService {
     // cashback and no retry path (both guards throw "already approved" on re-entry).
     let transactionId: string | null = null;
     let updated: StickerScan | null = null;
+    // LOW-2 — set once a PENDING cashback entry has been promoted to CLEARED and
+    // the wallet credited, so the catch block can compensate on a later failure.
+    let promotedEntry: { id: string; walletId: string; amount: number } | null = null;
 
     try {
       // Spec §4.3 v1.1 — persist the fraud/risk score at transaction creation
@@ -1905,7 +1994,7 @@ class StickerService {
           type: WalletTransactionType.CASHBACK_CREDIT,
           cashbackStatus: 'PENDING' as any,
         },
-        select: { id: true, amount: true },
+        select: { id: true, amount: true, walletId: true },
       });
 
       if (pendingEntry) {
@@ -1920,6 +2009,14 @@ class StickerService {
             ? { overrideAmount: effectiveCashbackAmount }
             : {}),
         });
+        // LOW-2 (M5/approveScan rollback) — record that the PENDING entry was
+        // promoted to CLEARED *and* the wallet was credited, so if a later step
+        // in this same call throws, the catch block can compensate (demote back
+        // to PENDING + reverse the credit). Without this, a partial failure
+        // would leave the wallet credited while the scan reverts to
+        // MANUAL_REVIEW, and the next hourly sweep would re-credit (pendingEntry
+        // is now null → the credit() fallback runs a second time).
+        promotedEntry = { id: pendingEntry.id, walletId: pendingEntry.walletId, amount: effectiveCashbackAmount };
       } else {
         await walletService.credit({
           userId: scan.userId,
@@ -1981,6 +2078,40 @@ class StickerService {
           await prisma.transaction.delete({ where: { id: transactionId } });
         } catch (rollbackError) {
           logger.error(`CRITICAL: Failed to delete orphaned transaction ${transactionId} for scan ${scanId}. Manual intervention required.`, rollbackError);
+        }
+      }
+      // LOW-2 — if a PENDING cashback entry was already promoted to CLEARED (and
+      // the wallet credited) before this failure, compensate: demote it back to
+      // PENDING and reverse the wallet credit, atomically. This restores the
+      // pre-approve state so the next hourly sweep re-finds the PENDING entry and
+      // promotes it once — instead of seeing pendingEntry === null and running
+      // the credit() fallback, which would double-credit the user.
+      if (promotedEntry) {
+        try {
+          await prisma.$transaction(async (tx) => {
+            // Only reverse if the entry is still CLEARED (idempotent guard):
+            // if a concurrent operation already moved it, do not double-revert.
+            const { count } = await tx.walletTransaction.updateMany({
+              where: { id: promotedEntry!.id, cashbackStatus: 'CLEARED' as any },
+              data: {
+                status: 'PENDING' as any,
+                cashbackStatus: 'PENDING' as any,
+                clearedAt: null,
+                cashbackExpiresAt: null,
+              },
+            });
+            if (count > 0) {
+              await tx.wallet.update({
+                where: { id: promotedEntry!.walletId },
+                data: {
+                  balance:          { increment: -promotedEntry!.amount },
+                  availableBalance: { increment: -promotedEntry!.amount },
+                },
+              });
+            }
+          });
+        } catch (compError) {
+          logger.error(`CRITICAL: Failed to reverse promoted cashback credit for scan ${scanId} (entry ${promotedEntry.id}). Manual intervention required to avoid double-credit on next sweep.`, compError);
         }
       }
       throw new Error('Failed to process scan. Scan approval has been rolled back — please retry.');

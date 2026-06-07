@@ -1831,12 +1831,14 @@ export class AuthService {
         // disable an account) is mitigated by the per-IP authRateLimiter in front of
         // this route plus the Tier-1 super-admin alert fired above at >= 3, which
         // surfaces the abuse for Super Admin review. Suspension transitions status to
-        // INACTIVE (pending Super Admin review), the same transition admin
-        // suspension uses.
+        // SUSPENDED (pending Super Admin review). M1 fix: previously this set INACTIVE,
+        // but per spec §1.1 an Inactive account still permits login — which defeats the
+        // lockout. SUSPENDED blocks login (treated as no-login, equivalent to Archived
+        // for access purposes), so it is the correct abuse-lockout status.
         if (recentCount >= SUSPENSION_THRESHOLD && user.status === 'ACTIVE') {
           await prisma.user.update({
             where: { id: user.id },
-            data: { status: 'INACTIVE' },
+            data: { status: 'SUSPENDED' },
           }).catch((err: unknown) => logger.error('[forgotPassword] suspension update failed', err));
 
           detach(writeAudit({

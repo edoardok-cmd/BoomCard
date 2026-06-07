@@ -28,12 +28,14 @@
  *   inactive-user-nudge              — 30 4 * * *   (4:30 AM daily — 30-day inactivity automations)
  *   activation-link-expiry-reminder  — 30 10 * * *  (10:30 AM daily — §8.3 email + admin alert 24h before expiry)
  *   partner-sla-escalation           — 0 * * * *    (every hour — §5.1 admin alert for partner applications past 24h SLA)
+ *   auto-approve-sweep               — 0 * * * *    (every hour — §2.2/§3.4/§8.1 re-attempt Low/Medium auto-approval for stranded MANUAL_REVIEW scans)
  *   ticket-auto-close                — 0 23 * * *   (11:00 PM daily — §11.4 auto-close RESOLVED tickets after 7 days)
  */
 
 import cron from 'node-cron';
-import { WalletTransactionType, WalletTransactionStatus, SubscriptionStatus, SubscriptionPlan, CashbackEntryStatus, PartnerRequestStatus } from '@prisma/client';
+import { WalletTransactionType, WalletTransactionStatus, SubscriptionStatus, SubscriptionPlan, CashbackEntryStatus, PartnerRequestStatus, ScanStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { stickerService } from '../services/sticker.service';
 import { logger } from '../utils/logger';
 import { emailService } from '../services/email.service';
 import { notificationService } from '../services/notification.service';
@@ -1330,20 +1332,34 @@ async function remindExpiringActivationLinks(): Promise<void> {
 // ── Partner SLA overdue escalation (Spec §5.1) ───────────────────────────────
 // Hourly scan: find partner applications stuck in a non-terminal request status
 // for more than 24 h. Posts an admin-ops alert per overdue partner (with a 20 h
-// cooldown so we don't spam on every tick).
+// cooldown so we don't spam on every tick). U2: also fires an "approaching"
+// warning once an unassigned application crosses the 18h (75% of 24h) mark.
+
+// U2 — warning threshold for the "deadline approaching" alert: 18h = 75% of the
+// 24h internal assignment SLA (matches computePartnerSla's 'warning' boundary).
+const SLA_HOURS_INTERNAL_WARN = 18;
 
 async function escalateOverduePartnerSla(): Promise<void> {
-  // Spec §1.6: SLA clock starts at application submission (createdAt), not at
-  // partner activation (joinedAt). We compare via the Prisma enum constants
-  // (PartnerRequestStatus.APPROVED / .REJECTED): the generated client exposes the
-  // TypeScript enum keys (APPROVED/REJECTED), while the Bulgarian values (ODOBRENA/
-  // OTKAZANA) are only the @map'd DB storage strings. Verified against the generated
-  // client — the keys are correct; never compare against raw Bulgarian strings here.
+  // Spec §1.6 (L201): the 24h internal SLA is an ASSIGNMENT deadline — "24 hours
+  // from creation for admin assignment; an alert is triggered if the deadline is
+  // approaching." L6 fix: the alert must fire on applications that are still
+  // UNASSIGNED past 24h (assignedAdminId is null), not merely "still open in a
+  // non-terminal status". An application that has been claimed by an admin
+  // (assignedAdminId set) has met the assignment SLA even if it is still mid-pipeline.
+  //
+  // SLA clock starts at application submission (createdAt), not at partner
+  // activation (joinedAt). We still exclude terminal request statuses (a rejected
+  // application that was never assigned should not alert forever). We compare via the
+  // Prisma enum constants (PartnerRequestStatus.APPROVED / .REJECTED): the generated
+  // client exposes the TypeScript enum keys (APPROVED/REJECTED), while the Bulgarian
+  // values (ODOBRENA/OTKAZANA) are only the @map'd DB storage strings.
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const overduePartners = await prisma.partner.findMany({
     where: {
       createdAt: { lte: cutoff },
+      // L6 — fire only on UNASSIGNED applications (assignment SLA breach).
+      assignedAdminId: null,
       requestStatus: {
         notIn: [PartnerRequestStatus.APPROVED, PartnerRequestStatus.REJECTED],
         not: null,
@@ -1352,20 +1368,13 @@ async function escalateOverduePartnerSla(): Promise<void> {
     select: { id: true, businessName: true, createdAt: true, requestStatus: true },
   });
 
-  if (overduePartners.length === 0) {
-    logger.info('[partner-sla-escalation] No overdue partner applications');
-    return;
-  }
-
-  logger.info(`[partner-sla-escalation] ${overduePartners.length} overdue partner application(s)`);
-
   for (const partner of overduePartners) {
     const hoursElapsed = Math.round((Date.now() - partner.createdAt.getTime()) / 36e5 * 10) / 10;
     try {
       await notificationService.notifyAdminOps({
         opsType: `partner-sla-overdue-${partner.id}`,
         title: 'Partner SLA Overdue',
-        message: `Application "${partner.businessName}" (status: ${partner.requestStatus}) has been open for ${hoursElapsed}h — past the 24h internal SLA.`,
+        message: `Application "${partner.businessName}" (status: ${partner.requestStatus}) has been UNASSIGNED for ${hoursElapsed}h — past the 24h internal assignment SLA (§1.6).`,
         severity: 'critical',
         actionUrl: `/admin/partners?id=${partner.id}`,
         relatedEntityType: 'Partner',
@@ -1377,7 +1386,111 @@ async function escalateOverduePartnerSla(): Promise<void> {
     }
   }
 
-  logger.info(`[partner-sla-escalation] Alerted on ${overduePartners.length} overdue application(s)`);
+  // U2 (Spec §1.6 / §3.5) — "an alert is triggered if the deadline is APPROACHING."
+  // The overdue scan above fires only AFTER the 24h deadline has passed. The spec
+  // requires a separate proactive alert as the deadline nears. We fire a warning
+  // for unassigned applications between the 75% mark (18h) and the deadline (24h) —
+  // the same threshold the computePartnerSla helper uses for its 'warning' state —
+  // so an admin can claim the application before the SLA is breached. A 6h cooldown
+  // keeps this to roughly one nudge inside the warning window (hourly tick).
+  const warnFrom = new Date(Date.now() - 24 * 60 * 60 * 1000);          // 24h ago (deadline)
+  const warnUntil = new Date(Date.now() - SLA_HOURS_INTERNAL_WARN * 60 * 60 * 1000); // 18h ago
+  const approachingPartners = await prisma.partner.findMany({
+    where: {
+      // Older than 18h but not yet past 24h (the overdue scan owns >24h).
+      createdAt: { gt: warnFrom, lte: warnUntil },
+      assignedAdminId: null,
+      requestStatus: {
+        notIn: [PartnerRequestStatus.APPROVED, PartnerRequestStatus.REJECTED],
+        not: null,
+      },
+    },
+    select: { id: true, businessName: true, createdAt: true, requestStatus: true },
+  });
+
+  for (const partner of approachingPartners) {
+    const hoursElapsed = Math.round((Date.now() - partner.createdAt.getTime()) / 36e5 * 10) / 10;
+    const hoursRemaining = Math.max(0, Math.round((24 - hoursElapsed) * 10) / 10);
+    try {
+      await notificationService.notifyAdminOps({
+        opsType: `partner-sla-approaching-${partner.id}`,
+        title: 'Partner SLA Approaching',
+        message: `Application "${partner.businessName}" (status: ${partner.requestStatus}) is still UNASSIGNED — the 24h internal assignment SLA is approaching (~${hoursRemaining}h remaining, §1.6). Claim it to avoid a breach.`,
+        severity: 'warning',
+        actionUrl: `/admin/partners?id=${partner.id}`,
+        relatedEntityType: 'Partner',
+        relatedEntityId: partner.id,
+        cooldownHours: 6,
+      });
+    } catch (err) {
+      logger.error(`[partner-sla-escalation] Failed to send approaching-SLA alert for partner ${partner.id}:`, err);
+    }
+  }
+
+  if (overduePartners.length === 0 && approachingPartners.length === 0) {
+    logger.info('[partner-sla-escalation] No unassigned partner applications approaching or past SLA');
+    return;
+  }
+  logger.info(
+    `[partner-sla-escalation] Alerted on ${overduePartners.length} overdue + ` +
+    `${approachingPartners.length} approaching application(s)`
+  );
+}
+
+// ── Low/Medium-risk auto-approve sweep (Spec §2.2 / §3.4 / §8.1) ─────────────
+// Auto-approval is performed synchronously at scan time (sticker.service.uploadReceipt):
+// Low (0–20) and Medium (21–50) risk scans are immediately promoted PENDING→Cleared
+// (Medium auto-approves per the §9.4 amendment 2026-06-04). If that inline promote
+// throws, the scan is left stranded in MANUAL_REVIEW with a PENDING cashback row and
+// nothing ever retries it. §3.4/§8.1 require Low/Medium Pending records to clear
+// within the 24h auto-approval window.
+//
+// This hourly sweep finds scans still in MANUAL_REVIEW whose stored specRiskLevel is
+// Low or Medium and re-attempts the auto-approval by calling the SAME service method
+// the inline path uses (stickerService.approveScan with adminUserId=null). No
+// credit/wallet logic is duplicated here. High-risk scans are intentionally skipped —
+// they require a human decision and must stay in the queue.
+const AUTO_APPROVE_SWEEP_BATCH = 50;
+
+async function sweepAutoApprovePendingScans(): Promise<void> {
+  // Only sweep scans that have aged at least a few minutes, so we never race the
+  // inline auto-approve still in flight for a just-uploaded receipt. The 24h window
+  // in §3.4/§8.1 is the deadline, not a delay — retrying earlier is fine and desirable
+  // for stranded rows, but a small floor avoids double-processing fresh uploads.
+  const minAge = new Date(Date.now() - 10 * 60 * 1000); // 10 minutes
+
+  const strandedScans = await prisma.stickerScan.findMany({
+    where: {
+      status: ScanStatus.MANUAL_REVIEW,
+      specRiskLevel: { in: ['Low', 'Medium'] },
+      updatedAt: { lte: minAge },
+      cashbackAmount: { gt: 0 },
+    },
+    select: { id: true, specRiskLevel: true, createdAt: true },
+    take: AUTO_APPROVE_SWEEP_BATCH,
+    orderBy: { createdAt: 'asc' },
+  });
+
+  if (strandedScans.length === 0) {
+    logger.info('[auto-approve-sweep] No stranded Low/Medium-risk scans to auto-approve');
+    return;
+  }
+
+  logger.info(`[auto-approve-sweep] Re-attempting auto-approval for ${strandedScans.length} stranded Low/Medium-risk scan(s)`);
+
+  let approved = 0;
+  for (const scan of strandedScans) {
+    try {
+      // Reuse the canonical promote path (credit + wallet + audit + notifications).
+      await stickerService.approveScan(scan.id, { adminUserId: null });
+      approved += 1;
+    } catch (err) {
+      // Leave it in MANUAL_REVIEW for the next sweep / admin action.
+      logger.error(`[auto-approve-sweep] auto-approve still failing for scan ${scan.id} (risk ${scan.specRiskLevel}):`, err);
+    }
+  }
+
+  logger.info(`[auto-approve-sweep] Auto-approved ${approved}/${strandedScans.length} stranded scan(s)`);
 }
 
 // ── Ticket auto-close (Spec §11.4) ────────────────────────────────────────────
@@ -1708,6 +1821,15 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: partner-sla-escalation (0 * * * *)');
+
+  // Every hour — re-attempt auto-approval for Low/Medium-risk scans stranded in
+  // MANUAL_REVIEW (inline auto-approve failed). Spec §2.2/§3.4/§8.1: Low/Medium
+  // Pending records must clear within the 24h auto-approval window.
+  cron.schedule('0 * * * *', () => {
+    sweepAutoApprovePendingScans().catch((err) => alertSchedulerFailure('auto-approve-sweep', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: auto-approve-sweep (0 * * * *)');
 
   // 11 PM every day — auto-close RESOLVED tickets with no activity for 7+ days.
   // Spec §11.4: "Затворена: Заявителят е потвърдил или 7 дни без отговор след 'Решена'."

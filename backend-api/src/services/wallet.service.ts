@@ -11,6 +11,89 @@ import { getSystemSettingInt } from '../utils/systemSettings';
 import { cashbackLifecycleService } from './cashbackLifecycle.service';
 import { AppError } from '../middleware/error.middleware';
 import { detach } from '../utils/detach';
+import { reasonIndicatesIbanProblem } from '../utils/payoutFailureReason';
+
+// ── User-facing payout-status masking (Spec §3.2 / §3.7) ─────────────────────
+// Spec §3.7 (line 461): on the SECOND failed payout the record routes to manual
+// review, the user is NOT notified, and it still reads "Sent to payout" from the
+// user's perspective. That is the ONLY state the spec mandates be hidden. The
+// strike logic stamps WITHDRAWAL rows as RISK_HOLD on the second failure. We mask
+// RISK_HOLD → PROCESSING server-side so the "Sent to payout" label is enforced at
+// the API boundary and does not depend on a frontend relabel.
+//
+// Spec §3.2 (line 336): on the FIRST failed payout the user IS notified to check
+// their IBAN and the WITHDRAWAL is reversed (a paired COMPLETED ADJUSTMENT credit
+// is written). The user legitimately sees that failure alongside its reversal
+// credit, so a normal reversed first-failure FAILED row is NOT masked — masking it
+// would show a phantom in-flight "Sent to payout" payout next to its own reversal,
+// which the spec does not call for.
+//
+// FAILED is masked ONLY on WITHDRAWAL rows that were NOT reversed (no paired
+// ADJUSTMENT credit) — i.e. the rare race where the reversal failed to land. In
+// that case the user has neither a refund nor an in-flight payout; surfacing a raw
+// FAILED is misleading, so we mask it defensively to "Sent to payout".
+//
+// Only WITHDRAWAL (payout) rows are affected; every other transaction type passes
+// through untouched. Admin-facing payout APIs (adminPayouts.routes) read the raw
+// status directly and are intentionally NOT routed through this helper.
+
+/**
+ * Extract the withdrawal id a reversal ADJUSTMENT refers to, from its metadata
+ * (`{ reversedWithdrawalId }`). Returns null when the row is not a reversal.
+ */
+function reversedWithdrawalIdOf(tx: { type: WalletTransactionType; metadata?: string | null }): string | null {
+  if (tx.type !== WalletTransactionType.ADJUSTMENT || !tx.metadata) return null;
+  try {
+    const parsed = JSON.parse(tx.metadata);
+    const id = parsed?.reversedWithdrawalId;
+    return typeof id === 'string' && id.length > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+export function maskUserFacingPayoutStatus<
+  T extends { id?: string; type: WalletTransactionType; status: WalletTransactionStatus }
+>(
+  tx: T,
+  reversedWithdrawalIds?: ReadonlySet<string>,
+): T {
+  if (tx.type !== WalletTransactionType.WITHDRAWAL) return tx;
+
+  // Second-failure escalation — spec §3.7 requires this to read "Sent to payout".
+  if (tx.status === WalletTransactionStatus.RISK_HOLD) {
+    return { ...tx, status: WalletTransactionStatus.PROCESSING };
+  }
+
+  // First-failure FAILED: only mask when it was NOT reversed (no paired credit).
+  // A reversed first-failure row surfaces honestly alongside its reversal credit.
+  if (tx.status === WalletTransactionStatus.FAILED) {
+    const isReversed = !!(tx.id && reversedWithdrawalIds?.has(tx.id));
+    if (!isReversed) {
+      return { ...tx, status: WalletTransactionStatus.PROCESSING };
+    }
+  }
+
+  return tx;
+}
+
+/**
+ * Apply user-facing payout-status masking to a page of transactions, resolving
+ * which FAILED withdrawals were reversed from the ADJUSTMENT rows present in the
+ * same page (the reversal credit is written in the same wallet history).
+ */
+export function maskUserFacingPayoutStatuses<
+  T extends { id?: string; type: WalletTransactionType; status: WalletTransactionStatus; metadata?: string | null }
+>(
+  txs: T[],
+): T[] {
+  const reversedWithdrawalIds = new Set<string>();
+  for (const tx of txs) {
+    const id = reversedWithdrawalIdOf(tx);
+    if (id) reversedWithdrawalIds.add(id);
+  }
+  return txs.map((tx) => maskUserFacingPayoutStatus(tx, reversedWithdrawalIds));
+}
 
 // ── Service ────────────────────────────────────────────────────────────────────
 
@@ -969,102 +1052,143 @@ export class WalletService {
     } catch (transferError: any) {
       logger.error(`Paysera Transfer API failed for payout ${walletTransactionId} (user ${userId}): ${transferError.message}`);
 
-      // Reverse the DB debit — credit the amount back, mark WITHDRAWAL FAILED, and
-      // create an ADJUSTMENT record so the audit trail shows the credit-back.
+      // M4 — unify the two-strike payout-failure outcome across the admin /fail
+      // route (adminPayouts.routes.ts) and this auto-fail path. Canonical behavior
+      // is the admin /fail route, because it is the spec-correct §3.7 implementation:
+      //   First failure  → mark FAILED, restore wallet balance, revert cashback
+      //                    LOCKED→CLEARED, notify user to correct IBAN.
+      //   Second failure → mark RISK_HOLD (NOT FAILED), do NOT restore balance,
+      //                    leave cashback LOCKED, flag user HIGH risk, notify admin
+      //                    ops only. The user is NOT notified and the record stays
+      //                    visible to them as "Sent to payout" (RISK_HOLD label).
+      //
+      // Previously this path ALWAYS restored balance + marked FAILED + reverted
+      // cashback even on the second strike, diverging from the admin route. We now
+      // determine the strike count first and branch identically.
+      //
+      // Strike count: count BOTH prior FAILED and RISK_HOLD withdrawals so the two
+      // paths agree even when an earlier second-strike produced a RISK_HOLD row
+      // (which is not FAILED). The current row is still PROCESSING here, so it is
+      // not yet in either bucket.
+      let isSecondFailure = false;
       try {
-        await prisma.$transaction(async (tx) => {
-          const currentWallet = await tx.wallet.update({
-            where: { userId },
-            data: {
-              balance: { increment: amount },
-              availableBalance: { increment: amount },
-            },
-          });
-
-          await tx.walletTransaction.update({
-            where: { id: walletTransactionId },
-            data: {
-              status: WalletTransactionStatus.FAILED,
-              description: `Неуспешно изплащане: ${transferError.message}`,
-            },
-          });
-
-          await tx.walletTransaction.create({
-            data: {
-              walletId,
-              type: WalletTransactionType.ADJUSTMENT,
-              amount,
-              balanceBefore: currentWallet.balance - amount,
-              balanceAfter: currentWallet.balance,
-              status: WalletTransactionStatus.COMPLETED,
-              description: `Сторниране на изплащане — балансът е възстановен`,
-              metadata: JSON.stringify({ reversedWithdrawalId: walletTransactionId, reason: transferError.message }),
-            },
-          });
-        });
-        logger.info(`Payout reversal complete for user ${userId} — balance restored`);
-
-        // Spec §4.4 v1.1 — also revert the LOCKED cashback annotations to
-        // CLEARED so the entries are eligible for a future payout. Best-effort.
-        await this.revertCashbackLockForWithdrawal(
-          walletTransactionId,
-          null,
-          `Paysera transfer failed: ${transferError.message}`,
-        );
-      } catch (reversalError: any) {
-        logger.error(`CRITICAL: payout reversal failed for user ${userId}: ${reversalError.message}`);
-        await prisma.wallet.update({
-          where: { userId },
-          data: {
-            isLocked: true,
-            lockedReason: `Payout reversal failed: ${reversalError.message}. Manual review required.`,
-            lockedAt: new Date(),
-          },
-        }).catch(() => {});
-      }
-
-      // F-014: Spec §7.4 payout failure handling.
-      // First failure: notify user requesting IBAN correction.
-      // Second failure: flag user as high-risk for manual admin review (no user notification).
-      try {
-        // Count prior payout failures for this user to determine which action to take.
         const priorFailureCount = await prisma.walletTransaction.count({
           where: {
             walletId,
             type: WalletTransactionType.WITHDRAWAL,
-            status: WalletTransactionStatus.FAILED,
+            status: { in: [WalletTransactionStatus.FAILED, WalletTransactionStatus.RISK_HOLD] },
           },
         });
+        isSecondFailure = priorFailureCount >= 1;
+      } catch (countErr) {
+        logger.error(`[executePayoutTransfer] failed to count prior payout failures for user ${userId}:`, countErr);
+      }
 
-        // priorFailureCount includes the row we just marked FAILED (the DB write happened above).
-        // So 1 = this is the first failure, 2+ = second or subsequent failure.
-        if (priorFailureCount <= 1) {
-          // First failure: notify user to correct IBAN per spec §7.4.
+      if (isSecondFailure) {
+        // Second failure: escalate to RISK_HOLD for manual review. Do NOT restore
+        // balance and do NOT revert cashback — the balance/cashback are released
+        // (or consumed) when an admin resolves the RISK_HOLD via the payouts route.
+        try {
+          await prisma.walletTransaction.update({
+            where: { id: walletTransactionId },
+            data: {
+              status: WalletTransactionStatus.RISK_HOLD,
+              description: `Ескалирано за ръчен преглед след повторен неуспех: ${transferError.message}`,
+            },
+          });
+          // Flag user HIGH risk (floors riskScore at 61, never downgrades).
+          await this.escalateRiskAfterRepeatedPayoutFailure(userId)
+            .catch((err) => logger.error(`[executePayoutTransfer] risk flag update failed for user ${userId}:`, err));
+        } catch (holdErr: any) {
+          logger.error(`CRITICAL: payout RISK_HOLD escalation failed for user ${userId}: ${holdErr.message}`);
+          await prisma.wallet.update({
+            where: { userId },
+            data: {
+              isLocked: true,
+              lockedReason: `Payout RISK_HOLD escalation failed: ${holdErr.message}. Manual review required.`,
+              lockedAt: new Date(),
+            },
+          }).catch(() => {});
+        }
+
+        // User is NOT notified on second failure per spec §3.7. Notify admin ops.
+        detach(notificationService
+          .notifyAdminOps({
+            opsType: 'payout_failure_high_risk',
+            title: 'User flagged high-risk after repeated payout failures',
+            message: `User ${userId} had a repeated payout failure. Payout escalated to RISK_HOLD and flagged for manual admin review per spec §3.7.`,
+            severity: 'warning',
+            fields: [
+              { label: 'User ID', value: userId },
+              { label: 'Last error', value: transferError.message.slice(0, 200) },
+            ],
+          }), (err) => logger.error(`[executePayoutTransfer] admin notification failed for user ${userId}:`, err));
+      } else {
+        // First failure: reverse the DB debit — credit the amount back, mark
+        // WITHDRAWAL FAILED, and create an ADJUSTMENT record for the audit trail.
+        try {
+          await prisma.$transaction(async (tx) => {
+            const currentWallet = await tx.wallet.update({
+              where: { userId },
+              data: {
+                balance: { increment: amount },
+                availableBalance: { increment: amount },
+              },
+            });
+
+            await tx.walletTransaction.update({
+              where: { id: walletTransactionId },
+              data: {
+                status: WalletTransactionStatus.FAILED,
+                description: `Неуспешно изплащане: ${transferError.message}`,
+              },
+            });
+
+            await tx.walletTransaction.create({
+              data: {
+                walletId,
+                type: WalletTransactionType.ADJUSTMENT,
+                amount,
+                balanceBefore: currentWallet.balance - amount,
+                balanceAfter: currentWallet.balance,
+                status: WalletTransactionStatus.COMPLETED,
+                description: `Сторниране на изплащане — балансът е възстановен`,
+                metadata: JSON.stringify({ reversedWithdrawalId: walletTransactionId, reason: transferError.message }),
+              },
+            });
+          });
+          logger.info(`Payout reversal complete for user ${userId} — balance restored`);
+
+          // Spec §4.4 v1.1 — also revert the LOCKED cashback annotations to
+          // CLEARED so the entries are eligible for a future payout. Best-effort.
+          await this.revertCashbackLockForWithdrawal(
+            walletTransactionId,
+            null,
+            `Paysera transfer failed: ${transferError.message}`,
+          );
+        } catch (reversalError: any) {
+          logger.error(`CRITICAL: payout reversal failed for user ${userId}: ${reversalError.message}`);
+          await prisma.wallet.update({
+            where: { userId },
+            data: {
+              isLocked: true,
+              lockedReason: `Payout reversal failed: ${reversalError.message}. Manual review required.`,
+              lockedAt: new Date(),
+            },
+          }).catch(() => {});
+        }
+
+        // First failure: notify the user. L1 — use IBAN-correction wording only
+        // when the transfer error indicates an IBAN / bank-account problem;
+        // otherwise neutral "action may be required" wording. Same classifier as
+        // the admin /fail path (reasonIndicatesIbanProblem) so both paths agree.
+        if (reasonIndicatesIbanProblem(transferError.message)) {
           detach(notificationService
             .notifyPayoutFailedInvalidIban(userId), (err) => logger.error(`[executePayoutTransfer] notifyPayoutFailedInvalidIban failed for user ${userId}:`, err));
         } else {
-          // Second+ failure: flag user as high-risk for manual admin review.
-          // User is NOT notified on second failure per spec §7.4.
-          // Shared two-strike math (floors riskScore at 61, never downgrades) so
-          // this path stays consistent with the admin /fail route (spec §2.1).
-          await this.escalateRiskAfterRepeatedPayoutFailure(userId)
-            .catch((err) => logger.error(`[executePayoutTransfer] risk flag update failed for user ${userId}:`, err));
-
           detach(notificationService
-            .notifyAdminOps({
-              opsType: 'payout_failure_high_risk',
-              title: 'User flagged high-risk after repeated payout failures',
-              message: `User ${userId} has had ${priorFailureCount} payout failures. Flagged for manual admin review per spec §7.4.`,
-              severity: 'warning',
-              fields: [
-                { label: 'User ID', value: userId },
-                { label: 'Failure count', value: String(priorFailureCount) },
-                { label: 'Last error', value: transferError.message.slice(0, 200) },
-              ],
-            }), (err) => logger.error(`[executePayoutTransfer] admin notification failed for user ${userId}:`, err));
+            .notifyPayoutFailedGeneric(userId), (err) => logger.error(`[executePayoutTransfer] notifyPayoutFailedGeneric failed for user ${userId}:`, err));
         }
-      } catch (f014Err) {
-        logger.error(`[executePayoutTransfer] F-014 failure-handling logic failed for user ${userId}:`, f014Err);
       }
 
       throw new Error(`Payout could not be processed: ${transferError.message}`);
@@ -1264,8 +1388,32 @@ export class WalletService {
       where: whereClause,
     });
 
+    // Resolve which FAILED withdrawals in this page were reversed (have a paired
+    // ADJUSTMENT credit), so the mask hides only the rare UNreversed first-failure
+    // row, never a normal reversed one. We look up reversals across the whole
+    // wallet (not just this page) because the credit may fall on a different page.
+    const failedWithdrawalIds = transactions
+      .filter(
+        (t) =>
+          t.type === WalletTransactionType.WITHDRAWAL &&
+          t.status === WalletTransactionStatus.FAILED,
+      )
+      .map((t) => t.id);
+
+    const reversedWithdrawalIds = new Set<string>();
+    if (failedWithdrawalIds.length > 0) {
+      const reversals = await prisma.walletTransaction.findMany({
+        where: { walletId: wallet.id, type: WalletTransactionType.ADJUSTMENT },
+        select: { type: true, metadata: true },
+      });
+      for (const r of reversals) {
+        const id = reversedWithdrawalIdOf(r);
+        if (id && failedWithdrawalIds.includes(id)) reversedWithdrawalIds.add(id);
+      }
+    }
+
     return {
-      transactions,
+      transactions: transactions.map((tx) => maskUserFacingPayoutStatus(tx, reversedWithdrawalIds)),
       total,
       limit: params?.limit || 50,
       offset: params?.offset || 0,

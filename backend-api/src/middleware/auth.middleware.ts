@@ -53,6 +53,7 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
       const freshUser = await prisma.user.findUnique({
         where: { id: decoded.id },
         select: {
+          status: true,
           rolesUpdatedAt: true,
           // Check for any role assignment that has since expired.  take:1 keeps cost
           // low — we only need to know if at least one expired row exists.
@@ -63,6 +64,34 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
           },
         },
       });
+
+      // M2 — defense-in-depth live admin status re-check (mirrors the USER/PARTNER
+      // branch below). Archived/Suspended-stamping rolesUpdatedAt is the primary
+      // live-token invalidation path, but if an admin row is moved to a no-login
+      // status without that stamp, the embedded JWT would otherwise coast to natural
+      // expiry. Per spec §1.5, Archived and Suspended admins have NO login access;
+      // Inactive admins MAY still log in (read-only, enforced via the aro flag), so
+      // INACTIVE is intentionally NOT rejected here.
+      const as = freshUser?.status as string | undefined;
+      if (as === 'ARCHIVED' || as === 'SUSPENDED' || as === 'DELETED') {
+        return res.status(401).json({ error: 'Account not accessible.' });
+      }
+
+      // M4 (spec §1.5, line 177) — re-derive the admin read-only flag from the
+      // LIVE account status on every request, not just at login. The `aro` claim
+      // is stamped into the JWT at login (auth.service), but a mid-session
+      // ACTIVE → INACTIVE downgrade does NOT stamp rolesUpdatedAt (Inactive admins
+      // "coast to natural expiry" in read-only mode per §1.5), so without this the
+      // live token would retain full write access until expiry. Forcing aro=true
+      // here whenever the live status is INACTIVE closes that window; the
+      // requirePermission / requireActiveAdmin guards then block all writes.
+      // (Conversely, if an Inactive admin is reactivated to ACTIVE mid-session we
+      // clear the stale aro claim so they regain write access without re-login.)
+      if (as === 'INACTIVE') {
+        req.user.aro = true;
+      } else if (req.user.aro) {
+        delete req.user.aro;
+      }
 
       if (
         freshUser?.rolesUpdatedAt &&
@@ -177,11 +206,19 @@ const WRITE_PERMISSION_SUFFIXES = ['.write', '.create', '.delete', '.update', '.
  * own account and do not mutate shared platform records. Spec §1.5 restricts
  * "approve, reassign, or modify records" of other entities, not self-service.
  */
+const READ_ONLY_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
 export const requireActiveAdmin = (req: AuthRequest, _res: Response, next: NextFunction) => {
   if (!req.user) {
     return next(new AppError('Not authenticated', 401));
   }
-  if (req.user.aro === true) {
+  // L7 — robust read-only gate: block by HTTP method. Any non-read method
+  // (POST/PUT/PATCH/DELETE) is a mutation and must be blocked for an Inactive
+  // admin, regardless of whether a permission key suffix happens to match.
+  // This covers future write routes whose permission keys do not end in a
+  // recognised write suffix, and SA-only routes that use authorize() without
+  // requirePermission(). GET/HEAD/OPTIONS pass through so read-only access works.
+  if (req.user.aro === true && !READ_ONLY_METHODS.has(req.method)) {
     return next(
       new AppError(
         'Your admin account is inactive. Operational rights are limited to read-only access. ' +

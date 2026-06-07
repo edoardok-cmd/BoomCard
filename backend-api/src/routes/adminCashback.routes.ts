@@ -249,6 +249,12 @@ router.get('/payout-thresholds', requirePermission('cashback.read'), async (_req
     const amounts = await Promise.all(plans.map((plan) => getPayoutThresholdBGN(plan)));
     const data: Record<string, number> = {};
     for (let i = 0; i < plans.length; i++) data[plans[i]] = amounts[i];
+    // L2 (spec §3.7) — the spec plan key is `PREMIUM`; the SubscriptionPlan enum
+    // uses `PREMIUM_MONTHLY`. The admin frontend (AdminCashbackPage) reads
+    // `thresholds.PREMIUM`, so expose `PREMIUM` as an alias of `PREMIUM_MONTHLY`
+    // while keeping the enum-native key for callers that use it. Additive — no
+    // existing key is removed.
+    data.PREMIUM = data.PREMIUM_MONTHLY;
     res.json({ success: true, data });
   } catch {
     res.status(500).json({ success: false, error: 'Failed to fetch payout thresholds' });
@@ -360,7 +366,9 @@ router.post('/entries/:id/lock', requirePermission('cashback.write'), async (req
 
 router.post('/entries/:id/expire', requirePermission('cashback.write'), async (req: AuthRequest, res: Response) => {
   try {
-    await expireEntry(req.params.id, req.user!.id);
+    // L3 — Pending→Expired requires an explicit admin override (spec §8.1 / §3.4).
+    const allowPendingOverride = req.body?.adminOverride === true;
+    await expireEntry(req.params.id, req.user!.id, { allowPendingOverride });
     res.json({ success: true, message: 'Entry expired' });
   } catch (error: any) {
     const status = error.statusCode ?? 500;

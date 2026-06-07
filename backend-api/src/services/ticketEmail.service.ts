@@ -23,6 +23,78 @@ const DEFAULT_DOMAIN = 'mail.boomcard.bg';
 const SUBSCRIBER_INBOUND = process.env.SUBSCRIBER_INBOUND_EMAIL ?? 'support@boomcard.bg';
 const PARTNER_INBOUND = process.env.PARTNER_INBOUND_EMAIL ?? 'office@boomcard.bg';
 
+/**
+ * H3 (Spec Part 6 / Clash 7.1) — plus-addressing (`support+<ref>@`) is DEFERRED
+ * to v1.3. v1.2 threading relies ONLY on the X-BoomCard-Request-ID header
+ * (primary) and the `[#XXXX]` subject fallback. This flag gates BOTH the outbound
+ * plus-addressed Reply-To AND the inbound plus-address resolver (see
+ * ticketInbound.service.ts resolveTicket Priority 3). Default OFF — the only
+ * spec-conformant v1.2 behavior. Set TICKET_PLUS_ADDRESSING_ENABLED=true to
+ * re-enable the v1.3 preview behavior for testing.
+ */
+export function isPlusAddressingEnabled(): boolean {
+  return process.env.TICKET_PLUS_ADDRESSING_ENABLED === 'true';
+}
+
+/**
+ * M6 (Spec §1.7 / §7.1) — canonical `request_status` mapping.
+ *
+ * The spec defines exactly five request statuses: New | In Progress | Waiting |
+ * Closed | Cancelled. The DB `TicketStatus` enum is a documented super-set
+ * (NEW/OPEN/IN_REVIEW/WAITING/RESOLVED/CLOSED/REJECTED/CANCELLED). This maps the
+ * raw enum to the canonical set so the admin API surface never leaks the
+ * non-canonical operational states (IN_REVIEW/RESOLVED/REJECTED). The mapping is
+ * applied additively as a `requestStatus` field; the raw `status` is preserved for
+ * any caller that still keys on the stable enum token.
+ *
+ *   NEW       → New
+ *   OPEN      → In Progress   (received + first contact made / being acted upon)
+ *   IN_REVIEW → In Progress   (assigned + actively worked)
+ *   WAITING   → Waiting
+ *   RESOLVED  → Closed        (admin-internal pre-close)
+ *   CLOSED    → Closed
+ *   REJECTED  → Closed        (F4 — align with the schema convention + the existing
+ *                              partner-facing serializers, which map REJECTED→Closed.
+ *                              Spec §1.7's canonical set lists both Closed and
+ *                              Cancelled but does not dictate which REJECTED takes;
+ *                              the schema comment is authoritative: "Not in spec
+ *                              canonical enum — map to 'Closed'". Keeping admin and
+ *                              partner surfaces consistent.)
+ *   CANCELLED → Cancelled
+ */
+export type CanonicalRequestStatus = 'New' | 'In Progress' | 'Waiting' | 'Closed' | 'Cancelled';
+
+export function toCanonicalRequestStatus(status: string | null | undefined): CanonicalRequestStatus {
+  switch (status) {
+    case 'NEW':
+      return 'New';
+    case 'OPEN':
+    case 'IN_REVIEW':
+      return 'In Progress';
+    case 'WAITING':
+      return 'Waiting';
+    case 'RESOLVED':
+    case 'CLOSED':
+    case 'REJECTED':
+      // F4 — REJECTED maps to Closed to match the schema convention and the
+      // existing partner-facing serializers (consistent labelling across surfaces).
+      return 'Closed';
+    case 'CANCELLED':
+      return 'Cancelled';
+    default:
+      // Unknown/legacy value — surface as In Progress (operationally open) rather
+      // than inventing a sixth canonical value.
+      return 'In Progress';
+  }
+}
+
+/** Attach the canonical `requestStatus` to a ticket-shaped object without mutating the raw `status`. */
+export function withCanonicalRequestStatus<T extends { status: string }>(
+  ticket: T,
+): T & { requestStatus: CanonicalRequestStatus } {
+  return { ...ticket, requestStatus: toCanonicalRequestStatus(ticket.status) };
+}
+
 function shortTicketRef(ticketId: string): string {
   // 8-char prefix is plenty for visual disambiguation; the full UUID stays in
   // headers and the database, so subject parsing only needs to be unique
@@ -50,6 +122,15 @@ export function computeShortRef(ticketId: string): string {
  */
 export function buildPlusReplyTo(ticketId: string, audience: 'partner' | 'subscriber'): string {
   const base = audience === 'partner' ? PARTNER_INBOUND : SUBSCRIBER_INBOUND;
+  // H3 (Clash 7.1): plus-addressing is deferred to v1.3. In v1.2 (flag OFF, the
+  // default) we emit the PLAIN inbound mailbox (support@ / office@) as Reply-To.
+  // Threading then relies solely on the X-BoomCard-Request-ID header and the
+  // [#XXXX] subject prefix (both still emitted by buildTicketHeaders /
+  // buildTicketSubject). The `+<shortRef>` suffix is only added when the v1.3
+  // preview flag is explicitly enabled.
+  if (!isPlusAddressingEnabled()) {
+    return base;
+  }
   const atIdx = base.lastIndexOf('@');
   const shortRef = shortTicketRef(ticketId);
   return `${base.slice(0, atIdx)}+${shortRef}${base.slice(atIdx)}`;

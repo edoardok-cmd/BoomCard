@@ -218,8 +218,12 @@ describe('Fix #1 — autoCloseResolvedTickets() TOCTOU', () => {
 // Fix #3 — autoCloseResolvedTickets() closure email includes replyTo plus-address
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('Fix #3 — autoCloseResolvedTickets() includes replyTo plus-address', () => {
-  it('sets replyTo to support+<shortRef>@... for USER tickets', async () => {
+// H3 (Clash 7.1): plus-addressing is deferred to v1.3. In v1.2 (flag OFF, the
+// default) the closure email's Reply-To is the PLAIN inbound mailbox; threading
+// relies on the X-BoomCard-Request-ID header + [#XXXX] subject instead. These
+// tests assert the v1.2 default — no `+<shortRef>` suffix is emitted.
+describe('Fix #3 — autoCloseResolvedTickets() sets the plain inbound Reply-To (v1.2, plus-addressing deferred)', () => {
+  it('sets replyTo to the plain support@ mailbox for USER tickets', async () => {
     helpTicketFindManyRows = [{
       id: 'aabbccdd-eeff-0011-2233-445566778899',
       subject: 'Test close',
@@ -235,11 +239,12 @@ describe('Fix #3 — autoCloseResolvedTickets() includes replyTo plus-address', 
     await new Promise((r) => setImmediate(r));
 
     expect(emailSendCalls).toHaveLength(1);
-    // shortRef = first 8 hex chars of UUID without dashes = 'aabbccdd'
-    expect(emailSendCalls[0].replyTo).toMatch(/support\+aabbccdd@/);
+    // v1.2 default: plain mailbox, no `+aabbccdd` plus-address suffix.
+    expect(emailSendCalls[0].replyTo).toBe('support@boomcard.bg');
+    expect(emailSendCalls[0].replyTo).not.toMatch(/\+/);
   });
 
-  it('sets replyTo to office+<shortRef>@... for PARTNER tickets', async () => {
+  it('sets replyTo to the plain office@ mailbox for PARTNER tickets', async () => {
     helpTicketFindManyRows = [{
       id: 'aabbccdd-eeff-0011-2233-445566778899',
       subject: 'Partner close',
@@ -255,7 +260,9 @@ describe('Fix #3 — autoCloseResolvedTickets() includes replyTo plus-address', 
     await new Promise((r) => setImmediate(r));
 
     expect(emailSendCalls).toHaveLength(1);
-    expect(emailSendCalls[0].replyTo).toMatch(/office\+aabbccdd@/);
+    // v1.2 default: plain mailbox, no `+aabbccdd` plus-address suffix.
+    expect(emailSendCalls[0].replyTo).toBe('office@boomcard.bg');
+    expect(emailSendCalls[0].replyTo).not.toMatch(/\+/);
   });
 });
 
