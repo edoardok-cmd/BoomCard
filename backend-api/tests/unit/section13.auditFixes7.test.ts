@@ -15,8 +15,9 @@
  *
  *   Fix 4 — fraud-rule write routes (POST/PATCH/DELETE /settings/fraud-rules)
  *            are now gated by requirePermission('control.rules.write') instead of
- *            the dead authorize('SUPER_ADMIN') gate; RISK_REVIEW (which has only
- *            control.rules.read) is correctly blocked from write ops
+ *            the dead authorize('SUPER_ADMIN') gate. U3 (spec §2.1 / Clash 5.4):
+ *            RISK_REVIEW holds control.rules.write.bounded and may create/edit
+ *            within FRAUD_RULE_BOUNDS (out-of-bounds → 422), but cannot DELETE.
  *
  *   Fix 5 — authenticate() rejects ADMIN JWTs whose iat < User.rolesUpdatedAt
  *            (stale-permissions invalidation); USER/PARTNER/SUPER_ADMIN tokens
@@ -532,24 +533,49 @@ describe('Fix 4 — fraud-rule write routes use control.rules.write (not hard SU
     expect(res.status).toBe(200);
   });
 
-  it('RISK_REVIEW (control.rules.read only) is blocked from POST /settings/fraud-rules — 403', async () => {
+  // U3 (spec §2.1 / Clash 5.4): RISK_REVIEW now holds control.rules.write.bounded,
+  // so it CAN create/edit fraud rules — but only within FRAUD_RULE_BOUNDS. Exceeding
+  // a bound is rejected with 422; it still cannot DELETE (deactivate) a rule.
+  it('U3 — RISK_REVIEW can POST /settings/fraud-rules within bounds — 201', async () => {
     setMockUser({ permissions: ROLE_DEFAULT_ALLOWS.RISK_REVIEW });
 
     const res = await buildSettingsApp()
       .post('/settings/fraud-rules')
-      .send({ tier: 'SYSTEM' });
+      .send({ tier: 'SYSTEM', dailyScanLimit: 50 });
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(201);
   });
 
-  it('RISK_REVIEW is blocked from PATCH /settings/fraud-rules/:id — 403', async () => {
+  it('U3 — RISK_REVIEW POST with an out-of-bounds value is rejected — 422', async () => {
     setMockUser({ permissions: ROLE_DEFAULT_ALLOWS.RISK_REVIEW });
+
+    const res = await buildSettingsApp()
+      .post('/settings/fraud-rules')
+      .send({ tier: 'SYSTEM', dailyScanLimit: 999 }); // bound is 1–500
+
+    expect(res.status).toBe(422);
+  });
+
+  it('U3 — RISK_REVIEW can PATCH /settings/fraud-rules/:id within bounds — 200', async () => {
+    setMockUser({ permissions: ROLE_DEFAULT_ALLOWS.RISK_REVIEW });
+    m.fraudRule.findUnique.mockResolvedValueOnce({ id: 'fr-1', tier: 'SYSTEM', isActive: true });
 
     const res = await buildSettingsApp()
       .patch('/settings/fraud-rules/fr-1')
       .send({ dailyScanLimit: 3 });
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+  });
+
+  it('U3 — RISK_REVIEW PATCH with an out-of-bounds value is rejected — 422', async () => {
+    setMockUser({ permissions: ROLE_DEFAULT_ALLOWS.RISK_REVIEW });
+    m.fraudRule.findUnique.mockResolvedValueOnce({ id: 'fr-1', tier: 'SYSTEM', isActive: true });
+
+    const res = await buildSettingsApp()
+      .patch('/settings/fraud-rules/fr-1')
+      .send({ dailyScanLimit: 999 }); // bound is 1–500
+
+    expect(res.status).toBe(422);
   });
 
   it('RISK_REVIEW is blocked from DELETE /settings/fraud-rules/:id — 403', async () => {

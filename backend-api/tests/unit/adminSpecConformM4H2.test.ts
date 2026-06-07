@@ -35,7 +35,7 @@ jest.mock('jsonwebtoken', () => ({
 }));
 
 import jwt from 'jsonwebtoken';
-import { authenticate } from '../../src/middleware/auth.middleware';
+import { authenticate, requirePermission } from '../../src/middleware/auth.middleware';
 import { stickerService } from '../../src/services/sticker.service';
 import type { AuthRequest } from '../../src/middleware/auth.middleware';
 import type { Response, NextFunction } from 'express';
@@ -167,5 +167,32 @@ describe('H2 — reactivateInactiveSticker', () => {
     });
     await expect(stickerService.reactivateInactiveSticker('STK-1', 'admin-1')).rejects.toThrow(/partner status is not Active/);
     expect(stickerUpdate).not.toHaveBeenCalled();
+  });
+});
+
+// ── U3 — control.rules.write.bounded is treated as a WRITE permission ────────────
+// An Inactive (aro=true) admin coasting in read-only mode must NOT be able to use
+// the bounded fraud-rule write key, even though it does not end in a bare `.write`.
+describe('U3 — requirePermission treats control.rules.write.bounded as a write', () => {
+  function aroReq(permissions: string[]): any {
+    return { user: { id: 'a1', role: 'RISK_REVIEW', aro: true, permissions } };
+  }
+
+  it('blocks an aro admin from the bounded fraud-rule write key (403)', () => {
+    const req = aroReq(['control.rules.write.bounded']);
+    const next = jest.fn();
+    requirePermission(['control.rules.write', 'control.rules.write.bounded'])(req, {} as any, next);
+    expect(next).toHaveBeenCalledTimes(1);
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeDefined();
+    expect(err.statusCode ?? err.status).toBe(403);
+  });
+
+  it('still allows an aro admin a read-only fraud-rule permission', () => {
+    const req = aroReq(['control.rules.read']);
+    const next = jest.fn();
+    requirePermission('control.rules.read')(req, {} as any, next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect((next as jest.Mock).mock.calls[0][0]).toBeUndefined();
   });
 });

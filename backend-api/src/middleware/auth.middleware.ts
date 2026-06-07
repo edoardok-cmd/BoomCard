@@ -190,7 +190,10 @@ export const authorize = (...roles: string[]) => {
  *
  * Keys that do NOT match are read-only (safe for Inactive admins).
  */
-const WRITE_PERMISSION_SUFFIXES = ['.write', '.create', '.delete', '.update', '.actions'];
+// `.write.bounded` (U3 bounded fraud-rule write) is a write capability even though it
+// does not end in a bare `.write` — list it so an Inactive (aro) admin holding only the
+// bounded key is still blocked from writing in read-only coast mode.
+const WRITE_PERMISSION_SUFFIXES = ['.write', '.create', '.delete', '.update', '.actions', '.write.bounded'];
 
 /**
  * B3 fix — block Inactive admins (aro=true) from write routes that bypass
