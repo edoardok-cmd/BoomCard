@@ -245,16 +245,24 @@ router.delete('/rates/snapshot/:iso', requirePermission('cashback.write'), async
 // ------------------------------------------------------------------
 router.get('/payout-thresholds', requirePermission('cashback.read'), async (_req: AuthRequest, res: Response) => {
   try {
-    const plans = ['BASIC', 'PREMIUM_WEEKLY', 'PREMIUM_MONTHLY'] as const;
-    const amounts = await Promise.all(plans.map((plan) => getPayoutThresholdBGN(plan)));
-    const data: Record<string, number> = {};
-    for (let i = 0; i < plans.length; i++) data[plans[i]] = amounts[i];
-    // L2 (spec §3.7) — the spec plan key is `PREMIUM`; the SubscriptionPlan enum
-    // uses `PREMIUM_MONTHLY`. The admin frontend (AdminCashbackPage) reads
-    // `thresholds.PREMIUM`, so expose `PREMIUM` as an alias of `PREMIUM_MONTHLY`
-    // while keeping the enum-native key for callers that use it. Additive — no
-    // existing key is removed.
-    data.PREMIUM = data.PREMIUM_MONTHLY;
+    // M1 (spec §3.7) — the spec-canonical plan key set is `BASIC, PREMIUM_WEEKLY,
+    // PREMIUM`. The SubscriptionPlan enum stores the third plan as `PREMIUM_MONTHLY`;
+    // we read the threshold by the enum key but emit it under the spec key `PREMIUM`
+    // so the response shape matches §3.7 exactly. `PREMIUM_MONTHLY` is retained as a
+    // backward-compat alias (additive — no key removed) because some enum-native
+    // callers reference it; the spec-canonical surface is `BASIC/PREMIUM_WEEKLY/PREMIUM`.
+    const [basic, premiumWeekly, premiumMonthly] = await Promise.all([
+      getPayoutThresholdBGN('BASIC'),
+      getPayoutThresholdBGN('PREMIUM_WEEKLY'),
+      getPayoutThresholdBGN('PREMIUM_MONTHLY'),
+    ]);
+    const data: Record<string, number> = {
+      BASIC: basic,
+      PREMIUM_WEEKLY: premiumWeekly,
+      PREMIUM: premiumMonthly,
+      // Backward-compat alias for enum-native consumers (spec key is PREMIUM).
+      PREMIUM_MONTHLY: premiumMonthly,
+    };
     res.json({ success: true, data });
   } catch {
     res.status(500).json({ success: false, error: 'Failed to fetch payout thresholds' });

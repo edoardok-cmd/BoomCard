@@ -9,6 +9,7 @@ import { Router, Response } from 'express';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
+import { buildDualCurrencyMap } from '../utils/currencyDisplay';
 
 const router = Router();
 
@@ -61,6 +62,9 @@ router.get(
       activePartners,
       partnerRequests,
       activeLocations,
+
+      // L9 — active user accounts (distinct from active subscribers).
+      activeUserAccounts,
 
       // Финанси — subscriber payouts (§6.1) + partner receivables (§6.2) come from
       // DIFFERENT tables; previous implementation pulled both from PartnerCashbackPayment
@@ -178,6 +182,14 @@ router.get(
       // SUSPENDED/REPLACED venues under an active partner are not operationally active.
       prisma.venue.count({ where: { partner: { status: 'ACTIVE' }, venueStatus: 'ACTIVE' } }),
 
+      // L9 / Spec §3.1 — "active user ACCOUNTS" is a distinct metric from the
+      // subscription-status breakdown. The `subscribers.active` tile counts users
+      // whose LATEST SUBSCRIPTION is ACTIVE; this counts active USER ACCOUNTS
+      // (user_account_status = ACTIVE) regardless of subscription state. A user can
+      // have an active account with an expired/cancelled subscription, so the two
+      // numbers are legitimately different and §3.1 lists them separately.
+      prisma.user.count({ where: { status: 'ACTIVE', role: 'USER', deletedAt: null } }),
+
       // Финанси §6.1 — subscriber payout queue.
       // WITHDRAWAL amounts are stored negative (wallet.service.ts:436), so we negate
       // the sum to surface a positive BGN figure for the dashboard.
@@ -244,6 +256,18 @@ router.get(
       };
     });
 
+    // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for the dashboard's
+    // financial figures (all stored amounts are BGN). Emitted ALONGSIDE the existing
+    // scalar BGN fields (backward-compat) under `financeDisplay`. `payoutsDue` is
+    // already computed above.
+    const partnerReceivablesAmt = partnerReceivables._sum.totalCashbackOwed ?? 0;
+    const marginAmt = totalMargin._sum.marginAmount ?? 0;
+    const financeDisplay = await buildDualCurrencyMap({
+      payoutsDue,
+      partnerReceivables: partnerReceivablesAmt,
+      margin: marginAmt,
+    });
+
     res.json({
       success: true,
       data: {
@@ -254,6 +278,10 @@ router.get(
           cancelled: cancelledSubscribers,
           paused: pausedSubscribers,
           failedPayment: failedPaymentSubscribers,
+        },
+        // L9 — active user ACCOUNTS metric, distinct from active subscribers above.
+        users: {
+          activeAccounts: activeUserAccounts,
         },
         transactions: {
           todayCount: todayTxCount,
@@ -276,8 +304,10 @@ router.get(
         finance: {
           payoutsDue,
           payoutsDueCount,
-          partnerReceivables: partnerReceivables._sum.totalCashbackOwed ?? 0,
-          margin: totalMargin._sum.marginAmount ?? 0,
+          partnerReceivables: partnerReceivablesAmt,
+          margin: marginAmt,
+          // M7 — dual-currency {bgn, eur} pairs (BGN null after the transition window).
+          display: financeDisplay,
         },
       },
       generatedAt: now.toISOString(),

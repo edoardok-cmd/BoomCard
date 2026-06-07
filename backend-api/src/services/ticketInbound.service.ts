@@ -2,13 +2,18 @@
  * Inbound email-to-ticket service — Spec §11.2 v1.1.
  *
  * Takes a normalized inbound email payload and threads it into the ticket
- * system using the priority ladder defined in §11.2:
+ * system using the priority ladder defined in §11.2 / §6.2 / Clash 7.1:
  *
- *   1. X-BoomCard-Ticket-ID custom header
+ *   1. X-BoomCard-Ticket-ID custom header (canonical alias: X-BoomCard-Request-ID)
  *   2. In-Reply-To / References → TicketReply.messageId
- *   3. Plus-addressing in the To header (`support+<shortRef>@…`)
- *   4. Subject `[#XXXXXXXX]` reference
- *   5. Fallback: create a new HelpTicket (source=EMAIL)
+ *   3. Subject `[#XXXX]` reference (4–32 hex)
+ *   4. Fallback: create a new HelpTicket (source=EMAIL)
+ *
+ * L7 / Spec §6.2 + Clash 7.1: Plus-addressing (`support+<shortRef>@…`) is DEFERRED
+ * to v1.3 and is OFF by default in v1.2. The plus-address match runs ONLY when the
+ * `isPlusAddressingEnabled()` flag is explicitly turned on; the v1.2-canonical
+ * threading relies solely on the header (primary) and the `[#XXXX]` subject pattern
+ * (fallback). Do not treat plus-addressing as an active priority step.
  *
  * Spoof protection (§11.2): when matching to an existing ticket, the sender
  * email must match the ticket owner, captured externalEmail, or a prior
@@ -59,7 +64,10 @@ export interface InboundEmailPayload {
   autoSubmitted?: string;
 }
 
-const SUBJECT_REF_RE = /\[#([a-f0-9]{8,32})\]/i;
+// M5 / Spec §6.2 + Clash 7.1: the canonical subject-fallback marker is `[#XXXX]`
+// (a 4-char-and-up hex reference). The threshold was previously 8, which silently
+// failed to thread the spec's literal `[#XXXX]` notation. Widen to {4,32}.
+const SUBJECT_REF_RE = /\[#([a-f0-9]{4,32})\]/i;
 const BOUNCE_SUBJECT_RE = /delivery (status|failure)|undeliverable|mailer[- ]daemon/i;
 // Spec §11.2 edge case: forwarded emails break header threading and must always
 // create a new ticket regardless of any [#ref] present in the subject. The

@@ -26,6 +26,7 @@ import { findInvalidCategoryEntry } from '../constants/categoryRegistry';
 import { writeAudit } from '../middleware/audit.middleware';
 import { issueActivationLink, sendActivationEmail, stampEmailOutcome } from '../services/partnerActivation.service';
 import { partnerService } from '../services/partner.service';
+import { publicPartnerFilter } from '../services/publicPartnerFilter';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
 
@@ -145,13 +146,14 @@ router.get(
     if (callerIsAdmin && status && !validStatuses.includes(status)) {
       return res.status(400).json({ success: false, error: `Invalid status value. Must be one of: ${validStatuses.join(', ')}` });
     }
-    const where: any = {
-      status: (callerIsAdmin && status) ? status : PartnerStatus.ACTIVE,
-    };
-    if (!callerIsAdmin || !status) {
-      where.verifiedAt = { not: null };
-      where.isVisible = true;
-    }
+    // L4 — reuse the shared publicPartnerFilter (status=ACTIVE + verifiedAt + isVisible)
+    // for the non-admin path instead of duplicating the §5.3 visibility gate inline.
+    // Admins with an explicit ?status= bypass the gate (status only); everyone else
+    // gets the full shared filter so the public matrix stays consistent across routes.
+    const where: any =
+      callerIsAdmin && status
+        ? { status }
+        : { ...publicPartnerFilter };
     if (category) {
       // Match on the categories array (new records) OR the category field (legacy records with empty array)
       if (!where.AND) where.AND = [];

@@ -343,18 +343,40 @@ export class PartnerService {
 
     try {
       if (QR_DEACTIVATING_STATUSES.includes(toStatus)) {
-        // Case 1: Spec §1.4: "Transition to Inactive or Archived → All QR codes automatically deactivate"
-        const result = await runWithRetry('deactivate', () =>
+        // Case 1: Spec §1.4 / §8.1 rule 5: "Transition to Inactive or Archived →
+        // ALL QR codes automatically deactivate." H3 fix: previously only ACTIVE
+        // stickers were flipped, leaving PROCESSING ("In Processing") and PENDING
+        // stickers in a non-deactivated state on a non-operational partner. Flip
+        // every non-terminal sticker (ACTIVE, PROCESSING, PENDING) to INACTIVE.
+        // REPLACED / RETIRED / DAMAGED are already terminal/non-scannable and are
+        // left untouched (transitioning them would corrupt their lifecycle history).
+        //
+        // autoDeactivatedAt is stamped ONLY on the stickers that were ACTIVE, because
+        // only those should auto-reactivate when the partner returns to Active (Case 2).
+        // A PROCESSING/PENDING sticker was never operational, so it must NOT be promoted
+        // to ACTIVE by the bulk reactivation — it stays INACTIVE until admin handles it.
+        const deactivatedAt = new Date();
+        const activeResult = await runWithRetry('deactivate-active', () =>
           prisma.sticker.updateMany({
             where: {
               venue: { partnerId },
               status: StickerStatus.ACTIVE,
             },
-            data: { status: StickerStatus.INACTIVE, autoDeactivatedAt: new Date() },
+            data: { status: StickerStatus.INACTIVE, autoDeactivatedAt: deactivatedAt },
+          })
+        );
+        const pendingResult = await runWithRetry('deactivate-pending', () =>
+          prisma.sticker.updateMany({
+            where: {
+              venue: { partnerId },
+              status: { in: [StickerStatus.PROCESSING, StickerStatus.PENDING] },
+            },
+            data: { status: StickerStatus.INACTIVE },
           })
         );
         logger.info(
-          `[partner.syncQr] partnerId=${partnerId} → ${toStatus}: deactivated ${result.count} sticker(s)`
+          `[partner.syncQr] partnerId=${partnerId} → ${toStatus}: deactivated ` +
+          `${activeResult.count} active + ${pendingResult.count} processing/pending sticker(s)`
         );
       } else if (toStatus === PartnerStatus.ACTIVE) {
         if (fromStatus === undefined) {

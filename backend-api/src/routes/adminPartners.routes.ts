@@ -80,6 +80,8 @@ const PARTNER_SELECT = {
   requestStatus: true,
   assignedAdminId: true,
   isVisible: true,
+  // M3 (§1.6) — SLA clock anchors on createdAt (application creation), not joinedAt.
+  createdAt: true,
   joinedAt: true,
   verifiedAt: true,
   onboardingCompletedAt: true,
@@ -165,7 +167,7 @@ router.get(
         requestObjectCount: formatVenueCountBucket(p.requestObjectCount),
         features,
         assignedAdmin: p.assignedAdminId ? adminMap.get(p.assignedAdminId) ?? null : null,
-        sla: computePartnerSla(p.joinedAt as Date, p.requestStatus ?? null),
+        sla: computePartnerSla(p.createdAt as Date, p.requestStatus ?? null, p.assignedAdminId ?? null),
         // M3 (§1.4) — canonical Inactive sub_type derived from status + statusReason.
         inactiveSubType: derivePartnerInactiveSubType(p),
       };
@@ -312,7 +314,7 @@ router.get(
         requestObjectCount: formatVenueCountBucket(partner.requestObjectCount),
         assignedAdmin,
         features,
-        sla: computePartnerSla(partner.joinedAt as Date, partner.requestStatus ?? null),
+        sla: computePartnerSla(partner.createdAt as Date, partner.requestStatus ?? null, partner.assignedAdminId ?? null),
         // M3 (§1.4) — canonical Inactive sub_type derived from status + statusReason.
         inactiveSubType: derivePartnerInactiveSubType(partner),
       },
@@ -629,18 +631,30 @@ router.post(
     if (NON_APPROVABLE_STATUSES.includes(partner.status)) {
       return res.status(400).json({ error: 'Cannot approve a partner in this state. Use /partner-status to manage post-onboarding partner statuses.' });
     }
-    // Spec §5.2 — the full onboarding pipeline must be completed before activation.
-    // Approval directly from NOVA/KOMUNIKACIYA/DOGOVARYANE bypasses required steps.
+    // L5 / Spec §1.6 + §5.2 — the single application-status approval edge is
+    // ONBOARDING → Approved; approval directly from NEW/Communication/Negotiation
+    // bypasses required onboarding-quality steps and is rejected here.
+    //
+    // The APPROVED source is accepted ONLY as an idempotent RESEND-ACTIVATION case,
+    // NOT as a second approval edge: a partner whose requestStatus is already
+    // APPROVED but whose operational status is still PENDING never consumed their
+    // 72h activation link. Re-hitting /approve in that exact state re-issues the
+    // link (the status edge is still PENDING → ACTIVE — the same activation edge,
+    // not a new application-status transition). This carve-out is tightly guarded
+    // below: any APPROVED partner NOT in PENDING is rejected. Removing the APPROVED
+    // branch entirely would break this resend-activation path (noted per L5).
     if (partner.requestStatus !== PartnerRequestStatus.ONBOARDING && partner.requestStatus !== PartnerRequestStatus.APPROVED) {
       return res.status(400).json({
         error: `Partner must reach the ONBOARDING stage before approval. Current stage: ${partner.requestStatus ?? 'NEW'}`,
         currentStatus: partner.requestStatus ?? 'NEW',
       });
     }
-    // Belt-and-braces: if requestStatus is already ODOBRENA but partner.status is
-    // not PENDING, the pipeline was manually advanced (via PATCH /status) without
-    // consuming an activation link. PENDING is the only status where a manual
-    // ODOBRENA advance + approve makes sense. Any other status is post-onboarding.
+    // Guard the resend carve-out: if requestStatus is already ODOBRENA but
+    // partner.status is not PENDING, the pipeline was manually advanced (via PATCH
+    // /status) without consuming an activation link, OR the partner is already
+    // post-onboarding. PENDING is the ONLY status where an APPROVED-source approve
+    // (= resend activation) is legitimate. Any other status is rejected so APPROVED
+    // can never act as a second approval edge.
     if (
       partner.requestStatus === PartnerRequestStatus.APPROVED &&
       partner.status !== PartnerStatus.PENDING

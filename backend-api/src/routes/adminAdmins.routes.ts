@@ -723,18 +723,23 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
     }
 
     // Spec §3.9 / Clash 13.3 — anti-self-approval: the initiator cannot approve their own request.
-    // Bootstrap exception: if only one SUPER_ADMIN exists in the system, that single SA may
-    // approve their own request (otherwise the system is permanently locked out of creating
-    // the second SA). Count only ACTIVE super admins — INACTIVE/SUSPENDED/ARCHIVED cannot
-    // perform approvals so they don't count toward the quorum.
+    // Bootstrap exception: the spec wording is "if only one Super Admin EXISTS in the system."
+    // H2 fix: the quorum must be computed on TOTAL existing (non-archived) Super Admins, NOT
+    // active-only. Counting active-only is a privilege-escalation hole: if every other SA is
+    // INACTIVE/SUSPENDED, the sole *active* SA would falsely qualify for the bootstrap
+    // self-approval and unilaterally create a new SUPER_ADMIN. An INACTIVE/SUSPENDED SA still
+    // EXISTS, can be reactivated, and is a second human party for the 2-of-N protocol — so it
+    // counts toward "exists." Only ARCHIVED (decommissioned, terminal, never logs in) is
+    // excluded. SUSPENDED is functionally Archived for login but is NOT terminal/decommissioned
+    // per §1.5 legacy note, so we conservatively count it as existing.
     if (request.requestedById === req.user!.id) {
-      const activeSuperAdminCount = await prisma.user.count({
-        where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+      const existingSuperAdminCount = await prisma.user.count({
+        where: { role: 'SUPER_ADMIN', status: { not: 'ARCHIVED' } },
       });
-      if (activeSuperAdminCount > 1) {
+      if (existingSuperAdminCount > 1) {
         return res.status(403).json({ error: 'The approver must be a different admin from the original requester' });
       }
-      // Bootstrap exception: sole SUPER_ADMIN may self-approve
+      // Bootstrap exception: only one Super Admin exists → sole SA may self-approve
     }
 
     const superAdminRole = await prisma.adminRole.findUnique({ where: { key: AdminRoleKey.SUPER_ADMIN } });

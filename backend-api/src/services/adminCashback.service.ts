@@ -1255,6 +1255,12 @@ export async function voidEntry(entryId: string, adminUserId: string, reason: st
   if (entry.cashbackStatus === 'TRIAL_PENDING' || entry.status === 'TRIAL_PENDING') {
     throw new AppError('Cannot manually void a TrialPending record — only the scheduler resolves these.', 400);
   }
+  // H1 / Spec §1.3 + §8.1 rule 2: EXPIRED (and the other terminal states) cannot
+  // transition out. Reject EXPIRED here for a clean 400 before branching; the
+  // non-LOCKED path's markVoided also guards EXPIRED as defense in depth.
+  if (entry.cashbackStatus === 'EXPIRED') {
+    throw new AppError('Cannot void an EXPIRED cashback entry — EXPIRED is terminal (§1.3).', 400);
+  }
 
   // Spec §1.3 + §3.4: Locked → Voided is a supported transition. markVoided
   // throws on LOCKED to protect in-flight payouts. For a standalone admin void
@@ -1426,23 +1432,27 @@ export async function expireEntry(
   if (['ANNULLED', 'FAILED'].includes(entry.status) && !entry.cashbackStatus) {
     throw new AppError(`Cannot expire entry with status ${entry.status}`, 400);
   }
-  // Payout-locked entries (requestPayout path: cashbackStatus=LOCKED, status=COMPLETED)
-  // must not be transitioned to EXPIRED. The wallet is already drained; expiring the
-  // entry would leave payEntry unable to complete the in-flight payout (it reads
-  // cashbackStatus=EXPIRED and fails the LOCKED check). Reject with 409 so the
-  // caller cancels the payout first — mirroring voidEntry's guard.
-  if (entry.cashbackStatus === 'LOCKED' && entry.status === 'COMPLETED') {
+  // L1 / Spec §1.3: LOCKED is an intermediate payout-pipeline state whose only
+  // valid exits are Locked → Paid and Locked → Voided. The §3.4 "any active →
+  // Expired" admin carve-out does NOT cover Locked: Locked is explicitly "NOT
+  // terminal" and "already counted" — it sits in the payout pipeline, not in the
+  // active-balance pool, so expiring it would silently drop an in-flight payout.
+  // Reject any LOCKED entry (both the admin-panel lock, status='CANCELLED', and
+  // the user requestPayout lock, status='COMPLETED'). To remove a Locked entry,
+  // cancel the payout (revert to Cleared) then expire/void, or pay it.
+  if (entry.cashbackStatus === 'LOCKED') {
     throw new AppError(
-      'This cashback entry is locked for payout processing; cancel the payout first',
+      'Cannot expire a LOCKED cashback entry — Locked exits only to Paid or Voided (§1.3). ' +
+        'Cancel the payout first to revert it to Cleared.',
       409,
     );
   }
   const now = new Date();
-  // Was the balance already credited? True for CLEARED and LOCKED states.
-  // PENDING entries have no wallet credit yet; expiring them needs no decrement.
+  // Was the balance already credited? True for CLEARED state. PENDING entries have
+  // no wallet credit yet; expiring them needs no decrement. (LOCKED is rejected
+  // above per L1 — Locked exits only to Paid/Voided — so it never reaches here.)
   const wasCleared =
     entry.cashbackStatus === 'CLEARED' ||
-    entry.cashbackStatus === 'LOCKED' ||
     (entry.cashbackStatus == null && (
       entry.status === 'COMPLETED' ||
       (entry.status === 'CANCELLED' && entry.cashbackExpiresAt != null && entry.cashbackExpiresAt > now)
@@ -1462,13 +1472,9 @@ export async function expireEntry(
       data: { status: 'CANCELLED', cashbackStatus: 'EXPIRED' },
     });
     if (result.count === 0) return; // concurrent expire already ran — skip wallet debit
-    // For LOCKED entries, distinguish lock origin before decrementing:
-    // - Admin-panel lockEntry → status='CANCELLED' (wallet still holds the amount) → decrement.
-    // - User's requestPayout → status='COMPLETED' with cashbackStatus=LOCKED (wallet already
-    //   drained by requestPayout) → skip decrement to avoid a double-debit.
-    const isPayoutLocked =
-      entry.cashbackStatus === 'LOCKED' && entry.status === 'COMPLETED';
-    if (wasCleared && !isPayoutLocked) {
+    // LOCKED entries are rejected before this point (L1), so no payout-locked
+    // double-debit case remains; a CLEARED entry's credit is reclaimed here.
+    if (wasCleared) {
       await tx.wallet.update({
         where: { id: entry.walletId },
         data: {

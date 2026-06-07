@@ -190,6 +190,14 @@ export async function markVoided(params: {
   if (existing.cashbackStatus === CashbackEntryStatus.PAID) {
     throw new Error(`Cannot void a PAID cashback entry (${walletTransactionId}) — issue a refund instead`);
   }
+  // H1 / Spec §1.3 + §8.1 rule 2: EXPIRED is terminal — "Voided and Expired are
+  // terminal states; no transitions out." An EXPIRED record must not be voided.
+  // Without this guard a terminal EXPIRED row could be illegally re-transitioned
+  // to Voided (and worse, the wasCleared branch below would decrement a balance
+  // that was already reclaimed at expiry time — a double-debit).
+  if (existing.cashbackStatus === CashbackEntryStatus.EXPIRED) {
+    throw new Error(`Cannot void an EXPIRED cashback entry (${walletTransactionId}) — EXPIRED is terminal (§1.3)`);
+  }
   if (existing.cashbackStatus === CashbackEntryStatus.LOCKED) {
     // F-017: Guard against voiding in-flight payout entries.
     // §6.1 invariant: LOCKED entries are part of an in-flight WITHDRAWAL whose

@@ -33,7 +33,7 @@
  */
 
 import cron from 'node-cron';
-import { WalletTransactionType, WalletTransactionStatus, SubscriptionStatus, SubscriptionPlan, CashbackEntryStatus, PartnerRequestStatus, ScanStatus } from '@prisma/client';
+import { WalletTransactionType, WalletTransactionStatus, SubscriptionStatus, SubscriptionPlan, CashbackEntryStatus, PartnerRequestStatus, ScanStatus, StickerStatus, PartnerStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { stickerService } from '../services/sticker.service';
 import { logger } from '../utils/logger';
@@ -402,6 +402,119 @@ async function expireCancelledSubscriptions(): Promise<void> {
   logger.info(
     `[subscription-expiry] Done — expired ${processed} subscription(s)` +
     (failed > 0 ? `, ${failed} failed` : '')
+  );
+
+  // M2 / Spec §1.2 + Clash 2.1/2.2: "Cancelled (post period end) → Auto-transitions
+  // to Expired." A subscription stored as CANCELLED whose paid period has now elapsed
+  // must auto-transition to EXPIRED — for ALL providers (Stripe handleSubscriptionDeleted
+  // stores user-cancels as CANCELLED with a future currentPeriodEnd; the Paysera sweep
+  // above also lands subs in CANCELLED). Previously nothing flipped these stored CANCELLED
+  // rows to EXPIRED, so post-period cancellations lingered as CANCELLED in reports and the
+  // stored-status payout gate. The scan gate already keys on currentPeriodEnd (sticker
+  // .service.ts) so this does not change scan behavior; it only reconciles the persisted
+  // status. In-flight payouts are unaffected (earned-rights model operates on cashback
+  // entries, not subscription_status).
+  const postPeriodCancelled = await prisma.subscription.findMany({
+    where: {
+      status: SubscriptionStatus.CANCELLED,
+      currentPeriodEnd: { lt: now },
+    },
+    select: { id: true, userId: true },
+  });
+  if (postPeriodCancelled.length > 0) {
+    logger.info(
+      `[subscription-expiry] ${postPeriodCancelled.length} post-period CANCELLED subscription(s) → EXPIRED (§1.2)`
+    );
+    let expiredCount = 0;
+    for (const sub of postPeriodCancelled) {
+      try {
+        // Guard the transition on the row still being CANCELLED + past period to
+        // avoid racing a concurrent webhook that already moved it.
+        const result = await prisma.subscription.updateMany({
+          where: {
+            id: sub.id,
+            status: SubscriptionStatus.CANCELLED,
+            currentPeriodEnd: { lt: new Date() },
+          },
+          data: { status: SubscriptionStatus.EXPIRED },
+        });
+        if (result.count > 0) expiredCount++;
+      } catch (err) {
+        logger.error(`[subscription-expiry] Failed to expire post-period CANCELLED sub ${sub.id}:`, err);
+      }
+    }
+    logger.info(`[subscription-expiry] Transitioned ${expiredCount} CANCELLED → EXPIRED`);
+  }
+}
+
+// ── QR code reconciliation ────────────────────────────────────────────────────
+// H3 / Spec §1.4 / §3.6 / §8.1 rule 5: "Partner status change to Inactive or Archived
+// → ALL QR codes automatically deactivate (backend-enforced)." The per-transition
+// sync (partner.service.syncQrCodesForPartner) runs OUTSIDE the status-change
+// transaction and fails soft after a bounded retry, so a transient DB fault can leave
+// a sticker stale-ACTIVE on a non-operational partner. The scan-time gate
+// (isPartnerOperationallyActive in sticker.service) is the authoritative protection —
+// a stale-ACTIVE sticker on a non-active partner STILL cannot be scanned — but the
+// sticker.status column drifts from the partner state for display/reporting purposes.
+//
+// This is the reconciliation job promised in partner.service.ts: it sweeps every
+// non-terminal sticker (ACTIVE / PROCESSING / PENDING) whose owning partner is NOT
+// operationally active and flips it to INACTIVE, restoring column consistency.
+// It is idempotent and self-correcting; it does NOT reactivate anything (reactivation
+// stays an explicit per-transition / admin action per §2.4).
+
+const QR_DEACTIVATING_PARTNER_STATUSES: PartnerStatus[] = [
+  PartnerStatus.INACTIVE,
+  PartnerStatus.PAUSED,
+  PartnerStatus.SUSPENDED,
+  PartnerStatus.ARCHIVED,
+];
+
+async function reconcileQrCodes(): Promise<void> {
+  logger.info('[qr-reconcile] Starting QR code reconciliation run');
+
+  // Stale = a non-terminal sticker on a partner that is NOT operationally active.
+  // Match the deactivation set used at transition time (ACTIVE/PROCESSING/PENDING);
+  // terminal/non-scannable statuses (INACTIVE/REPLACED/RETIRED/DAMAGED) are left alone.
+  const stale = await prisma.sticker.findMany({
+    where: {
+      status: { in: [StickerStatus.ACTIVE, StickerStatus.PROCESSING, StickerStatus.PENDING] },
+      venue: { partner: { status: { in: QR_DEACTIVATING_PARTNER_STATUSES } } },
+    },
+    select: { id: true, status: true },
+  });
+
+  if (stale.length === 0) {
+    logger.info('[qr-reconcile] No stale stickers — all QR codes consistent with partner state');
+    return;
+  }
+
+  // Stamp autoDeactivatedAt only on the ones that were ACTIVE, mirroring the
+  // transition-time policy so a later Inactive→Active reactivation only restores
+  // genuinely-active stickers (PROCESSING/PENDING stay INACTIVE until admin acts).
+  const activeIds = stale.filter((s) => s.status === StickerStatus.ACTIVE).map((s) => s.id);
+  const otherIds = stale.filter((s) => s.status !== StickerStatus.ACTIVE).map((s) => s.id);
+
+  let fixed = 0;
+  if (activeIds.length > 0) {
+    const r = await prisma.sticker.updateMany({
+      where: { id: { in: activeIds }, status: StickerStatus.ACTIVE },
+      data: { status: StickerStatus.INACTIVE, autoDeactivatedAt: new Date() },
+    });
+    fixed += r.count;
+  }
+  if (otherIds.length > 0) {
+    const r = await prisma.sticker.updateMany({
+      where: { id: { in: otherIds }, status: { in: [StickerStatus.PROCESSING, StickerStatus.PENDING] } },
+      data: { status: StickerStatus.INACTIVE },
+    });
+    fixed += r.count;
+  }
+
+  logger.warn(
+    `[qr-reconcile] Reconciled ${fixed} stale sticker(s) to INACTIVE ` +
+    `(${activeIds.length} active + ${otherIds.length} processing/pending) — ` +
+    `partner-status QR auto-deactivation had drifted (§8.1 rule 5).`
   );
 }
 
@@ -1693,6 +1806,16 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: subscription-expiry (30 1 * * *)');
+
+  // H3 / Spec §8.1 rule 5 — 4:00 AM every day: reconcile QR codes against partner
+  // operational status. Catches stale-ACTIVE/PROCESSING/PENDING stickers left behind
+  // when the per-transition QR sync failed soft, flipping them to INACTIVE so the
+  // sticker.status column stays consistent with the partner state.
+  cron.schedule('0 4 * * *', () => {
+    reconcileQrCodes().catch((err) => alertSchedulerFailure('qr-reconcile', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: qr-reconcile (0 4 * * *)');
 
   // 6:00 AM UTC every day — Paysera auto-renewal: pause expired active subs,
   // send renewal reminder email, cancel subs past the 7-day grace period.

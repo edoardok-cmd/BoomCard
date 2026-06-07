@@ -702,13 +702,41 @@ router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
     // we set status = CANCELLED immediately rather than using the deferred
     // cancelAtPeriodEnd path (which would leave an abnormal FAILED_PAYMENT row
     // with cancelAt set to a past date until the renewal job next runs).
-    const subscription = await prisma.subscription.findFirst({
-      where: {
-        userId,
-        status: { notIn: ['CANCELLED', 'EXPIRED', 'INCOMPLETE_EXPIRED'] },
-      },
+    // L6 / spec-literal — disambiguate when a subscriber has MORE THAN ONE
+    // non-terminal subscription. Picking the latest by createdAt silently guesses
+    // which concurrent sub to cancel; that can cancel the wrong one. Return 409 with
+    // the candidate IDs so the caller re-issues with an explicit subscriptionId.
+    const NON_TERMINAL_SUB_STATUSES = ['CANCELLED', 'EXPIRED', 'INCOMPLETE_EXPIRED'] as const;
+    const explicitSubId = typeof (req.body as { subscriptionId?: unknown })?.subscriptionId === 'string'
+      ? (req.body as { subscriptionId: string }).subscriptionId
+      : undefined;
+    const candidateSubs = await prisma.subscription.findMany({
+      where: { userId, status: { notIn: [...NON_TERMINAL_SUB_STATUSES] } },
       orderBy: { createdAt: 'desc' },
+      select: { id: true, plan: true, status: true, createdAt: true, currentPeriodEnd: true },
     });
+    if (candidateSubs.length === 0) {
+      res.status(404).json({ error: 'No active subscription found for this subscriber' });
+      return;
+    }
+    if (candidateSubs.length > 1 && !explicitSubId) {
+      res.status(409).json({
+        error: 'Subscriber has multiple non-terminal subscriptions. Provide an explicit subscriptionId to disambiguate.',
+        candidates: candidateSubs.map((s) => ({
+          id: s.id, plan: s.plan, status: s.status,
+          createdAt: s.createdAt, currentPeriodEnd: s.currentPeriodEnd,
+        })),
+      });
+      return;
+    }
+    const chosen = explicitSubId
+      ? candidateSubs.find((s) => s.id === explicitSubId)
+      : candidateSubs[0];
+    if (!chosen) {
+      res.status(404).json({ error: 'Specified subscriptionId not found among this subscriber\'s active subscriptions' });
+      return;
+    }
+    const subscription = await prisma.subscription.findUnique({ where: { id: chosen.id } });
     if (!subscription) {
       res.status(404).json({ error: 'No active subscription found for this subscriber' });
       return;
@@ -827,10 +855,42 @@ router.patch('/:userId/plan', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), r
       return;
     }
 
-    const subscription = await prisma.subscription.findFirst({
-      where: { userId, status: { not: 'CANCELLED' } },
+    // L6 / spec-literal — disambiguate when the subscriber has MORE THAN ONE
+    // non-terminal subscription. Silently picking the latest by createdAt can change
+    // the plan on the wrong concurrent sub. Return 409 with candidate IDs unless the
+    // caller pins an explicit subscriptionId. (Terminal CANCELLED/EXPIRED/
+    // INCOMPLETE_EXPIRED are excluded from the candidate set; FAILED_PAYMENT is
+    // included here and rejected by the state guard below, matching prior behavior.)
+    const planExplicitSubId = typeof (req.body as { subscriptionId?: unknown })?.subscriptionId === 'string'
+      ? (req.body as { subscriptionId: string }).subscriptionId
+      : undefined;
+    const planCandidates = await prisma.subscription.findMany({
+      where: { userId, status: { notIn: ['CANCELLED', 'EXPIRED', 'INCOMPLETE_EXPIRED'] } },
       orderBy: { createdAt: 'desc' },
+      select: { id: true, plan: true, status: true, createdAt: true, currentPeriodEnd: true },
     });
+    if (planCandidates.length === 0) {
+      res.status(404).json({ error: 'No active subscription found for this subscriber' });
+      return;
+    }
+    if (planCandidates.length > 1 && !planExplicitSubId) {
+      res.status(409).json({
+        error: 'Subscriber has multiple non-terminal subscriptions. Provide an explicit subscriptionId to disambiguate.',
+        candidates: planCandidates.map((s) => ({
+          id: s.id, plan: s.plan, status: s.status,
+          createdAt: s.createdAt, currentPeriodEnd: s.currentPeriodEnd,
+        })),
+      });
+      return;
+    }
+    const planChosen = planExplicitSubId
+      ? planCandidates.find((s) => s.id === planExplicitSubId)
+      : planCandidates[0];
+    if (!planChosen) {
+      res.status(404).json({ error: 'Specified subscriptionId not found among this subscriber\'s active subscriptions' });
+      return;
+    }
+    const subscription = await prisma.subscription.findUnique({ where: { id: planChosen.id } });
     if (!subscription) {
       res.status(404).json({ error: 'No active subscription found for this subscriber' });
       return;

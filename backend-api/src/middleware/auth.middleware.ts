@@ -183,17 +183,31 @@ export const authorize = (...roles: string[]) => {
 };
 
 /**
- * Write-permission key suffixes — any permission key that ends with one of
- * these fragments is considered a write operation. Used by the spec §1.5
- * admin read-only enforcement: Inactive admins (aro=true) are blocked from
- * write operations even when they hold the permission in their JWT.
+ * L2 — Permission read/write classification for the spec §1.5 admin read-only gate
+ * (Inactive admins, aro=true, may only perform read operations).
  *
- * Keys that do NOT match are read-only (safe for Inactive admins).
+ * The previous implementation classified by WRITE suffix and treated everything
+ * else as read — a fragile default. In particular `.actions` was listed as a write
+ * suffix, but the only `.actions`-family permission is `admins.actions.read` (a READ
+ * capability: "view pending critical-action requests"). A future `*.actions` write
+ * key OR a `*.actions.read` key mis-parsed by an `endsWith('.actions')` rule could
+ * silently regress an Inactive admin's read access (or, worse, leak a write).
+ *
+ * This explicit classifier inverts the default to FAIL-CLOSED: a permission counts as
+ * READ-only for the aro gate ONLY when it ends in an explicit read marker; everything
+ * else is treated as a write (blocked for Inactive admins). New write keys are
+ * therefore blocked automatically without needing to be enumerated, while read keys
+ * are recognised by their explicit `.read` (or `.read.*`) marker.
  */
-// `.write.bounded` (U3 bounded fraud-rule write) is a write capability even though it
-// does not end in a bare `.write` — list it so an Inactive (aro) admin holding only the
-// bounded key is still blocked from writing in read-only coast mode.
-const WRITE_PERMISSION_SUFFIXES = ['.write', '.create', '.delete', '.update', '.actions', '.write.bounded'];
+const READ_PERMISSION_MARKERS = ['.read'];
+
+/** True when the key is an explicit READ permission (safe for Inactive admins). */
+function isReadPermission(key: string): boolean {
+  // `.read` anywhere as a terminal segment: `x.read`, `x.read.all`, `admins.actions.read`.
+  return READ_PERMISSION_MARKERS.some(
+    (marker) => key.endsWith(marker) || key.includes(`${marker}.`),
+  );
+}
 
 /**
  * B3 fix — block Inactive admins (aro=true) from write routes that bypass
@@ -233,8 +247,12 @@ export const requireActiveAdmin = (req: AuthRequest, _res: Response, next: NextF
   next();
 };
 
+/**
+ * L2: a permission is a WRITE op (blocked for Inactive admins) unless it is an
+ * explicit read permission. Fail-closed: unknown / future keys default to write.
+ */
 function isWritePermission(key: string): boolean {
-  return WRITE_PERMISSION_SUFFIXES.some((suffix) => key.endsWith(suffix));
+  return !isReadPermission(key);
 }
 
 // Fine-grained permission guard. Falls back to allowing SUPER_ADMIN unconditionally

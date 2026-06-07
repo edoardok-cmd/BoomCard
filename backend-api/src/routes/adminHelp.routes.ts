@@ -431,6 +431,23 @@ router.post('/:id/assign', requirePermission('help.write'), async (req: AuthRequ
     // Resolve final assignee: null (unassign), explicit UUID (SUPER_ADMIN), or self.
     const resolvedAssigneeId: string | null = isUnassign ? null : (targetId ?? req.user!.id);
 
+    // H4 / Spec §1.7 + §3.8 + Clash 7.2: "any admin can CLAIM; only Super Admin can
+    // REASSIGN a claimed request." A self-assign (no explicit target) is a CLAIM and is
+    // only valid on an UNASSIGNED ticket. If the ticket is already claimed by a different
+    // admin, a non-Super-Admin self-assign would silently STEAL the claim — reject 403.
+    // (The explicit-target path is already SUPER_ADMIN-gated above. Re-claiming a ticket
+    // already assigned to oneself is handled by the no-op short-circuit below.)
+    if (
+      !hasExplicitTarget &&
+      ticket.assigneeId !== null &&
+      ticket.assigneeId !== req.user!.id &&
+      req.user!.role !== 'SUPER_ADMIN'
+    ) {
+      return res.status(403).json({
+        error: 'Заявката вече е поета от друг администратор. Само SUPER_ADMIN може да преназначава.',
+      });
+    }
+
     // Validate the target admin exists (skip for unassign and self-assign, self is already authed).
     if (typeof targetId === 'string') {
       const targetUser = await prisma.user.findUnique({

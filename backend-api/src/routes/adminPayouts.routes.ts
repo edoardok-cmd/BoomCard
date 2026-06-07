@@ -11,6 +11,7 @@ import { runWithConcurrency } from '../utils/concurrency';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
 import { reasonIndicatesIbanProblem } from '../utils/payoutFailureReason';
+import { buildDualCurrencyMap } from '../utils/currencyDisplay';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -274,6 +275,20 @@ router.get(
         totalCount:      filteredGroupBy.reduce((acc, g) => acc + g._count._all, 0),
       };
 
+      const pendingTotalBgn    = Math.abs(pendingTotal._sum.amount    ?? 0);
+      const processingTotalBgn = Math.abs(processingTotal._sum.amount ?? 0);
+      const completedTotalBgn  = Math.abs(completedTotal._sum.amount  ?? 0);
+      const failedTotalBgn     = Math.abs(failedTotal._sum.amount     ?? 0);
+
+      // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for payout totals
+      // (stored BGN). Added alongside the existing scalar BGN totals (backward-compat).
+      const summaryDisplay = await buildDualCurrencyMap({
+        pendingTotal:    pendingTotalBgn,
+        processingTotal: processingTotalBgn,
+        completedTotal:  completedTotalBgn,
+        failedTotal:     failedTotalBgn,
+      });
+
       res.json({
         payouts,
         total,
@@ -281,15 +296,17 @@ router.get(
         limit: limitNum,
         summary: {
           pendingCount,
-          pendingTotal:    Math.abs(pendingTotal._sum.amount    ?? 0),
+          pendingTotal:    pendingTotalBgn,
           processingCount,
-          processingTotal: Math.abs(processingTotal._sum.amount ?? 0),
+          processingTotal: processingTotalBgn,
           completedCount,
-          completedTotal:  Math.abs(completedTotal._sum.amount  ?? 0),
+          completedTotal:  completedTotalBgn,
           riskHoldCount,
           failedCount,
-          failedTotal:     Math.abs(failedTotal._sum.amount     ?? 0),
+          failedTotal:     failedTotalBgn,
           totalCount,
+          // M7 — dual-currency {bgn, eur} pairs (BGN null after transition window).
+          display: summaryDisplay,
         },
         filteredSummary,
       });
