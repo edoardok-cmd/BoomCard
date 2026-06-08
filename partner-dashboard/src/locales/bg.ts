@@ -93,6 +93,7 @@ export const bg: TranslationKey = {
     adminReceipts: 'Касови бележки',
     switchAccount: 'Смени акаунт',
     impersonatePartner: 'Представи се като партньор',
+    impersonateUser: 'Влез като потребител',
     role: {
       admin: 'Администратор',
       superAdmin: 'Супер Администратор',
@@ -114,6 +115,10 @@ export const bg: TranslationKey = {
     stopping: 'Спиране…',
     bannerPrefix: 'Представяш се като',
     bannerSuffix: '. Действията ти се отчитат.',
+    userModalTitle: 'Влез като потребител',
+    userModalSubtitle: 'Избери потребител, за да видиш приложението от негова гледна точка.',
+    userSearchPlaceholder: 'Търси по име или имейл…',
+    userEmpty: 'Няма потребители.',
   },
 
   // Mobile Bottom Navigation

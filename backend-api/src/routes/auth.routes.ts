@@ -994,6 +994,61 @@ router.get(
 );
 
 // ----------------------------------------------------------------
+// GET /api/auth/impersonatable-users
+// SUPER_ADMIN only — lists regular end-users (role USER, status ACTIVE)
+// that a super-admin can impersonate. ADMIN is intentionally 403'd here:
+// impersonating a USER is a strictly SUPER_ADMIN capability (cf. partner
+// impersonation, which both ADMIN and SUPER_ADMIN may do). The column
+// allowlist is explicit — no IBAN, no password hash, no tokens — so the
+// payload (and any incidental log line) cannot leak sensitive fields.
+// ----------------------------------------------------------------
+router.get(
+  '/impersonatable-users',
+  authenticate,
+  authorize('SUPER_ADMIN'),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { search } = req.query as { search?: string };
+
+    const where: any = { role: 'USER', status: 'ACTIVE' };
+    if (search && search.trim()) {
+      const term = search.trim();
+      where.OR = [
+        { email: { contains: term, mode: 'insensitive' } },
+        { firstName: { contains: term, mode: 'insensitive' } },
+        { lastName: { contains: term, mode: 'insensitive' } },
+      ];
+    }
+
+    const users = await prisma.user.findMany({
+      where,
+      // Explicit allowlist — never select-all. No sensitive fields.
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        avatar: true,
+        status: true,
+      },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }, { email: 'asc' }],
+      take: 100,
+    });
+
+    res.json({
+      success: true,
+      data: users.map((u) => ({
+        userId: u.id,
+        email: u.email,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        avatar: u.avatar,
+        status: u.status,
+      })),
+    });
+  }),
+);
+
+// ----------------------------------------------------------------
 // POST /api/auth/impersonate
 // Admin only — assume a PARTNER session. Issues tokens stamped with
 // `imp:true` + `impBy:<adminId>` so /auth/stop-impersonate can restore
@@ -1005,15 +1060,21 @@ router.post(
   authorize('ADMIN', 'SUPER_ADMIN'),
   impersonateRateLimiter,
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { targetPartnerUserId, refreshToken } = req.body as {
+    const { targetPartnerUserId, targetUserId, refreshToken } = req.body as {
       targetPartnerUserId?: string;
+      targetUserId?: string;
       refreshToken?: string;
     };
 
-    if (!targetPartnerUserId || typeof targetPartnerUserId !== 'string') {
+    // Accept either the legacy `targetPartnerUserId` (partner impersonation)
+    // or the generic `targetUserId` (partner OR end-user). The target's role
+    // is resolved server-side in AuthService.impersonate, which derives the
+    // required caller role from it — we never trust a client-supplied "kind".
+    const resolvedTargetId = targetUserId ?? targetPartnerUserId;
+    if (!resolvedTargetId || typeof resolvedTargetId !== 'string') {
       return res.status(400).json({
         error: 'Validation Error',
-        message: 'targetPartnerUserId is required',
+        message: 'targetUserId (or targetPartnerUserId) is required',
       });
     }
 
@@ -1031,7 +1092,7 @@ router.post(
       adminId: req.user!.id,
       adminRole: req.user!.role,
       adminAccountGroup: req.user!.ag,
-      targetPartnerUserId,
+      targetUserId: resolvedTargetId,
       clientType: resolveClientType(req),
       tokenIssuedAt: req.user!.iat,
       currentAdminRefreshToken: refreshToken,

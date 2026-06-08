@@ -91,6 +91,7 @@ export const en = {
     adminReceipts: 'Receipts',
     switchAccount: 'Switch account',
     impersonatePartner: 'Impersonate partner',
+    impersonateUser: 'Log in as user',
     role: {
       admin: 'Administrator',
       superAdmin: 'Super Administrator',
@@ -112,6 +113,10 @@ export const en = {
     stopping: 'Stopping…',
     bannerPrefix: 'You are impersonating',
     bannerSuffix: '. Actions are audited.',
+    userModalTitle: 'Log in as user',
+    userModalSubtitle: 'Pick an end-user to view the app from their perspective.',
+    userSearchPlaceholder: 'Search by name or email…',
+    userEmpty: 'No users found.',
   },
 
   // Mobile Bottom Navigation

@@ -2398,11 +2398,17 @@ export class AuthService {
   }
 
   /**
-   * Admin-initiated impersonation of a PARTNER account.
+   * Admin-initiated impersonation of a PARTNER or USER account.
+   *
+   * Role gating is derived from the *resolved* target role, never from a
+   * client-supplied hint:
+   *   - target is PARTNER -> caller must be ADMIN or SUPER_ADMIN
+   *   - target is USER    -> caller must be SUPER_ADMIN only
+   * Any other target role is refused.
    *
    * Unlike switchAccount (which uses the login-time bcrypt-match `accountGroup`
-   * to authorize sibling pivots), impersonation grants an ADMIN/SUPER_ADMIN a
-   * PARTNER session based purely on the admin's role. The returned token is
+   * to authorize sibling pivots), impersonation grants the session based purely
+   * on the admin's role. The returned token is
    * stamped with `imp:true` + `impBy:<adminId>` so downstream code can tell
    * it's an impersonation and /auth/stop-impersonate knows who to restore.
    *
@@ -2415,7 +2421,11 @@ export class AuthService {
     adminId: string;
     adminRole: string;
     adminAccountGroup?: string[];
-    targetPartnerUserId: string;
+    // Generic impersonation target — may resolve to a PARTNER or a USER.
+    // (The route accepts the legacy `targetPartnerUserId` body field and maps
+    // it to this same parameter; role gating is derived from the resolved
+    // target role below, not from which field the client sent.)
+    targetUserId: string;
     clientType: 'mobile' | 'web' | undefined;
     tokenIssuedAt?: number;
     // Admin's current refresh token. Revoked here so the pre-impersonation
@@ -2426,7 +2436,7 @@ export class AuthService {
     // switchAccount.
     currentAdminRefreshToken?: string;
   }) {
-    const { adminId, adminRole, adminAccountGroup, targetPartnerUserId, clientType, tokenIssuedAt, currentAdminRefreshToken } = input;
+    const { adminId, adminRole, adminAccountGroup, targetUserId, clientType, tokenIssuedAt, currentAdminRefreshToken } = input;
 
     if (clientType === 'mobile') {
       throw new AppError('Impersonation is not available on mobile', 403);
@@ -2434,16 +2444,16 @@ export class AuthService {
     if (adminRole !== 'ADMIN' && adminRole !== 'SUPER_ADMIN') {
       throw new AppError('Not authorized', 403);
     }
-    if (!targetPartnerUserId) {
-      throw new AppError('targetPartnerUserId is required', 400);
+    if (!targetUserId) {
+      throw new AppError('targetUserId is required', 400);
     }
-    if (targetPartnerUserId === adminId) {
+    if (targetUserId === adminId) {
       throw new AppError('Cannot impersonate yourself', 400);
     }
 
     const [target, admin] = await Promise.all([
       prisma.user.findUnique({
-        where: { id: targetPartnerUserId },
+        where: { id: targetUserId },
         select: {
           id: true,
           email: true,
@@ -2461,12 +2471,23 @@ export class AuthService {
       }),
     ]);
 
-    if (!target) throw new AppError('Target partner not found', 404);
-    if (target.role !== 'PARTNER') {
-      throw new AppError('Target is not a partner', 400);
+    if (!target) throw new AppError('Target account not found', 404);
+    // Derive the required caller role from the *resolved* target role — never
+    // from a client-supplied hint. PARTNER targets may be impersonated by any
+    // admin; USER targets are SUPER_ADMIN-only; nothing else is impersonatable.
+    if (target.role === 'PARTNER') {
+      if (adminRole !== 'ADMIN' && adminRole !== 'SUPER_ADMIN') {
+        throw new AppError('Not authorized', 403);
+      }
+    } else if (target.role === 'USER') {
+      if (adminRole !== 'SUPER_ADMIN') {
+        throw new AppError('Only a Super Admin can impersonate a user', 403);
+      }
+    } else {
+      throw new AppError('Target account cannot be impersonated', 400);
     }
     if (target.status !== 'ACTIVE') {
-      throw new AppError('Target partner is not active', 403);
+      throw new AppError('Target account is not active', 403);
     }
     if (!admin) throw new AppError('Admin account not found', 404);
     if (admin.role !== 'ADMIN' && admin.role !== 'SUPER_ADMIN') {

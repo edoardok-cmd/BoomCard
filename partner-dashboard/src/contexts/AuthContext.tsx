@@ -264,6 +264,9 @@ export interface AuthContextType extends AuthState {
   removeAvatar: () => Promise<void>;
   switchAccount: (targetAccountId: string) => Promise<void>;
   impersonate: (targetPartnerUserId: string) => Promise<void>;
+  // SUPER_ADMIN-only: impersonate an end-user (sends generic targetUserId).
+  // Shares all post-success handling + the stop machinery with impersonate().
+  impersonateUser: (targetUserId: string) => Promise<void>;
   stopImpersonating: () => Promise<void>;
   // Re-fetch /auth/me and refresh user state in-place (used after 2FA setup, password change, etc.)
   reloadUser: () => Promise<void>;
@@ -1052,78 +1055,111 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Admin-only: assume a PARTNER session. Swaps tokens and user state in
-  // place (same mechanism as switchAccount), and records impersonation
-  // metadata so the banner + stop button render across reloads.
-  const impersonate = async (targetPartnerUserId: string): Promise<void> => {
-    // Read the admin's current refresh token from its authoritative location
-    // (cookie first, because the 401-interceptor writes here on rotation;
-    // localStorage only holds whatever login() originally persisted). Sent
-    // so the backend can revoke the pre-impersonation admin session — closes
-    // the window where a leaked admin refresh token could silently resurrect
-    // the admin session in parallel with the impersonation one.
+  // Read the admin's current refresh token from its authoritative location
+  // (cookie first, because the 401-interceptor writes here on rotation;
+  // localStorage only holds whatever login() originally persisted). Sent so
+  // the backend can revoke the pre-impersonation admin session — closes the
+  // window where a leaked admin refresh token could silently resurrect the
+  // admin session in parallel with the impersonation one. Shared by both the
+  // partner- and user-impersonation entry points.
+  const readAdminRefreshToken = (): string | null => {
     const cookieRefresh = (() => {
       if (typeof document === 'undefined') return null;
       const parts = `; ${document.cookie}`.split('; boomcard_refresh=');
       return parts.length === 2 ? parts.pop()?.split(';').shift() || null : null;
     })();
-    const adminRefreshToken = cookieRefresh || authStorage.getItem(REFRESH_TOKEN_KEY);
-    const inheritPersistent = authStorage.isPersistent(TOKEN_KEY);
+    return cookieRefresh || authStorage.getItem(REFRESH_TOKEN_KEY);
+  };
 
+  // Shared post-success handling for both impersonation entry points. Applies
+  // the impersonation token, swaps user state in place (same mechanism as
+  // switchAccount), clears the account switcher, and records impersonation
+  // metadata so the banner + stop button render across reloads. Identical for
+  // partner and end-user targets — the only difference is which id field the
+  // caller sends to /auth/impersonate.
+  const applyImpersonationResponse = (rawResponse: Envelope<AuthSuccessPayload>): User => {
+    const inheritPersistent = authStorage.isPersistent(TOKEN_KEY);
+    const responseData: AuthSuccessPayload = rawResponse?.data || rawResponse;
+    const newToken = responseData?.accessToken || responseData?.token;
+    const newRefreshToken = responseData?.refreshToken;
+    const userPayload = responseData?.user;
+    const impersonationMeta = responseData?.impersonation;
+
+    if (!newToken || !userPayload || !impersonationMeta) {
+      throw new Error('Invalid impersonation response');
+    }
+
+    authStorage.setItem(TOKEN_KEY, newToken, inheritPersistent);
+    setToken(newToken);
+    if (newRefreshToken) persistRefreshToken(newRefreshToken, inheritPersistent);
+    apiService.setAuthToken(newToken);
+
+    const nextUser: User = {
+      id: userPayload.id,
+      email: userPayload.email,
+      firstName: userPayload.firstName || '',
+      lastName: userPayload.lastName || '',
+      role: normalizeRole(userPayload.role),
+      rawRole: typeof userPayload.role === 'string' ? userPayload.role.toUpperCase() : undefined,
+      permissions: (userPayload as any).permissions,
+      createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
+      emailVerified: userPayload.emailVerified ?? true,
+      avatar: userPayload.avatar,
+      // Spec §1.2/§11.2: carry partner lifecycle status into impersonation session
+      // (undefined for end-user targets, which is fine — no partner status gate).
+      partner_account_status: userPayload.partner_account_status,
+    };
+    setUser(nextUser);
+    authStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser), inheritPersistent);
+    // Impersonation tokens intentionally carry no `ag`; clear any stale
+    // sibling list from the admin session so the switcher hides.
+    setSwitchableAccounts([]);
+    setImpersonation(impersonationMeta);
+
+    // LOW-2 fix (review r2ab): update partnerRestriction from the impersonated
+    // account's response so PartnerStatusBanner shows the correct restriction state.
+    // Admins bypass the status gate (isImpersonating check in PartnerStatusRoute),
+    // but the banner still reads partnerRestriction to show the restriction notice.
+    // End-user targets carry no restriction, so this clears any stale value.
+    const impersonateRestriction = responseData?.partnerRestriction ?? null;
+    if (impersonateRestriction) {
+      authStorage.setItem(PARTNER_RESTRICTION_KEY, impersonateRestriction, inheritPersistent);
+    } else {
+      authStorage.removeItem(PARTNER_RESTRICTION_KEY);
+    }
+    setPartnerRestriction(impersonateRestriction);
+
+    toast.success(`Impersonating ${nextUser.firstName} ${nextUser.lastName}`.trim() || `Impersonating ${nextUser.email}`);
+    return nextUser;
+  };
+
+  // Admin-only: assume a PARTNER session. Sends the legacy targetPartnerUserId
+  // field; the backend keeps accepting it for the partner picker.
+  const impersonate = async (targetPartnerUserId: string): Promise<void> => {
     try {
       const rawResponse = await apiService.post<Envelope<AuthSuccessPayload>>('/auth/impersonate', {
         targetPartnerUserId,
-        refreshToken: adminRefreshToken,
+        refreshToken: readAdminRefreshToken(),
       });
-      const responseData: AuthSuccessPayload = rawResponse?.data || rawResponse;
-      const newToken = responseData?.accessToken || responseData?.token;
-      const newRefreshToken = responseData?.refreshToken;
-      const userPayload = responseData?.user;
-      const impersonationMeta = responseData?.impersonation;
+      applyImpersonationResponse(rawResponse);
+    } catch (error) {
+      const message = extractErrorMessage(error, 'Failed to start impersonation');
+      toast.error(message);
+      throw error;
+    }
+  };
 
-      if (!newToken || !userPayload || !impersonationMeta) {
-        throw new Error('Invalid impersonation response');
-      }
-
-      authStorage.setItem(TOKEN_KEY, newToken, inheritPersistent);
-      setToken(newToken);
-      if (newRefreshToken) persistRefreshToken(newRefreshToken, inheritPersistent);
-      apiService.setAuthToken(newToken);
-
-      const nextUser: User = {
-        id: userPayload.id,
-        email: userPayload.email,
-        firstName: userPayload.firstName || '',
-        lastName: userPayload.lastName || '',
-        role: normalizeRole(userPayload.role),
-        rawRole: typeof userPayload.role === 'string' ? userPayload.role.toUpperCase() : undefined,
-        permissions: (userPayload as any).permissions,
-        createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
-        emailVerified: userPayload.emailVerified ?? true,
-        avatar: userPayload.avatar,
-        // Spec §1.2/§11.2: carry partner lifecycle status into impersonation session
-        partner_account_status: userPayload.partner_account_status,
-      };
-      setUser(nextUser);
-      authStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser), inheritPersistent);
-      // Impersonation tokens intentionally carry no `ag`; clear any stale
-      // sibling list from the admin session so the switcher hides.
-      setSwitchableAccounts([]);
-      setImpersonation(impersonationMeta);
-
-      // LOW-2 fix (review r2ab): update partnerRestriction from the impersonated
-      // partner's response so PartnerStatusBanner shows the correct restriction state.
-      // Admins bypass the status gate (isImpersonating check in PartnerStatusRoute),
-      // but the banner still reads partnerRestriction to show the restriction notice.
-      const impersonateRestriction = responseData?.partnerRestriction ?? null;
-      if (impersonateRestriction) {
-        authStorage.setItem(PARTNER_RESTRICTION_KEY, impersonateRestriction, inheritPersistent);
-      } else {
-        authStorage.removeItem(PARTNER_RESTRICTION_KEY);
-      }
-      setPartnerRestriction(impersonateRestriction);
-
-      toast.success(`Impersonating ${nextUser.firstName} ${nextUser.lastName}`.trim() || `Impersonating ${nextUser.email}`);
+  // SUPER_ADMIN-only: assume an end-USER session. Sends the generic
+  // targetUserId field to the same /auth/impersonate endpoint and runs the
+  // exact same post-success handling as impersonate() — the banner +
+  // stopImpersonating machinery treat partner and user sessions identically.
+  const impersonateUser = async (targetUserId: string): Promise<void> => {
+    try {
+      const rawResponse = await apiService.post<Envelope<AuthSuccessPayload>>('/auth/impersonate', {
+        targetUserId,
+        refreshToken: readAdminRefreshToken(),
+      });
+      applyImpersonationResponse(rawResponse);
     } catch (error) {
       const message = extractErrorMessage(error, 'Failed to start impersonation');
       toast.error(message);
@@ -1541,6 +1577,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     removeAvatar,
     switchAccount,
     impersonate,
+    impersonateUser,
     stopImpersonating,
     reloadUser,
     twoFactorRequired,

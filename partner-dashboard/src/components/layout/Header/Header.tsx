@@ -35,6 +35,16 @@ interface ImpersonatablePartner {
   avatar?: string | null;
 }
 
+// SUPER_ADMIN end-user impersonation target (GET /auth/impersonatable-users).
+interface ImpersonatableUser {
+  userId: string;
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  avatar?: string | null;
+  status?: string | null;
+}
+
 
 const MobileFavoritesLink = styled(Link)`
   position: relative;
@@ -973,6 +983,7 @@ export const Header: React.FC<HeaderProps> = ({
     switchAccount,
     isImpersonating,
     impersonate,
+    impersonateUser,
     stopImpersonating,
   } = useAuth();
   const [isSwitching, setIsSwitching] = useState<string | null>(null);
@@ -1009,6 +1020,15 @@ export const Header: React.FC<HeaderProps> = ({
   const [impersonatableError, setImpersonatableError] = useState<string | null>(null);
   const [isImpersonateBusy, setIsImpersonateBusy] = useState<string | null>(null);
   const [isStoppingImpersonation, setIsStoppingImpersonation] = useState(false);
+  // SUPER_ADMIN "Влез като потребител" — separate modal, structurally cloned
+  // from the partner picker but pointed at /auth/impersonatable-users.
+  const [impersonateUserModalOpen, setImpersonateUserModalOpen] = useState(false);
+  const [impersonatableUserSearch, setImpersonatableUserSearch] = useState('');
+  const [impersonatableUsers, setImpersonatableUsers] = useState<ImpersonatableUser[] | null>(null);
+  const [impersonatableUsersLoading, setImpersonatableUsersLoading] = useState(false);
+  const [impersonatableUsersError, setImpersonatableUsersError] = useState<string | null>(null);
+  const [isImpersonateUserBusy, setIsImpersonateUserBusy] = useState<string | null>(null);
+  const isSuperAdmin = user?.role === 'admin' && user?.rawRole === 'SUPER_ADMIN';
   const userMenuRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -1087,6 +1107,67 @@ export const Header: React.FC<HeaderProps> = ({
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
   }, [impersonateModalOpen, isImpersonateBusy]);
+
+  // ── SUPER_ADMIN end-user impersonation modal ──
+  // Fetch impersonatable users when the modal opens or the search term changes.
+  // The endpoint accepts ?search=<term> for server-side filtering; we debounce
+  // lightly so each keystroke doesn't fire a request.
+  useEffect(() => {
+    if (!impersonateUserModalOpen) return;
+    let cancelled = false;
+    const term = impersonatableUserSearch.trim();
+    const run = () => {
+      setImpersonatableUsersLoading(true);
+      setImpersonatableUsersError(null);
+      apiService
+        .get<ImpersonatableUser[] | { data?: ImpersonatableUser[] }>(
+          `/auth/impersonatable-users?search=${encodeURIComponent(term)}`,
+        )
+        .then((resp) => {
+          if (cancelled) return;
+          const list = Array.isArray(resp) ? resp : resp?.data;
+          setImpersonatableUsers(Array.isArray(list) ? list : []);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          const message = err?.response?.data?.error?.message
+            || err?.response?.data?.message
+            || err?.message
+            || 'Failed to load users';
+          setImpersonatableUsersError(message);
+        })
+        .finally(() => {
+          if (!cancelled) setImpersonatableUsersLoading(false);
+        });
+    };
+    const handle = setTimeout(run, term ? 300 : 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [impersonateUserModalOpen, impersonatableUserSearch]);
+
+  // Reset user-modal search + list on close so reopening starts clean.
+  useEffect(() => {
+    if (!impersonateUserModalOpen) {
+      setImpersonatableUserSearch('');
+      setImpersonatableUsers(null);
+      setImpersonatableUsersError(null);
+      setIsImpersonateUserBusy(null);
+    }
+  }, [impersonateUserModalOpen]);
+
+  // Close user-impersonation modal on Escape (suppressed while a pick is in flight).
+  useEffect(() => {
+    if (!impersonateUserModalOpen) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isImpersonateUserBusy === null) {
+        setImpersonateUserModalOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [impersonateUserModalOpen, isImpersonateUserBusy]);
 
   // Close mobile menu on escape key
   useEffect(() => {
@@ -1494,6 +1575,25 @@ export const Header: React.FC<HeaderProps> = ({
                               />
                             </svg>
                             {t('header.impersonatePartner')}
+                          </UserMenuButtonItem>
+                        )}
+                        {isSuperAdmin && !isImpersonating && (
+                          <UserMenuButtonItem
+                            type="button"
+                            onClick={() => {
+                              setUserMenuOpen(false);
+                              setImpersonateUserModalOpen(true);
+                            }}
+                          >
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
+                              />
+                            </svg>
+                            {t('header.impersonateUser')}
                           </UserMenuButtonItem>
                         )}
                         {user.role === 'admin' ? (
@@ -2260,6 +2360,125 @@ export const Header: React.FC<HeaderProps> = ({
                   type="button"
                   disabled={isImpersonateBusy !== null}
                   onClick={() => setImpersonateModalOpen(false)}
+                >
+                  {t('impersonation.cancel')}
+                </ImpersonateCancelButton>
+              </ImpersonateModalFooter>
+            </ImpersonateModal>
+          </ImpersonateOverlay>
+        )}
+
+        {/* SUPER_ADMIN "Влез като потребител" — end-user impersonation picker.
+            Structurally cloned from the partner modal; selecting a row routes
+            through impersonateUser() (generic targetUserId) and the SAME banner
+            + stop machinery as the partner flow. */}
+        {impersonateUserModalOpen && (
+          <ImpersonateOverlay
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !isImpersonateUserBusy) {
+                setImpersonateUserModalOpen(false);
+              }
+            }}
+          >
+            <ImpersonateModal
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: 0.15 }}
+            >
+              <ImpersonateModalHeader>
+                <ImpersonateModalTitle>
+                  {t('impersonation.userModalTitle')}
+                </ImpersonateModalTitle>
+                <ImpersonateModalSubtitle>
+                  {t('impersonation.userModalSubtitle')}
+                </ImpersonateModalSubtitle>
+                {/* Security warning — impersonation is audited. */}
+                <div style={{
+                  margin: '0.625rem 0',
+                  padding: '0.5rem 0.75rem',
+                  background: '#fef3c7',
+                  border: '1px solid #d97706',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.75rem',
+                  color: '#92400e',
+                  fontWeight: 600,
+                  lineHeight: 1.5,
+                }}>
+                  ⚠ Внимание: Тази сесия ще бъде записана в одит лога. Използвайте само за оторизирана поддръжка или дебъгване.
+                </div>
+                <ImpersonateSearchInput
+                  autoFocus
+                  type="text"
+                  value={impersonatableUserSearch}
+                  onChange={(e) => setImpersonatableUserSearch(e.target.value)}
+                  placeholder={t('impersonation.userSearchPlaceholder')}
+                />
+              </ImpersonateModalHeader>
+
+              <ImpersonateModalBody>
+                {impersonatableUsersLoading && (
+                  <ImpersonateEmptyState>
+                    {t('impersonation.loading')}
+                  </ImpersonateEmptyState>
+                )}
+                {impersonatableUsersError && !impersonatableUsersLoading && (
+                  <ImpersonateEmptyState>{impersonatableUsersError}</ImpersonateEmptyState>
+                )}
+                {!impersonatableUsersLoading && !impersonatableUsersError && impersonatableUsers && (() => {
+                  if (impersonatableUsers.length === 0) {
+                    return (
+                      <ImpersonateEmptyState>
+                        {t('impersonation.userEmpty')}
+                      </ImpersonateEmptyState>
+                    );
+                  }
+
+                  return impersonatableUsers.map((u) => {
+                    const displayName = [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email;
+                    const initials = (
+                      (u.firstName?.[0] || u.email[0] || '?') +
+                      (u.lastName?.[0] || '')
+                    ).toUpperCase();
+                    const isRowBusy = isImpersonateUserBusy !== null;
+                    return (
+                      <AccountSwitcherItem
+                        key={u.userId}
+                        $active={false}
+                        $disabled={isRowBusy}
+                        onClick={async () => {
+                          if (isRowBusy) return;
+                          setIsImpersonateUserBusy(u.userId);
+                          try {
+                            await impersonateUser(u.userId);
+                            setImpersonateUserModalOpen(false);
+                            navigate('/dashboard');
+                          } catch {
+                            // toast already shown by impersonateUser()
+                          } finally {
+                            setIsImpersonateUserBusy(null);
+                          }
+                        }}
+                      >
+                        <AccountSwitcherAvatar $active={false}>{initials}</AccountSwitcherAvatar>
+                        <AccountSwitcherBody>
+                          <AccountSwitcherName>{displayName}</AccountSwitcherName>
+                          <AccountSwitcherRole>{u.email}</AccountSwitcherRole>
+                        </AccountSwitcherBody>
+                      </AccountSwitcherItem>
+                    );
+                  });
+                })()}
+              </ImpersonateModalBody>
+
+              <ImpersonateModalFooter>
+                <ImpersonateCancelButton
+                  type="button"
+                  disabled={isImpersonateUserBusy !== null}
+                  onClick={() => setImpersonateUserModalOpen(false)}
                 >
                   {t('impersonation.cancel')}
                 </ImpersonateCancelButton>
