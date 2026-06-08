@@ -567,6 +567,13 @@ Note: The source spec does not define business rules for rate transitions, requi
 
 **Additional roles in DB schema** *(implementation extension — not in source spec):* The `UserRole` Prisma enum includes `SUPPORT`, `FINANCE`, and `PARTNER_MANAGER` beyond the ADMIN/SUPER_ADMIN roles defined in the source spec. Their permissions and admin panel behavior are not specified in the source spec.
 
+**Admin impersonation ("представяне като партньор" / "Влез като потребител")** *(implementation extension — not in source spec; confirm with product):* The admin panel lets an operator assume another account's authenticated session:
+
+- **Partner impersonation** — ADMIN or SUPER_ADMIN may impersonate a PARTNER account (`GET /api/auth/impersonatable-partners`, `POST /api/auth/impersonate` with `targetPartnerUserId`).
+- **User impersonation** — SUPER_ADMIN **only** may impersonate a regular end-user (role USER) (`GET /api/auth/impersonatable-users` — SUPER_ADMIN-gated, `POST /api/auth/impersonate` with `targetUserId`; target role is resolved server-side and an ADMIN attempting a USER target receives HTTP 403). Gating the most invasive impersonation to Super Admin is consistent with the §1.5/§3.9 Super-Admin authority model.
+
+Invariants enforced by the implementation: the impersonation token carries `imp:true` + the acting admin id (`impBy`) and **no** account-group/agency claim (so the impersonated session cannot pivot to siblings via account-switch); nested impersonation is refused; `/switch-account` is refused while impersonating; impersonation is refused on mobile and for self-targets; **every start and stop is audit-logged with the acting admin id** (consistent with the "all historical actions and audit records retained" expectation), and the impersonatable-users listing uses an explicit column allowlist so no sensitive field (IBAN, password hash, tokens) is exposed. `POST /api/auth/stop-impersonate` restores the original admin/super-admin session without re-authentication. This capability is **not defined in the source spec** and should be confirmed with product, particularly the end-user impersonation path (a privacy-sensitive operator power).
+
 **Request Assignee Routing (Clash 7.2):**
 
 - All requests go to a shared "Unassigned" queue.
