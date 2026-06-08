@@ -757,6 +757,7 @@ export class AuthService {
         emailVerified: true,
         totpSecret: true,
         totpEnabledAt: true,
+        totpRecoveryCodes: true,
         mustChangePassword: true,
       },
       // Stable ordering so password-disambiguation picks the same row
@@ -895,15 +896,67 @@ export class AuthService {
     // TOTP enforcement — only admins/partners can have 2FA enabled, but the
     // check is intentionally unconditional on role so it works if we ever
     // extend 2FA to other roles without touching this path.
+    let recoveryCodeLogin = false;
     if (user.totpEnabledAt) {
       if (!totpCode) {
         detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'totp_required' } }), (err) => logger.error('loginHistory.create failed', { err }));
         throw new AppError('Two-factor authentication required', 403);
       }
-      const result = otplib.verifySync({ token: totpCode, secret: user.totpSecret! });
-      if (!result.valid) {
-        detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'totp_invalid' } }), (err) => logger.error('loginHistory.create failed', { err }));
-        throw new AppError('Invalid two-factor authentication code', 401);
+      // The same `totpCode` field accepts EITHER a 6-digit TOTP code OR a one-time
+      // backup recovery code. We cannot reliably route on shape (the recovery-code
+      // alphabet can produce all-digit codes too), so we always try TOTP first (the
+      // common path) and only fall back to recovery-code verification when TOTP fails.
+      // A valid recovery code is CONSUMED (its hash is removed) so it can never be reused.
+      // Only attempt TOTP verification for a plausibly-TOTP-shaped input. In this
+      // otplib version verifySync THROWS a TokenLengthError on a non-6-digit token,
+      // so passing an 11-char recovery code straight in would crash (500) instead of
+      // falling through to the recovery-code path below. Gating on /^\d{6}$/ both
+      // avoids relying on exceptions for control flow and skips a needless crypto op
+      // for obvious recovery codes, while a wrong 6-digit TOTP still yields valid:false.
+      const totpValid = /^\d{6}$/.test(totpCode) && otplib.verifySync({ token: totpCode, secret: user.totpSecret! }).valid;
+      if (!totpValid) {
+        // Normalise the same way the codes were hashed at generation time:
+        // uppercase, strip any non-alphanumerics (e.g. the display dash).
+        const candidate = totpCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        let matchedRecoveryHash: string | null = null;
+        for (const hash of user.totpRecoveryCodes) {
+          if (await bcrypt.compare(candidate, hash)) {
+            matchedRecoveryHash = hash;
+            break;
+          }
+        }
+        if (!matchedRecoveryHash) {
+          detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'totp_invalid' } }), (err) => logger.error('loginHistory.create failed', { err }));
+          throw new AppError('Invalid two-factor authentication code', 401);
+        }
+        // Consume the used recovery code ATOMICALLY with a RELATIVE, in-place array
+        // element removal performed by Postgres on the LIVE row value — not a full-array
+        // `set:` from a stale in-memory snapshot. `array_remove` strips exactly this one
+        // hash from whatever the row currently holds, so a concurrent consume of a
+        // DIFFERENT code cannot be silently restored: each consumer only ever removes its
+        // own element, never overwrites the array. The `= ANY(...)` guard makes the write
+        // a no-op (affected rows = 0) once another request has already consumed THIS code,
+        // enforcing strict single-use. (Table `User` / column `totpRecoveryCodes` are
+        // unmapped PascalCase Prisma identifiers, hence the double quotes.)
+        const consumedCount = await prisma.$executeRaw`
+          UPDATE "User"
+             SET "totpRecoveryCodes" = array_remove("totpRecoveryCodes", ${matchedRecoveryHash})
+           WHERE id = ${user.id}
+             AND ${matchedRecoveryHash} = ANY("totpRecoveryCodes")
+        `;
+        const remaining = user.totpRecoveryCodes.filter((h) => h !== matchedRecoveryHash);
+        if (consumedCount === 0) {
+          // A concurrent request already consumed this exact code → not a valid
+          // single-use login. Treat it like any other invalid 2FA attempt.
+          detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'totp_invalid' } }), (err) => logger.error('loginHistory.create failed', { err }));
+          throw new AppError('Invalid two-factor authentication code', 401);
+        }
+        // Distinct login-history marker so a recovery-code login is auditable
+        // separately from a normal TOTP login. This is the SINGLE success row for
+        // this login — the generic success row below is skipped via this flag.
+        recoveryCodeLogin = true;
+        detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: true, failReason: 'totp_recovery_code_used' } }), (err) => logger.error('loginHistory.create failed', { err }));
+        logger.warn(`2FA recovery code used for login: ${user.email} (${remaining.length} codes remaining)`);
       }
     }
 
@@ -913,7 +966,11 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
-    detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: true } }), (err) => logger.error('loginHistory.create failed', { err }));
+    // For a recovery-code login the distinct success row above is the one and only
+    // success record — don't double-write a generic success row.
+    if (!recoveryCodeLogin) {
+      detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: true } }), (err) => logger.error('loginHistory.create failed', { err }));
+    }
     logger.info(`User logged in: ${user.email}`);
 
     // Compute the sibling-account group eligible for switching on this
@@ -941,7 +998,7 @@ export class AuthService {
 
     // Normalize and strip fields that must not reach the client.
     // totpEnabledAt / totpSecret are internal; expose only the boolean.
-    const { passwordHash, totpEnabledAt, totpSecret, ...userWithoutPassword } = user;
+    const { passwordHash, totpEnabledAt, totpSecret, totpRecoveryCodes, ...userWithoutPassword } = user;
 
     return {
       user: {

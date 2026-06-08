@@ -1863,7 +1863,7 @@ export const Header: React.FC<HeaderProps> = ({
             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
           >
             <SearchBarInner>
-              <form onSubmit={handleSearchSubmit}>
+              <form onSubmit={handleSearchSubmit} method="get" encType="application/x-www-form-urlencoded">
                 <SearchInputWrapper>
                   <SearchIconWrapper>
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">

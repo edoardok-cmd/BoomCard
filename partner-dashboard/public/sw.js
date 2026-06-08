@@ -7,14 +7,14 @@ const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const IMAGE_CACHE = `${CACHE_VERSION}-images`;
 
-// Assets to cache on install
+// Assets to cache on install. Only list assets that actually ship in the
+// build — a missing entry used to abort the entire install via cache.addAll().
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/offline.html',
   '/manifest.json',
-  '/icon-192x192.png',
-  '/icon-512x512.png',
+  '/favicon.svg',
 ];
 
 // Maximum cache sizes
@@ -28,7 +28,15 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(STATIC_CACHE).then((cache) => {
       console.log('[SW] Precaching static assets');
-      return cache.addAll(STATIC_ASSETS);
+      // Resilient precache: add each asset independently so one missing/failed
+      // asset can never reject the whole install (cache.addAll is all-or-nothing).
+      return Promise.all(
+        STATIC_ASSETS.map((asset) =>
+          cache.add(asset).catch((error) => {
+            console.warn('[SW] Failed to precache asset (skipping):', asset, error);
+          })
+        )
+      );
     })
   );
 
@@ -303,8 +311,10 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body,
-    icon: '/icon-192x192.png',
-    badge: '/icon-72x72.png',
+    // Use the only icon that ships in the build; the icon-*.png variants
+    // referenced previously do not exist and silently fail to render.
+    icon: '/favicon.svg',
+    badge: '/favicon.svg',
     vibrate: [200, 100, 200],
     data: data.data || {},
     actions: data.actions || []

@@ -24,6 +24,7 @@
  */
 
 import { Router, Response } from 'express';
+import * as crypto from 'crypto';
 import * as otplib from 'otplib';
 import QRCode from 'qrcode';
 import bcrypt from 'bcrypt';
@@ -37,6 +38,46 @@ import { AuthService } from '../services/auth.service';
 import { getClientIp } from '../utils/requestIp';
 
 const LOOPBACK_IPS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+
+/* ─── 2FA recovery codes ─────────────────────────────────────────────────────*/
+
+// Number of one-time backup recovery codes generated when 2FA is enabled.
+const RECOVERY_CODE_COUNT = 10;
+// bcrypt cost factor — matches passwordHash hashing elsewhere in the codebase.
+const RECOVERY_CODE_BCRYPT_ROUNDS = 12;
+// Crockford-ish unambiguous alphabet (no 0/O/1/I/L) for human-readable codes.
+const RECOVERY_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+/**
+ * Generates a single recovery code formatted as XXXXX-XXXXX (10 chars + dash).
+ * Uses crypto.randomInt for unbiased character selection.
+ */
+function generateRecoveryCode(): string {
+  let raw = '';
+  for (let i = 0; i < 10; i++) {
+    raw += RECOVERY_CODE_ALPHABET[crypto.randomInt(RECOVERY_CODE_ALPHABET.length)];
+  }
+  return `${raw.slice(0, 5)}-${raw.slice(5)}`;
+}
+
+/**
+ * Generates RECOVERY_CODE_COUNT plaintext codes and their bcrypt hashes.
+ * Returns the plaintext for one-time display and the hashes for storage.
+ * Recovery codes are normalised (uppercase, dash-less) before hashing so that
+ * the login-time comparison is case/format insensitive.
+ */
+async function generateRecoveryCodeSet(): Promise<{ plaintext: string[]; hashes: string[] }> {
+  const plaintext = Array.from({ length: RECOVERY_CODE_COUNT }, () => generateRecoveryCode());
+  const hashes = await Promise.all(
+    plaintext.map((code) => bcrypt.hash(normalizeRecoveryCode(code), RECOVERY_CODE_BCRYPT_ROUNDS))
+  );
+  return { plaintext, hashes };
+}
+
+/** Canonical form used for both hashing and login comparison: uppercase, no separators. */
+function normalizeRecoveryCode(code: string): string {
+  return code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -315,16 +356,66 @@ router.post(
       return res.status(400).json({ error: 'Call GET /2fa/setup first to generate a secret' });
     }
 
-    const result = otplib.verifySync({ token, secret: user.totpPendingSecret });
+    // In this otplib version verifySync THROWS a TokenLengthError on a non-6-digit
+    // token, which would surface as an unintended 500. Gate on /^\d{6}$/ so a
+    // malformed token yields the same clean 400 as a wrong-but-valid-shape token.
+    const result = /^\d{6}$/.test(token)
+      ? otplib.verifySync({ token, secret: user.totpPendingSecret })
+      : { valid: false };
     if (!result.valid) return res.status(400).json({ error: 'Invalid TOTP token' });
 
-    // Promote pending secret to active, clear pending field.
+    // Generate one-time backup recovery codes. Only the bcrypt hashes are stored;
+    // the plaintext is returned ONCE in this response and can never be retrieved again.
+    const { plaintext, hashes } = await generateRecoveryCodeSet();
+
+    // Promote pending secret to active, clear pending field, store recovery-code hashes.
     await prisma.user.update({
       where: { id: req.user!.id },
-      data: { totpSecret: user.totpPendingSecret, totpPendingSecret: null, totpEnabledAt: new Date() },
+      data: {
+        totpSecret: user.totpPendingSecret,
+        totpPendingSecret: null,
+        totpEnabledAt: new Date(),
+        totpRecoveryCodes: hashes,
+      },
     });
 
-    res.json({ ok: true, message: '2FA enabled' });
+    res.json({
+      ok: true,
+      message: '2FA enabled',
+      // Shown exactly once — the admin must store these now; they are unrecoverable.
+      recoveryCodes: plaintext,
+    });
+  })
+);
+
+/**
+ * POST /api/admin/me/2fa/recovery-codes/regenerate
+ * Body: { currentPassword } — password confirmation required.
+ * Invalidates the existing recovery-code set and returns a fresh batch of
+ * plaintext codes EXACTLY ONCE. 2FA must already be enabled.
+ */
+router.post(
+  '/2fa/recovery-codes/regenerate',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { currentPassword } = req.body as { currentPassword?: string };
+    if (!currentPassword) return res.status(400).json({ error: 'currentPassword is required' });
+
+    const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    if (!user) return res.status(404).json({ error: 'Admin not found' });
+    if (!user.totpEnabledAt) {
+      return res.status(400).json({ error: '2FA is not enabled' });
+    }
+
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) return res.status(400).json({ error: 'Current password is incorrect' });
+
+    const { plaintext, hashes } = await generateRecoveryCodeSet();
+    await prisma.user.update({
+      where: { id: req.user!.id },
+      data: { totpRecoveryCodes: hashes },
+    });
+
+    res.json({ ok: true, message: 'Recovery codes regenerated', recoveryCodes: plaintext });
   })
 );
 
@@ -351,7 +442,7 @@ router.delete(
 
     await prisma.user.update({
       where: { id: req.user!.id },
-      data: { totpSecret: null, totpPendingSecret: null, totpEnabledAt: null },
+      data: { totpSecret: null, totpPendingSecret: null, totpEnabledAt: null, totpRecoveryCodes: [] },
     });
 
     // Distinguish: if only a pending setup existed (never confirmed), call it "cancelled".

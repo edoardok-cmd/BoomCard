@@ -234,8 +234,14 @@ export const loginValidation = [
   body('totpCode')
     .optional()
     .isString()
-    .matches(/^\d{6}$/)
-    .withMessage('totpCode must be a 6-digit string'),
+    // Accept EITHER a 6-digit TOTP code OR a backup recovery code.
+    // Recovery codes are emitted as XXXXX-XXXXX over the unambiguous alphabet
+    // A-Z (minus O/I/L) + digits 2-9, e.g. "C763J-HNPDR". AuthService.login
+    // normalises via .toUpperCase().replace(/[^A-Z0-9]/g, '') before comparing,
+    // so we tolerate any case and an optional dash separator while staying
+    // bounded in length (rejects junk like "abc" or a 200-char string).
+    .matches(/^(?:\d{6}|[A-Za-z0-9]{5}-?[A-Za-z0-9]{5})$/)
+    .withMessage('totpCode must be a 6-digit TOTP code or a backup recovery code'),
 ];
 
 export const updateProfileValidation = [

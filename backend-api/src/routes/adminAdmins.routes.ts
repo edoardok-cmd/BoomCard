@@ -1080,6 +1080,68 @@ router.post('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
   }
 });
 
+// POST /api/admin/admins/:id/reset-2fa — SUPER_ADMIN clears another admin's 2FA.
+// BC-ADMIN-2FA-RECOVERY-AND-FRONTEND-FIX-015 (a): recovers an admin who is locked
+// out of their authenticator, WITHOUT manual DB surgery. Clears totpSecret,
+// totpPendingSecret, totpEnabledAt and any backup recovery codes so the target can
+// log in with just their password and re-enrol 2FA from scratch.
+//
+// Safeguard: a SUPER_ADMIN MUST NOT reset their OWN 2FA via this endpoint — that
+// would let a single actor strip the second factor off their own account and defeat
+// the whole control. Self-service disable lives on DELETE /api/admin/me/2fa
+// (password-gated). Here, target == caller is a hard 403.
+router.post('/:id/reset-2fa', authenticate, authorize('SUPER_ADMIN'), requirePermission('admins.write'), async (req: AuthRequest, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Sole safeguard-bypass prevention: cannot reset your own 2FA here.
+    if (id === req.user!.id) {
+      return res.status(403).json({
+        error: 'You cannot reset your own 2FA from here. Use DELETE /api/admin/me/2fa (password required).',
+      });
+    }
+
+    const target = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, role: true, email: true, totpEnabledAt: true, totpPendingSecret: true },
+    });
+    if (!target || (target.role !== 'ADMIN' && target.role !== 'SUPER_ADMIN')) {
+      return res.status(404).json({ error: 'Admin not found' });
+    }
+
+    const wasEnabled = target.totpEnabledAt !== null;
+    if (!wasEnabled && !target.totpPendingSecret) {
+      return res.status(400).json({ error: 'This admin does not have 2FA enabled or in setup' });
+    }
+
+    await prisma.user.update({
+      where: { id },
+      data: {
+        totpSecret: null,
+        totpPendingSecret: null,
+        totpEnabledAt: null,
+        totpRecoveryCodes: [],
+      },
+    });
+
+    req.skipAudit = true;
+    await writeAudit({
+      actorUserId: req.user!.id,
+      action: 'admin.2fa.reset',
+      objectType: 'admin',
+      objectId: id,
+      before: { twoFactorEnabled: wasEnabled },
+      after: { twoFactorEnabled: false, resetBy: req.user!.id },
+      ip: getClientIp(req) ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
+
+    res.json({ ok: true, message: '2FA has been reset for this admin' });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // DELETE /api/admin/admins/:id/roles/:roleKey — revoke a role from an admin
 router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.roles.write'), async (req, res, next) => {
   try {

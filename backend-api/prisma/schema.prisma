@@ -50,6 +50,12 @@ model User {
   totpEnabledAt             DateTime?
   totpSecret                String?
   totpPendingSecret         String?
+  /// BC-ADMIN-2FA-RECOVERY-AND-FRONTEND-FIX-015 — one-time backup recovery codes.
+  /// Stores bcrypt HASHES of single-use 2FA recovery codes (never plaintext).
+  /// Plaintext is shown to the admin exactly once at 2FA-enable time and is not
+  /// retrievable again. A successful recovery-code login consumes (removes) the
+  /// matching hash from this array so it cannot be reused.
+  totpRecoveryCodes         String[]                   @default([])
   mustChangePassword        Boolean                    @default(false)
   preferredLanguage         String                     @default("bg")
   lastActivityAt            DateTime?
