@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { StyledHeader } from './Header.styles';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -495,7 +496,9 @@ const ImpersonateOverlay = styled(motion.div)`
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  z-index: 1000;
+  /* Portaled to document.body so it escapes StyledHeader's backdrop-filter
+     containing block; z-index sits above the header (1020). */
+  z-index: 2000;
 `;
 
 const ImpersonateModal = styled(motion.div)`
@@ -2239,18 +2242,26 @@ export const Header: React.FC<HeaderProps> = ({
 
       {children}
 
-      <AnimatePresence>
-        {impersonateModalOpen && (
-          <ImpersonateOverlay
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={(e) => {
-              if (e.target === e.currentTarget && !isImpersonateBusy) {
-                setImpersonateModalOpen(false);
-              }
-            }}
-          >
+      {/* Impersonation pickers are portaled to document.body. StyledHeader applies
+          backdrop-filter (dark mode always; .scrolled in every mode), which makes
+          the <header> the containing block for its position:fixed descendants —
+          that clipped ImpersonateOverlay (position:fixed; inset:0) to the ~64px
+          header strip. Portaling escapes that containing block so the overlay
+          covers the full viewport. AnimatePresence wraps the portal content so
+          enter/exit animations remain intact. */}
+      {createPortal(
+        <AnimatePresence>
+          {impersonateModalOpen && (
+            <ImpersonateOverlay
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={(e) => {
+                if (e.target === e.currentTarget && !isImpersonateBusy) {
+                  setImpersonateModalOpen(false);
+                }
+              }}
+            >
             <ImpersonateModal
               initial={{ opacity: 0, y: 12, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -2486,7 +2497,9 @@ export const Header: React.FC<HeaderProps> = ({
             </ImpersonateModal>
           </ImpersonateOverlay>
         )}
-      </AnimatePresence>
+        </AnimatePresence>,
+        document.body
+      )}
     </StyledHeader>
   );
 };
