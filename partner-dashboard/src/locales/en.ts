@@ -228,6 +228,15 @@ export const en = {
     errorSendingEmail: 'Error sending email',
     errorOccurred: 'An error occurred. Please try again.',
     sessionExpired: 'Your session has expired. Please sign in again.',
+    twoFactorTitle: 'Two-factor authentication',
+    twoFactorCode: 'Authentication code',
+    twoFactorHelp: 'Enter the 6-digit code from your authenticator app, or one of your backup recovery codes.',
+    twoFactorPlaceholder: '123456 or backup code',
+    twoFactorRequired: 'Please enter your authentication code',
+    twoFactorInvalid: 'Invalid two-factor authentication code. Please try again.',
+    twoFactorPrompt: 'Enter your authenticator code to finish signing in.',
+    twoFactorUseAnotherAccount: 'Use a different account',
+    signingInAs: 'Signing in as',
     accountCreated: 'Account created successfully! Welcome to BoomCard!',
     loggedOut: 'Logged out successfully',
     stoppedImpersonating: 'Stopped impersonating',
@@ -2167,6 +2176,13 @@ export const en = {
   // Admin module — 10-category IA (Phase 0+)
   // ============================================================
   admin: {
+    // Gated-nav lock (2FA / password setup required before using the panel)
+    navLock: {
+      tooltipSetup2FA: 'Set up two-factor authentication first to unlock this section.',
+      tooltipChangePassword: 'Change your temporary password first to unlock this section.',
+      toastSetup2FA: 'Please set up two-factor authentication to continue.',
+      toastChangePassword: 'Please change your temporary password to continue.',
+    },
     // Category labels
     dashboard: 'Dashboard',
     subscribers: 'Subscribers',

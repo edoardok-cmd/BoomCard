@@ -900,7 +900,7 @@ export class AuthService {
     if (user.totpEnabledAt) {
       if (!totpCode) {
         detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'totp_required' } }), (err) => logger.error('loginHistory.create failed', { err }));
-        throw new AppError('Two-factor authentication required', 403);
+        throw new AppError('Two-factor authentication required', 403, { code: 'TWO_FACTOR_REQUIRED' });
       }
       // The same `totpCode` field accepts EITHER a 6-digit TOTP code OR a one-time
       // backup recovery code. We cannot reliably route on shape (the recovery-code

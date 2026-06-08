@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { toast } from 'react-hot-toast';
 import { apiService } from '../services/api.service';
 import { useLanguage } from './LanguageContext';
@@ -13,11 +13,30 @@ type ApiError = {
     data?: {
       message?: string;
       error?: string | { message?: string };
+      details?: { code?: string };
     };
   };
   message?: string;
   code?: string;
 };
+
+/**
+ * Thrown by login() when the backend reports that an account has 2FA enabled
+ * and the request omitted the TOTP/recovery code (HTTP 403 with
+ * details.code === 'TWO_FACTOR_REQUIRED'). This is an EXPECTED control-flow
+ * signal — not a genuine failure — so it is NOT toasted. LoginPage catches it
+ * to reveal the second-factor input. Carries a `code` property so callers that
+ * prefer duck-typing over instanceof can detect it too.
+ */
+export class TwoFactorRequiredError extends Error {
+  code = 'TWO_FACTOR_REQUIRED' as const;
+  constructor(message = 'Two-factor authentication required') {
+    super(message);
+    this.name = 'TwoFactorRequiredError';
+    // Restore prototype chain for instanceof after TS down-compilation.
+    Object.setPrototypeOf(this, TwoFactorRequiredError.prototype);
+  }
+}
 
 // Backend responses arrive in two shapes across this codebase: the flat
 // payload itself, and an envelope { data: payload }. Callers have to probe
@@ -156,6 +175,13 @@ export interface LoginCredentials {
   email: string;
   password: string;
   rememberMe?: boolean;
+  /**
+   * Optional second factor for accounts with 2FA enabled. Accepts EITHER a
+   * 6-digit TOTP code from an authenticator app OR a one-time backup recovery
+   * code (format `XXXXX-XXXXX`). Spread verbatim into the /auth/login body, so
+   * the backend receives whichever the user typed.
+   */
+  totpCode?: string;
 }
 
 export interface RegisterData {
@@ -241,6 +267,28 @@ export interface AuthContextType extends AuthState {
   stopImpersonating: () => Promise<void>;
   // Re-fetch /auth/me and refresh user state in-place (used after 2FA setup, password change, etc.)
   reloadUser: () => Promise<void>;
+  // 2FA second-factor step gate. login() sets this true when the backend reports
+  // an account has 2FA enabled but no code was supplied (alongside throwing
+  // TwoFactorRequiredError). It MUST live on the provider — not in LoginPage's
+  // local state — because App.tsx unmounts LoginPage while isLoading is true,
+  // wiping any local state set during the in-flight login. LoginPage derives the
+  // code field's visibility from this so it survives the remount.
+  twoFactorRequired: boolean;
+  // Email captured at the password step, surfaced so LoginPage can show
+  // "Signing in as <email>" during the 2FA step. The credentials themselves
+  // live in a ref (out of React state / devtools), but the email is non-secret
+  // and useful for UX, so it is mirrored into state here. Null when no 2FA step
+  // is in flight.
+  twoFactorEmail: string | null;
+  // Submit the second factor against the credentials captured at the password
+  // step. LoginPage's local formData is wiped by the isLoading-driven remount,
+  // so the code step MUST go through this method (which reads the provider-held
+  // pending credentials) rather than re-submitting formData. Resolves on a
+  // successful login (user is now authenticated); rejects (and toasts) on a
+  // wrong code, leaving the 2FA step active for a retry.
+  submitTwoFactor: (code: string) => Promise<void>;
+  // Reset the 2FA step (e.g. when the user edits email/password to switch accounts).
+  clearTwoFactorRequired: () => void;
 }
 
 interface AuthResponse {
@@ -313,6 +361,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     () => authStorage.getItem(PARTNER_RESTRICTION_KEY),
   );
   const [isLoading, setIsLoading] = useState(true);
+  // 2FA step gate — see AuthContextType.twoFactorRequired for why this must live
+  // on the provider (which stays mounted across the isLoading-driven LoginPage
+  // unmount/remount) rather than in LoginPage's local state.
+  const [twoFactorRequired, setTwoFactorRequired] = useState(false);
+  // Non-secret email mirror for the "Signing in as <email>" UX during 2FA.
+  const [twoFactorEmail, setTwoFactorEmail] = useState<string | null>(null);
+  // In-memory holder for the credentials captured at the password step. A ref
+  // (not state) so the password never lands in React state / devtools and so
+  // updates don't trigger re-renders. It lives on AuthProvider, which never
+  // unmounts, so it survives the LoginPage remount that App.tsx triggers while
+  // isLoading is true — that remount is exactly what wipes LoginPage's local
+  // formData, which is why the code step cannot rely on formData.
+  const pendingLoginRef = useRef<{ email: string; password: string; rememberMe?: boolean } | null>(null);
+  const clearTwoFactorRequired = () => {
+    setTwoFactorRequired(false);
+    setTwoFactorEmail(null);
+    pendingLoginRef.current = null;
+  };
 
   // Keep the switchable-accounts list in sync with storage so hard reloads
   // preserve the switcher UI. Anchor persistence on TOKEN_KEY (always
@@ -639,6 +705,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         setPartnerRestriction(restriction);
 
+        // Successful login completes the 2FA flow — reset the step gate so a
+        // subsequent logout/login on the same provider instance starts clean.
+        // Also drop the captured credentials and the email mirror.
+        setTwoFactorRequired(false);
+        setTwoFactorEmail(null);
+        pendingLoginRef.current = null;
+
         toast.success(`Welcome back, ${user.firstName}!`);
         return;
       } catch (apiError) {
@@ -646,18 +719,89 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const nested = err?.response?.data?.error;
         const apiMessage = (typeof nested === 'object' ? nested?.message : nested)
           || err?.response?.data?.message;
+        const errMessageStr = typeof nested === 'string' ? nested : (apiMessage || '');
+        const detailCode = err?.response?.data?.details?.code;
+        const status = err?.response?.status;
+
+        // 2FA-required signal: an account has 2FA on but no code was supplied.
+        // Primary detection is the explicit details.code; fallback is a 403
+        // carrying a "Two-factor" message. This is a control-flow signal, not a
+        // failure — re-throw a distinguishable error WITHOUT toasting so
+        // LoginPage can reveal the code field. Guard against confusing it with a
+        // WRONG code (401 / TWO_FACTOR_INVALID), which must surface normally.
+        const isTwoFactorRequired =
+          detailCode === 'TWO_FACTOR_REQUIRED' ||
+          (status === 403 &&
+            detailCode !== 'TWO_FACTOR_INVALID' &&
+            /two[-\s]?factor/i.test(errMessageStr));
+        if (isTwoFactorRequired) {
+          // Flip the provider-level gate BEFORE throwing so the code field stays
+          // visible across the LoginPage unmount/remount that App.tsx triggers
+          // when isLoading goes true→false. The throw still happens so LoginPage
+          // knows not to navigate; the outer catch deliberately does not toast
+          // TwoFactorRequiredError. The wrong-code path (401 / TWO_FACTOR_INVALID)
+          // is NOT handled here, so it leaves this flag TRUE and the field shown.
+          // Capture the credentials so submitTwoFactor() can re-issue the login
+          // with a totpCode after LoginPage's local formData has been wiped by
+          // the remount. Stored in a ref (out of React state) — only the
+          // non-secret email is mirrored into state for the UX line. Skip the
+          // capture if a totpCode was already supplied (would mean the backend
+          // re-asked for 2FA despite a code, which is not the password step).
+          if (!credentials.totpCode) {
+            pendingLoginRef.current = {
+              email: credentials.email,
+              password: credentials.password,
+              rememberMe: credentials.rememberMe,
+            };
+            setTwoFactorEmail(credentials.email);
+          }
+          setTwoFactorRequired(true);
+          // Bubble straight to the outer caller.
+          throw new TwoFactorRequiredError(apiMessage || undefined);
+        }
+
         if (apiMessage) throw new Error(apiMessage);
         if (err?.response) throw new Error('Login failed. Please try again.');
         console.error('API unavailable:', err?.message || apiError);
         throw new Error('Server is currently unavailable. Please try again later.');
       }
     } catch (error) {
+      // The 2FA-required signal is an expected step, not a failure — let
+      // LoginPage handle it silently (reveal the code field). Toast everything
+      // else, including a WRONG code which arrives as a plain Error here.
+      if (error instanceof TwoFactorRequiredError) {
+        throw error;
+      }
       const message = (error as Error)?.message || 'Login failed';
       toast.error(message);
       throw error;
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Submit the second factor (TOTP or XXXXX-XXXXX recovery code) against the
+  // credentials captured at the password step. Reuses login() so all the
+  // success/token/user handling — and the success-path 2FA reset — run
+  // unchanged. On a wrong code login() throws a normal Error (already toasted)
+  // and leaves twoFactorRequired/pendingLoginRef intact so the user can retry.
+  const submitTwoFactor = async (code: string): Promise<void> => {
+    const pending = pendingLoginRef.current;
+    if (!pending) {
+      // Defensive: the pending credentials are gone (e.g. provider re-mounted
+      // from a hard reload, or the step was cancelled). Reset the gate so the
+      // user is returned to the normal email/password form rather than stuck on
+      // a code field that can never succeed.
+      setTwoFactorRequired(false);
+      setTwoFactorEmail(null);
+      throw new Error('Your sign-in session expired. Please enter your email and password again.');
+    }
+    // totpCode is present, so login()'s 2FA-required detection (which only fires
+    // when no code is supplied) is bypassed: a valid code logs in (success path
+    // clears the ref + gate); a wrong code yields a 401 that login() toasts and
+    // re-throws as a plain Error, leaving the ref + gate intact for a retry.
+    await login({ ...pending, totpCode: code });
+    // login()'s success path already cleared the ref + gate; nothing else to do.
   };
 
   const register = async (data: RegisterData): Promise<void> => {
@@ -777,6 +921,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSwitchableAccounts([]);
     setImpersonation(null);
     setPartnerRestriction(null);
+    // Reset the 2FA step gate so the next login on this provider starts clean,
+    // and drop any captured pending credentials.
+    setTwoFactorRequired(false);
+    setTwoFactorEmail(null);
+    pendingLoginRef.current = null;
 
     // Clear persistent AND ephemeral storage. authStorage.removeItem wipes
     // both local and session, so an ephemeral (remember-me=off) session is
@@ -1394,6 +1543,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     impersonate,
     stopImpersonating,
     reloadUser,
+    twoFactorRequired,
+    twoFactorEmail,
+    submitTwoFactor,
+    clearTwoFactorRequired,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
