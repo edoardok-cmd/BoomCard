@@ -1,0 +1,40 @@
+name: Deploy Backend (Fly.io)
+
+# Production branch is `master` (NOT `main`). The legacy cd.yml / ci-cd.yml
+# deploy jobs are gated on a `main` branch that does not exist, so they never
+# fire — which is why prod historically drifted "stale" behind master. This
+# workflow closes that gap for the backend: every push to master that touches
+# backend-api (or a manual run) deploys the Fly app `boomcard-api`.
+#
+# Requires a repo secret FLY_API_TOKEN. Generate a deploy-scoped token with:
+#   fly tokens create deploy -a boomcard-api
+# then add it under Settings → Secrets and variables → Actions → FLY_API_TOKEN.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'backend-api/**'
+      - '.github/workflows/deploy-fly.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-fly-boomcard-api
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: flyctl deploy boomcard-api
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly.io
+        working-directory: backend-api
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --remote-only --config fly.toml
