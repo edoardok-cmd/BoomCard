@@ -139,7 +139,7 @@ const HistoryList = styled.div`
 `;
 const HistoryItem = styled.div`
   display: grid;
-  grid-template-columns: 5rem 1fr auto;
+  grid-template-columns: minmax(5rem, max-content) 1fr auto;
   align-items: start;
   gap: 0.625rem;
   padding: 0.625rem 0.75rem;
@@ -150,6 +150,8 @@ const HistoryItem = styled.div`
 `;
 const PlanBadge = styled.span<{ $color: string }>`
   display: inline-block;
+  justify-self: start;
+  white-space: nowrap;
   padding: 0.125rem 0.5rem;
   border-radius: 0.25rem;
   font-size: 0.7rem;

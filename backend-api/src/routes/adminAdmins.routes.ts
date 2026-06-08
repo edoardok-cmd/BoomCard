@@ -10,6 +10,11 @@ import { emailService } from '../services/email.service';
 import { logger } from '../utils/logger';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
+import {
+  isValidPermissionKey,
+  getPermissionCatalogGrouped,
+  resolveUserPermissionBreakdown,
+} from '../services/permission.service';
 
 const router = Router();
 router.use(auditMiddleware);
@@ -1205,5 +1210,175 @@ router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADM
     next(error);
   }
 });
+
+// ============================================================================
+// BC-ADMIN-RBAC-ROLES-019 — per-user permission overrides (SUPER_ADMIN only).
+//
+// These endpoints let a SUPER_ADMIN inspect an admin's effective permissions
+// (template-inherited vs per-user override) and toggle individual abilities on
+// top of the role template, including the two impersonation capabilities. Every
+// override write bumps the target's User.rolesUpdatedAt so the existing
+// authenticate() invalidation seam forces the admin's in-flight JWT to refresh
+// (otherwise the override would not take effect until the next natural re-login).
+//
+// Guarded with authorize('SUPER_ADMIN') + requirePermission('admins.roles.write').
+// (SUPER_ADMIN bypasses requirePermission, so the authorize() gate is what actually
+// restricts these to super-admins; the requirePermission keeps the route consistent
+// with the rest of the role-management surface and future-proofs a non-SA grantee.)
+// ============================================================================
+
+// GET /api/admin/admins/permissions/catalog — full catalog grouped by category.
+router.get(
+  '/permissions/catalog',
+  authenticate,
+  authorize('SUPER_ADMIN'),
+  requirePermission('admins.roles.write'),
+  async (_req, res, next) => {
+    try {
+      res.json({ catalog: getPermissionCatalogGrouped() });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// GET /api/admin/admins/:id/permissions — effective permissions for an admin plus a
+// role-vs-override breakdown (for the FE toggle screen).
+router.get(
+  '/:id/permissions',
+  authenticate,
+  authorize('SUPER_ADMIN'),
+  requirePermission('admins.roles.write'),
+  async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const target = await prisma.user.findUnique({
+        where: { id },
+        select: { id: true, role: true },
+      });
+      if (!target || (target.role !== 'ADMIN' && target.role !== 'SUPER_ADMIN')) {
+        return res.status(404).json({ error: 'Admin not found' });
+      }
+
+      const breakdown = await resolveUserPermissionBreakdown(id);
+      res.json({
+        userId: id,
+        role: target.role,
+        // SUPER_ADMIN bypasses all permission checks at runtime — surface that so the
+        // FE renders the "all permissions" state rather than an empty/role-derived set.
+        superAdminBypass: target.role === 'SUPER_ADMIN',
+        effective: breakdown.effective,
+        roleAllowed: breakdown.roleAllowed,
+        roleDenied: breakdown.roleDenied,
+        overrides: breakdown.overrides,
+        catalog: getPermissionCatalogGrouped(),
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// PUT /api/admin/admins/:id/permissions/overrides — set or clear a single per-user
+// override. Body: { permissionKey: string, allow: true | false | null }.
+//   allow=true  → upsert override granting the key (beats role-level deny)
+//   allow=false → upsert override denying the key (beats role-level allow)
+//   allow=null  → clear any existing override for that key (revert to role template)
+router.put(
+  '/:id/permissions/overrides',
+  authenticate,
+  authorize('SUPER_ADMIN'),
+  requirePermission('admins.roles.write'),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const { id } = req.params;
+      const { permissionKey, allow } = req.body as {
+        permissionKey?: unknown;
+        allow?: unknown;
+      };
+
+      if (typeof permissionKey !== 'string' || !permissionKey.trim()) {
+        return res.status(400).json({ error: 'permissionKey is required' });
+      }
+      if (allow !== true && allow !== false && allow !== null) {
+        return res.status(400).json({ error: 'allow must be true, false, or null' });
+      }
+      // Safe cast: the guard above proved `allow` is exactly true | false | null.
+      const allowValue = allow as boolean | null;
+      // Validate against the real catalog — reject unknown keys before touching the DB.
+      if (!isValidPermissionKey(permissionKey)) {
+        return res.status(400).json({ error: `Unknown permission key: ${permissionKey}` });
+      }
+
+      const target = await prisma.user.findUnique({
+        where: { id },
+        select: { id: true, role: true },
+      });
+      if (!target || (target.role !== 'ADMIN' && target.role !== 'SUPER_ADMIN')) {
+        return res.status(404).json({ error: 'Admin not found' });
+      }
+
+      const permission = await prisma.permission.findUnique({ where: { key: permissionKey } });
+      if (!permission) {
+        // Catalog row not seeded in DB — surface clearly rather than silently no-op.
+        return res.status(409).json({ error: `Permission ${permissionKey} is not seeded` });
+      }
+
+      const existing = await prisma.userPermissionOverride.findUnique({
+        where: { userId_permissionId: { userId: id, permissionId: permission.id } },
+        select: { allow: true },
+      });
+      const before = existing ? { permissionKey, allow: existing.allow } : null;
+
+      let after: { permissionKey: string; allow: boolean } | null;
+      if (allowValue === null) {
+        // Clear the override (revert to role template). deleteMany is a no-op if absent.
+        await prisma.userPermissionOverride.deleteMany({
+          where: { userId: id, permissionId: permission.id },
+        });
+        after = null;
+      } else {
+        await prisma.userPermissionOverride.upsert({
+          where: { userId_permissionId: { userId: id, permissionId: permission.id } },
+          update: { allow: allowValue, grantedById: req.user!.id, grantedAt: new Date() },
+          create: {
+            userId: id,
+            permissionId: permission.id,
+            allow: allowValue,
+            grantedById: req.user!.id,
+          },
+        });
+        after = { permissionKey, allow: allowValue };
+      }
+
+      // Bump rolesUpdatedAt so authenticate() invalidates the target's in-flight JWT —
+      // the override takes effect on the admin's next request (re-login), matching the
+      // existing role-change invalidation behaviour.
+      await prisma.user.update({ where: { id }, data: { rolesUpdatedAt: new Date() } });
+
+      req.skipAudit = true;
+      await writeAudit({
+        actorUserId: req.user!.id,
+        action: 'admin.permissions.override',
+        objectType: 'admin',
+        objectId: id,
+        before,
+        after,
+        ip: getClientIp(req) ?? null,
+        userAgent: req.headers['user-agent'] ?? null,
+      });
+
+      const breakdown = await resolveUserPermissionBreakdown(id);
+      res.json({
+        ok: true,
+        userId: id,
+        effective: breakdown.effective,
+        overrides: breakdown.overrides,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 export default router;

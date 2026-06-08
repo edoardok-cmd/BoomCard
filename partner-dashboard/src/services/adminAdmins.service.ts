@@ -148,9 +148,66 @@ export interface AuditResult {
   limit: number;
 }
 
+export interface PermissionCatalogEntry {
+  key: string;
+  label: string;
+}
+
+export interface PermissionCategory {
+  category: string;
+  permissions: PermissionCatalogEntry[];
+}
+
+export interface PermissionCatalogResult {
+  catalog: PermissionCategory[];
+}
+
+export interface AdminPermissionOverride {
+  key: string;
+  allow: boolean;
+}
+
+// Resolved permission state for one admin (GET /:id/permissions).
+export interface AdminPermissionsResult {
+  userId: string;
+  role: string;
+  superAdminBypass: boolean;
+  effective: string[];
+  roleAllowed: string[];
+  roleDenied: string[];
+  overrides: AdminPermissionOverride[];
+  catalog: PermissionCategory[];
+}
+
+export interface SetOverrideResult {
+  ok: boolean;
+  userId: string;
+  effective: string[];
+  overrides: AdminPermissionOverride[];
+}
+
 export const adminAdminsService = {
   listRoles(): Promise<{ roles: AdminRoleEntry[] }> {
     return apiService.get('/admin/admins/roles');
+  },
+
+  // Full permission catalog grouped by category (for rendering grouped toggles).
+  permissionsCatalog(): Promise<PermissionCatalogResult> {
+    return apiService.get('/admin/admins/permissions/catalog');
+  },
+
+  // Resolved effective permissions for one admin + which come from role vs override.
+  getPermissions(id: string): Promise<AdminPermissionsResult> {
+    return apiService.get(`/admin/admins/${id}/permissions`);
+  },
+
+  // Set (allow=true/false) or clear (allow=null → revert to template) a per-user override.
+  setPermissionOverride(
+    id: string,
+    permissionKey: string,
+    allow: boolean | null,
+  ): Promise<SetOverrideResult> {
+    return apiService.put(`/admin/admins/${id}/permissions/overrides`, { permissionKey, allow });
   },
 
   list(params: { page?: number; limit?: number; search?: string; roleKey?: AdminRoleKey | '' }): Promise<AdminsResult> {

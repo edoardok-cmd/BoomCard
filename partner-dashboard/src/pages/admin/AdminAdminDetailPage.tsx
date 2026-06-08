@@ -10,21 +10,23 @@ import {
   AdminUserDetail,
   AdminRoleKey,
 } from '../../services/adminAdmins.service';
+import { RequirePermission } from '../../components/auth/RequirePermission';
+import AdminPermissionsPanel from './AdminPermissionsPanel';
 
 const ASSIGNABLE_ROLES: Array<{ value: AdminRoleKey; label: string }> = [
-  { value: 'ADMIN',           label: 'Администратор (пълен достъп)' },
+  { value: 'ADMIN',           label: 'Нормален администратор' },
   { value: 'SUPPORT',         label: 'Поддръжка' },
-  { value: 'FINANCE',         label: 'Финанси' },
-  { value: 'RISK_REVIEW',     label: 'Преглед на риск' },
-  { value: 'PARTNER_MANAGER', label: 'Мениджър партньори' },
+  { value: 'FINANCE',         label: 'Счетоводител' },
+  { value: 'PARTNER_MANAGER', label: 'Продажби' },
+  { value: 'RISK_REVIEW',     label: 'Контрол на риска' },
 ];
 
 const ROLE_LABEL: Record<string, string> = {
-  ADMIN:           'Администратор',
+  ADMIN:           'Нормален администратор',
   SUPPORT:         'Поддръжка',
-  FINANCE:         'Финанси',
-  RISK_REVIEW:     'Преглед на риск',
-  PARTNER_MANAGER: 'Мениджър партньори',
+  FINANCE:         'Счетоводител',
+  PARTNER_MANAGER: 'Продажби',
+  RISK_REVIEW:     'Контрол на риска',
   SUPER_ADMIN:     'Супер администратор',
 };
 
@@ -535,6 +537,15 @@ export default function AdminAdminDetailPage() {
           </AuditLink>
         </Card>
       </Grid>
+
+      {/* Granular per-user permissions & impersonation toggles (BC-ADMIN-RBAC-ROLES-019-FE).
+          SUPER_ADMIN-only — gated behind admins.roles.write (SUPER_ADMIN bypasses). */}
+      <RequirePermission permissionKey="admins.roles.write">
+        <div style={{ marginTop: '1.5rem' }}>
+          <AdminPermissionsPanel userId={data.id} email={data.email} />
+        </div>
+      </RequirePermission>
+
       {showAddRole && (
         <OverlayBackdrop onClick={() => setShowAddRole(false)}>
           <OverlayCard onClick={(e) => e.stopPropagation()}>

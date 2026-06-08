@@ -2472,19 +2472,29 @@ export class AuthService {
     ]);
 
     if (!target) throw new AppError('Target account not found', 404);
-    // Derive the required caller role from the *resolved* target role — never
-    // from a client-supplied hint. PARTNER targets may be impersonated by any
-    // admin; USER targets are SUPER_ADMIN-only; nothing else is impersonatable.
-    if (target.role === 'PARTNER') {
-      if (adminRole !== 'ADMIN' && adminRole !== 'SUPER_ADMIN') {
-        throw new AppError('Not authorized', 403);
-      }
-    } else if (target.role === 'USER') {
-      if (adminRole !== 'SUPER_ADMIN') {
-        throw new AppError('Only a Super Admin can impersonate a user', 403);
-      }
-    } else {
+    // BC-ADMIN-RBAC-ROLES-019 — gating is now permission-based, not role-based.
+    // Derive the REQUIRED permission from the *resolved* target role (never from a
+    // client-supplied hint): a PARTNER target requires `impersonate.partner`; a USER
+    // target requires `impersonate.user`. SUPER_ADMIN bypasses the permission check
+    // entirely (mirrors requirePermission's SUPER_ADMIN bypass at the route layer).
+    // The route-level requirePermission already screens the caller, but we re-check
+    // here against the resolved target type because POST /impersonate serves BOTH
+    // target kinds under a single outer guard.
+    if (target.role !== 'PARTNER' && target.role !== 'USER') {
       throw new AppError('Target account cannot be impersonated', 400);
+    }
+    if (adminRole !== 'SUPER_ADMIN') {
+      const requiredPermission =
+        target.role === 'PARTNER' ? 'impersonate.partner' : 'impersonate.user';
+      const callerPermissions = await resolveUserPermissions(adminId);
+      if (!callerPermissions.includes(requiredPermission)) {
+        throw new AppError(
+          target.role === 'PARTNER'
+            ? 'You do not have permission to impersonate partners'
+            : 'You do not have permission to impersonate end-users',
+          403,
+        );
+      }
     }
     if (target.status !== 'ACTIVE') {
       throw new AppError('Target account is not active', 403);

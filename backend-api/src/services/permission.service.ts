@@ -71,13 +71,36 @@ export const PERMISSION_CATALOG: Array<{ key: string; label: string; category: s
   { key: 'help.read', label: 'View own support tickets', category: 'help' },
   { key: 'help.read.all', label: 'View all support tickets', category: 'help' },
   { key: 'help.write', label: 'Manage support tickets', category: 'help' },
+
+  // Impersonation (BC-ADMIN-RBAC-ROLES-019) — OVERRIDE-ONLY keys. These are deliberately
+  // NOT part of any ROLE_DEFAULT_ALLOWS entry; they are granted exclusively via
+  // UserPermissionOverride (per-admin toggles). SUPER_ADMIN bypasses all permission checks.
+  // BG labels live in the frontend.
+  { key: 'impersonate.partner', label: 'Impersonate a partner', category: 'impersonation' },
+  { key: 'impersonate.user', label: 'Impersonate an end-user', category: 'impersonation' },
 ];
+
+// BC-ADMIN-RBAC-ROLES-019 — keys stripped from the repurposed ADMIN ("Normal Administrator")
+// template. After this change only SUPER_ADMIN can manage admins / roles / audit.
+const ADMIN_MANAGEMENT_KEYS = ['admins.read', 'admins.write', 'admins.audit.read', 'admins.roles.write', 'admins.actions.read'];
+
+// Override-only keys that must never be granted by a role template (only via UserPermissionOverride).
+const OVERRIDE_ONLY_KEYS = ['impersonate.partner', 'impersonate.user'];
 
 // Default allow-sets per role (deny rows are explicit RolePermission rows with allow=false).
 // SUPER_ADMIN is bypassed in requirePermission; no seeding needed for it.
 // Exported for unit-testing the permission matrix.
 export const ROLE_DEFAULT_ALLOWS: Record<string, string[]> = {
-  ADMIN: PERMISSION_CATALOG.map((p) => p.key),
+  // BC-ADMIN-RBAC-ROLES-019: ADMIN is now the "Normal Administrator" template. It receives
+  // every catalog key EXCEPT the five admins.* admin/role-management keys (reserved for
+  // SUPER_ADMIN, which is bypassed in requirePermission and is never seeded) AND except the
+  // two override-only impersonate.* keys (granted per-admin via UserPermissionOverride only).
+  // seedPermissions() is bidirectional — re-running it after this change deletes the now-removed
+  // admins.* RolePermission rows from the ADMIN role automatically (see deleteMany below); it
+  // never touches SUPER_ADMIN since that role is not in this map.
+  ADMIN: PERMISSION_CATALOG.map((p) => p.key).filter(
+    (k) => !ADMIN_MANAGEMENT_KEYS.includes(k) && !OVERRIDE_ONLY_KEYS.includes(k),
+  ),
   // control.disputes.write is intentionally excluded: approving a dispute triggers wallet credit
   // (a financial action). Support can view disputes but only RISK_REVIEW may approve/reject.
   // subscriptions.read / transactions.read / cashback.read are included so Support can see a
@@ -152,25 +175,43 @@ export async function seedPermissions() {
 }
 
 // Returns the effective permission key set for a given userId.
-// allow=true rows grant; allow=false rows explicitly deny (deny wins).
-// Expired role assignments (expiresAt <= now) are excluded — they do not contribute permissions.
+//
+// BC-ADMIN-RBAC-ROLES-019 — precedence (strongest wins):
+//   user-deny  >  user-allow  >  role-deny  >  role-allow
+//
+// First the role union is computed (allow rows grant, deny rows revoke — role-level
+// deny beats role-level allow). Then per-user UserPermissionOverride rows are folded
+// in on top: a user allow=true GRANTS the key even if a role denied it (user-allow
+// beats role-deny), and a user allow=false REVOKES the key even if a role (or a user
+// allow on the same key — impossible given the @@unique, but defensively) granted it.
+// Because a single user override row is unique per (userId, permissionId), a key cannot
+// be both user-allowed and user-denied at once; the override's `allow` value is final.
+//
+// Expired role assignments (expiresAt <= now) are excluded — they do not contribute
+// permissions. User overrides have no expiry and always apply.
 export async function resolveUserPermissions(userId: string): Promise<string[]> {
   const now = new Date();
-  const userRoles = await prisma.userAdminRole.findMany({
-    where: {
-      userId,
-      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-    },
-    include: {
-      role: {
-        include: {
-          rolePermissions: {
-            include: { permission: true },
+  const [userRoles, overrides] = await Promise.all([
+    prisma.userAdminRole.findMany({
+      where: {
+        userId,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      include: {
+        role: {
+          include: {
+            rolePermissions: {
+              include: { permission: true },
+            },
           },
         },
       },
-    },
-  });
+    }),
+    prisma.userPermissionOverride.findMany({
+      where: { userId },
+      include: { permission: true },
+    }),
+  ]);
 
   const allowed = new Set<string>();
   const denied = new Set<string>();
@@ -185,10 +226,92 @@ export async function resolveUserPermissions(userId: string): Promise<string[]> 
     }
   }
 
-  // Explicit deny beats allow
+  // Role-level deny beats role-level allow.
   for (const key of denied) {
     allowed.delete(key);
   }
 
+  // Fold in per-user overrides. These are the strongest signal: a user-allow grants
+  // the key even when a role denied it; a user-deny revokes it regardless of role.
+  for (const ov of overrides) {
+    const key = ov.permission.key;
+    if (ov.allow) {
+      allowed.add(key);
+    } else {
+      allowed.delete(key);
+    }
+  }
+
   return [...allowed];
+}
+
+// Set of all valid permission keys — used to validate override writes against the
+// real catalog so unknown keys are rejected before hitting the DB.
+const CATALOG_KEYS = new Set(PERMISSION_CATALOG.map((p) => p.key));
+
+/** True when `key` is a real permission in PERMISSION_CATALOG. */
+export function isValidPermissionKey(key: string): boolean {
+  return CATALOG_KEYS.has(key);
+}
+
+// Returns the permission catalog grouped by category for FE rendering.
+// Pure transform over PERMISSION_CATALOG — no DB hit.
+export function getPermissionCatalogGrouped(): Array<{
+  category: string;
+  permissions: Array<{ key: string; label: string }>;
+}> {
+  const byCategory = new Map<string, Array<{ key: string; label: string }>>();
+  for (const p of PERMISSION_CATALOG) {
+    if (!byCategory.has(p.category)) byCategory.set(p.category, []);
+    byCategory.get(p.category)!.push({ key: p.key, label: p.label });
+  }
+  return [...byCategory.entries()].map(([category, permissions]) => ({ category, permissions }));
+}
+
+// Returns the effective-permission breakdown for an admin: which keys come from role
+// templates, which are overridden (allow/deny), and the final effective set. Used by
+// GET /admin/admins/:id/permissions so the FE can render template-inherited vs toggled.
+export async function resolveUserPermissionBreakdown(userId: string): Promise<{
+  effective: string[];
+  roleAllowed: string[];
+  roleDenied: string[];
+  overrides: Array<{ key: string; allow: boolean }>;
+}> {
+  const now = new Date();
+  const [userRoles, overrideRows] = await Promise.all([
+    prisma.userAdminRole.findMany({
+      where: { userId, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+      include: {
+        role: { include: { rolePermissions: { include: { permission: true } } } },
+      },
+    }),
+    prisma.userPermissionOverride.findMany({
+      where: { userId },
+      include: { permission: true },
+    }),
+  ]);
+
+  const roleAllowed = new Set<string>();
+  const roleDenied = new Set<string>();
+  for (const ur of userRoles) {
+    for (const rp of ur.role.rolePermissions) {
+      if (rp.allow) roleAllowed.add(rp.permission.key);
+      else roleDenied.add(rp.permission.key);
+    }
+  }
+  for (const key of roleDenied) roleAllowed.delete(key);
+
+  const effective = new Set<string>(roleAllowed);
+  const overrides = overrideRows.map((ov) => ({ key: ov.permission.key, allow: ov.allow }));
+  for (const ov of overrides) {
+    if (ov.allow) effective.add(ov.key);
+    else effective.delete(ov.key);
+  }
+
+  return {
+    effective: [...effective],
+    roleAllowed: [...roleAllowed],
+    roleDenied: [...roleDenied],
+    overrides,
+  };
 }

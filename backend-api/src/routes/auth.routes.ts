@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import bcrypt from 'bcryptjs';
 import { asyncHandler } from '../middleware/error.middleware';
-import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
+import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { validate } from '../middleware/validation.middleware';
 import { registerValidation, loginValidation, updateProfileValidation, changePasswordValidation, validatePasswordPolicy, PASSWORD_MIN_LENGTH } from '../validators/auth.validator';
 import { AuthService } from '../services/auth.service';
@@ -940,7 +940,9 @@ router.get(
 router.get(
   '/impersonatable-partners',
   authenticate,
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  // BC-ADMIN-RBAC-ROLES-019 — permission-gated (was authorize('ADMIN','SUPER_ADMIN')).
+  // requirePermission bypasses for SUPER_ADMIN automatically.
+  requirePermission('impersonate.partner'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { search } = req.query as { search?: string };
 
@@ -1005,7 +1007,10 @@ router.get(
 router.get(
   '/impersonatable-users',
   authenticate,
-  authorize('SUPER_ADMIN'),
+  // BC-ADMIN-RBAC-ROLES-019 — permission-gated (was authorize('SUPER_ADMIN')).
+  // requirePermission bypasses for SUPER_ADMIN automatically; a non-SA admin needs
+  // the `impersonate.user` override granted explicitly.
+  requirePermission('impersonate.user'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { search } = req.query as { search?: string };
 
@@ -1057,7 +1062,14 @@ router.get(
 router.post(
   '/impersonate',
   authenticate,
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  // BC-ADMIN-RBAC-ROLES-019 — this route serves BOTH partner and user targets; the
+  // target type is resolved server-side in AuthService.impersonate, which enforces the
+  // SPECIFIC permission (impersonate.partner vs impersonate.user) against the resolved
+  // target. This outer guard only requires the caller to hold AT LEAST ONE impersonation
+  // permission (OR logic), so a holder of just one capability still passes the gate and
+  // the in-service check rejects the mismatched target type with 403. SUPER_ADMIN bypasses
+  // both layers.
+  requirePermission(['impersonate.partner', 'impersonate.user']),
   impersonateRateLimiter,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { targetPartnerUserId, targetUserId, refreshToken } = req.body as {

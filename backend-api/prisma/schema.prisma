@@ -7,103 +7,105 @@ datasource db {
 }
 
 model User {
-  id                        String                     @id @default(uuid())
-  email                     String
-  passwordHash              String
-  firstName                 String?
-  lastName                  String?
-  phone                     String?
-  avatar                    String?
-  role                      UserRole                   @default(USER)
-  status                    UserStatus                 @default(PENDING_VERIFICATION)
-  emailVerified             Boolean                    @default(false)
-  emailVerifiedAt           DateTime?
-  lastLoginAt               DateTime?
-  stripeCustomerId          String?                    @unique
-  createdAt                 DateTime                   @default(now())
-  updatedAt                 DateTime                   @updatedAt
-  marketingConsent          Boolean                    @default(false)
-  marketingConsentAt        DateTime?
-  privacyAcceptedAt         DateTime?
-  termsAcceptedAt           DateTime?
-  termsVersion              String?
-  passwordResetExpires      DateTime?
-  passwordResetToken        String?
-  passwordChangedAt         DateTime?
-  emailVerificationExpiry   DateTime?
-  emailVerificationToken    String?                    @unique
-  notificationPreferences   Json?
-  deletedAt                 DateTime?
+  id                         String                     @id @default(uuid())
+  email                      String
+  passwordHash               String
+  firstName                  String?
+  lastName                   String?
+  phone                      String?
+  avatar                     String?
+  role                       UserRole                   @default(USER)
+  status                     UserStatus                 @default(PENDING_VERIFICATION)
+  emailVerified              Boolean                    @default(false)
+  emailVerifiedAt            DateTime?
+  lastLoginAt                DateTime?
+  stripeCustomerId           String?                    @unique
+  createdAt                  DateTime                   @default(now())
+  updatedAt                  DateTime                   @updatedAt
+  marketingConsent           Boolean                    @default(false)
+  marketingConsentAt         DateTime?
+  privacyAcceptedAt          DateTime?
+  termsAcceptedAt            DateTime?
+  termsVersion               String?
+  passwordResetExpires       DateTime?
+  passwordResetToken         String?
+  passwordChangedAt          DateTime?
+  emailVerificationExpiry    DateTime?
+  emailVerificationToken     String?                    @unique
+  notificationPreferences    Json?
+  deletedAt                  DateTime?
   /// F-003: @deprecated — User.iban is a legacy field that may be out of sync with
   /// Wallet.payoutIban. For all payout and GDPR export operations, use Wallet.payoutIban
   /// as the authoritative source. This field is retained for backward compatibility only.
-  iban                      String?
-  ibanLastChangedAt         DateTime?
-  marketingConsentEmail     Boolean                    @default(false)
-  marketingConsentEmailAt   DateTime?
-  marketingConsentPhone     Boolean                    @default(false)
-  marketingConsentPhoneAt   DateTime?
-  riskBucket                RiskBucket?
-  riskScore                 Int                        @default(0)
-  riskOverriddenAt          DateTime?
-  riskOverriddenBy          String?
-  totpEnabledAt             DateTime?
-  totpSecret                String?
-  totpPendingSecret         String?
+  iban                       String?
+  ibanLastChangedAt          DateTime?
+  marketingConsentEmail      Boolean                    @default(false)
+  marketingConsentEmailAt    DateTime?
+  marketingConsentPhone      Boolean                    @default(false)
+  marketingConsentPhoneAt    DateTime?
+  riskBucket                 RiskBucket?
+  riskScore                  Int                        @default(0)
+  riskOverriddenAt           DateTime?
+  riskOverriddenBy           String?
+  totpEnabledAt              DateTime?
+  totpSecret                 String?
+  totpPendingSecret          String?
   /// BC-ADMIN-2FA-RECOVERY-AND-FRONTEND-FIX-015 — one-time backup recovery codes.
   /// Stores bcrypt HASHES of single-use 2FA recovery codes (never plaintext).
   /// Plaintext is shown to the admin exactly once at 2FA-enable time and is not
   /// retrievable again. A successful recovery-code login consumes (removes) the
   /// matching hash from this array so it cannot be reused.
-  totpRecoveryCodes         String[]                   @default([])
-  mustChangePassword        Boolean                    @default(false)
-  preferredLanguage         String                     @default("bg")
-  lastActivityAt            DateTime?
-  address                   String?
-  city                      String?
-  country                   String?
-  pendingEmail              String?
-  pendingEmailExpiry        DateTime?
-  pendingEmailToken         String?                    @unique
-  emailUnsubscribeToken     String?                    @unique
-  rolesUpdatedAt            DateTime?
-  auditLogs                 AuditLog[]
-  bookings                  Booking[]
-  cards                     Card[]
-  conversations             ConversationParticipant[]
-  assignedDisputes          Dispute[]                  @relation("DisputeAssignee")
-  disputeCases              Dispute[]                  @relation("DisputeUser")
-  disputeNotes              DisputeNote[]              @relation("DisputeNoteAuthor")
-  favorites                 Favorite[]
-  assignedTickets           HelpTicket[]               @relation("TicketAssignee")
-  helpTickets               HelpTicket[]               @relation("TicketUser")
-  loginHistory              LoginHistory[]
-  loyaltyAccount            LoyaltyAccount?
-  marketingListMembers      MarketingListMember[]
-  messages                  Message[]
-  notifications             Notification[]
-  offerRedemptions          OfferRedemption[]
-  partner                   Partner?
-  partnerRequestNotes       PartnerRequestNote[]       @relation("PartnerRequestNoteAuthor")
-  pushTokens                PushToken[]
-  receipts                  Receipt[]
-  receiptUploadTokens       ReceiptUploadToken[]
-  refreshTokens             RefreshToken[]
-  reviews                   Review[]
-  stickerScans              StickerScan[]
-  ticketReplies             TicketReply[]              @relation("TicketReplies")
-  transactions              Transaction[]
-  grantedAdminRoles         UserAdminRole[]            @relation("GrantedRoles")
-  adminRoles                UserAdminRole[]
-  savedPaymentMethods       SavedPaymentMethod[]
-  superAdminRequests        PendingSuperAdminRequest[] @relation("SuperAdminRequester")
-  subscriptions             Subscription[]
-  triggeredLinkResends      LinkResendLog[]            @relation("LinkResendLogActor")
-  partnerStatusChanges      PartnerStatusChange[]      @relation("PartnerStatusChanger")
-  criticalActionRequests    CriticalActionRequest[]    @relation("CriticalActionRequester")
-  criticalActionResolutions CriticalActionRequest[]    @relation("CriticalActionResolver")
-  wallet                    Wallet?
-  issuedActivationLinks     ActivationLink[]           @relation("ActivationLinkCreator")
+  totpRecoveryCodes          String[]                   @default([])
+  mustChangePassword         Boolean                    @default(false)
+  preferredLanguage          String                     @default("bg")
+  lastActivityAt             DateTime?
+  address                    String?
+  city                       String?
+  country                    String?
+  pendingEmail               String?
+  pendingEmailExpiry         DateTime?
+  pendingEmailToken          String?                    @unique
+  emailUnsubscribeToken      String?                    @unique
+  rolesUpdatedAt             DateTime?
+  auditLogs                  AuditLog[]
+  bookings                   Booking[]
+  cards                      Card[]
+  conversations              ConversationParticipant[]
+  assignedDisputes           Dispute[]                  @relation("DisputeAssignee")
+  disputeCases               Dispute[]                  @relation("DisputeUser")
+  disputeNotes               DisputeNote[]              @relation("DisputeNoteAuthor")
+  favorites                  Favorite[]
+  assignedTickets            HelpTicket[]               @relation("TicketAssignee")
+  helpTickets                HelpTicket[]               @relation("TicketUser")
+  loginHistory               LoginHistory[]
+  loyaltyAccount             LoyaltyAccount?
+  marketingListMembers       MarketingListMember[]
+  messages                   Message[]
+  notifications              Notification[]
+  offerRedemptions           OfferRedemption[]
+  partner                    Partner?
+  partnerRequestNotes        PartnerRequestNote[]       @relation("PartnerRequestNoteAuthor")
+  pushTokens                 PushToken[]
+  receipts                   Receipt[]
+  receiptUploadTokens        ReceiptUploadToken[]
+  refreshTokens              RefreshToken[]
+  reviews                    Review[]
+  stickerScans               StickerScan[]
+  ticketReplies              TicketReply[]              @relation("TicketReplies")
+  transactions               Transaction[]
+  grantedAdminRoles          UserAdminRole[]            @relation("GrantedRoles")
+  adminRoles                 UserAdminRole[]
+  permissionOverrides        UserPermissionOverride[]
+  grantedPermissionOverrides UserPermissionOverride[]   @relation("GrantedOverrides")
+  savedPaymentMethods        SavedPaymentMethod[]
+  superAdminRequests         PendingSuperAdminRequest[] @relation("SuperAdminRequester")
+  subscriptions              Subscription[]
+  triggeredLinkResends       LinkResendLog[]            @relation("LinkResendLogActor")
+  partnerStatusChanges       PartnerStatusChange[]      @relation("PartnerStatusChanger")
+  criticalActionRequests     CriticalActionRequest[]    @relation("CriticalActionRequester")
+  criticalActionResolutions  CriticalActionRequest[]    @relation("CriticalActionResolver")
+  wallet                     Wallet?
+  issuedActivationLinks      ActivationLink[]           @relation("ActivationLinkCreator")
 
   @@unique([email, role])
   @@index([email])
@@ -1463,11 +1465,12 @@ model PayoutThreshold {
 }
 
 model Permission {
-  id              String           @id @default(uuid())
-  key             String           @unique
+  id              String                   @id @default(uuid())
+  key             String                   @unique
   label           String
   category        String
   rolePermissions RolePermission[]
+  userOverrides   UserPermissionOverride[]
 }
 
 model AdminRole {
@@ -1504,6 +1507,27 @@ model UserAdminRole {
   @@unique([userId, roleId])
   @@index([userId])
   @@index([expiresAt])
+}
+
+// BC-ADMIN-RBAC-ROLES-019 — per-user permission overrides on top of role templates.
+// allow=true grants a permission the user's roles do not, allow=false explicitly denies
+// one their roles grant. Resolution precedence (in resolveUserPermissions, BE sub-task):
+// user-deny > user-allow > role-deny > role-allow. SUPER_ADMIN bypasses all.
+// Used both for the two override-only impersonation keys (impersonate.partner /
+// impersonate.user) and for any ad-hoc per-admin ability toggle.
+model UserPermissionOverride {
+  id           String     @id @default(uuid())
+  userId       String
+  permissionId String
+  allow        Boolean
+  grantedById  String?
+  grantedAt    DateTime   @default(now())
+  grantedBy    User?      @relation("GrantedOverrides", fields: [grantedById], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionId])
+  @@index([userId])
 }
 
 model AuditLog {
