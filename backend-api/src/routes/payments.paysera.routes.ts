@@ -1472,75 +1472,145 @@ router.post('/transfer-callback', asyncHandler(async (req: Request, res: Respons
     }
 
   } else if (status === 'failed' || status === 'rejected') {
-    // ── Transfer failed — reverse the debit and mark WITHDRAWAL as FAILED ─
+    // ── Transfer failed — apply the §7.4 two-strike escalation ────────────
     const payoutAmount = Math.abs(walletTx.amount);
 
+    // Mirror wallet.service.executePayoutTransfer: count prior FAILED + RISK_HOLD
+    // WITHDRAWAL rows for this wallet so the async callback and the synchronous
+    // path agree on strike counting. The CURRENT row is still PROCESSING here,
+    // so it is not yet in either bucket — but exclude it explicitly by id as a
+    // safety net in case a prior callback already stamped it.
+    let isSecondFailure = false;
     try {
-      await prisma.$transaction(async (tx) => {
-        // Read the ACTUAL current balance inside the transaction — the wallet may have
-        // received cashback credits since the WITHDRAWAL was created (hours/days ago).
-        const currentWallet = await tx.wallet.update({
-          where: { userId },
-          data: {
-            balance: { increment: payoutAmount },
-            availableBalance: { increment: payoutAmount },
-          },
-        });
+      const priorFailureCount = await prisma.walletTransaction.count({
+        where: {
+          walletId: walletTx.walletId,
+          type: WalletTransactionType.WITHDRAWAL,
+          status: { in: [WalletTransactionStatus.FAILED, WalletTransactionStatus.RISK_HOLD] },
+          id: { not: walletTx.id },
+        },
+      });
+      isSecondFailure = priorFailureCount >= 1;
+    } catch (countErr) {
+      logger.error(`[paysera-callback] failed to count prior payout failures for user ${userId}:`, countErr);
+    }
 
-        // Mark original WITHDRAWAL as FAILED
-        await tx.walletTransaction.update({
+    if (isSecondFailure) {
+      // ── Second failure (§7.4 + §11.3 + §19 rule 9): RISK_HOLD ──────────
+      // Do NOT restore balance, do NOT revert cashback (leave it LOCKED), mark
+      // RISK_HOLD (NOT FAILED), flag user HIGH risk, notify admin ops ONLY. The
+      // user is NOT emailed; the entry stays visible to them as "Sent to payout".
+      try {
+        await prisma.walletTransaction.update({
           where: { id: walletTx.id },
           data: {
-            status: WalletTransactionStatus.FAILED,
-            description: `Изплащането е неуспешно (Paysera превод ${status})`,
-            metadata: JSON.stringify({ ...metadata, failedAt: new Date().toISOString(), failureStatus: status }),
+            status: WalletTransactionStatus.RISK_HOLD,
+            description: `Ескалирано за ръчен преглед след повторен неуспех (Paysera превод ${status})`,
+            metadata: JSON.stringify({ ...metadata, riskHoldAt: new Date().toISOString(), failureStatus: status }),
           },
         });
-
-        // Record the reversal credit for the audit trail with accurate balance figures
-        await tx.walletTransaction.create({
+        // Flag user HIGH risk (floors riskScore at 61, never downgrades).
+        await walletService.escalateRiskAfterRepeatedPayoutFailure(userId)
+          .catch((err) => logger.error(`[paysera-callback] risk flag update failed for user ${userId}:`, err));
+      } catch (holdErr: any) {
+        logger.error(`CRITICAL: payout RISK_HOLD escalation failed for user ${userId}: ${holdErr.message}`);
+        await prisma.wallet.update({
+          where: { userId },
           data: {
-            walletId: walletTx.walletId,
-            type: WalletTransactionType.ADJUSTMENT,
-            amount: payoutAmount,
-            balanceBefore: currentWallet.balance - payoutAmount, // post-increment minus amount = pre-increment
-            balanceAfter: currentWallet.balance,
-            status: WalletTransactionStatus.COMPLETED,
-            description: `Payout reversal (Paysera transfer ${status})`,
-            metadata: JSON.stringify({ payseraTransferId: transferId, reversedWithdrawalId: walletTx.id }),
+            isLocked: true,
+            lockedReason: `Payout RISK_HOLD escalation failed after transfer ${status}: ${holdErr.message}. Manual review required.`,
+            lockedAt: new Date(),
           },
-        });
-      });
-
-      logger.warn(`Payout reversed for user ${userId}: transfer ${transferId} ${status}`);
-
-      // Spec §4.4 v1.1 — revert LOCKED → CLEARED so the entries are eligible
-      // for a future payout attempt. Best-effort.
-      detach(walletService
-        .revertCashbackLockForWithdrawal(walletTx.id, null, `Paysera transfer ${status}`), (err) => logger.error('[paysera-callback] revertCashbackLock failed:', err));
-
-      // Notify user that payout failed and balance was restored
-      if (walletTx.wallet.user?.email) {
-        detach(emailService.sendWalletUpdate(walletTx.wallet.user.email, {
-          customerName: walletTx.wallet.user.firstName || 'Клиент',
-          newBalance: walletTx.balanceAfter + payoutAmount,
-          changeAmount: payoutAmount,
-          transactionType: 'credit',
-          description: `Изплащането ви от ${payoutAmount.toFixed(2)} BGN не може да бъде обработено и е върнато в портфейла ви. Моля, проверете IBAN-а си и опитайте отново.`,
-          date: new Date(),
-        }), (err) => logger.error('Failed to send payout failure email:', err));
+        }).catch(() => {});
       }
-    } catch (reversalError: any) {
-      logger.error(`CRITICAL: payout reversal failed for transfer ${transferId}: ${reversalError.message}`);
-      // Lock wallet for manual review
-      await prisma.wallet.update({
-        where: { userId },
-        data: {
-          isLocked: true,
-          lockedReason: `Payout reversal failed after transfer ${status}: ${reversalError.message}`,
-          lockedAt: new Date(),
-        },
-      }).catch(() => {});
+
+      logger.warn(`Payout escalated to RISK_HOLD for user ${userId}: transfer ${transferId} ${status} (second failure)`);
+
+      // User is NOT notified on second failure per spec §7.4. Notify admin ops.
+      detach(notificationService
+        .notifyAdminOps({
+          opsType: 'payout_failure_high_risk',
+          title: 'User flagged high-risk after repeated payout failures',
+          message: `User ${userId} had a repeated payout failure via the Paysera async callback. Payout escalated to RISK_HOLD and flagged for manual admin review per spec §7.4.`,
+          severity: 'warning',
+          fields: [
+            { label: 'User ID', value: userId },
+            { label: 'Transfer ID', value: String(transferId) },
+            { label: 'Failure status', value: status },
+          ],
+        }), (err) => logger.error(`[paysera-callback] admin notification failed for user ${userId}:`, err));
+    } else {
+      // ── First failure (§7.4): restore + revert + notify user ──────────
+      try {
+        const restoredBalance = await prisma.$transaction(async (tx) => {
+          // Read the ACTUAL current balance inside the transaction — the wallet may have
+          // received cashback credits since the WITHDRAWAL was created (hours/days ago).
+          const currentWallet = await tx.wallet.update({
+            where: { userId },
+            data: {
+              balance: { increment: payoutAmount },
+              availableBalance: { increment: payoutAmount },
+            },
+          });
+
+          // Mark original WITHDRAWAL as FAILED
+          await tx.walletTransaction.update({
+            where: { id: walletTx.id },
+            data: {
+              status: WalletTransactionStatus.FAILED,
+              description: `Изплащането е неуспешно (Paysera превод ${status})`,
+              metadata: JSON.stringify({ ...metadata, failedAt: new Date().toISOString(), failureStatus: status }),
+            },
+          });
+
+          // Record the reversal credit for the audit trail with accurate balance figures
+          await tx.walletTransaction.create({
+            data: {
+              walletId: walletTx.walletId,
+              type: WalletTransactionType.ADJUSTMENT,
+              amount: payoutAmount,
+              balanceBefore: currentWallet.balance - payoutAmount, // post-increment minus amount = pre-increment
+              balanceAfter: currentWallet.balance,
+              status: WalletTransactionStatus.COMPLETED,
+              description: `Payout reversal (Paysera transfer ${status})`,
+              metadata: JSON.stringify({ payseraTransferId: transferId, reversedWithdrawalId: walletTx.id }),
+            },
+          });
+
+          // Return the live post-restore available balance for accurate user notification.
+          return currentWallet.availableBalance;
+        });
+
+        logger.warn(`Payout reversed for user ${userId}: transfer ${transferId} ${status}`);
+
+        // Spec §4.4 v1.1 — revert LOCKED → CLEARED so the entries are eligible
+        // for a future payout attempt. Best-effort.
+        detach(walletService
+          .revertCashbackLockForWithdrawal(walletTx.id, null, `Paysera transfer ${status}`), (err) => logger.error('[paysera-callback] revertCashbackLock failed:', err));
+
+        // Notify user that payout failed and balance was restored
+        if (walletTx.wallet.user?.email) {
+          detach(emailService.sendWalletUpdate(walletTx.wallet.user.email, {
+            customerName: walletTx.wallet.user.firstName || 'Клиент',
+            newBalance: restoredBalance,
+            changeAmount: payoutAmount,
+            transactionType: 'credit',
+            description: `Изплащането ви от ${payoutAmount.toFixed(2)} BGN не може да бъде обработено и е върнато в портфейла ви. Моля, проверете IBAN-а си и опитайте отново.`,
+            date: new Date(),
+          }), (err) => logger.error('Failed to send payout failure email:', err));
+        }
+      } catch (reversalError: any) {
+        logger.error(`CRITICAL: payout reversal failed for transfer ${transferId}: ${reversalError.message}`);
+        // Lock wallet for manual review
+        await prisma.wallet.update({
+          where: { userId },
+          data: {
+            isLocked: true,
+            lockedReason: `Payout reversal failed after transfer ${status}: ${reversalError.message}`,
+            lockedAt: new Date(),
+          },
+        }).catch(() => {});
+      }
     }
   }
 

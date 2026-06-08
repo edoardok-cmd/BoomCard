@@ -234,6 +234,30 @@ async function getSystemOwnerId(): Promise<string | null> {
 }
 
 /**
+ * Derive the inbound audience from the SENDER's account role, not the recipient
+ * mailbox. Since BC-USER-SPEC-FIX-013 collapsed both subscriber and partner
+ * inbound to office@boomcard.bg (spec §12.1), the old `to.includes('office@')`
+ * heuristic always returned true and mislabeled every subscriber inbound as a
+ * partner. We now look up the sender by email: a PARTNER-role account → 'partner'
+ * (Partner support queue); everything else — USER, ADMIN/SUPER_ADMIN (internal),
+ * and unidentified/no-account senders — defaults to 'subscriber' (User support),
+ * the safe default for an inbound we can't positively attribute to a partner.
+ */
+async function resolveInboundAudience(
+  fromEmail: string
+): Promise<'partner' | 'subscriber'> {
+  // NB: `email` alone is not a unique key on User (the unique constraint is the
+  // compound email_role), so the same address can have both a USER and a PARTNER
+  // row. Query specifically for a PARTNER row (at most one per email under the
+  // email_role constraint) so the result is deterministic and a genuine partner
+  // is never mislabeled 'subscriber' by an incidental USER row on the same email.
+  const partnerRow = await prisma.user
+    .findFirst({ where: { email: fromEmail, role: 'PARTNER' }, select: { id: true } })
+    .catch(() => null);
+  return partnerRow ? 'partner' : 'subscriber';
+}
+
+/**
  * M5 (Spec §1.7 / §3.8) — classify an inbound email into the canonical Request
  * Type set: Support / Dispute / Change / Other. The earlier implementation always
  * returned SUPPORT; the spec requires office@/support@ inbounds be parsed into a
@@ -483,6 +507,12 @@ export async function ingestInboundEmail(
       after: { from: fromEmail, to: payload.to, messageId: payload.messageId },
     }).catch(() => {});
 
+    // Audience is derived from the SENDER's role (PARTNER → partner) — the
+    // recipient mailbox can no longer distinguish audiences now that all inbound
+    // lands on office@ (BC-USER-SPEC-FIX-013). Computed once, reused for the
+    // auto-reply and the admin-ops queue label below.
+    const isPartnerSender = (await resolveInboundAudience(fromEmail)) === 'partner';
+
     // Spec §11.1 — auto-reply to the sender with the ticket reference so
     // subsequent replies thread back via [#XXXXXXXX] / X-BoomCard-Ticket-ID.
     // Fire-and-forget: a mailer failure must not block ticket creation.
@@ -491,7 +521,7 @@ export async function ingestInboundEmail(
       to: fromEmail,
       originalSubject: cleanedSubject,
       inReplyTo: payload.messageId || null,
-      audience: payload.to?.includes('office@') ? 'partner' : 'subscriber',
+      audience: isPartnerSender ? 'partner' : 'subscriber',
     }), (err) =>
       logger.error(`[ticketInbound] failed to send auto-reply for ${ticket.id}:`, err));
 
@@ -499,7 +529,7 @@ export async function ingestInboundEmail(
     // reclassify. Surface the destination mailbox so the admin can see which
     // channel it arrived on (support@ vs. office@).
     const emailReqType = inferRequestType(payload);
-    const emailQueue = payload.to?.includes('office@') ? 'Partner support' : 'User support';
+    const emailQueue = isPartnerSender ? 'Partner support' : 'User support';
     detach(notificationService
       .notifyAdminOps({
         opsType: `help_ticket_created_email_${ticket.id}`,
@@ -601,7 +631,7 @@ export async function ingestInboundEmail(
       originalSubject:
         (payload.subject || '').replace(SUBJECT_REF_RE, '').trim() || `(re: ${t.subject})`,
       inReplyTo: payload.messageId || null,
-      audience: payload.to?.includes('office@') ? 'partner' : 'subscriber',
+      audience: await resolveInboundAudience(fromEmail),
     }), (err) =>
       logger.error(`[ticketInbound] failed to send spoof-branch auto-reply for ${linked.id}:`, err));
 

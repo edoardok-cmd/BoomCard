@@ -18,9 +18,11 @@ import crypto from 'crypto';
 const DEFAULT_DOMAIN = 'mail.boomcard.bg';
 
 // Inbound mailboxes for plus-addressing — must match the mail routing rules.
-// Replies to subscriber tickets arrive at support+<shortRef>@boomcard.bg;
+// Spec §12.1 follows 05-consolidated-unified-spec.md as the authoritative source,
+// so office@boomcard.bg is the canonical inbound support address.
+// Replies to subscriber tickets arrive at office+<shortRef>@boomcard.bg;
 // replies to partner tickets arrive at office+<shortRef>@boomcard.bg.
-const SUBSCRIBER_INBOUND = process.env.SUBSCRIBER_INBOUND_EMAIL ?? 'support@boomcard.bg';
+const SUBSCRIBER_INBOUND = process.env.SUBSCRIBER_INBOUND_EMAIL ?? 'office@boomcard.bg';
 const PARTNER_INBOUND = process.env.PARTNER_INBOUND_EMAIL ?? 'office@boomcard.bg';
 
 /**

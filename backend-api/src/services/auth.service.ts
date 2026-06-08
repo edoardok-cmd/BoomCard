@@ -1374,7 +1374,7 @@ export class AuthService {
 
   /**
    * Delete user account (GDPR Art. 17 - Right to Erasure)
-   * Soft-delete: anonymize PII, set status INACTIVE, cancel subscriptions
+   * Soft-delete: anonymize PII, set status DELETED, cancel subscriptions
    */
   static async deleteAccount(userId: string, password: string) {
     const user = await prisma.user.findUnique({
