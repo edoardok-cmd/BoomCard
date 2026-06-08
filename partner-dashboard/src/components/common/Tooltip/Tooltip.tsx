@@ -112,24 +112,26 @@ const TooltipContent = styled.div<{ $visible: boolean; $position: 'top' | 'botto
     }}
   }
 
-  /* Dark theme adjustments */
+  /* Dark theme adjustments — elevated DARK popover with light text
+     (not a near-white box) so it stays consistent with the dark UI. */
   [data-theme="dark"] & {
-    background: rgba(255, 255, 255, 0.95);
-    color: #111827;
+    background: var(--tooltip-bg, #374151);
+    color: var(--tooltip-fg, #f8fafc);
+    border: 1px solid rgba(255, 255, 255, 0.12);
 
     &::after {
       ${props => {
         switch (props.$position) {
           case 'top':
-            return `border-top-color: rgba(255, 255, 255, 0.95);`;
+            return `border-top-color: var(--tooltip-bg, #374151);`;
           case 'bottom':
-            return `border-bottom-color: rgba(255, 255, 255, 0.95);`;
+            return `border-bottom-color: var(--tooltip-bg, #374151);`;
           case 'left':
-            return `border-left-color: rgba(255, 255, 255, 0.95);`;
+            return `border-left-color: var(--tooltip-bg, #374151);`;
           case 'right':
-            return `border-right-color: rgba(255, 255, 255, 0.95);`;
+            return `border-right-color: var(--tooltip-bg, #374151);`;
           default:
-            return `border-top-color: rgba(255, 255, 255, 0.95);`;
+            return `border-top-color: var(--tooltip-bg, #374151);`;
         }
       }}
     }

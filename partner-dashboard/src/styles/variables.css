@@ -25,6 +25,12 @@
   --color-error: #ef4444;
   --color-info: #3b82f6;
 
+  /* Global Tooltip surface (common component: public + partner + admin).
+     Light mode keeps the historical dark tooltip look (dark bubble, white
+     text) so light mode is visually unchanged. */
+  --tooltip-bg: rgba(0, 0, 0, 0.9);
+  --tooltip-fg: #ffffff;
+
   /* ───────────────────────────────────────────────────────────────────────
      Admin panel surface tokens (warm-paper design language).
      Consumed via src/styles/adminTheme.ts -> palette object. These are
@@ -141,6 +147,12 @@
   --color-footer-text: #f8fafc;
   --color-footer-border: #1e293b;
 
+  /* Tooltip — elevated dark popover (slightly lighter than the page surfaces
+     #1f2937/#232220) with light text, so it reads as a raised dark surface
+     rather than a near-white box. */
+  --tooltip-bg: #374151;
+  --tooltip-fg: #f8fafc;
+
   /* Adjusted shadows for dark mode */
   --shadow-soft: 0 2px 15px -3px rgba(0, 0, 0, 0.5), 0 10px 20px -2px rgba(0, 0, 0, 0.3);
   --shadow-hover: 0 10px 40px -10px rgba(59, 130, 246, 0.4);
@@ -230,6 +242,12 @@
   --color-warning: #ffbb00;
   --color-error: #ff0066;
   --color-info: #00d4ff;
+
+  /* Tooltip — color mode keeps the vibrant gradient bubble (applied directly
+     in the component); this token mirrors the gradient's leading hue used by
+     the arrow border so the value exists in all three theme blocks. */
+  --tooltip-bg: #3b82f6;
+  --tooltip-fg: #ffffff;
 
   /* Color mode shadows with explosive multi-color glow */
   --shadow-soft:
