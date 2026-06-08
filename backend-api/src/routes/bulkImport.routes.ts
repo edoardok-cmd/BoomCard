@@ -12,6 +12,7 @@ import { authenticate, authorize, AuthRequest } from '../middleware/auth.middlew
 import { generateTemplate, importFromSpreadsheet, generatePartnersTemplate, importPartnersFromSpreadsheet } from '../services/bulkImport.service';
 import { notificationService } from '../services/notification.service';
 import { logger } from '../utils/logger';
+import { detach } from '../utils/detach';
 
 const router = Router();
 
@@ -102,13 +103,13 @@ router.post(
 
       // Fire-and-forget admin-ops summary so the import outcome reaches the admin
       // bell without blocking the HTTP response. Non-critical; errors are logged only.
-      notificationService.notifyAdminBulkImportComplete({
+      detach(notificationService.notifyAdminBulkImportComplete({
         kind: 'offers',
         created: result.offersCreated,
         skipped: result.offersSkipped,
         errorCount: result.errors.length,
         importedBy: adminUserId,
-      }).catch((err) => logger.error('Failed to post bulk-import ops summary:', err));
+      }), (err) => logger.error('Failed to post bulk-import ops summary:', err));
 
       const statusCode = result.errors.length > 0 ? 207 : 200;
       res.status(statusCode).json({ success: true, data: result });
@@ -170,13 +171,13 @@ router.post(
         adminUserId,
       );
 
-      notificationService.notifyAdminBulkImportComplete({
+      detach(notificationService.notifyAdminBulkImportComplete({
         kind: 'partners',
         created: result.partnersCreated,
         skipped: result.partnersSkipped,
         errorCount: result.errors.length,
         importedBy: adminUserId,
-      }).catch((err) => logger.error('Failed to post bulk-import ops summary:', err));
+      }), (err) => logger.error('Failed to post bulk-import ops summary:', err));
 
       const statusCode = result.errors.length > 0 ? 207 : 200;
       res.status(statusCode).json({ success: true, data: result });

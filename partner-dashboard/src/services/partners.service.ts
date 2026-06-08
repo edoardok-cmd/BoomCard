@@ -166,6 +166,11 @@ export interface PartnerStats {
   totalReviews: number;
   monthlyRedemptions: number;
   revenue: number;
+  // BC-PARTNER-PORTAL-SCOPE-B (§5.3) — extended KPI fields.
+  // expectedAmount = sum of totalCashbackOwed for PENDING|OVERDUE periods.
+  // totalVisits = count of this partner's StickerScan rows (all statuses).
+  expectedAmount?: number;
+  totalVisits?: number;
 }
 
 class PartnersService {

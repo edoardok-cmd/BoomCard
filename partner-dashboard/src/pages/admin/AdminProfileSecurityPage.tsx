@@ -1,25 +1,19 @@
-import React, { useState } from 'react';
-import styled from 'styled-components';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import styled, { keyframes, css } from 'styled-components';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { adminProfileService, AdminSession } from '../../services/adminProfile.service';
 import { useAuth } from '../../contexts/AuthContext';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { palette } from '../../styles/adminTheme';
+import {
+  ADMIN_GATE_HIGHLIGHT_EVENT,
+  getAdminGateReason,
+  type AdminGateHighlightDetail,
+  type AdminGateReason,
+} from '../../components/auth/adminGate';
 
-const palette = {
-  bg: '#faf9f5',
-  surface: '#ffffff',
-  border: '#e8e5dc',
-  text: '#141413',
-  textMuted: '#605a50',
-  textSubtle: '#8c8678',
-  accent: '#c96442',
-  accentSoft: '#f3e8de',
-  success: '#4a7c59',
-  successSoft: '#e6efe3',
-  danger: '#b54327',
-  dangerSoft: '#f4dcd2',
-};
 
 /** Condenses a userAgent string to just the browser + OS tokens */
 function parseUserAgent(ua: string | null): string {
@@ -55,26 +49,93 @@ const FAIL_REASON_BG: Record<string, string> = {
   totp_invalid:        'Невалиден 2FA код',
 };
 
-const GuidanceBanner = styled.div<{ $variant: 'warning' | 'danger' }>`
+const bannerPulse = keyframes`
+  0%   { box-shadow: 0 0 0 0 rgba(201, 100, 66, 0.55); }
+  70%  { box-shadow: 0 0 0 10px rgba(201, 100, 66, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(201, 100, 66, 0); }
+`;
+
+const GuidanceBanner = styled.div<{ $variant: 'warning' | 'danger'; $pulse?: boolean }>`
   display: flex;
   align-items: flex-start;
   gap: 0.75rem;
-  background: ${({ $variant }) => $variant === 'danger' ? palette.dangerSoft : '#fdf3dc'};
-  border: 1px solid ${({ $variant }) => $variant === 'danger' ? '#e8bdb4' : '#e8d5a3'};
+  background: ${({ $variant }) => $variant === 'danger' ? palette.dangerSoft : palette.warningSoft};
+  border: 1px solid ${({ $variant }) => $variant === 'danger' ? palette.dangerBorder : palette.warningBorder};
   border-radius: 0.5rem;
   padding: 0.875rem 1.125rem;
   font-size: 0.9375rem;
-  color: ${({ $variant }) => $variant === 'danger' ? palette.danger : '#7a5c1e'};
+  color: ${({ $variant }) => $variant === 'danger' ? palette.danger : palette.warningText};
   font-weight: 500;
   margin-bottom: 1.5rem;
+  ${({ $pulse }) => $pulse && css`animation: ${bannerPulse} 1.2s ease-out 2;`}
 `;
 
 const AdminProfileSecurityPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const { logout, reloadUser } = useAuth();
+  const { user, logout, reloadUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useLanguage();
   const redirectReason = (location.state as { reason?: string } | null)?.reason;
+
+  // Banner highlight + scroll-into-view plumbing. Both the guard-driven
+  // redirect (location.state.reason) and the "already on this page" custom
+  // event funnel through highlightBanner() so the user always gets the same
+  // unmistakable feedback.
+  const bannerRef = useRef<HTMLDivElement | null>(null);
+  const [pulse, setPulse] = useState(false);
+  const pulseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const highlightBanner = useCallback((reason: AdminGateReason) => {
+    const msg =
+      reason === 'mustChangePassword'
+        ? t('admin.navLock.toastChangePassword')
+        : t('admin.navLock.toastSetup2FA');
+    toast(msg, { icon: '🔒', id: `admin-gate-${reason}` });
+    // Defer to next frame so the banner is mounted before we scroll to it.
+    requestAnimationFrame(() => {
+      bannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    // Re-trigger the pulse animation each time by toggling the prop off→on.
+    setPulse(false);
+    requestAnimationFrame(() => setPulse(true));
+    if (pulseTimer.current) clearTimeout(pulseTimer.current);
+    pulseTimer.current = setTimeout(() => setPulse(false), 2600);
+  }, [t]);
+
+  // Fire once on arrival from a guard-driven redirect or a locked-nav click
+  // made from another page. Clearing location.state after consuming it guards
+  // against re-firing on re-render / back-forward cache restore.
+  useEffect(() => {
+    if (redirectReason === 'mustChangePassword' || redirectReason === 'setup2FA') {
+      highlightBanner(redirectReason);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [redirectReason]);
+
+  // Listen for locked-nav clicks made while already on this page (where a
+  // route change would be a silent no-op).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<AdminGateHighlightDetail>).detail;
+      if (detail?.reason) highlightBanner(detail.reason);
+    };
+    window.addEventListener(ADMIN_GATE_HIGHLIGHT_EVENT, handler);
+    return () => {
+      window.removeEventListener(ADMIN_GATE_HIGHLIGHT_EVENT, handler);
+      if (pulseTimer.current) clearTimeout(pulseTimer.current);
+    };
+  }, [highlightBanner]);
+
+  // Banner visibility is GATE-DERIVED, not state-derived. getAdminGateReason is
+  // always present when the admin is still gated, so the banner shows on a
+  // direct load / hard refresh (no router state) exactly as it does after a
+  // redirect — and it disappears the moment the gate clears (2FA enabled /
+  // password changed) because reloadUser() updates `user`. This is separate
+  // from the one-shot toast + scroll/pulse above, which stays event/redirect
+  // driven and deduped (it does NOT fire on a plain render/refresh).
+  const bannerReason = getAdminGateReason(user);
   const profile = useQuery({ queryKey: ['admin-profile-me'], queryFn: () => adminProfileService.getMe() });
   const sessions = useQuery({ queryKey: ['admin-profile-sessions'], queryFn: () => adminProfileService.listSessions() });
   const [historySkip, setHistorySkip] = useState(0);
@@ -189,13 +250,13 @@ const AdminProfileSecurityPage: React.FC = () => {
 
   return (
     <Wrapper>
-      {redirectReason === 'mustChangePassword' && (
-        <GuidanceBanner $variant="danger">
+      {bannerReason === 'mustChangePassword' && (
+        <GuidanceBanner ref={bannerRef} $variant="danger" $pulse={pulse}>
           🔒 За да продължите, трябва да смените временната си парола. Попълнете формата по-долу.
         </GuidanceBanner>
       )}
-      {redirectReason === 'setup2FA' && (
-        <GuidanceBanner $variant="warning">
+      {bannerReason === 'setup2FA' && (
+        <GuidanceBanner ref={bannerRef} $variant="warning" $pulse={pulse}>
           🛡 За да продължите, трябва да настроите двуфакторна автентикация (2FA). Следвайте стъпките по-долу.
         </GuidanceBanner>
       )}
@@ -467,7 +528,7 @@ const ErrorHint = styled.p`font-size: 0.75rem; color: ${palette.danger}; margin:
 const Actions = styled.div`display: flex; gap: 0.5rem;`;
 const Button = styled.button`
   background: ${palette.accent};
-  color: white;
+  color: ${palette.onAccent};
   border: 0;
   padding: 0.5rem 1.125rem;
   border-radius: 0.5rem;
@@ -506,7 +567,7 @@ const SmallDanger = styled.button`
   font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
-  &:hover:not(:disabled) { background: #ecc4b9; }
+  &:hover:not(:disabled) { background: ${palette.dangerBorder}; }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 const StatusOk = styled.span`
@@ -558,8 +619,8 @@ const LoadMoreRow = styled.div`
 `;
 const ClientCell = styled.div`display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;`;
 const CurrentBadge = styled.span`
-  background: #e0f0ff;
-  color: #1a5a9a;
+  background: ${palette.infoSoft};
+  color: ${palette.info};
   font-size: 0.6875rem;
   font-weight: 700;
   padding: 0.125rem 0.5rem;

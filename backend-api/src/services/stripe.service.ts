@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma';
 import { walletService } from './wallet.service';
 import { notificationService } from './notification.service';
 import { emailService } from './email.service';
+import { detach } from '../utils/detach';
 
 /**
  * Stripe Service for Payment Processing
@@ -753,18 +754,18 @@ class StripeService {
     try {
       // Determine plan from Stripe price ID, falling back to metadata
       const priceId = subscription.items.data[0]?.price.id;
-      let plan: 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' = 'PREMIUM_WEEKLY';
+      let plan: 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY' = 'PREMIUM_WEEKLY';
 
       // Reverse-lookup the plan from the configured Stripe price IDs
-      const priceIdToPlan: Record<string, 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM'> = {};
+      const priceIdToPlan: Record<string, 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY'> = {};
       const PRICE_IDS = {
         // Env var kept as STRIPE_LIGHT_PRICE_ID for backward compat with existing deployments.
         PREMIUM_WEEKLY: process.env.STRIPE_PREMIUM_WEEKLY_PRICE_ID || process.env.STRIPE_LIGHT_PRICE_ID || 'price_PREMIUM_WEEKLY',
         BASIC: process.env.STRIPE_BASIC_PRICE_ID || 'price_BASIC',
-        PREMIUM: process.env.STRIPE_PREMIUM_PRICE_ID || 'price_PREMIUM',
+        PREMIUM_MONTHLY: process.env.STRIPE_PREMIUM_PRICE_ID || 'price_PREMIUM',
       };
       for (const [key, val] of Object.entries(PRICE_IDS)) {
-        priceIdToPlan[val] = key as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM';
+        priceIdToPlan[val] = key as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY';
       }
 
       if (priceId && priceIdToPlan[priceId]) {
@@ -930,6 +931,25 @@ class StripeService {
           const planName = dbSub.plan;
           await notificationService.notifySubscriptionAccessEnded({ userId: dbSub.userId, planName })
             .catch((err: unknown) => logger.error('Failed to send access-ended notification:', err));
+        } else if (finalStatus === 'CANCELLED' && !dbSub.canceledAt) {
+          // Audit M2 / spec §11.1+§11.2: "Subscription cancellation confirmed" is a
+          // mandatory (no opt-out) Payment notification that must fire on EVERY
+          // cancellation channel — including a cancel made directly in the Stripe
+          // customer portal, which reaches us only via customer.subscription.deleted
+          // and never passes through subscriptionService.cancelSubscription.
+          //
+          // Double-fire guard: cancelSubscription always stamps canceledAt and fires
+          // notifySubscriptionCancelledInApp itself, so a cancel that already went
+          // through our API arrives here with canceledAt already set — we skip it to
+          // avoid emitting two notifications for one cancellation. canceledAt is null
+          // only for an externally-initiated (portal) cancel, which is the case that
+          // still needs the notification.
+          //
+          // EXPIRED-due-to-payment-failure is deliberately excluded (the wasPaymentFailure
+          // branch above): that is a Failed Payment event (§3.4), a different
+          // notification, not a "cancellation confirmed".
+          await notificationService.notifySubscriptionCancelledInApp(dbSub.userId)
+            .catch((err: unknown) => logger.error('Failed to send cancellation-confirmed notification:', err));
         }
 
         logger.info(`Subscription ${subscription.id} ${finalStatus.toLowerCase()} for user ${dbSub.userId}, card synced to ${targetPlan} (payment failure: ${wasPaymentFailure})`);
@@ -994,7 +1014,7 @@ class StripeService {
       // Spec §3.1: send renewal confirmation email for recurring payments
       if (invoice.billing_reason === 'subscription_cycle' && dbSub.user?.email) {
         const lang = (dbSub.user.preferredLanguage === 'en' ? 'en' : 'bg') as 'bg' | 'en';
-        emailService
+        detach(emailService
           .sendPaymentConfirmation(
             dbSub.user.email,
             {
@@ -1005,8 +1025,7 @@ class StripeService {
               date: new Date(),
             },
             lang,
-          )
-          .catch((err: unknown) => logger.error(`Failed to send renewal confirmation email for sub ${dbSub.id}:`, err));
+          ), (err: unknown) => logger.error(`Failed to send renewal confirmation email for sub ${dbSub.id}:`, err));
       }
 
       // If this payment clears a previously failed renewal, recover to ACTIVE
@@ -1052,6 +1071,16 @@ class StripeService {
       // Spec §3.2: stop payment notifications if user manually cancelled
       if (dbSub.cancelAtPeriodEnd || !dbSub.autoRenewal) {
         logger.info(`Subscription ${dbSub.id} is manually cancelled — skipping PAST_DUE update and notification`);
+        return;
+      }
+
+      // Spec §3.4: ONE renewal attempt, no retry period. If this subscription has
+      // already recorded a failed renewal attempt (retryAttempt > 0), short-circuit
+      // — Stripe smart-retries / duplicate webhook deliveries must not re-fire the
+      // FAILED_PAYMENT transition or a second payment-failed notification. The first
+      // legitimate failure (retryAttempt === 0) falls through to the transition below.
+      if (dbSub.retryAttempt > 0) {
+        logger.info(`Subscription ${dbSub.id} already in failed-renewal state (retryAttempt=${dbSub.retryAttempt}) — ignoring repeat invoice failure (spec §3.4 no-retry)`);
         return;
       }
 
@@ -1122,7 +1151,7 @@ class StripeService {
       });
 
       if (dbSub.user?.email) {
-        emailService
+        detach(emailService
           .sendExpiryNotice(dbSub.user.email, {
             customerName: dbSub.user.firstName || 'Customer',
             planName,
@@ -1131,8 +1160,7 @@ class StripeService {
             renewalDate: renewalDate.toLocaleDateString(lang === 'bg' ? 'bg-BG' : 'en-GB'),
             manageUrl: `${process.env.APP_URL || 'https://mobile.boomcard.bg'}/subscription`,
             language: lang,
-          })
-          .catch((err: unknown) => logger.error(`Failed to send renewal reminder email for sub ${dbSub.id}:`, err));
+          }), (err: unknown) => logger.error(`Failed to send renewal reminder email for sub ${dbSub.id}:`, err));
       }
 
       logger.info(`Renewal reminder sent to user ${dbSub.userId} for ${planName} renewing ${renewalDate.toISOString()}`);

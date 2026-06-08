@@ -11,14 +11,26 @@ import {
   Trash2,
   Eye,
   EyeOff,
-  TrendingUp,
   Calendar,
   Users,
   MoreVertical,
   ClipboardList,
+  AlertTriangle,
 } from 'lucide-react';
 import Button from '../components/common/Button/Button';
 import { useOffers, useDeleteOffer, useToggleOfferStatus } from '../hooks/useOffers';
+import { useCurrentPartner } from '../hooks/usePartners';
+
+/**
+ * SPEC §8a — UNSPECIFIED FEATURE
+ * Offer and menu management is NOT defined in the BoomCard partner spec
+ * (07-partner-spec-extracted.md §8a). This page must not be accessible in
+ * production without an approved product specification.
+ *
+ * Gate: set VITE_OFFER_MANAGEMENT_ENABLED=true to unlock this page in
+ * non-production environments only.
+ */
+const OFFER_MANAGEMENT_ENABLED = import.meta.env.VITE_OFFER_MANAGEMENT_ENABLED === 'true';
 
 const content = {
   en: {
@@ -35,7 +47,6 @@ const content = {
     delete: 'Delete',
     activate: 'Activate',
     deactivate: 'Deactivate',
-    views: 'Views',
     redemptions: 'Redemptions',
     validUntil: 'Valid until',
     expired: 'Expired',
@@ -68,7 +79,6 @@ const content = {
     delete: 'Изтрий',
     activate: 'Активирай',
     deactivate: 'Деактивирай',
-    views: 'Прегледи',
     redemptions: 'Използвания',
     validUntil: 'Валидна до',
     expired: 'Изтекла',
@@ -99,7 +109,6 @@ interface Offer {
   validUntil: string;
   maxRedemptions?: number;
   currentRedemptions: number;
-  views: number;
   isActive: boolean;
   createdAt: string;
 }
@@ -115,29 +124,52 @@ const MyOffersPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
+  // MEDIUM-2 fix (r2w): canEditOffers is admin-only. Partner-role users never
+  // reach the menu dropdown below, so a separate isInactivePartner guard inside
+  // it is dead code and creates a false safety impression (spec §5.1, §11.2).
+  // The guard has been removed; the comment documents the design intent instead.
+  // If canEditOffers is ever extended to include active partners, add an explicit
+  // isInactivePartner guard at that point.
   const canEditOffers = user?.role === 'admin';
 
-  // Fetch real offers data
+  // Resolve the PARTNER id (not the user id). The backend
+  // /offers/partner/:partnerId route expects the Partner record id, which is
+  // distinct from the authenticated user's id. Source it from /partners/me via
+  // useCurrentPartner — gated on the partner role so the query never fires for
+  // non-partner accounts (mirrors DashboardPage). Passing user?.id here (the
+  // previous behaviour) meant the partner-scoped list never filtered correctly.
+  const isPartner = user?.role === 'partner';
+  const { data: partnerData } = useCurrentPartner(isPartner);
+  const partnerId = partnerData?.id;
+
+  // Fetch real offers data. useOffers gates on a truthy partnerId, so the query
+  // stays idle until the partner id resolves (avoids an unfiltered request).
   const { data: offersData, refetch } = useOffers({
-    partnerId: user?.id,
+    partnerId,
     limit: 100
   });
   const deleteMutation = useDeleteOffer();
   const toggleMutation = useToggleOfferStatus();
 
-  // Transform API data to match component interface
+  // Transform API data to match component interface.
+  // Field mapping aligned to the REAL backend offer shape (offers.routes.ts /
+  // Prisma Offer): the list returns `status` (ACTIVE|DRAFT|INACTIVE|EXPIRED),
+  // `startDate`/`endDate`, and `usageCount`/`usageLimit`. There is no `isActive`,
+  // `validUntil`, `views`, `currentRedemptions` or `maxRedemptions` field — the
+  // previous mapping read those phantom keys, so every offer rendered as
+  // inactive + expired with zero redemptions. View tracking does not exist on
+  // the backend, so the views stat has been removed entirely.
   const offers: Offer[] = (offersData?.data || []).map(offer => ({
     id: offer.id,
     title: offer.title,
     category: offer.category,
     discount: offer.discount,
     description: offer.description,
-    validFrom: offer.validFrom || new Date().toISOString(),
-    validUntil: offer.validUntil || new Date().toISOString(),
-    maxRedemptions: offer.maxRedemptions,
-    currentRedemptions: offer.currentRedemptions || 0,
-    views: offer.views || 0,
-    isActive: offer.isActive ?? false,
+    validFrom: offer.startDate || offer.validFrom || new Date().toISOString(),
+    validUntil: offer.endDate || offer.validUntil || new Date().toISOString(),
+    maxRedemptions: offer.usageLimit ?? offer.maxRedemptions ?? undefined,
+    currentRedemptions: offer.usageCount ?? offer.currentRedemptions ?? 0,
+    isActive: offer.status === 'ACTIVE',
     createdAt: offer.createdAt || new Date().toISOString(),
   }));
 
@@ -204,8 +236,40 @@ const MyOffersPage: React.FC = () => {
     expired: offers.filter(o => isExpired(o.validUntil)).length,
   };
 
+  if (!OFFER_MANAGEMENT_ENABLED) {
+    return (
+      <Container>
+        <SpecBlockBanner>
+          <AlertTriangle size={24} />
+          <div>
+            <SpecBlockTitle>
+              {language === 'bg'
+                ? 'Функцията не е налична'
+                : 'Feature not available'}
+            </SpecBlockTitle>
+            <SpecBlockDesc>
+              {language === 'bg'
+                ? 'Управлението на оферти е в очакване на продуктова спецификация (spec §8a). Свържете се с продуктовия екип преди активиране.'
+                : 'This feature is pending product specification (spec §8a). Contact the product team before enabling.'}
+            </SpecBlockDesc>
+          </div>
+        </SpecBlockBanner>
+      </Container>
+    );
+  }
+
   return (
     <Container>
+      {/* Spec §8a warning banner — always visible while OFFER_MANAGEMENT_ENABLED is true */}
+      <SpecWarningBanner>
+        <AlertTriangle size={18} />
+        <SpecWarningText>
+          {language === 'bg'
+            ? 'Тази функция е в очакване на продуктова спецификация (spec §8a). Свържете се с продуктовия екип преди активиране.'
+            : 'This feature is pending product specification (spec §8a). Contact the product team before enabling.'}
+        </SpecWarningText>
+      </SpecWarningBanner>
+
       <Header>
         <HeaderContent>
           <Title>{t.title}</Title>
@@ -328,6 +392,11 @@ const MyOffersPage: React.FC = () => {
                           exit={{ opacity: 0, scale: 0.95, y: -8 }}
                           transition={{ duration: 0.15 }}
                         >
+                          {/* This dropdown is only rendered when canEditOffers === true
+                              (i.e. user.role === 'admin'). Partner-role users cannot
+                              reach it, so all items here are visible to admins only.
+                              Spec §5.1, §11.2 compliance is enforced by the canEditOffers
+                              gate, not by a redundant isInactivePartner check inside. */}
                           <MenuItem onClick={() => navigate(`/partners/offers/${offer.id}/edit`)}>
                             <Edit size={16} /> {t.edit}
                           </MenuItem>
@@ -364,12 +433,6 @@ const MyOffersPage: React.FC = () => {
               <OfferDescription>{offer.description}</OfferDescription>
 
               <OfferStats>
-                <StatItem>
-                  <TrendingUp size={16} />
-                  <span>
-                    {offer.views} {t.views}
-                  </span>
-                </StatItem>
                 <StatItem>
                   <Users size={16} />
                   <span>
@@ -918,6 +981,65 @@ const EmptyTitle = styled.h2`
 const EmptyText = styled.p`
   color: var(--text-secondary);
   margin-bottom: 2rem;
+`;
+
+// Spec §8a — shown when VITE_OFFER_MANAGEMENT_ENABLED is not set; blocks the
+// entire page and instructs operators to contact the product team.
+const SpecBlockBanner = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 2rem;
+  background: #fef3c7;
+  border: 2px solid #f59e0b;
+  border-radius: 1rem;
+  margin-top: 2rem;
+
+  svg {
+    color: #b45309;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+`;
+
+const SpecBlockTitle = styled.p`
+  font-size: 1rem;
+  font-weight: 700;
+  color: #92400e;
+  margin: 0 0 0.375rem;
+`;
+
+const SpecBlockDesc = styled.p`
+  font-size: 0.875rem;
+  color: #92400e;
+  line-height: 1.5;
+  margin: 0;
+`;
+
+// Spec §8a warning banner — visible when the flag is enabled (non-production).
+const SpecWarningBanner = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.875rem 1.25rem;
+  background: #fef3c7;
+  border: 2px solid #f59e0b;
+  border-radius: 0.75rem;
+  margin-bottom: 1.5rem;
+
+  svg {
+    color: #b45309;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+`;
+
+const SpecWarningText = styled.p`
+  font-size: 0.875rem;
+  color: #92400e;
+  line-height: 1.5;
+  font-weight: 500;
+  margin: 0;
 `;
 
 export default MyOffersPage;

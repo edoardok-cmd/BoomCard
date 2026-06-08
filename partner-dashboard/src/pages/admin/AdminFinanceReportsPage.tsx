@@ -7,20 +7,10 @@ import { adminFinanceService, PlanBreakdownRow } from '../../services/adminFinan
 import { adminAlertsService, AdminAlert } from '../../services/adminAlerts.service';
 import { useLanguage } from '../../contexts/LanguageContext';
 
+import { palette } from '../../styles/adminTheme';
 const BG_PLURAL = new Intl.PluralRules('bg');
 const EN_PLURAL = new Intl.PluralRules('en');
 
-const palette = {
-  bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
-  text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
-  accent: '#c96442', accentSoft: '#f3e8de',
-  success: '#4a7c59', successSoft: '#e6efe3',
-  warning: '#b5803a', warningSoft: '#f5ead2',
-  danger: '#b54327', dangerSoft: '#f4dcd2',
-  info: '#2563eb', infoSoft: '#dbeafe',
-  purple: '#7c3aed', purpleSoft: '#ede9fe',
-  teal: '#0f766e', tealSoft: '#ccfbf1',
-};
 
 /* ─── Layout ────────────────────────────────────────────────────────────────── */
 const PageShell = styled.div`background: ${palette.bg}; min-height: calc(100vh - 4rem); padding: 2rem 2.5rem;`;
@@ -37,7 +27,7 @@ const DateInput = styled.input`padding: 0.5rem 0.875rem; border: 1px solid ${pal
 const FilterLabel = styled.span`font-size: 0.8125rem; color: ${palette.textMuted}; font-weight: 600;`;
 const FilterSelect = styled.select`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.surface}; color: ${palette.text}; outline: none; cursor: pointer; min-width: 10rem; &:focus { border-color: ${palette.accent}; }`;
 const PartnerSearchInput = styled.input`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.surface}; color: ${palette.text}; outline: none; min-width: 14rem; &:focus { border-color: ${palette.accent}; } &::placeholder { color: ${palette.textSubtle}; }`;
-const RunBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: #fff; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { opacity: 0.9; } &:disabled { opacity: 0.5; cursor: default; }`;
+const RunBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: ${palette.onAccent}; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { opacity: 0.9; } &:disabled { opacity: 0.5; cursor: default; }`;
 const ExportBtn = styled.button`padding: 0.5rem 0.875rem; background: ${palette.surface}; color: ${palette.text}; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.8125rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.375rem; &:hover { background: ${palette.bg}; } &:disabled { opacity: 0.5; cursor: default; }`;
 
 /* ─── Stats grid ────────────────────────────────────────────────────────────── */
@@ -79,25 +69,25 @@ const PeriodStatusBadge = styled.span<{ $status: string }>`
     $status === 'INVOICED'   ? palette.successSoft :
     $status === 'LOCKED'     ? palette.infoSoft :
     $status === 'FOR_REVIEW' ? palette.warningSoft :
-    $status === 'NO_RECORD'  ? '#f3f4f6' :
+    $status === 'NO_RECORD'  ? palette.surfaceAlt :
     palette.accentSoft};
   color: ${({ $status }) =>
     $status === 'INVOICED'   ? palette.success :
     $status === 'LOCKED'     ? palette.info :
     $status === 'FOR_REVIEW' ? palette.warning :
-    $status === 'NO_RECORD'  ? '#6b7280' :
+    $status === 'NO_RECORD'  ? palette.textMuted :
     palette.accent};
 `;
 
 /* ─── Banners ───────────────────────────────────────────────────────────────── */
-const FocusBanner = styled.div`display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem; background: ${palette.warningSoft}; border: 1px solid #e8d8ad; border-left: 3px solid ${palette.warning}; border-radius: 0.75rem; margin-bottom: 1.5rem;`;
+const FocusBanner = styled.div`display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem; background: ${palette.warningSoft}; border: 1px solid ${palette.warningBorder}; border-left: 3px solid ${palette.warning}; border-radius: 0.75rem; margin-bottom: 1.5rem;`;
 const FocusContent = styled.div`flex: 1;`;
 const FocusEyebrow = styled.p`font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: ${palette.warning}; margin: 0 0 0.25rem;`;
 const FocusTitle = styled.p`font-size: 1rem; font-weight: 700; color: ${palette.text}; margin: 0;`;
 const FocusCount = styled.span`font-feature-settings: 'tnum'; color: ${palette.danger};`;
-const FocusBtn = styled(Link)`flex-shrink: 0; padding: 0.5rem 0.875rem; background: ${palette.text}; color: #fff; border: none; border-radius: 0.5rem; font-size: 0.8125rem; font-weight: 600; text-decoration: none; cursor: pointer; &:hover { opacity: 0.9; }`;
+const FocusBtn = styled(Link)`flex-shrink: 0; padding: 0.5rem 0.875rem; background: ${palette.text}; color: ${palette.onAccent}; border: none; border-radius: 0.5rem; font-size: 0.8125rem; font-weight: 600; text-decoration: none; cursor: pointer; &:hover { opacity: 0.9; }`;
 
-const WarningBanner = styled.div`display: flex; align-items: flex-start; gap: 0.75rem; padding: 1rem 1.25rem; background: ${palette.warningSoft}; border: 1px solid #e8d8ad; border-left: 3px solid ${palette.warning}; border-radius: 0.75rem; margin-bottom: 1.5rem;`;
+const WarningBanner = styled.div`display: flex; align-items: flex-start; gap: 0.75rem; padding: 1rem 1.25rem; background: ${palette.warningSoft}; border: 1px solid ${palette.warningBorder}; border-left: 3px solid ${palette.warning}; border-radius: 0.75rem; margin-bottom: 1.5rem;`;
 const WarningText = styled.div`font-size: 0.875rem; color: ${palette.text};`;
 const WarningTitle = styled.p`font-weight: 700; margin: 0 0 0.25rem;`;
 const WarningDesc = styled.p`margin: 0; color: ${palette.textMuted};`;
@@ -105,7 +95,7 @@ const WarningDesc = styled.p`margin: 0; color: ${palette.textMuted};`;
 const PlanFilterCallout = styled.div`
   display: flex; align-items: flex-start; gap: 0.75rem;
   padding: 1rem 1.25rem; margin-bottom: 1.5rem;
-  background: ${palette.infoSoft}; border: 1px solid #bfdbfe;
+  background: ${palette.infoSoft}; border: 1px solid ${palette.infoBorder};
   border-left: 3px solid ${palette.info}; border-radius: 0.75rem;
 `;
 const PlanFilterTitle = styled.p`font-size: 0.875rem; font-weight: 700; color: ${palette.info}; margin: 0 0 0.25rem;`;

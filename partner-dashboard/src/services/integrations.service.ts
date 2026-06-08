@@ -15,7 +15,10 @@ export interface Integration {
   description: string;
   descriptionEn: string;
   descriptionBg: string;
-  category: 'POS Systems' | 'Payment Gateways' | 'Analytics' | 'Marketing' | 'Accounting' | 'Other';
+  // HIGH-1 fix (review r2x): added 'Payment Terminals' and 'Reservation Systems' to
+  // match the filter button IDs in IntegrationsPage. Without these the client-side
+  // filter always produced zero results for those two tabs.
+  category: 'POS Systems' | 'Payment Gateways' | 'Analytics' | 'Marketing' | 'Accounting' | 'Other' | 'Payment Terminals' | 'Reservation Systems';
   categoryEn: string;
   categoryBg: string;
   provider: string;
@@ -50,7 +53,12 @@ export interface PartnerIntegration {
   integrationId: string;
   integration: Integration;
   status: 'active' | 'inactive' | 'error' | 'pending';
-  credentials?: Record<string, string>;
+  // MEDIUM-2 fix: `credentials` removed from the list/connected response
+  // interface. Raw API keys/secrets returned in list responses reside in the
+  // React Query in-memory cache and are visible to DevTools and XSS attackers.
+  // The backend should not return credentials in list responses; if credential
+  // re-display is needed it should be on a dedicated detail endpoint with RBAC.
+  // credentials?: Record<string, string>;  — intentionally omitted
   settings?: Record<string, unknown>;
   lastSyncAt?: Date;
   errorMessage?: string;

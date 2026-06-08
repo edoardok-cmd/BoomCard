@@ -76,6 +76,11 @@ export const en = {
     uploadReceipt: 'Upload Receipt',
     subscription: 'Subscription & Payments',
     help: 'Help',
+    // §5.2 canonical partner menu sections
+    transactions: 'Transactions',
+    finance: 'Finance',
+    profileAndPartnership: 'Profile & Partnership',
+    myRequests: 'My Requests',
     downloadApp: 'Download App',
     adminDashboard: 'Admin Dashboard',
     managePartners: 'Manage Partners',
@@ -86,6 +91,7 @@ export const en = {
     adminReceipts: 'Receipts',
     switchAccount: 'Switch account',
     impersonatePartner: 'Impersonate partner',
+    impersonateUser: 'Log in as user',
     role: {
       admin: 'Administrator',
       superAdmin: 'Super Administrator',
@@ -107,6 +113,10 @@ export const en = {
     stopping: 'Stopping…',
     bannerPrefix: 'You are impersonating',
     bannerSuffix: '. Actions are audited.',
+    userModalTitle: 'Log in as user',
+    userModalSubtitle: 'Pick an end-user to view the app from their perspective.',
+    userSearchPlaceholder: 'Search by name or email…',
+    userEmpty: 'No users found.',
   },
 
   // Mobile Bottom Navigation
@@ -223,6 +233,15 @@ export const en = {
     errorSendingEmail: 'Error sending email',
     errorOccurred: 'An error occurred. Please try again.',
     sessionExpired: 'Your session has expired. Please sign in again.',
+    twoFactorTitle: 'Two-factor authentication',
+    twoFactorCode: 'Authentication code',
+    twoFactorHelp: 'Enter the 6-digit code from your authenticator app, or one of your backup recovery codes.',
+    twoFactorPlaceholder: '123456 or backup code',
+    twoFactorRequired: 'Please enter your authentication code',
+    twoFactorInvalid: 'Invalid two-factor authentication code. Please try again.',
+    twoFactorPrompt: 'Enter your authenticator code to finish signing in.',
+    twoFactorUseAnotherAccount: 'Use a different account',
+    signingInAs: 'Signing in as',
     accountCreated: 'Account created successfully! Welcome to BoomCard!',
     loggedOut: 'Logged out successfully',
     stoppedImpersonating: 'Stopped impersonating',
@@ -288,7 +307,7 @@ export const en = {
     emailRequired: 'Email is required',
     emailInvalid: 'Invalid email address',
     phoneRequired: 'Phone number is required',
-    phoneInvalid: 'Invalid phone number (Bulgarian format)',
+    phoneInvalid: 'Enter a Bulgarian phone number: +359XXXXXXXXX or 0XXXXXXXXX',
     passwordRequired: 'Password is required',
     passwordMinLength: 'Password must be at least 8 characters',
     passwordNeedsUppercase: 'Password must contain at least one uppercase letter',
@@ -2162,6 +2181,13 @@ export const en = {
   // Admin module — 10-category IA (Phase 0+)
   // ============================================================
   admin: {
+    // Gated-nav lock (2FA / password setup required before using the panel)
+    navLock: {
+      tooltipSetup2FA: 'Set up two-factor authentication first to unlock this section.',
+      tooltipChangePassword: 'Change your temporary password first to unlock this section.',
+      toastSetup2FA: 'Please set up two-factor authentication to continue.',
+      toastChangePassword: 'Please change your temporary password to continue.',
+    },
     // Category labels
     dashboard: 'Dashboard',
     subscribers: 'Subscribers',

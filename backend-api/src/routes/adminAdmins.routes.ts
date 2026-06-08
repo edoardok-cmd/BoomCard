@@ -8,6 +8,8 @@ import type { AuthRequest } from '../middleware/auth.middleware';
 import { getClientIp } from '../utils/requestIp';
 import { emailService } from '../services/email.service';
 import { logger } from '../utils/logger';
+import { parsePagination } from '../utils/pagination';
+import { detach } from '../utils/detach';
 
 const router = Router();
 router.use(auditMiddleware);
@@ -40,14 +42,9 @@ router.get('/audit', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePer
       actorId,
       dateFrom,
       dateTo,
-      page = '1',
-      limit = '20',
     } = req.query as Record<string, string>;
 
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
-    const skip = (pageNum - 1) * limitNum;
-    const take = limitNum;
+    const { skip, take, page: pageNum } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     const where: Parameters<typeof prisma.auditLog.findMany>[0]['where'] = {};
 
@@ -111,12 +108,9 @@ router.get('/audit', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePer
 // #11 fix: use admins.read (not admins.write) — this is a read-only list
 router.get('/pending', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.read'), async (req, res, next) => {
   try {
-    const { search, page = '1', limit = '20' } = req.query as Record<string, string>;
+    const { search } = req.query as Record<string, string>;
 
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
-    const skip = (pageNum - 1) * limitNum;
-    const take = limitNum;
+    const { skip, take, page: pageNum } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     // Only surface ADMIN-role users — SUPER_ADMIN users without panel roles
     // are a degenerate state that can't be actioned here (their role is assigned
@@ -177,11 +171,7 @@ const PENDING_SUPER_ADMIN_TTL_MS = 72 * 60 * 60 * 1000; // 72h in milliseconds
 // #12 fix: use admins.read (not admins.write) — this is a read-only list
 router.get('/pending-super', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.read'), async (req, res, next) => {
   try {
-    const { page = '1', limit = '20' } = req.query as Record<string, string>;
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
-    const skip = (pageNum - 1) * limitNum;
-    const take = limitNum;
+    const { skip, take, page: pageNum } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     // N6 fix: filter out requests older than 72h — they are expired and cannot be approved.
     const expiryThreshold = new Date(Date.now() - PENDING_SUPER_ADMIN_TTL_MS);
@@ -289,9 +279,7 @@ router.get('/critical-actions', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
       return res.status(400).json({ error: `status must be one of: ${CRITICAL_ACTION_STATUSES.join(', ')}` });
     }
     const status = rawStatus;
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
-    const skip = (page - 1) * limit;
+    const { skip, page, limit } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     // Callers with only admins.actions.read (e.g. PARTNER_MANAGER) must see only
     // their own submissions; admins.read callers and SUPER_ADMIN see the full queue.
@@ -469,7 +457,7 @@ router.post('/critical-actions/:id/approve', authenticate, authorize('SUPER_ADMI
     // Write the partner-rate audit entry outside the transaction (AuditLog
     // writes are fire-and-forget and don't need to be atomic with the rate change).
     if (discountRateAudit) {
-      writeAudit({
+      detach(writeAudit({
         actorUserId: req.user!.id,
         action: 'partner.discount-rate.update',
         objectType: 'Partner',
@@ -478,7 +466,7 @@ router.post('/critical-actions/:id/approve', authenticate, authorize('SUPER_ADMI
         after: { discountRate: discountRateAudit.newRate, via: 'critical-action', requestId: item.id },
         ip: getClientIp(req) ?? null,
         userAgent: req.headers['user-agent'] ?? null,
-      }).catch((err) => logger.error('[critical-action] discount-rate audit write failed:', err));
+      }), (err) => logger.error('[critical-action] discount-rate audit write failed:', err));
     }
 
     req.skipAudit = true;
@@ -535,12 +523,9 @@ router.post('/critical-actions/:id/reject', authenticate, authorize('SUPER_ADMIN
 // GET /api/admin/admins — list all admin users with their roles
 router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.read'), async (req, res, next) => {
   try {
-    const { search, roleKey, page = '1', limit = '20' } = req.query as Record<string, string>;
+    const { search, roleKey } = req.query as Record<string, string>;
 
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
-    const skip = (pageNum - 1) * limitNum;
-    const take = limitNum;
+    const { skip, take, page: pageNum } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     const where: Parameters<typeof prisma.user.findMany>[0]['where'] = {
       role: { in: ['ADMIN', 'SUPER_ADMIN'] as UserRole[] },
@@ -622,6 +607,13 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
     }
 
     if (roleKey === AdminRoleKey.SUPER_ADMIN) {
+      // Spec §3.9 step 1 — only a Super Admin may INITIATE a Super-Admin creation
+      // request. A Standard Admin holding admins.write can create regular admins but
+      // must not be able to start the dual-approval flow for a new Super Admin.
+      // (Approval is already SUPER_ADMIN-only on the /approve route.)
+      if (req.user!.role !== 'SUPER_ADMIN') {
+        return res.status(403).json({ error: 'Only a Super Admin may initiate a Super Admin creation request' });
+      }
       // Double-approval gate: store the request for a second admin to approve.
       // Pre-check: reject immediately if a SUPER_ADMIN with this email already exists as a User.
       const existingUser = await prisma.user.findFirst({ where: { email, role: 'SUPER_ADMIN' } });
@@ -642,7 +634,9 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
             lastName: lastName ?? null,
             phone: phone ?? null,
             passwordHash,
-            requestedById: req.user!.id,
+            status: 'PENDING',
+            expiresAt: new Date(Date.now() + PENDING_SUPER_ADMIN_TTL_MS),
+            requestedBy: { connect: { id: req.user!.id } },
           },
           select: { id: true, email: true, firstName: true, lastName: true, createdAt: true },
         });
@@ -728,8 +722,24 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
       });
     }
 
+    // Spec §3.9 / Clash 13.3 — anti-self-approval: the initiator cannot approve their own request.
+    // Bootstrap exception: the spec wording is "if only one Super Admin EXISTS in the system."
+    // H2 fix: the quorum must be computed on TOTAL existing (non-archived) Super Admins, NOT
+    // active-only. Counting active-only is a privilege-escalation hole: if every other SA is
+    // INACTIVE/SUSPENDED, the sole *active* SA would falsely qualify for the bootstrap
+    // self-approval and unilaterally create a new SUPER_ADMIN. An INACTIVE/SUSPENDED SA still
+    // EXISTS, can be reactivated, and is a second human party for the 2-of-N protocol — so it
+    // counts toward "exists." Only ARCHIVED (decommissioned, terminal, never logs in) is
+    // excluded. SUSPENDED is functionally Archived for login but is NOT terminal/decommissioned
+    // per §1.5 legacy note, so we conservatively count it as existing.
     if (request.requestedById === req.user!.id) {
-      return res.status(403).json({ error: 'The approver must be a different admin from the original requester' });
+      const existingSuperAdminCount = await prisma.user.count({
+        where: { role: 'SUPER_ADMIN', status: { not: 'ARCHIVED' } },
+      });
+      if (existingSuperAdminCount > 1) {
+        return res.status(403).json({ error: 'The approver must be a different admin from the original requester' });
+      }
+      // Bootstrap exception: only one Super Admin exists → sole SA may self-approve
     }
 
     const superAdminRole = await prisma.adminRole.findUnique({ where: { key: AdminRoleKey.SUPER_ADMIN } });
@@ -780,12 +790,12 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
     // Notify the requester so they know their request was approved.
     if (request.requestedBy.email) {
       const requesterName = request.requestedBy.firstName || request.requestedBy.email;
-      emailService.sendEmail({
+      detach(emailService.sendEmail({
         to: request.requestedBy.email,
         subject: 'SUPER_ADMIN creation request approved — BoomCard',
         html: `<p>Здравей, ${requesterName},</p><p>Вашата заявка за нов SUPER_ADMIN акаунт (<strong>${request.email}</strong>) беше одобрена. Акаунтът е създаден.</p>`,
         text: `Здравей, ${requesterName},\n\nВашата заявка за нов SUPER_ADMIN акаунт (${request.email}) беше одобрена. Акаунтът е създаден.`,
-      }).catch(() => {});
+      }), () => {});
     }
 
     res.status(201).json({ ok: true, user });
@@ -806,6 +816,15 @@ router.delete('/pending-super/:id', authenticate, authorize('SUPER_ADMIN'), requ
     });
     if (!request) return res.status(404).json({ error: 'Pending request not found' });
 
+    // Spec §3.9 step 4 — only the initiating Super Admin may cancel/withdraw their own
+    // pending request. The approval path is the separate second-actor action and remains
+    // available to other SUPER_ADMINs; cancellation is initiator-restricted.
+    if (request.requestedById !== (req as AuthRequest).user!.id) {
+      return res.status(403).json({
+        error: 'Only the SUPER_ADMIN who initiated this request may cancel it',
+      });
+    }
+
     await prisma.pendingSuperAdminRequest.delete({ where: { id } });
     req.skipAudit = true;
     await writeAudit({
@@ -822,12 +841,12 @@ router.delete('/pending-super/:id', authenticate, authorize('SUPER_ADMIN'), requ
     // Notify the requester so they know their request was rejected/cancelled.
     if (request.requestedBy.email) {
       const requesterName = request.requestedBy.firstName || request.requestedBy.email;
-      emailService.sendEmail({
+      detach(emailService.sendEmail({
         to: request.requestedBy.email,
         subject: 'SUPER_ADMIN creation request rejected — BoomCard',
         html: `<p>Здравей, ${requesterName},</p><p>Вашата заявка за нов SUPER_ADMIN акаунт (<strong>${request.email}</strong>) беше отказана или анулирана.</p>`,
         text: `Здравей, ${requesterName},\n\nВашата заявка за нов SUPER_ADMIN акаунт (${request.email}) беше отказана или анулирана.`,
-      }).catch(() => {});
+      }), () => {});
     }
 
     res.json({ ok: true });
@@ -888,17 +907,32 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
     const { id } = req.params;
     const { status, reason } = req.body as { status?: string; reason?: string };
 
-    // Spec §1.5: valid admin statuses are Active, Inactive, Archived.
-    // ARCHIVED is the canonical "no login" state (BC-SCHEMA-1); SUSPENDED retained for legacy records.
-    const VALID_ADMIN_STATUSES = ['ACTIVE', 'INACTIVE', 'SUSPENDED', 'ARCHIVED'] as const;
-    if (!VALID_ADMIN_STATUSES.includes(status as typeof VALID_ADMIN_STATUSES[number])) {
+    // Spec §1.5: Only a SUPER_ADMIN can change another admin's status.
+    if (req.user!.role !== 'SUPER_ADMIN') {
+      return res.status(403).json({ error: 'Only a SUPER_ADMIN can change an admin\'s status' });
+    }
+
+    // L5 — SUSPENDED is legacy-only (spec §1.5: "new decommissions should use
+    // ARCHIVED"). Reject it as a NEW input value here so this endpoint cannot
+    // mint fresh SUSPENDED writes. Existing SUSPENDED rows are unaffected — this
+    // only blocks the write path; reads elsewhere still surface legacy records.
+    if (status === 'SUSPENDED') {
       return res.status(400).json({
-        error: 'status must be one of: ACTIVE (Active), INACTIVE (Inactive — read-only), SUSPENDED (Suspended — legacy), ARCHIVED (Archived — no login)',
+        error: 'SUSPENDED is a legacy status and can no longer be set. Use ARCHIVED to decommission an admin account (no login), or INACTIVE for read-only access.',
       });
     }
-    // Require a reason when deactivating or archiving (INACTIVE, SUSPENDED, or ARCHIVED)
-    if ((status === 'INACTIVE' || status === 'SUSPENDED' || status === 'ARCHIVED') && !reason?.trim()) {
-      return res.status(400).json({ error: 'reason is required when setting an admin account to INACTIVE, SUSPENDED, or ARCHIVED' });
+
+    // Spec §1.5: valid admin statuses are Active, Inactive, Archived.
+    // ARCHIVED is the canonical "no login" state (BC-SCHEMA-1).
+    const VALID_ADMIN_STATUSES = ['ACTIVE', 'INACTIVE', 'ARCHIVED'] as const;
+    if (!VALID_ADMIN_STATUSES.includes(status as typeof VALID_ADMIN_STATUSES[number])) {
+      return res.status(400).json({
+        error: 'status must be one of: ACTIVE (Active), INACTIVE (Inactive — read-only), ARCHIVED (Archived — no login)',
+      });
+    }
+    // Require a reason when deactivating or archiving (INACTIVE or ARCHIVED)
+    if ((status === 'INACTIVE' || status === 'ARCHIVED') && !reason?.trim()) {
+      return res.status(400).json({ error: 'reason is required when setting an admin account to INACTIVE or ARCHIVED' });
     }
 
     // Prevent self-demotion
@@ -911,14 +945,17 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
       return res.status(404).json({ error: 'Admin not found' });
     }
 
-    // Only a SUPER_ADMIN may change the status of another SUPER_ADMIN.
-    // An ADMIN with admins.write cannot demote or deactivate a higher-privilege account.
-    if (target.role === 'SUPER_ADMIN' && req.user!.role !== 'SUPER_ADMIN') {
-      return res.status(403).json({ error: 'Only a SUPER_ADMIN can change another SUPER_ADMIN\'s status' });
-    }
+    // L4 — the former "target is SUPER_ADMIN && actor is not SUPER_ADMIN" guard
+    // was dead code: line ~911 already 403s any non-SUPER_ADMIN actor before we
+    // reach here, so req.user.role is always SUPER_ADMIN at this point. Removed
+    // without changing observable behaviour (the cross-privilege protection is
+    // fully provided by the earlier actor-role check).
 
-    // Prevent archiving the last active SUPER_ADMIN (SUSPENDED / ARCHIVED / INACTIVE all block login)
-    if (target.role === 'SUPER_ADMIN' && (status === 'SUSPENDED' || status === 'INACTIVE' || status === 'ARCHIVED')) {
+    // Prevent deactivating/archiving the last active SUPER_ADMIN (ARCHIVED / INACTIVE both block full access).
+    // L5/LOW-2: SUSPENDED is no longer reachable here — it is rejected at the top of this
+    // handler and excluded from VALID_ADMIN_STATUSES — so the former `status === 'SUSPENDED'`
+    // disjunct was dead and has been removed.
+    if (target.role === 'SUPER_ADMIN' && (status === 'INACTIVE' || status === 'ARCHIVED')) {
       const activeSuperAdmins = await prisma.user.count({
         where: { role: 'SUPER_ADMIN', status: 'ACTIVE', id: { not: id } },
       });
@@ -935,7 +972,9 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
         status: status as UserStatus,
         // Stamp rolesUpdatedAt whenever status changes to a no-login state so the
         // authenticate middleware invalidates any existing access tokens immediately.
-        ...(status === 'SUSPENDED' || status === 'ARCHIVED' ? { rolesUpdatedAt: new Date() } : {}),
+        // L5/LOW-2: SUSPENDED is unreachable here (rejected above + off the whitelist),
+        // so only ARCHIVED remains as a settable no-login state.
+        ...(status === 'ARCHIVED' ? { rolesUpdatedAt: new Date() } : {}),
       },
       select: { id: true, status: true },
     });
@@ -950,7 +989,10 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
       // Spec §1.5: include spec-level label in audit for clarity
       after: {
         status,
-        specLabel: status === 'ACTIVE' ? 'Active' : status === 'INACTIVE' ? 'Inactive (read-only)' : status === 'SUSPENDED' ? 'Suspended (no login — legacy)' : 'Archived (no login)',
+        // L5/LOW-2: SUSPENDED is unreachable here (rejected above + off the whitelist),
+        // so the SUSPENDED specLabel branch was dead and has been removed. Only
+        // ACTIVE / INACTIVE / ARCHIVED can reach this point.
+        specLabel: status === 'ACTIVE' ? 'Active' : status === 'INACTIVE' ? 'Inactive (read-only)' : 'Archived (no login)',
         reason: reason?.trim() || null,
       },
       ip: getClientIp(req) ?? null,
@@ -1033,6 +1075,68 @@ router.post('/:id/approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
     });
 
     res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/admin/admins/:id/reset-2fa — SUPER_ADMIN clears another admin's 2FA.
+// BC-ADMIN-2FA-RECOVERY-AND-FRONTEND-FIX-015 (a): recovers an admin who is locked
+// out of their authenticator, WITHOUT manual DB surgery. Clears totpSecret,
+// totpPendingSecret, totpEnabledAt and any backup recovery codes so the target can
+// log in with just their password and re-enrol 2FA from scratch.
+//
+// Safeguard: a SUPER_ADMIN MUST NOT reset their OWN 2FA via this endpoint — that
+// would let a single actor strip the second factor off their own account and defeat
+// the whole control. Self-service disable lives on DELETE /api/admin/me/2fa
+// (password-gated). Here, target == caller is a hard 403.
+router.post('/:id/reset-2fa', authenticate, authorize('SUPER_ADMIN'), requirePermission('admins.write'), async (req: AuthRequest, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Sole safeguard-bypass prevention: cannot reset your own 2FA here.
+    if (id === req.user!.id) {
+      return res.status(403).json({
+        error: 'You cannot reset your own 2FA from here. Use DELETE /api/admin/me/2fa (password required).',
+      });
+    }
+
+    const target = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, role: true, email: true, totpEnabledAt: true, totpPendingSecret: true },
+    });
+    if (!target || (target.role !== 'ADMIN' && target.role !== 'SUPER_ADMIN')) {
+      return res.status(404).json({ error: 'Admin not found' });
+    }
+
+    const wasEnabled = target.totpEnabledAt !== null;
+    if (!wasEnabled && !target.totpPendingSecret) {
+      return res.status(400).json({ error: 'This admin does not have 2FA enabled or in setup' });
+    }
+
+    await prisma.user.update({
+      where: { id },
+      data: {
+        totpSecret: null,
+        totpPendingSecret: null,
+        totpEnabledAt: null,
+        totpRecoveryCodes: [],
+      },
+    });
+
+    req.skipAudit = true;
+    await writeAudit({
+      actorUserId: req.user!.id,
+      action: 'admin.2fa.reset',
+      objectType: 'admin',
+      objectId: id,
+      before: { twoFactorEnabled: wasEnabled },
+      after: { twoFactorEnabled: false, resetBy: req.user!.id },
+      ip: getClientIp(req) ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
+
+    res.json({ ok: true, message: '2FA has been reset for this admin' });
   } catch (error) {
     next(error);
   }

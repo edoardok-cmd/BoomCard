@@ -139,7 +139,7 @@ describe('partnerTypeService.setPlanAccess — atomic replace', () => {
     mockPrisma.partnerType.findUnique.mockResolvedValueOnce({ id: 'pt-1', name: 'Cafe' });
     const rules = [
       { plan: SubscriptionPlan.BASIC, canView: true, canRedeem: true },
-      { plan: SubscriptionPlan.PREMIUM, canView: true, canRedeem: true },
+      { plan: SubscriptionPlan.PREMIUM_WEEKLY, canView: true, canRedeem: true },
     ];
     await partnerTypeService.setPlanAccess('pt-1', rules);
 
@@ -190,7 +190,7 @@ describe('partnerTypeService.getRedeemableTypeIdsForPlan — null-plan fallback'
 
   it('returns empty array when no matching access rows', async () => {
     mockPrisma.planTypeAccess.findMany.mockResolvedValueOnce([]);
-    const result = await partnerTypeService.getRedeemableTypeIdsForPlan(SubscriptionPlan.PREMIUM);
+    const result = await partnerTypeService.getRedeemableTypeIdsForPlan(SubscriptionPlan.PREMIUM_WEEKLY);
     expect(result).toEqual([]);
   });
 });
@@ -204,7 +204,7 @@ describe('partnerTypeService.getVisibleTypeIdsForPlan — null shortcut', () => 
     mockPrisma.planTypeAccess.findMany.mockResolvedValueOnce([
       { partnerTypeId: 'pt-1' }, { partnerTypeId: 'pt-2' },
     ]);
-    const result = await partnerTypeService.getVisibleTypeIdsForPlan(SubscriptionPlan.PREMIUM);
+    const result = await partnerTypeService.getVisibleTypeIdsForPlan(SubscriptionPlan.PREMIUM_WEEKLY);
     expect(result).toBeNull();
   });
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import styled from 'styled-components';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
+import { palette } from '../../styles/adminTheme';
 import {
   adminMarketingService,
   MarketingList,
@@ -10,15 +11,6 @@ import {
   PartnerSearchResult,
 } from '../../services/adminMarketing.service';
 
-const palette = {
-  bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
-  text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
-  accent: '#c96442', accentSoft: '#f3e8de',
-  success: '#4a7c59', successSoft: '#e6efe3',
-  danger: '#b54327', dangerSoft: '#f4dcd2',
-  info: '#2563eb', infoSoft: '#dbeafe',
-  warning: '#92400e', warningSoft: '#fef3c7',
-};
 
 const PageShell = styled.div`background: ${palette.bg}; min-height: calc(100vh - 4rem); padding: 2rem 2.5rem;`;
 const PageHeader = styled.div`display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; gap: 1rem; flex-wrap: wrap;`;
@@ -41,7 +33,7 @@ const TypePill = styled.span<{ $type: MarketingListType }>`
     switch ($type) {
       case 'DYNAMIC':  return `background: ${palette.infoSoft}; color: ${palette.info};`;
       case 'SEGMENT':  return `background: ${palette.successSoft}; color: ${palette.success};`;
-      default:         return `background: #f3e8de; color: #c96442;`;
+      default:         return `background: ${palette.accentSoft}; color: ${palette.accent};`;
     }
   }}
 `;
@@ -52,14 +44,14 @@ const MemberTypePill = styled.span<{ $type: string }>`
   ${({ $type }) =>
     $type === 'USER'
       ? `background: ${palette.infoSoft}; color: ${palette.info};`
-      : `background: #f3e8de; color: #c96442;`}
+      : `background: ${palette.accentSoft}; color: ${palette.accent};`}
 `;
 
-const PrimaryBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: #fff; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { opacity: 0.9; } &:disabled { opacity: 0.5; cursor: default; }`;
-const SecondaryBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.infoSoft}; color: ${palette.info}; border: 1px solid #93c5fd; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { opacity: 0.9; } &:disabled { opacity: 0.5; cursor: default; }`;
+const PrimaryBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: ${palette.onAccent}; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { opacity: 0.9; } &:disabled { opacity: 0.5; cursor: default; }`;
+const SecondaryBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.infoSoft}; color: ${palette.info}; border: 1px solid ${palette.infoBorder}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { opacity: 0.9; } &:disabled { opacity: 0.5; cursor: default; }`;
 const GhostBtn = styled.button`padding: 0.5rem 1.125rem; background: transparent; color: ${palette.textMuted}; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { border-color: ${palette.textMuted}; }`;
-const DangerBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; border: 1px solid #f1c4b8; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { background: #eebcac; }`;
-const SmIconBtn = styled.button`padding: 0.2rem 0.5rem; background: ${palette.dangerSoft}; color: ${palette.danger}; border: 1px solid #f1c4b8; border-radius: 0.25rem; font-size: 0.7rem; font-weight: 600; cursor: pointer; &:hover { background: #eebcac; } &:disabled { opacity: 0.4; cursor: default; }`;
+const DangerBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; border: 1px solid ${palette.dangerBorder}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { background: ${palette.dangerBorder}; }`;
+const SmIconBtn = styled.button`padding: 0.2rem 0.5rem; background: ${palette.dangerSoft}; color: ${palette.danger}; border: 1px solid ${palette.dangerBorder}; border-radius: 0.25rem; font-size: 0.7rem; font-weight: 600; cursor: pointer; &:hover { background: ${palette.dangerBorder}; } &:disabled { opacity: 0.4; cursor: default; }`;
 
 const Overlay = styled.div`position: fixed; inset: 0; background: rgba(20,20,19,0.45); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 1rem;`;
 const ModalBox = styled.div`background: ${palette.surface}; border-radius: 0.875rem; width: 100%; max-width: 34rem; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.18);`;
@@ -71,14 +63,14 @@ const ModalBody = styled.div`padding: 1.5rem;`;
 const ModalFooter = styled.div`display: flex; gap: 0.75rem; justify-content: flex-end; padding: 1rem 1.5rem; border-top: 1px solid ${palette.border};`;
 const FormGroup = styled.div`display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 1.125rem;`;
 const Label = styled.label`font-size: 0.8125rem; font-weight: 600; color: ${palette.text};`;
-const Input = styled.input`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; width: 100%; box-sizing: border-box; &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; } &:disabled { background: #f0ede6; color: ${palette.textSubtle}; cursor: not-allowed; }`;
+const Input = styled.input`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; width: 100%; box-sizing: border-box; &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; } &:disabled { background: ${palette.surfaceAlt}; color: ${palette.textSubtle}; cursor: not-allowed; }`;
 const Textarea = styled.textarea`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; width: 100%; box-sizing: border-box; resize: vertical; &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }`;
 const ModalSelect = styled.select`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; width: 100%; &:focus { border-color: ${palette.accent}; }`;
 const HintText = styled.p`font-size: 0.75rem; color: ${palette.textSubtle}; margin: 0;`;
 const ConfirmText = styled.p`font-size: 0.9375rem; color: ${palette.text}; margin: 0 0 0.5rem;`;
 const ConfirmSub = styled.p`font-size: 0.8125rem; color: ${palette.textSubtle}; margin: 0;`;
-const ErrorBanner = styled.div`padding: 0.5rem 0.875rem; border: 1px solid #f1c4b8; border-radius: 0.5rem; font-size: 0.8125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; margin-bottom: 1rem;`;
-const WarnBanner = styled.div`padding: 0.625rem 0.875rem; border: 1px solid #fcd34d; border-radius: 0.5rem; font-size: 0.8125rem; background: ${palette.warningSoft}; color: ${palette.warning}; margin-bottom: 1rem;`;
+const ErrorBanner = styled.div`padding: 0.5rem 0.875rem; border: 1px solid ${palette.dangerBorder}; border-radius: 0.5rem; font-size: 0.8125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; margin-bottom: 1rem;`;
+const WarnBanner = styled.div`padding: 0.625rem 0.875rem; border: 1px solid ${palette.warningBorder}; border-radius: 0.5rem; font-size: 0.8125rem; background: ${palette.warningSoft}; color: ${palette.warning}; margin-bottom: 1rem;`;
 
 const SectionTitle = styled.div`font-size: 0.8125rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: ${palette.textSubtle}; margin-bottom: 0.75rem;`;
 const MemberRow = styled.div`display: flex; align-items: center; justify-content: space-between; padding: 0.625rem 0; border-bottom: 1px solid ${palette.border}; &:last-child { border-bottom: none; }`;
@@ -362,7 +354,7 @@ export default function AdminMarketingListsPage() {
     }
     const config: Record<string, { label: string; bg: string; fg: string }> = {
       SUBSCRIBERS: { label: 'абонати',    bg: palette.infoSoft,    fg: palette.info },
-      PARTNERS:    { label: 'партньори',  bg: '#f3e8de',           fg: '#c96442' },
+      PARTNERS:    { label: 'партньори',  bg: palette.accentSoft,           fg: palette.accent },
       MIXED:       { label: 'смесена',    bg: palette.warningSoft, fg: palette.warning },
     };
     // Fallback for any future audienceKind the backend may add — render as a
@@ -452,12 +444,12 @@ export default function AdminMarketingListsPage() {
       </PageHeader>
 
       {initFeedback && (
-        <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: palette.successSoft, border: `1px solid #86efac`, borderRadius: '0.5rem', fontSize: '0.875rem', color: palette.success, fontWeight: 500 }}>
+        <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: palette.successSoft, border: `1px solid ${palette.successBorder}`, borderRadius: '0.5rem', fontSize: '0.875rem', color: palette.success, fontWeight: 500 }}>
           {initFeedback}
         </div>
       )}
 
-      <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: palette.infoSoft, border: `1px solid #93c5fd`, borderRadius: '0.5rem', fontSize: '0.8125rem', color: palette.info }}>
+      <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: palette.infoSoft, border: `1px solid ${palette.infoBorder}`, borderRadius: '0.5rem', fontSize: '0.8125rem', color: palette.info }}>
         <strong>Тип на списъка:</strong>{' '}
         <strong>СТАТИЧЕН</strong> — фиксирана снимка, ръчно управление на членовете.{' '}
         <strong>ДИНАМИЧЕН</strong> и <strong>СЕГМЕНТ</strong> — броят се преизчислява автоматично всяка нощ в 02:30 (или веднага при натискане на „Инициализирай задължителните сегменти“).

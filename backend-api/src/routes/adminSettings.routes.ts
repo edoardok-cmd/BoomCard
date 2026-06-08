@@ -58,7 +58,7 @@ router.get(
   '/payout-thresholds',
   requirePermission('settings.read'),
   asyncHandler(async (_req: AuthRequest, res: Response) => {
-    const plans: SubscriptionPlan[] = ['BASIC', 'PREMIUM_WEEKLY', 'PREMIUM'];
+    const plans: SubscriptionPlan[] = ['BASIC', 'PREMIUM_WEEKLY', 'PREMIUM_MONTHLY'];
     const rows = await Promise.all(
       plans.map((plan) =>
         prisma.payoutThreshold.findFirst({ where: { plan }, orderBy: { createdAt: 'desc' } })
@@ -119,7 +119,7 @@ router.get(
 
 /**
  * PUT /api/admin/settings/payout-thresholds
- * Body: { thresholds: { BASIC?: number; PREMIUM_WEEKLY?: number; PREMIUM?: number }, notes?: string }
+ * Body: { thresholds: { BASIC?: number; PREMIUM_WEEKLY?: number; PREMIUM_MONTHLY?: number }, notes?: string }
  * Creates versioned rows for each plan supplied.
  */
 router.put(
@@ -135,11 +135,11 @@ router.put(
       return res.status(400).json({ success: false, error: 'thresholds object with at least one plan is required' });
     }
 
-    const validPlans = new Set<string>(['BASIC', 'PREMIUM_WEEKLY', 'PREMIUM']);
+    const validPlans = new Set<string>(['BASIC', 'PREMIUM_WEEKLY', 'PREMIUM_MONTHLY']);
     const entries = Object.entries(thresholds) as [SubscriptionPlan, number][];
     for (const [plan, amount] of entries) {
       if (!validPlans.has(plan)) {
-        return res.status(400).json({ success: false, error: `Invalid plan: ${plan}. Must be BASIC, PREMIUM_WEEKLY, or PREMIUM.` });
+        return res.status(400).json({ success: false, error: `Invalid plan: ${plan}. Must be BASIC, PREMIUM_WEEKLY, or PREMIUM_MONTHLY.` });
       }
       if (typeof amount !== 'number' || isNaN(amount) || amount < 0 || amount > 10000) {
         return res.status(400).json({ success: false, error: `minAmount for ${plan} must be a number between 0 and 10000` });
@@ -683,6 +683,60 @@ router.delete(
 const VALID_TIERS = new Set(Object.values(FraudRuleTier));
 
 /**
+ * U3 (Spec §2.1 / Clash 5.4) — limits-table bounds enforcement.
+ *
+ * "The Risk Review role can adjust signal thresholds within pre-defined bounds;
+ * only a Super Admin can exceed those bounds." These engineering-default bounds
+ * are the conservative go-live values. An actor who may exceed bounds — SUPER_ADMIN,
+ * or any holder of the full `control.rules.write` key — may set ANY value. An actor
+ * holding only the bounded capability (`control.rules.write.bounded`, e.g. RISK_REVIEW)
+ * is clamped to these bounds (rejected with 422 if out of range). This is the U3
+ * permission model (spec §2.1 / Clash 5.4): RISK_REVIEW can tune limits within safe
+ * ranges but cannot disable protections or exceed the engineering bounds.
+ */
+const FRAUD_RULE_BOUNDS: Record<string, { min: number; max: number }> = {
+  dailyScanLimit: { min: 1, max: 500 },
+  minTransactionValue: { min: 0, max: 100000 },
+  maxTransactionValue: { min: 0, max: 1000000 },
+  autoApproveThreshold: { min: 0, max: 120 }, // risk-score scale (spec §2.1 max additive 120)
+};
+
+/**
+ * True when the actor may set fraud-rule values beyond the engineering bounds:
+ * SUPER_ADMIN (bypasses permission gates entirely) or any holder of the full
+ * `control.rules.write` key. A holder of only `control.rules.write.bounded`
+ * (e.g. RISK_REVIEW) returns false and is clamped.
+ */
+function actorMayExceedFraudBounds(actorRole: string, permissions: string[] | undefined): boolean {
+  return actorRole === 'SUPER_ADMIN' || (permissions ?? []).includes('control.rules.write');
+}
+
+/**
+ * Returns an error message string if a bounded-only actor supplied a value outside
+ * the pre-defined bounds, else null. Actors who may exceed bounds (see
+ * actorMayExceedFraudBounds) always return null. null/undefined values are not
+ * bounds-checked (clearing).
+ */
+function checkFraudRuleBounds(
+  actorRole: string,
+  permissions: string[] | undefined,
+  fields: Record<string, number | null | undefined>,
+): string | null {
+  if (actorMayExceedFraudBounds(actorRole, permissions)) return null;
+  for (const [key, bound] of Object.entries(FRAUD_RULE_BOUNDS)) {
+    const v = fields[key];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== 'number' || !Number.isFinite(v)) {
+      return `${key} must be a number`;
+    }
+    if (v < bound.min || v > bound.max) {
+      return `${key}=${v} is outside the permitted bounds (${bound.min}–${bound.max}). Only a Super Admin may set values beyond these bounds (spec §2.1 / Clash 5.4).`;
+    }
+  }
+  return null;
+}
+
+/**
  * GET /api/admin/settings/fraud-rules
  * Query: tier, targetId, active (true|false)
  * Accessible to RISK_REVIEW admins (control.rules.read) as well as ADMIN (settings.read).
@@ -711,12 +765,12 @@ router.get(
 /**
  * POST /api/admin/settings/fraud-rules
  * Body: { tier, targetId?, dailyScanLimit?, minTransactionValue?, maxTransactionValue?, autoApproveThreshold?, notes? }
- * Spec §7.4: requires control.rules.write. RISK_REVIEW has only control.rules.read
- * so is blocked; full ADMIN role includes control.rules.write by default.
+ * Spec §7.4: requires control.rules.write (full) OR control.rules.write.bounded
+ * (U3 — RISK_REVIEW, clamped to FRAUD_RULE_BOUNDS). Read-only roles are blocked.
  */
 router.post(
   '/fraud-rules',
-  requirePermission('control.rules.write'),
+  requirePermission(['control.rules.write', 'control.rules.write.bounded']),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { tier, targetId, dailyScanLimit, minTransactionValue, maxTransactionValue, autoApproveThreshold, notes } =
       req.body as {
@@ -735,6 +789,12 @@ router.post(
     if (tier !== 'SYSTEM' && !targetId) {
       return res.status(400).json({ success: false, error: 'targetId is required for non-SYSTEM tier rules' });
     }
+
+    // U3 — bounds enforcement: bounded-only writers may only set within-bounds values.
+    const boundsError = checkFraudRuleBounds(req.user!.role, req.user!.permissions, {
+      dailyScanLimit, minTransactionValue, maxTransactionValue, autoApproveThreshold,
+    });
+    if (boundsError) return res.status(422).json({ success: false, error: boundsError });
 
     const rule = await prisma.fraudRule.create({
       data: {
@@ -755,11 +815,12 @@ router.post(
 
 /**
  * PATCH /api/admin/settings/fraud-rules/:id
- * Spec §7.4: requires control.rules.write (same rationale as POST).
+ * Spec §7.4: requires control.rules.write (full) OR control.rules.write.bounded
+ * (same rationale as POST — bounded actors are clamped to FRAUD_RULE_BOUNDS).
  */
 router.patch(
   '/fraud-rules/:id',
-  requirePermission('control.rules.write'),
+  requirePermission(['control.rules.write', 'control.rules.write.bounded']),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { dailyScanLimit, minTransactionValue, maxTransactionValue, autoApproveThreshold, notes, isActive } =
       req.body as {
@@ -773,6 +834,12 @@ router.patch(
 
     const rule = await prisma.fraudRule.findUnique({ where: { id: req.params.id } });
     if (!rule) return res.status(404).json({ success: false, error: 'Fraud rule not found' });
+
+    // U3 — bounds enforcement: bounded-only writers may only set within-bounds values.
+    const boundsError = checkFraudRuleBounds(req.user!.role, req.user!.permissions, {
+      dailyScanLimit, minTransactionValue, maxTransactionValue, autoApproveThreshold,
+    });
+    if (boundsError) return res.status(422).json({ success: false, error: boundsError });
 
     const updated = await prisma.fraudRule.update({
       where: { id: req.params.id },
@@ -793,7 +860,9 @@ router.patch(
 /**
  * DELETE /api/admin/settings/fraud-rules/:id
  * Soft-deactivates the rule (does not hard-delete to preserve audit trail).
- * Spec §7.4: requires control.rules.write (same rationale as POST).
+ * Spec §7.4: requires the FULL control.rules.write key. control.rules.write.bounded
+ * is intentionally NOT accepted here — deactivating a rule disables a protection
+ * entirely, which is beyond the "tune within bounds" intent of the bounded role.
  */
 router.delete(
   '/fraud-rules/:id',

@@ -4,7 +4,7 @@ import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { CredentialResponse } from '@react-oauth/google';
 import Button from '../components/common/Button/Button';
-import { useAuth, OAuthData } from '../contexts/AuthContext';
+import { useAuth, OAuthData, TwoFactorRequiredError } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import GoogleLoginButton from '../components/auth/GoogleLoginButton';
 import FacebookLoginButton from '../components/auth/FacebookLoginButton';
@@ -139,6 +139,13 @@ const ErrorMessage = styled(motion.span)`
   margin-top: 0.25rem;
 `;
 
+const HelperText = styled.span`
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin-top: 0.25rem;
+  line-height: 1.4;
+`;
+
 const CheckboxGroup = styled.div`
   display: flex;
   align-items: center;
@@ -214,6 +221,79 @@ const SocialButtons = styled.div`
   gap: 0.75rem;
 `;
 
+// HIGH fix: OAuth buttons are disabled until the backend /auth/oauth/login endpoint
+// is implemented. Wrapping them in a tooltip container makes the "coming soon" state
+// visible without removing the UI elements entirely.
+const ComingSoonWrapper = styled.div`
+  position: relative;
+  cursor: not-allowed;
+
+  & > * {
+    pointer-events: none;
+    opacity: 0.5;
+    user-select: none;
+  }
+
+  &::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1f2937;
+    color: #f9fafb;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.375rem 0.625rem;
+    border-radius: 0.375rem;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 150ms ease;
+    z-index: 10;
+  }
+
+  &:hover::after {
+    opacity: 1;
+  }
+`;
+
+// Read-only "Signing in as <email>" line shown during the 2FA step in place of
+// the email/password inputs (which are wiped from formData by the remount).
+const SigningInAs = styled.div`
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  padding: 0.75rem 1rem;
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+
+  strong {
+    color: var(--color-text-primary);
+    font-weight: 600;
+    word-break: break-all;
+  }
+`;
+
+// "Use a different account" affordance — returns to the email/password form.
+const UseAnotherAccount = styled.button`
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.875rem;
+  color: var(--color-primary);
+  font-weight: 500;
+  cursor: pointer;
+  align-self: flex-start;
+  text-decoration: none;
+  transition: color 200ms;
+
+  &:hover {
+    color: var(--color-primary-hover);
+    text-decoration: underline;
+  }
+`;
+
 const SignupPrompt = styled.p`
   text-align: center;
   margin-top: 2rem;
@@ -241,7 +321,7 @@ interface FormErrors {
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, loginWithOAuth, isLoading } = useAuth();
+  const { login, loginWithOAuth, isLoading, twoFactorRequired, twoFactorEmail, submitTwoFactor, clearTwoFactorRequired } = useAuth();
   const { t, language } = useLanguage();
 
   const [formData, setFormData] = useState({
@@ -255,6 +335,26 @@ const LoginPage: React.FC = () => {
     email: false,
     password: false,
   });
+
+  // 2FA second-factor step. Whether the code field is shown (`twoFactorRequired`)
+  // lives in AuthContext, NOT here: submitting login flips AuthContext.isLoading
+  // to true, and App.tsx unmounts LoginPage while isLoading is true — so any
+  // local "show the field" state set during the in-flight login would be wiped
+  // on remount. Deriving it from the always-mounted provider makes the field
+  // survive that remount. `totpCode` stays LOCAL — it's fine that it resets to
+  // empty on remount; isLoading is false by the time the field is shown, so the
+  // freshly-mounted field is stable while the user types.
+  const [totpCode, setTotpCode] = useState('');
+  const [totpError, setTotpError] = useState<string | undefined>(undefined);
+  const totpInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Auto-focus the code field the moment it is revealed (keyed off the context
+  // gate, which is what now drives visibility).
+  useEffect(() => {
+    if (twoFactorRequired) {
+      totpInputRef.current?.focus();
+    }
+  }, [twoFactorRequired]);
 
   // Keep a ref so the mount effect can call the latest t() without stale closure.
   const tRef = React.useRef(t);
@@ -308,6 +408,15 @@ const LoginPage: React.FC = () => {
 
     setFormData(prev => ({ ...prev, [name]: newValue }));
 
+    // Editing email or password invalidates any in-flight 2FA step: a code is
+    // bound to the specific account being authenticated, so a stale code must
+    // not be submitted for different credentials. Collapse the field and clear.
+    if ((name === 'email' || name === 'password') && (twoFactorRequired || totpCode)) {
+      clearTwoFactorRequired();
+      setTotpCode('');
+      setTotpError(undefined);
+    }
+
     // Clear error when user starts typing
     if (touched[name as keyof typeof touched]) {
       const error = name === 'email'
@@ -323,6 +432,45 @@ const LoginPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const from = (location.state as any)?.from?.pathname || '/';
+
+    // ── 2FA second-factor step ───────────────────────────────────────────────
+    // When the code field is shown, the credentials live in AuthContext (in a
+    // ref that survived the remount), NOT in formData — which was wiped when
+    // App.tsx unmounted this page during the password-step isLoading. So we must
+    // NOT validate/require formData.email/password here; we only require a
+    // non-empty code and submit it through submitTwoFactor(), which re-issues
+    // the login against the captured credentials.
+    if (twoFactorRequired) {
+      const trimmedCode = totpCode.trim().toUpperCase();
+      if (!trimmedCode) {
+        setTotpError(t('auth.twoFactorRequired'));
+        totpInputRef.current?.focus();
+        return;
+      }
+      try {
+        setTotpError(undefined);
+        // Sent verbatim — may be a 6-digit TOTP or a XXXXX-XXXXX recovery code.
+        await submitTwoFactor(trimmedCode);
+        // Success: the user is now authenticated. ProtectedRoute (requireAuth=false
+        // wrapper on /login) already redirects authenticated users to "/", so this
+        // navigate is a best-effort that lands them on the originally-requested page
+        // when it survives the remount; the route-level redirect is the guarantee.
+        navigate(from, { replace: true });
+      } catch (error) {
+        // A wrong code (401) arrives here as a plain Error already toasted by
+        // AuthContext, which keeps `twoFactorRequired` TRUE and the captured
+        // credentials intact so the user can retry. The inline hint is best-effort
+        // (lost if the page remounts) but the toast already conveyed the failure.
+        setTotpError(t('auth.twoFactorInvalid'));
+        totpInputRef.current?.focus();
+        console.error('Two-factor submit error:', error);
+      }
+      return;
+    }
+
+    // ── Password (first) step ────────────────────────────────────────────────
     // Validate all fields
     const emailError = validateEmail(formData.email);
     const passwordError = validatePassword(formData.password);
@@ -343,6 +491,7 @@ const LoginPage: React.FC = () => {
     }
 
     try {
+      setTotpError(undefined);
       await login({
         email: formData.email,
         password: formData.password,
@@ -350,11 +499,17 @@ const LoginPage: React.FC = () => {
       });
 
       // Redirect to the page they were trying to access, or home
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const from = (location.state as any)?.from?.pathname || '/';
       navigate(from, { replace: true });
     } catch (error) {
-      // Error is handled by the AuthContext with toast
+      // Expected step (not a failure): the account has 2FA enabled. AuthContext
+      // has already flipped the provider-level `twoFactorRequired` gate (which
+      // survives the isLoading-driven remount of this page) and captured the
+      // credentials, so the code field is already visible — just stop here
+      // without navigating or toasting.
+      if (error instanceof TwoFactorRequiredError) {
+        return;
+      }
+      // Other errors are handled by the AuthContext with toast.
       console.error('Login error:', error);
     }
   };
@@ -393,11 +548,15 @@ const LoginPage: React.FC = () => {
       navigate(from, { replace: true });
     } catch (error) {
       console.error('Google login error:', error);
+      // LOW-1 fix (review r2ab): surface caught errors to the user — Google success
+      // path was silently swallowing errors. Must be consistent with Facebook path.
+      toast.error(t('auth.googleLoginFailed'));
     }
   };
 
   const handleGoogleError = () => {
     console.error('Google login failed');
+    toast.error(t('auth.googleLoginFailed'));
   };
 
   const handleFacebookSuccess = async (response: {
@@ -425,11 +584,15 @@ const LoginPage: React.FC = () => {
       navigate(from, { replace: true });
     } catch (error) {
       console.error('Facebook login error:', error);
+      // LOW-1 fix: surface caught errors to the user — Facebook success path was
+      // silently swallowing errors. Must be consistent with Google success path.
+      toast.error(t('auth.facebookLoginFailed'));
     }
   };
 
   const handleFacebookError = (error: Error) => {
     console.error('Facebook login failed:', error);
+    toast.error(t('auth.facebookLoginFailed'));
   };
 
   return (
@@ -451,76 +614,151 @@ const LoginPage: React.FC = () => {
         </Subtitle>
 
         <Form onSubmit={handleSubmit}>
-          <FormGroup>
-            <Label htmlFor="email">
-              {t('auth.emailAddress')}
-            </Label>
-            <Input
-              id="email"
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              onBlur={() => handleBlur('email')}
-              placeholder="your@email.com"
-              $hasError={touched.email && !!errors.email}
-              disabled={isLoading}
-              autoComplete="email"
-            />
-            {touched.email && errors.email && (
-              <ErrorMessage
-                initial={{ opacity: 0, y: -5 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                {errors.email}
-              </ErrorMessage>
-            )}
-          </FormGroup>
+          {/* During the 2FA step the email/password inputs are hidden: their
+              formData was wiped by the isLoading-driven remount, and the code is
+              submitted against the credentials held in AuthContext. Show a
+              read-only "Signing in as <email>" line (email sourced from the
+              provider-held pending state) plus a way back to the normal form. */}
+          {twoFactorRequired ? (
+            <SigningInAs>
+              {twoFactorEmail ? (
+                <>
+                  {t('auth.signingInAs')}{' '}
+                  <strong>{twoFactorEmail}</strong>
+                </>
+              ) : (
+                t('auth.twoFactorPrompt')
+              )}
+            </SigningInAs>
+          ) : (
+            <>
+              <FormGroup>
+                <Label htmlFor="email">
+                  {t('auth.emailAddress')}
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  onBlur={() => handleBlur('email')}
+                  placeholder="your@email.com"
+                  $hasError={touched.email && !!errors.email}
+                  disabled={isLoading}
+                  autoComplete="email"
+                />
+                {touched.email && errors.email && (
+                  <ErrorMessage
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    {errors.email}
+                  </ErrorMessage>
+                )}
+              </FormGroup>
 
-          <FormGroup>
-            <Label htmlFor="password">
-              {t('auth.password')}
-            </Label>
-            <Input
-              id="password"
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              onBlur={() => handleBlur('password')}
-              placeholder="••••••••"
-              $hasError={touched.password && !!errors.password}
-              disabled={isLoading}
-              autoComplete="current-password"
-            />
-            {touched.password && errors.password && (
-              <ErrorMessage
-                initial={{ opacity: 0, y: -5 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                {errors.password}
-              </ErrorMessage>
-            )}
-          </FormGroup>
+              <FormGroup>
+                <Label htmlFor="password">
+                  {t('auth.password')}
+                </Label>
+                <Input
+                  id="password"
+                  type="password"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  onBlur={() => handleBlur('password')}
+                  placeholder="••••••••"
+                  $hasError={touched.password && !!errors.password}
+                  disabled={isLoading}
+                  autoComplete="current-password"
+                />
+                {touched.password && errors.password && (
+                  <ErrorMessage
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    {errors.password}
+                  </ErrorMessage>
+                )}
+              </FormGroup>
+            </>
+          )}
 
-          <RememberForgotRow>
-            <CheckboxGroup>
-              <Checkbox
-                id="rememberMe"
-                type="checkbox"
-                name="rememberMe"
-                checked={formData.rememberMe}
-                onChange={handleChange}
+          {twoFactorRequired && (
+            <FormGroup>
+              <Label htmlFor="totpCode">
+                {t('auth.twoFactorCode')}
+              </Label>
+              <Input
+                ref={totpInputRef}
+                id="totpCode"
+                type="text"
+                name="totpCode"
+                value={totpCode}
+                onChange={(e) => {
+                  setTotpCode(e.target.value);
+                  if (totpError) setTotpError(undefined);
+                }}
+                placeholder={t('auth.twoFactorPlaceholder')}
+                $hasError={!!totpError}
                 disabled={isLoading}
+                autoComplete="one-time-code"
+                inputMode="text"
+                autoCapitalize="characters"
+                spellCheck={false}
+                aria-describedby="totpHelp"
+                maxLength={20}
               />
-              <CheckboxLabel htmlFor="rememberMe">
-                {t('auth.rememberMe')}
-              </CheckboxLabel>
-            </CheckboxGroup>
-            <ForgotPassword to="/forgot-password">
-              {t('auth.forgotPassword')}
-            </ForgotPassword>
-          </RememberForgotRow>
+              <HelperText id="totpHelp">
+                {t('auth.twoFactorHelp')}
+              </HelperText>
+              {totpError && (
+                <ErrorMessage
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  {totpError}
+                </ErrorMessage>
+              )}
+            </FormGroup>
+          )}
+
+          {twoFactorRequired ? (
+            <UseAnotherAccount
+              type="button"
+              onClick={() => {
+                // Return to the email/password form. Clears the provider-level
+                // gate + captured credentials and the local code state.
+                clearTwoFactorRequired();
+                setTotpCode('');
+                setTotpError(undefined);
+              }}
+              disabled={isLoading}
+            >
+              {t('auth.twoFactorUseAnotherAccount')}
+            </UseAnotherAccount>
+          ) : (
+            <RememberForgotRow>
+              <CheckboxGroup>
+                <Checkbox
+                  id="rememberMe"
+                  type="checkbox"
+                  name="rememberMe"
+                  checked={formData.rememberMe}
+                  onChange={handleChange}
+                  disabled={isLoading}
+                />
+                <CheckboxLabel htmlFor="rememberMe">
+                  {t('auth.rememberMe')}
+                </CheckboxLabel>
+              </CheckboxGroup>
+              <ForgotPassword to="/forgot-password">
+                {t('auth.forgotPassword')}
+              </ForgotPassword>
+            </RememberForgotRow>
+          )}
 
           <SubmitButton
             type="submit"
@@ -537,24 +775,42 @@ const LoginPage: React.FC = () => {
           <DividerText>{t('auth.or')}</DividerText>
         </Divider>
 
+        {/* HIGH fix: Google and Facebook OAuth are disabled — the backend
+            /auth/oauth/login endpoint is not yet implemented (returns HTTP 404).
+            The buttons are wrapped in a non-interactive "coming soon" overlay so
+            partners understand the feature is planned but not yet available.
+            Remove these wrappers once the backend endpoint is live. */}
         <SocialButtons>
-          <GoogleLoginButton
-            onSuccess={handleGoogleSuccess}
-            onError={handleGoogleError}
-            text={t('auth.continueWithGoogle')}
-            language={language}
-          />
-          <FacebookLoginButton
-            onSuccess={handleFacebookSuccess}
-            onError={handleFacebookError}
-            text={t('auth.continueWithFacebook')}
-          />
+          <ComingSoonWrapper
+            data-tooltip={language === 'bg' ? 'Очаквайте скоро' : 'Coming soon'}
+            aria-label={language === 'bg' ? 'Вход с Google — очаквайте скоро' : 'Google login — coming soon'}
+          >
+            <GoogleLoginButton
+              onSuccess={handleGoogleSuccess}
+              onError={handleGoogleError}
+              text={t('auth.continueWithGoogle')}
+              language={language}
+            />
+          </ComingSoonWrapper>
+          <ComingSoonWrapper
+            data-tooltip={language === 'bg' ? 'Очаквайте скоро' : 'Coming soon'}
+            aria-label={language === 'bg' ? 'Вход с Facebook — очаквайте скоро' : 'Facebook login — coming soon'}
+          >
+            <FacebookLoginButton
+              onSuccess={handleFacebookSuccess}
+              onError={handleFacebookError}
+              text={t('auth.continueWithFacebook')}
+            />
+          </ComingSoonWrapper>
         </SocialButtons>
 
+        {/* LOW-2 fix: spec §2.3/§2.4 — the partner application does not create
+            a login account. Direct users to the partner application page instead
+            of a consumer subscription plan selector. */}
         <SignupPrompt>
-          {t('auth.dontHaveAccount')} {' '}
-          <Link to="/#subscription-plans">
-            {t('common.choosePlan')}
+          {t('auth.notAPartnerYet') || (language === 'bg' ? 'Все още не сте партньор?' : 'Not a partner yet?')}{' '}
+          <Link to="/register/partner">
+            {t('auth.applyAsPartner') || (language === 'bg' ? 'Кандидатствайте тук' : 'Apply here')}
           </Link>
         </SignupPrompt>
 

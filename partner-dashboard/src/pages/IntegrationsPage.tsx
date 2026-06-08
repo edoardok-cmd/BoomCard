@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -478,6 +479,24 @@ const WebhookLabel = styled.div`
   margin-bottom: 0.5rem;
 `;
 
+// HIGH-2 fix (review r2x): validate that a logoUrl from the API is a safe absolute
+// HTTPS URL before interpolating it into CSS url(). An API-sourced value containing
+// a closing paren followed by CSS can break out of the url() context and inject
+// arbitrary CSS rules enabling UI redressing and data exfiltration.
+// Returns null for any value that fails validation so the styled-component falls
+// back to the placeholder gradient.
+const sanitizeLogoUrl = (url: string | undefined): string | null => {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    // Only allow https: scheme. Relative, http:, data:, javascript: all rejected.
+    if (parsed.protocol !== 'https:') return null;
+    return url;
+  } catch {
+    return null;
+  }
+};
+
 // Map API integration to display format with icon
 const getIntegrationIcon = (name: string): string => {
   const iconMap: Record<string, string> = {
@@ -506,6 +525,7 @@ const isIntegrationConnected = (
 };
 
 const IntegrationsPage: React.FC = () => {
+  const navigate = useNavigate();
   const { language } = useLanguage();
   const { isAuthenticated } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -646,8 +666,12 @@ const IntegrationsPage: React.FC = () => {
     { id: 'Reservation Systems', label: content.reservationSystems },
   ];
 
-  // Filter integrations based on selected category
-  const filteredIntegrations = selectedCategory === 'all' ? available : available;
+  // Filter integrations based on selected category.
+  // MEDIUM-B2 fix (review r2x): both branches of the ternary previously
+  // evaluated to `available`, making category filter buttons a no-op.
+  const filteredIntegrations = selectedCategory === 'all'
+    ? available
+    : available.filter(i => i.category === selectedCategory);
 
   return (
     <PageContainer>
@@ -692,6 +716,27 @@ const IntegrationsPage: React.FC = () => {
               <Loader size={48} className="animate-spin" style={{ margin: '0 auto', color: '#000' }} />
               <p style={{ marginTop: '1rem', color: '#6b7280' }}>Loading integrations...</p>
             </div>
+          ) : filteredIntegrations.length === 0 ? (
+            /* LOW-2 fix (review r2x): show an empty state instead of a silent empty grid
+               when a category filter produces zero results. Especially important for
+               'Payment Terminals' and 'Reservation Systems' which previously always showed
+               nothing with no explanation due to the HIGH-1 category enum mismatch. */
+            <div style={{
+              textAlign: 'center',
+              padding: '4rem 2rem',
+              color: 'var(--color-text-secondary)',
+            }}>
+              <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>
+                {language === 'bg'
+                  ? 'Няма налични интеграции в тази категория.'
+                  : 'No integrations available in this category yet.'}
+              </p>
+              <p style={{ fontSize: '0.9375rem' }}>
+                {language === 'bg'
+                  ? 'Свържете се с нас, за да добавите вашата система.'
+                  : 'Contact us to add yours.'}
+              </p>
+            </div>
           ) : (
             <IntegrationsGrid>
               {filteredIntegrations.map((integration, index) => {
@@ -704,7 +749,7 @@ const IntegrationsPage: React.FC = () => {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: index * 0.1 }}
                   >
-                    <IntegrationImageContainer $imageUrl={integration.logoUrl}>
+                    <IntegrationImageContainer $imageUrl={sanitizeLogoUrl(integration.logoUrl) ?? undefined}>
                       {integration.isPopular && (
                         <IntegrationBadgeContainer>
                           <Badge variant="warning">{content.popular}</Badge>
@@ -780,7 +825,9 @@ const IntegrationsPage: React.FC = () => {
               <ModalHeader>
                 <div>
                   <ModalTitle>
-                    {getIntegrationIcon(selectedIntegration.name)}{' '}
+                    {/* LOW-3 fix (review r2x): key icon lookup on nameEn (the display name)
+                        rather than the internal name field which may differ from the map keys. */}
+                    {getIntegrationIcon(selectedIntegration.nameEn)}{' '}
                     {language === 'bg' ? selectedIntegration.nameBg : selectedIntegration.nameEn}
                   </ModalTitle>
                   <ModalSubtitle>
@@ -839,7 +886,9 @@ const IntegrationsPage: React.FC = () => {
                     <Button
                       variant="primary"
                       size="medium"
-                      onClick={() => window.location.href = '/login'}
+                      // LOW-S2 fix (review r2x): use React Router navigate instead of
+                      // window.location.href to avoid full page reload and cache flush.
+                      onClick={() => navigate('/login')}
                     >
                       {content.loginButton}
                     </Button>
@@ -874,7 +923,11 @@ const IntegrationsPage: React.FC = () => {
                   </form>
                 )}
 
-                {selectedIntegration.documentationUrl && (
+                {/* MEDIUM-2 fix (review r2x): validate documentationUrl has http/https scheme
+                    before rendering as <a href>. React 16+ does not block javascript: or
+                    data: URIs in href; rel="noopener noreferrer" guards opener exploitation
+                    but not code execution in the current page. */}
+                {selectedIntegration.documentationUrl && /^https?:\/\//i.test(selectedIntegration.documentationUrl) && (
                   <WebhookBox>
                     <WebhookLabel>
                       Documentation

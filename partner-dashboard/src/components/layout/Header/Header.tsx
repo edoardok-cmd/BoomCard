@@ -15,6 +15,12 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTheme, ThemeMode } from '../../../contexts/ThemeContext';
 import { apiService } from '../../../services/api.service';
 import { ADMIN_NAV } from '../../admin/AdminNav';
+import {
+  getAdminGateReason,
+  isNavTargetLocked,
+  ADMIN_GATE_HIGHLIGHT_EVENT,
+  type AdminGateHighlightDetail,
+} from '../../auth/adminGate';
 
 interface ImpersonatablePartner {
   partnerId: string;
@@ -27,6 +33,16 @@ interface ImpersonatablePartner {
   firstName?: string | null;
   lastName?: string | null;
   avatar?: string | null;
+}
+
+// SUPER_ADMIN end-user impersonation target (GET /auth/impersonatable-users).
+interface ImpersonatableUser {
+  userId: string;
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  avatar?: string | null;
+  status?: string | null;
 }
 
 
@@ -304,28 +320,30 @@ const UserMenuButtonItem = styled.button`
   }
 `;
 
-const UserMenuItem = styled(Link)`
+const UserMenuItem = styled(Link)<{ $locked?: boolean }>`
   display: flex;
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem 1rem;
-  color: #374151;
+  color: ${({ $locked }) => ($locked ? '#9ca3af' : '#374151')};
   text-decoration: none;
   font-size: 0.875rem;
   font-weight: 500;
   transition: all 200ms;
+  opacity: ${({ $locked }) => ($locked ? 0.6 : 1)};
+  cursor: ${({ $locked }) => ($locked ? 'not-allowed' : 'pointer')};
 
   [data-theme="dark"] & {
-    color: #d1d5db;
+    color: ${({ $locked }) => ($locked ? '#6b7280' : '#d1d5db')};
   }
 
   &:hover {
-    background: #f9fafb;
-    color: #111827;
+    background: ${({ $locked }) => ($locked ? 'transparent' : '#f9fafb')};
+    color: ${({ $locked }) => ($locked ? '#9ca3af' : '#111827')};
 
     [data-theme="dark"] & {
-      background: #374151;
-      color: #f9fafb;
+      background: ${({ $locked }) => ($locked ? 'transparent' : '#374151')};
+      color: ${({ $locked }) => ($locked ? '#6b7280' : '#f9fafb')};
     }
   }
 
@@ -338,6 +356,14 @@ const UserMenuItem = styled(Link)`
       color: #9ca3af;
     }
   }
+`;
+
+const MenuLockIcon = styled.span`
+  margin-left: auto;
+  font-size: 0.8125rem;
+  line-height: 1;
+  flex-shrink: 0;
+  opacity: 0.8;
 `;
 
 const UserMenuDivider = styled.div`
@@ -957,16 +983,52 @@ export const Header: React.FC<HeaderProps> = ({
     switchAccount,
     isImpersonating,
     impersonate,
+    impersonateUser,
     stopImpersonating,
   } = useAuth();
   const [isSwitching, setIsSwitching] = useState<string | null>(null);
   const [impersonateModalOpen, setImpersonateModalOpen] = useState(false);
+
+  // Admin nav gate (2FA setup / temp-password change required). Derived from the
+  // SAME helper the route guard and the sidebar (CategoryShell) use, so the
+  // header user-menu admin nav can never disagree with them. Do NOT fork.
+  const adminGateReason = getAdminGateReason(user);
+
+  // Mirrors CategoryShell.handleLockedNavClick exactly: a locked click either
+  // dispatches the highlight event (when already on the security page, where a
+  // route change would be a silent no-op) or navigates with state (cross-page).
+  // Both paths reach AdminProfileSecurityPage's single deduped (id'd) toast +
+  // banner pulse, so no path double-toasts or zero-toasts.
+  const handleLockedAdminNavClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!adminGateReason) return;
+    setUserMenuOpen(false);
+    const onSecurityPage = location.pathname.startsWith('/admin/profile/security');
+    if (onSecurityPage) {
+      window.dispatchEvent(
+        new CustomEvent<AdminGateHighlightDetail>(ADMIN_GATE_HIGHLIGHT_EVENT, {
+          detail: { reason: adminGateReason },
+        }),
+      );
+    } else {
+      navigate('/admin/profile/security', { state: { reason: adminGateReason } });
+    }
+  };
   const [impersonatableSearch, setImpersonatableSearch] = useState('');
   const [impersonatablePartners, setImpersonatablePartners] = useState<ImpersonatablePartner[] | null>(null);
   const [impersonatableLoading, setImpersonatableLoading] = useState(false);
   const [impersonatableError, setImpersonatableError] = useState<string | null>(null);
   const [isImpersonateBusy, setIsImpersonateBusy] = useState<string | null>(null);
   const [isStoppingImpersonation, setIsStoppingImpersonation] = useState(false);
+  // SUPER_ADMIN "Влез като потребител" — separate modal, structurally cloned
+  // from the partner picker but pointed at /auth/impersonatable-users.
+  const [impersonateUserModalOpen, setImpersonateUserModalOpen] = useState(false);
+  const [impersonatableUserSearch, setImpersonatableUserSearch] = useState('');
+  const [impersonatableUsers, setImpersonatableUsers] = useState<ImpersonatableUser[] | null>(null);
+  const [impersonatableUsersLoading, setImpersonatableUsersLoading] = useState(false);
+  const [impersonatableUsersError, setImpersonatableUsersError] = useState<string | null>(null);
+  const [isImpersonateUserBusy, setIsImpersonateUserBusy] = useState<string | null>(null);
+  const isSuperAdmin = user?.role === 'admin' && user?.rawRole === 'SUPER_ADMIN';
   const userMenuRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -1045,6 +1107,67 @@ export const Header: React.FC<HeaderProps> = ({
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
   }, [impersonateModalOpen, isImpersonateBusy]);
+
+  // ── SUPER_ADMIN end-user impersonation modal ──
+  // Fetch impersonatable users when the modal opens or the search term changes.
+  // The endpoint accepts ?search=<term> for server-side filtering; we debounce
+  // lightly so each keystroke doesn't fire a request.
+  useEffect(() => {
+    if (!impersonateUserModalOpen) return;
+    let cancelled = false;
+    const term = impersonatableUserSearch.trim();
+    const run = () => {
+      setImpersonatableUsersLoading(true);
+      setImpersonatableUsersError(null);
+      apiService
+        .get<ImpersonatableUser[] | { data?: ImpersonatableUser[] }>(
+          `/auth/impersonatable-users?search=${encodeURIComponent(term)}`,
+        )
+        .then((resp) => {
+          if (cancelled) return;
+          const list = Array.isArray(resp) ? resp : resp?.data;
+          setImpersonatableUsers(Array.isArray(list) ? list : []);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          const message = err?.response?.data?.error?.message
+            || err?.response?.data?.message
+            || err?.message
+            || 'Failed to load users';
+          setImpersonatableUsersError(message);
+        })
+        .finally(() => {
+          if (!cancelled) setImpersonatableUsersLoading(false);
+        });
+    };
+    const handle = setTimeout(run, term ? 300 : 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [impersonateUserModalOpen, impersonatableUserSearch]);
+
+  // Reset user-modal search + list on close so reopening starts clean.
+  useEffect(() => {
+    if (!impersonateUserModalOpen) {
+      setImpersonatableUserSearch('');
+      setImpersonatableUsers(null);
+      setImpersonatableUsersError(null);
+      setIsImpersonateUserBusy(null);
+    }
+  }, [impersonateUserModalOpen]);
+
+  // Close user-impersonation modal on Escape (suppressed while a pick is in flight).
+  useEffect(() => {
+    if (!impersonateUserModalOpen) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isImpersonateUserBusy === null) {
+        setImpersonateUserModalOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [impersonateUserModalOpen, isImpersonateUserBusy]);
 
   // Close mobile menu on escape key
   useEffect(() => {
@@ -1454,30 +1577,114 @@ export const Header: React.FC<HeaderProps> = ({
                             {t('header.impersonatePartner')}
                           </UserMenuButtonItem>
                         )}
+                        {isSuperAdmin && !isImpersonating && (
+                          <UserMenuButtonItem
+                            type="button"
+                            onClick={() => {
+                              setUserMenuOpen(false);
+                              setImpersonateUserModalOpen(true);
+                            }}
+                          >
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
+                              />
+                            </svg>
+                            {t('header.impersonateUser')}
+                          </UserMenuButtonItem>
+                        )}
                         {user.role === 'admin' ? (
                           <>
-                            {/* 10-category admin navigation driven by ADMIN_NAV */}
-                            {ADMIN_NAV.map((category) => (
-                              <UserMenuItem
-                                key={category.key}
-                                to={category.path}
-                                onClick={() => setUserMenuOpen(false)}
-                              >
-                                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d={category.icon}
-                                  />
-                                </svg>
-                                {language === 'bg' ? category.labelBg : category.labelEn}
-                              </UserMenuItem>
-                            ))}
+                            {/* 10-category admin navigation driven by ADMIN_NAV.
+                                Locked items get the SAME treatment as the sidebar
+                                (dimmed + lock icon + tooltip + deduped toast),
+                                reusing isNavTargetLocked / getAdminGateReason. */}
+                            {ADMIN_NAV.map((category) => {
+                              const locked = isNavTargetLocked(user, category.path);
+                              const lockTooltip = locked
+                                ? adminGateReason === 'mustChangePassword'
+                                  ? t('admin.navLock.tooltipChangePassword')
+                                  : t('admin.navLock.tooltipSetup2FA')
+                                : undefined;
+                              return (
+                                <UserMenuItem
+                                  key={category.key}
+                                  to={category.path}
+                                  $locked={locked}
+                                  title={lockTooltip}
+                                  aria-disabled={locked || undefined}
+                                  onClick={locked ? handleLockedAdminNavClick : () => setUserMenuOpen(false)}
+                                >
+                                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d={category.icon}
+                                    />
+                                  </svg>
+                                  {language === 'bg' ? category.labelBg : category.labelEn}
+                                  {locked && <MenuLockIcon aria-hidden="true">🔒</MenuLockIcon>}
+                                </UserMenuItem>
+                              );
+                            })}
 
                           </>
                         ) : user.role === 'partner' || isImpersonating ? (
                           <>
+                            {/* ── §5.2 canonical partner menu sections ── */}
+                            {/* Табло */}
+                            <UserMenuItem
+                              to="/dashboard"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                                />
+                              </svg>
+                              {t('header.dashboard')}
+                            </UserMenuItem>
+
+                            {/* Транзакции (F2 — /transactions) */}
+                            <UserMenuItem
+                              to="/transactions"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                                />
+                              </svg>
+                              {t('header.transactions')}
+                            </UserMenuItem>
+
+                            {/* Финанси (F3 — /finance) */}
+                            <UserMenuItem
+                              to="/finance"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M12 7v10m-5 4h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                                />
+                              </svg>
+                              {t('header.finance')}
+                            </UserMenuItem>
+
+                            {/* Профил и партньорство (/profile) */}
                             <UserMenuItem
                               to="/profile"
                               onClick={() => setUserMenuOpen(false)}
@@ -1490,9 +1697,44 @@ export const Header: React.FC<HeaderProps> = ({
                                   d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
                                 />
                               </svg>
-                              {t('header.profile')}
+                              {t('header.profileAndPartnership')}
                             </UserMenuItem>
 
+                            {/* Помощ (§5.2 — exactly "Помощ", → /partners/help) */}
+                            <UserMenuItem
+                              to="/partners/help"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                              </svg>
+                              {t('header.help')}
+                            </UserMenuItem>
+
+                            {/* §5.5 — Моите заявки (own help-request history) */}
+                            <UserMenuItem
+                              to="/partners/help"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                                />
+                              </svg>
+                              {t('header.myRequests')}
+                            </UserMenuItem>
+
+                            <UserMenuDivider />
+
+                            {/* ── Secondary functional links (may remain per §5.2) ── */}
                             <UserMenuItem
                               to="/partners/menus"
                               onClick={() => setUserMenuOpen(false)}
@@ -1778,7 +2020,7 @@ export const Header: React.FC<HeaderProps> = ({
             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
           >
             <SearchBarInner>
-              <form onSubmit={handleSearchSubmit}>
+              <form onSubmit={handleSearchSubmit} method="get" encType="application/x-www-form-urlencoded">
                 <SearchInputWrapper>
                   <SearchIconWrapper>
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2118,6 +2360,125 @@ export const Header: React.FC<HeaderProps> = ({
                   type="button"
                   disabled={isImpersonateBusy !== null}
                   onClick={() => setImpersonateModalOpen(false)}
+                >
+                  {t('impersonation.cancel')}
+                </ImpersonateCancelButton>
+              </ImpersonateModalFooter>
+            </ImpersonateModal>
+          </ImpersonateOverlay>
+        )}
+
+        {/* SUPER_ADMIN "Влез като потребител" — end-user impersonation picker.
+            Structurally cloned from the partner modal; selecting a row routes
+            through impersonateUser() (generic targetUserId) and the SAME banner
+            + stop machinery as the partner flow. */}
+        {impersonateUserModalOpen && (
+          <ImpersonateOverlay
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !isImpersonateUserBusy) {
+                setImpersonateUserModalOpen(false);
+              }
+            }}
+          >
+            <ImpersonateModal
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: 0.15 }}
+            >
+              <ImpersonateModalHeader>
+                <ImpersonateModalTitle>
+                  {t('impersonation.userModalTitle')}
+                </ImpersonateModalTitle>
+                <ImpersonateModalSubtitle>
+                  {t('impersonation.userModalSubtitle')}
+                </ImpersonateModalSubtitle>
+                {/* Security warning — impersonation is audited. */}
+                <div style={{
+                  margin: '0.625rem 0',
+                  padding: '0.5rem 0.75rem',
+                  background: '#fef3c7',
+                  border: '1px solid #d97706',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.75rem',
+                  color: '#92400e',
+                  fontWeight: 600,
+                  lineHeight: 1.5,
+                }}>
+                  ⚠ Внимание: Тази сесия ще бъде записана в одит лога. Използвайте само за оторизирана поддръжка или дебъгване.
+                </div>
+                <ImpersonateSearchInput
+                  autoFocus
+                  type="text"
+                  value={impersonatableUserSearch}
+                  onChange={(e) => setImpersonatableUserSearch(e.target.value)}
+                  placeholder={t('impersonation.userSearchPlaceholder')}
+                />
+              </ImpersonateModalHeader>
+
+              <ImpersonateModalBody>
+                {impersonatableUsersLoading && (
+                  <ImpersonateEmptyState>
+                    {t('impersonation.loading')}
+                  </ImpersonateEmptyState>
+                )}
+                {impersonatableUsersError && !impersonatableUsersLoading && (
+                  <ImpersonateEmptyState>{impersonatableUsersError}</ImpersonateEmptyState>
+                )}
+                {!impersonatableUsersLoading && !impersonatableUsersError && impersonatableUsers && (() => {
+                  if (impersonatableUsers.length === 0) {
+                    return (
+                      <ImpersonateEmptyState>
+                        {t('impersonation.userEmpty')}
+                      </ImpersonateEmptyState>
+                    );
+                  }
+
+                  return impersonatableUsers.map((u) => {
+                    const displayName = [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email;
+                    const initials = (
+                      (u.firstName?.[0] || u.email[0] || '?') +
+                      (u.lastName?.[0] || '')
+                    ).toUpperCase();
+                    const isRowBusy = isImpersonateUserBusy !== null;
+                    return (
+                      <AccountSwitcherItem
+                        key={u.userId}
+                        $active={false}
+                        $disabled={isRowBusy}
+                        onClick={async () => {
+                          if (isRowBusy) return;
+                          setIsImpersonateUserBusy(u.userId);
+                          try {
+                            await impersonateUser(u.userId);
+                            setImpersonateUserModalOpen(false);
+                            navigate('/dashboard');
+                          } catch {
+                            // toast already shown by impersonateUser()
+                          } finally {
+                            setIsImpersonateUserBusy(null);
+                          }
+                        }}
+                      >
+                        <AccountSwitcherAvatar $active={false}>{initials}</AccountSwitcherAvatar>
+                        <AccountSwitcherBody>
+                          <AccountSwitcherName>{displayName}</AccountSwitcherName>
+                          <AccountSwitcherRole>{u.email}</AccountSwitcherRole>
+                        </AccountSwitcherBody>
+                      </AccountSwitcherItem>
+                    );
+                  });
+                })()}
+              </ImpersonateModalBody>
+
+              <ImpersonateModalFooter>
+                <ImpersonateCancelButton
+                  type="button"
+                  disabled={isImpersonateUserBusy !== null}
+                  onClick={() => setImpersonateUserModalOpen(false)}
                 >
                   {t('impersonation.cancel')}
                 </ImpersonateCancelButton>

@@ -1,5 +1,6 @@
 import styled from 'styled-components';
 import { FRAUD_REASON_LABELS } from '../../types/fraud.types';
+import { palette } from '../../styles/adminTheme';
 
 interface FraudReasonTagProps {
   reason: string;
@@ -19,11 +20,11 @@ const Tag = styled.span<{ $severity: 'low' | 'medium' | 'high' }>`
   ${({ $severity }) => {
     switch ($severity) {
       case 'high':
-        return 'background: #fef2f2; color: #991b1b; border: 1px solid #fecaca;';
+        return `background: ${palette.dangerSoft}; color: ${palette.danger}; border: 1px solid ${palette.dangerBorder};`;
       case 'medium':
-        return 'background: #fffbeb; color: #92400e; border: 1px solid #fde68a;';
+        return `background: ${palette.warningSoft}; color: ${palette.warning}; border: 1px solid ${palette.warningBorder};`;
       case 'low':
-        return 'background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0;';
+        return `background: ${palette.successSoft}; color: ${palette.success}; border: 1px solid ${palette.successBorder};`;
     }
   }}
 `;

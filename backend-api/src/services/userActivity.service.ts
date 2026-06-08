@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { detach } from '../utils/detach';
 
 // Spec §4.1 — "Последна активност" should reflect any meaningful action
 // in the app, not just sign-in. We touch User.lastActivityAt from the auth
@@ -51,15 +52,16 @@ export function touchUserActivity(userId: string, role: string): void {
   evictIfOverCapacity();
 
   // Fire-and-forget; failure here must never break the request.
-  prisma.user
-    .update({
+  detach(
+    prisma.user.update({
       where: { id: userId },
       data: { lastActivityAt: new Date(now) },
-    })
-    .catch(() => {
+    }),
+    () => {
       // Roll back the throttle so we retry on the next request.
       lastWriteAt.delete(userId);
-    });
+    },
+  );
 }
 
 // Test seam — reset both the map and the prune clock between tests.

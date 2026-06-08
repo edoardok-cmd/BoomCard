@@ -1,11 +1,18 @@
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from './auth.middleware';
 import prisma from '../lib/prisma';
+import { detach } from '../utils/detach';
 
 const SENSITIVE_KEYS = new Set([
   'password', 'passwordHash', 'newPassword', 'currentPassword',
   'oldPassword', 'confirmPassword', 'totpSecret', 'token',
   'secret', 'passwordResetToken',
+  // Spec §1.1 IMPORTANT / §8.1 — bank account details must NEVER appear in the
+  // audit log in plaintext. This middleware writes the redacted request body to
+  // AuditLog.after on every non-GET; without these keys a route that accepts an
+  // IBAN in the body (e.g. PATCH /subscribers/:userId/profile) would leak the raw
+  // value. Redacting at the middleware level defends EVERY route, not just one.
+  'iban', 'payoutIban', 'beneficiaryName',
 ]);
 
 function redactSensitive(value: unknown): unknown {
@@ -138,7 +145,7 @@ export const auditMiddleware = (req: AuthRequest, res: Response, next: NextFunct
       ?? null;
     const userAgent = req.headers['user-agent'] ?? null;
 
-    prisma.auditLog.create({
+    detach(prisma.auditLog.create({
       data: {
         actorUserId: actorId,
         action:     req.auditAction     ?? derived.action,
@@ -149,7 +156,7 @@ export const auditMiddleware = (req: AuthRequest, res: Response, next: NextFunct
         ip,
         userAgent,
       },
-    }).catch(() => {
+    }), () => {
       // Non-blocking — audit failures must never interrupt the response.
     });
 

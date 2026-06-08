@@ -166,6 +166,66 @@ Get wallet usage statistics and aggregated data.
 
 ---
 
+### PUT /api/wallet/payout-account
+
+Save the user's bank account details for automatic cashback payouts. This is the **only payout-related action available to users** — payouts themselves are triggered automatically by the system when the Cleared cashback balance reaches the plan-specific threshold.
+
+**Request Body:**
+```json
+{
+  "iban": "BG80BNBG96611020345678",
+  "beneficiaryName": "Ivan Petrov"
+}
+```
+
+**Validation:**
+- `iban`: Required, IBAN format
+- `beneficiaryName`: Required, non-empty string
+
+**Response:**
+```json
+{
+  "message": "Payout account saved successfully"
+}
+```
+
+**Status Codes:**
+- `200` - Saved successfully
+- `400` - Invalid IBAN format or missing fields
+- `401` - Unauthorized
+
+**Note:** IBAN is not required to accumulate cashback, only to receive automatic payouts. If the payout threshold is reached and no IBAN is on file, the system sends a notification prompting the user to add their bank details; the payout is held until IBAN is saved, then triggered automatically.
+
+---
+
+### Automatic Cashback Payouts
+
+> **There is no `POST /api/wallet/payout` endpoint.** Payouts are triggered automatically — not by user action.
+
+When the nightly scheduler runs, it identifies all wallets where:
+1. `availableBalance` (sum of Cleared cashback) ≥ plan-specific threshold, and
+2. `subscription_status` is `Active` or `Cancelled (within paid period)`
+
+If conditions are met and a valid IBAN is on file, the scheduler moves all Cleared records to **Locked** and initiates the bank transfer. The user receives a "Payout sent" push notification.
+
+If no IBAN is on file, the user receives a notification to add their bank account. The payout is processed automatically once they do.
+
+**Payout Eligibility by Subscription Status:**
+
+| Status | New Automatic Payout? | In-flight Payout Continues? |
+|--------|:---:|:---:|
+| Active | Yes | Yes |
+| Cancelled (within paid period) | Yes | Yes |
+| Cancelled (post period end) | No | Yes |
+| Expired | No | Yes |
+| Failed Payment | No | Yes |
+
+**Failed Payout Handling:**
+- First failure (invalid IBAN): User notified to correct their IBAN.
+- Second failure: Record flagged High risk, routed to admin manual review. User is not informed; cashback remains visible as "Sent to payout."
+
+---
+
 ## Subscription API
 
 ### GET /api/subscriptions/plans

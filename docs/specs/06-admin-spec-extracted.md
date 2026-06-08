@@ -108,7 +108,7 @@ Voided  → Voided (terminal)
 
 **Admin Automation:**
 
-- Pending records with Low risk score (0–20) auto-approve within 24 hours.
+- Pending records with Low **or Medium** risk score (0–50) auto-approve within 24 hours. *(Amended per BC-USER-SPEC-FIX-010 §9.4, 2026-06-04: the Medium band 21–50 now auto-approves the same as Low; only High risk (51+) enters mandatory manual review.)*
 - Cleared records automatically expire after 60 days if not transitioned to Paid.
 - Locked records have no automatic resolution; admin must manually transition to Paid.
 
@@ -117,7 +117,7 @@ Voided  → Voided (terminal)
 - Every Voided cashback record requires: reason category + responsible admin identity + timestamp.
 - Voided records remain visible to the user in history with the reason displayed.
 - Voided is terminal — cannot be reverted to Pending or Cleared.
-- *(Implementation note — spec gap):* The spec requires a structured "reason category" but the current implementation accepts a free-text `reason` string. Structured category enforcement is not yet implemented; a plain string is accepted and stored.
+- *(Implementation conforms):* The structured "reason category" is now enforced via a controlled vocabulary (`cashbackLifecycle.service.ts` `VOID_REASON_CATEGORIES`). Every void reason must start with one of the canonical category codes: `DUPLICATE`, `FRAUD`, `SYSTEM_ERROR`, `ADMIN_CORRECTION`, `PARTNER_DISPUTE`, `OTHER`. The accepted format is `"CATEGORY"` or `"CATEGORY: free-text description"`; an empty reason or a non-canonical category prefix is rejected. The same validation is shared by all void paths (Pending/Cleared→Voided and Locked→Voided).
 
 ---
 
@@ -272,7 +272,7 @@ Five risk signals are tracked across all cashback records:
 
 The combining function is additive (Clash 5.1). All five signals are confirmed as tracked (Clash 5.2, confirming IBAN-change signal). Risk Level is an internal-only classification — NOT visible to end-users.
 
-*(Implementation deviation — not matching source spec):* `adminSubscribers.routes.ts` lines 90–92 filters subscribers by risk level using breakpoints 30/60 (Low ≤ 30, Medium 21–60, High > 60) rather than the spec-canonical 20/50 thresholds. The underlying risk scores stored in the DB use the spec thresholds; only this filter uses different cutoffs. Engineers implementing risk-level filtering should use the spec-canonical thresholds (0–20 Low, 21–50 Medium, 51+ High) and treat the 30/60 breakpoints in the subscriber list endpoint as a bug to be corrected.
+*(Implementation conforms):* `adminSubscribers.routes.ts` now filters subscribers by risk level using the spec-canonical thresholds — Low `riskScore ≤ 20`, Medium `21–50`, High `> 50` — consistent with the additive risk scores stored in the DB. The earlier 30/60 breakpoints have been corrected.
 
 **Limits Table Authority (Clash 5.4):** Engineering sets conservative defaults; the product owner signs off as part of the go-live checklist. The Risk Review role can adjust signal thresholds within pre-defined bounds; only a Super Admin can exceed those bounds.
 
@@ -290,8 +290,8 @@ The combining function is additive (Clash 5.1). All five signals are confirmed a
 **Low Risk (score 0–20) → Automatic Approval** (unless blocked by other conditions).  
 Auto-approval occurs within 24 hours of the Pending record being created.
 
-**Medium Risk (score 21–50) → Manual Review (Mandatory)**  
-All Medium-risk records enter the admin review queue using the same workflow as High Risk.
+**Medium Risk (score 21–50) → Automatic Approval** (unless blocked by other conditions).  
+*(Amended per BC-USER-SPEC-FIX-010 §9.4, 2026-06-04.)* Medium-risk records auto-approve within 24 hours, the same as Low risk. They do NOT enter the mandatory manual-review queue. Only High risk (51+) requires mandatory manual review (see above). The canonical 0–20 / 21–50 / 51+ risk-level thresholds are unchanged; only the manual-review routing for the Medium band changed.
 
 ---
 
@@ -332,7 +332,7 @@ All Medium-risk records enter the admin review queue using the same workflow as 
 **Rules Enforced by Admin Backend:**
 
 - Inactive status: User can log in, view history, and submit support requests, but cannot scan receipts or generate new cashback.
-- IBAN: Not required at registration but required for payout initiation.
+- IBAN: Not required at registration but required before an automatic payout can proceed. If the threshold is reached and no IBAN is on file, the system notifies the user; the payout is held until IBAN is saved.
 - Failed payouts: First failure notifies the user to check their IBAN; second failure routes the record to manual review.
 
 **Password Reset Rate-Limiting (Clash 11.4):**
@@ -377,13 +377,13 @@ All Medium-risk records enter the admin review queue using the same workflow as 
 | Lock | Cleared → Locked | Initiates payout pipeline; Locked persists until paid | `POST /cashback/entries/:id/lock` (requires `cashback.write`) |
 | Pay | Locked → Paid | Marks payout complete; terminal state | `POST /cashback/entries/:id/pay` (requires `cashback.write`) |
 | Expire | any active → Expired *(implementation extension — not in source spec §1.3; spec defines Cleared→Expired only via 60-day auto-timer; source: `adminCashback.routes.ts` line 353)* | Admin manual override of auto-expiry | `POST /cashback/entries/:id/expire` (requires `cashback.write`) |
-| Void | Pending → Voided *(source spec §1.3)*; Cleared → Voided *(source spec §1.3)*; Locked → Voided *(implementation extension — not in source spec §1.3; route accepts "any active state → Voided"; source: `adminCashback.routes.ts` line 374)* | Requires reason (free-text; responsible admin and timestamp recorded) | `POST /cashback/entries/:id/void` (requires `cashback.write`) |
+| Void | Pending → Voided *(source spec §1.3)*; Cleared → Voided *(source spec §1.3)*; Locked → Voided *(implementation extension — not in source spec §1.3; route accepts "any active state → Voided"; source: `adminCashback.routes.ts` line 374)* | Requires reason from the canonical VOID_REASON_CATEGORIES vocabulary (DUPLICATE / FRAUD / SYSTEM_ERROR / ADMIN_CORRECTION / PARTNER_DISPUTE / OTHER; format `"CATEGORY"` or `"CATEGORY: description"`); responsible admin and timestamp recorded | `POST /cashback/entries/:id/void` (requires `cashback.write`) |
 
 **Automation Rules:**
 
-- Pending records with Low risk score auto-approve within 24 hours.
+- Pending records with Low **or Medium** risk score (0–50) auto-approve within 24 hours. *(Amended per BC-USER-SPEC-FIX-010 §9.4, 2026-06-04: the Medium band 21–50 now auto-approves the same as Low; only High risk (51+) enters mandatory manual review.)*
 - Cleared records automatically expire after 60 days if not transitioned to Paid.
-- Locked records transition to Paid via manual admin action; no automatic resolution.
+- Locked state is entered **automatically by the nightly scheduler** when a wallet's Cleared balance reaches the plan-specific threshold — no user action triggers this. Locked → Paid still requires manual admin action; there is no automatic resolution of Locked records.
 - TrialPending records are resolved daily by the scheduler (5:30 AM; source: `src/jobs/scheduler.ts` `resolveTrialPendingCashback()`): promoted to Cleared after the trial window, Voided if the subscription was cancelled within the window.
 
 **Cashback Rate Management** *(implementation extension — not in source spec §3.4; source spec Clash 10.6 defines the concept but not the mechanism):*
@@ -455,7 +455,7 @@ Note: The source spec does not define business rules for rate transitions, requi
 
 - User must have a subscription status that allows payout: Active or Cancelled-within-paid-period.
 - Blocked when: Cancelled (post period end), Failed Payment, or Expired.
-- IBAN required at payout initiation (not at registration).
+- IBAN required before automatic payout can proceed (not at registration). Users with no IBAN on file receive a notification when their threshold is reached and are prompted to add their bank details.
 - Payout threshold (plan-specific minimum Cleared balance) triggers the automatic payout process.
 - First failed payout (invalid IBAN): Notify user to correct IBAN.
 - Second failed payout: Record marked High risk + routes to manual review. The user is not notified of the manual review; the payout record remains visible as "Sent to payout" from the user's perspective.
@@ -475,7 +475,7 @@ Note: The source spec does not define business rules for rate transitions, requi
 
 - Five canonical signals recorded with additive scores: IBAN change (+40), Receipt match confidence <60% (+30), QR location mismatch (+20), User has 3+ Voided records (+20), Partner active risk flag (+10).
 - Thresholds: 0–20 = Low, 21–50 = Medium, 51+ = High.
-- Medium and High risk records both enter the manual admin review queue.
+- Only High-risk (51+) records enter the mandatory manual admin review queue. Low and Medium risk auto-approve within 24h (Medium routing amended per BC-USER-SPEC-FIX-010 §9.4, 2026-06-04 — see §2.2).
 
 **Currency Display Rule (Clash 12.1):**
 
@@ -519,10 +519,10 @@ Note: The source spec does not define business rules for rate transitions, requi
 | 1. Initiation | Any Super Admin initiates a "Create Super Admin" request. |
 | 2. Pending approval | Request enters the Pending Approvals queue. Any other existing Super Admin can approve. |
 | 3. Expiry | Request expires after 72 hours if not approved. |
-| 4. Cancellation | The initiating Super Admin can cancel the request at any time before approval. *(Implementation deviation: the DELETE /admin/admins/pending-super/:id route does not check that the requester is the initiator — any Super Admin can cancel any pending request. The route comment describes this as "reject/cancel" for the SA level. This deviates from the spec's "initiator can cancel" rule.)* |
+| 4. Cancellation | The initiating Super Admin can cancel the request at any time before approval. *(Implementation conforms: the DELETE /admin/admins/pending-super/:id route enforces that only the initiating Super Admin may cancel/withdraw their own pending request; another Super Admin attempting to cancel receives HTTP 403. The separate /approve action remains available to other Super Admins as the second-actor step.)* |
 | 5. Approval | On second approval from any other Super Admin, the new Super Admin account is created. |
 
-**Bootstrap Exception (spec rule):** If only one Super Admin exists in the system, a single approval from that Super Admin is sufficient to create the first new Super Admin. *(Implementation note: the anti-self-approval check at the route level fires regardless of SA count and blocks this scenario. The bootstrap exception from the spec is not yet implemented.)*
+**Bootstrap Exception (spec rule):** If only one Super Admin exists in the system, a single approval from that Super Admin is sufficient to create the first new Super Admin. *(Implementation conforms: the /pending-super/:id/approve route counts non-archived Super Admins (the quorum counts every Super Admin whose status is not ARCHIVED, so a single genuinely-active SA cannot self-approve while INACTIVE/SUSPENDED SAs still exist) and, when exactly one such Super Admin exists, permits that sole Super Admin to self-approve their own request. When more than one non-archived Super Admin exists, the anti-self-approval check still blocks the initiator from approving their own request.)*
 
 **Anti-Fraud Constraint:** The initiator cannot approve their own request. The same individual cannot act as both initiator and approver.
 
@@ -566,6 +566,13 @@ Note: The source spec does not define business rules for rate transitions, requi
 - Cannot exceed those bounds (Super Admin authority required to exceed bounds).
 
 **Additional roles in DB schema** *(implementation extension — not in source spec):* The `UserRole` Prisma enum includes `SUPPORT`, `FINANCE`, and `PARTNER_MANAGER` beyond the ADMIN/SUPER_ADMIN roles defined in the source spec. Their permissions and admin panel behavior are not specified in the source spec.
+
+**Admin impersonation ("представяне като партньор" / "Влез като потребител")** *(implementation extension — not in source spec; confirm with product):* The admin panel lets an operator assume another account's authenticated session:
+
+- **Partner impersonation** — ADMIN or SUPER_ADMIN may impersonate a PARTNER account (`GET /api/auth/impersonatable-partners`, `POST /api/auth/impersonate` with `targetPartnerUserId`).
+- **User impersonation** — SUPER_ADMIN **only** may impersonate a regular end-user (role USER) (`GET /api/auth/impersonatable-users` — SUPER_ADMIN-gated, `POST /api/auth/impersonate` with `targetUserId`; target role is resolved server-side and an ADMIN attempting a USER target receives HTTP 403). Gating the most invasive impersonation to Super Admin is consistent with the §1.5/§3.9 Super-Admin authority model.
+
+Invariants enforced by the implementation: the impersonation token carries `imp:true` + the acting admin id (`impBy`) and **no** account-group/agency claim (so the impersonated session cannot pivot to siblings via account-switch); nested impersonation is refused; `/switch-account` is refused while impersonating; impersonation is refused on mobile and for self-targets; **every start and stop is audit-logged with the acting admin id** (consistent with the "all historical actions and audit records retained" expectation), and the impersonatable-users listing uses an explicit column allowlist so no sensitive field (IBAN, password hash, tokens) is exposed. `POST /api/auth/stop-impersonate` restores the original admin/super-admin session without re-authentication. This capability is **not defined in the source spec** and should be confirmed with product, particularly the end-user impersonation path (a privacy-sensitive operator power).
 
 **Request Assignee Routing (Clash 7.2):**
 

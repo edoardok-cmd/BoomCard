@@ -89,7 +89,7 @@ router.get('/status/:orderId', asyncHandler(async (req: Request, res: Response) 
  */
 router.get('/plans', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
   const plans = await Promise.all(
-    (['PREMIUM_WEEKLY', 'BASIC', 'PREMIUM'] as const).map(async plan => ({
+    (['PREMIUM_WEEKLY', 'BASIC', 'PREMIUM_MONTHLY'] as const).map(async plan => ({
       plan,
       ...await subscriptionService.getPlanBenefits(plan),
     })),
@@ -107,14 +107,13 @@ router.get('/current', authenticate, asyncHandler(async (req: AuthRequest, res: 
   const subscription = await subscriptionService.getActiveSubscription(userId);
 
   if (!subscription) {
-    return res.json({
-      plan: 'PREMIUM_WEEKLY',
-      status: 'ACTIVE',
-      benefits: await subscriptionService.getPlanBenefits('PREMIUM_WEEKLY'),
-    });
+    return res.json({ hasSubscription: false, subscription: null });
   }
 
-  // Attach default saved payment method (Stripe subs only)
+  // F-006: Attach payment method info for both Stripe and Paysera subscribers.
+  // Stripe subscribers: read from SavedPaymentMethod table.
+  // Paysera subscribers: return a safe placeholder using the stored wallet IBAN so
+  //   the client has something to display (instead of null).
   let paymentMethod: object | null = null;
   if (subscription.stripeSubscriptionId) {
     const saved = await prisma.savedPaymentMethod.findFirst({
@@ -131,6 +130,19 @@ router.get('/current', authenticate, asyncHandler(async (req: AuthRequest, res: 
     } else {
       paymentMethod = saved;
     }
+  } else {
+    // Paysera subscriber — no SavedPaymentMethod row exists. Return a placeholder
+    // so the client can display something on the subscription screen.
+    const wallet = await prisma.wallet.findUnique({
+      where: { userId },
+      select: { payoutIban: true },
+    });
+    paymentMethod = {
+      provider: 'paysera',
+      maskedAccount: wallet?.payoutIban
+        ? '****' + wallet.payoutIban.slice(-4)
+        : null,
+    };
   }
 
   res.json({
@@ -239,7 +251,7 @@ router.get('/history', authenticate, asyncHandler(async (req: AuthRequest, res: 
  * The PREMIUM_WEEKLY plan must be purchased via POST /api/payments/subscription (Paysera).
  */
 const createSchema = z.object({
-  plan: z.enum(['BASIC', 'PREMIUM']),
+  plan: z.enum(['BASIC', 'PREMIUM_MONTHLY']),
   paymentMethodId: z.string().optional(),
 });
 
@@ -342,7 +354,7 @@ router.post('/:id/retry-payment', authenticate, asyncHandler(async (req: AuthReq
  * Upgrade or downgrade subscription
  */
 const updatePlanSchema = z.object({
-  plan: z.enum(['PREMIUM_WEEKLY', 'BASIC', 'PREMIUM']),
+  plan: z.enum(['PREMIUM_WEEKLY', 'BASIC', 'PREMIUM_MONTHLY']),
 });
 
 router.post('/:id/update-plan', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -362,8 +374,20 @@ router.post('/:id/update-plan', authenticate, asyncHandler(async (req: AuthReque
   res.json(result);
 }));
 
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
-const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000';
+// Redirect/callback URLs for Paysera change-card flow. These MUST be set in any
+// non-local environment, otherwise users get redirected to a dead URL after
+// paying. Fall back to the correct local-dev origins (partner app :3021,
+// backend :3025 — matching .env / .env.example) and log a loud warning so a
+// misconfigured deploy is caught instead of silently sending users to localhost.
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3021';
+const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3025';
+
+if (!process.env.FRONTEND_URL) {
+  logger.warn(`[subscriptions] FRONTEND_URL is not set — falling back to "${FRONTEND_URL}". Paysera change-card accept/cancel redirects will be wrong in any non-local environment. Set FRONTEND_URL.`);
+}
+if (!process.env.API_BASE_URL) {
+  logger.warn(`[subscriptions] API_BASE_URL is not set — falling back to "${API_BASE_URL}". The Paysera change-card callback URL will be wrong in any non-local environment. Set API_BASE_URL.`);
+}
 
 /**
  * POST /api/subscriptions/:id/change-card

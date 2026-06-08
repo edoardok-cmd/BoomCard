@@ -11,20 +11,11 @@ import {
 import FraudReasonTag from '../../components/admin/FraudReasonTag';
 import { useLanguage } from '../../contexts/LanguageContext';
 
+import { palette } from '../../styles/adminTheme';
 // Spec §7.1/§7.2 — Контрол > Преглед на рискови транзакции / Риск и сигурност
 // Fraud signals queue: duplicate, QR/location, velocity, receipt quality, suspicious behaviour.
 // Audit log moved to its own dedicated page at /admin/control/audit.
 
-const palette = {
-  bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
-  text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
-  accent: '#c96442', accentSoft: '#f3e8de',
-  success: '#4a7c59', successSoft: '#e6efe3',
-  danger: '#b54327', dangerSoft: '#f4dcd2',
-  warning: '#b5803a', warningSoft: '#f5ead2',
-  info: '#2563eb', infoSoft: '#dbeafe',
-  purple: '#7c3aed', purpleSoft: '#ede9fe',
-};
 
 const PageShell = styled.div`background: ${palette.bg}; min-height: calc(100vh - 4rem); padding: 2rem 2.5rem;`;
 const PageHeader = styled.div`display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; gap: 1rem; flex-wrap: wrap;`;
@@ -119,7 +110,7 @@ const ActionRow = styled.div`display: flex; gap: 0.375rem; margin-top: 0.375rem;
 const BulkBar = styled.div`
   display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
   padding: 0.625rem 1rem; margin-bottom: 0.75rem;
-  background: ${palette.infoSoft}; border: 1px solid ${palette.info}40;
+  background: ${palette.infoSoft}; border: 1px solid ${palette.infoBorder};
   border-radius: 0.625rem; font-size: 0.875rem; color: ${palette.info};
 `;
 const BulkCount = styled.span`font-weight: 700;`;
@@ -648,7 +639,7 @@ export default function AdminControlSecurityPage() {
       {dateFrom && (() => {
         const d = new Date(dateFrom);
         return (
-          <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: palette.warningSoft, border: `1px solid ${palette.warning}40`, borderRadius: '0.625rem', fontSize: '0.875rem', color: palette.warning, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: palette.warningSoft, border: `1px solid ${palette.warningBorder}`, borderRadius: '0.625rem', fontSize: '0.875rem', color: palette.warning, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span>
               {lang === 'bg' ? 'Показват се сигнали от' : 'Showing signals from'}
               {' '}{d.toLocaleString(lang === 'bg' ? 'bg-BG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' })}

@@ -9,10 +9,11 @@ import { fraudDetectionService } from './fraudDetection.service';
 import { recognizeReceiptImage } from './ocr.service';
 import { imageUploadService } from './imageUpload.service';
 import { enqueueMerchantVerification } from '../queues/merchantVerification.queue';
-import { cashbackLifecycleService } from './cashbackLifecycle.service';
+import { cashbackLifecycleService, VOID_REASON_CATEGORIES } from './cashbackLifecycle.service';
 import { writeAudit } from '../middleware/audit.middleware';
 import { getSystemSettingStr } from '../utils/systemSettings';
 import { isPartnerOperationallyActive } from './partner.service';
+import { detach } from '../utils/detach';
 
 /**
  * Convert a wall-clock date/time in a named IANA timezone to a UTC Date.
@@ -222,17 +223,103 @@ class StickerService {
    * user action.
    */
   async assertSubscriptionAllowsScanning(userId: string): Promise<void> {
+    // Spec §1.3 / §8.2 — user.status gate MUST be checked BEFORE subscription status.
+    // Inactive account blocks scanning regardless of subscription status.
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { status: true },
+    });
+    if (user) {
+      const s = user.status as string;
+      if (s === 'INACTIVE') {
+        throw new Error('ACCOUNT_INACTIVE: Account paused. Contact support to resume.');
+      }
+      if (s === 'ARCHIVED' || s === 'DELETED') {
+        throw new Error('ACCOUNT_NOT_ACCESSIBLE: Account not accessible.');
+      }
+      if (s === 'PENDING_VERIFICATION' || s === 'PENDING_PAYMENT') {
+        throw new Error('REGISTRATION_INCOMPLETE: Registration not complete.');
+      }
+    }
+
     const latest = await prisma.subscription.findFirst({
       where: { userId },
       orderBy: { createdAt: 'desc' },
-      select: { status: true },
+      select: { status: true, cancelAtPeriodEnd: true, currentPeriodEnd: true },
     });
-    if (latest?.status === SubscriptionStatus.FAILED_PAYMENT) {
+
+    if (!latest) {
+      throw new Error(
+        'SUBSCRIPTION_INACTIVE: Нямате активен абонамент. ' +
+        'Абонирайте се от менюто „Абонамент и плащания", за да сканирате бележки.'
+      );
+    }
+
+    const now = new Date();
+    const status = latest.status;
+
+    // L1 (Spec §1.2) — the source spec DEFERS the admin handling of the Stripe-
+    // mapped statuses (TRIALING, PAST_DUE, PAUSED, etc.) to product confirmation.
+    // Decisions made here, documented as the current spec-aligned defaults:
+    //   • TRIALING ≡ Active: a user in the Stripe trial has a live, paid-intent
+    //     subscription, so scanning is allowed (treated identically to ACTIVE).
+    //   • PAST_DUE does NOT block scanning (handled below by NOT matching any
+    //     blocking branch → falls through to the generic SUBSCRIPTION_INACTIVE
+    //     guard only if it is also not ACTIVE/TRIALING/CANCELLED-in-period). It is
+    //     a Stripe-internal dunning state that may self-recover without user action;
+    //     §1.2's terminal block-states are Expired / Failed Payment / Cancelled-
+    //     post-period only.
+    //   • PAUSED blocks payout (enforced in wallet.service, not here) but is not a
+    //     scan state in §1.2.
+    // If product later defines different rules, change these branches and update
+    // this note — they are the single documented decision point for the §1.2 gap.
+    if (status === SubscriptionStatus.ACTIVE || (status as string) === 'TRIALING') {
+      return;
+    }
+
+    // Spec §1.2 / §8.1.1 — Cancelled-within-paid-period: scanning allowed through
+    // last paid day regardless of how the cancellation was initiated. The spec does
+    // not require cancelAtPeriodEnd=true; only that currentPeriodEnd is still in the
+    // future. This matches resolveCashbackTier which uses the same gate.
+    if (
+      status === SubscriptionStatus.CANCELLED &&
+      latest.currentPeriodEnd != null &&
+      latest.currentPeriodEnd > now
+    ) {
+      return;
+    }
+
+    if (status === SubscriptionStatus.FAILED_PAYMENT) {
       throw new Error(
         'SUBSCRIPTION_FAILED_PAYMENT: Абонаментът Ви е в статус „неуспешно плащане". ' +
         'Възобновете го от менюто „Абонамент и плащания", за да продължите да сканирате бележки.'
       );
     }
+
+    if (status === SubscriptionStatus.EXPIRED) {
+      throw new Error(
+        'SUBSCRIPTION_EXPIRED: Абонаментът Ви е изтекъл. ' +
+        'Подновете го от менюто „Абонамент и плащания", за да продължите да сканирате бележки.'
+      );
+    }
+
+    // F-015: Distinct error code for CANCELLED post-period (paid period has ended).
+    // Mobile client needs to distinguish "cancelled and period has ended" from other
+    // inactive states so it can show the correct CTA (subscribe again vs. other action).
+    if (
+      status === SubscriptionStatus.CANCELLED &&
+      (latest.currentPeriodEnd == null || latest.currentPeriodEnd <= new Date())
+    ) {
+      throw new Error(
+        'SUBSCRIPTION_CANCELLED_EXPIRED: Абонаментът Ви е отменен и платеният период е приключил. ' +
+        'Абонирайте се отново от менюто „Абонамент и плащания", за да продължите да сканирате бележки.'
+      );
+    }
+
+    throw new Error(
+      'SUBSCRIPTION_INACTIVE: Абонаментът Ви не е активен. ' +
+      'Възобновете го от менюто „Абонамент и плащания", за да продължите да сканирате бележки.'
+    );
   }
 
   /**
@@ -241,14 +328,22 @@ class StickerService {
    * "no cashback" (Finding #1 fix). Using Subscription.plan as the single source of
    * truth (not Card.type) resolves Finding #2.
    */
-  private async resolveCashbackTier(userId: string): Promise<'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' | null> {
+  private async resolveCashbackTier(userId: string): Promise<'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY' | null> {
+    const now = new Date();
     const sub = await prisma.subscription.findFirst({
-      where: { userId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAUSED] } },
+      where: {
+        userId,
+        OR: [
+          { status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAUSED, 'TRIALING' as any] } },
+          { status: SubscriptionStatus.CANCELLED, currentPeriodEnd: { gt: now } },
+        ],
+      },
       orderBy: { currentPeriodEnd: 'desc' },
     });
     if (!sub) return null;
-    const plan = sub.plan as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM';
-    return plan === 'PREMIUM_WEEKLY' || plan === 'BASIC' || plan === 'PREMIUM' ? plan : null;
+    const plan = sub.plan as string;
+    if (plan === 'PREMIUM_WEEKLY' || plan === 'BASIC' || plan === 'PREMIUM_MONTHLY') return plan as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY';
+    return null;
   }
 
   /**
@@ -357,7 +452,7 @@ class StickerService {
         const sticker = await this.generateSticker(locationId);
         stickers.push(sticker);
       } catch (error) {
-        console.error(`Failed to generate sticker for location ${locationId}:`, error);
+        logger.error(`[generateStickersBulk] Failed to generate sticker for location ${locationId}:`, error);
       }
     }
     return stickers;
@@ -379,26 +474,45 @@ class StickerService {
       where: { stickerId },
       data: { status: StickerStatus.PROCESSING, printedAt: new Date() },
     });
-    writeAudit({
+    detach(writeAudit({
       actorUserId: actorUserId ?? null,
       action: 'STICKER_PROCESSING',
       objectType: 'Sticker',
       objectId: sticker.id,
       before: { status: StickerStatus.PENDING },
       after: { status: StickerStatus.PROCESSING },
-    }).catch((err) => logger.error('[sticker.markStickerProcessing] audit write failed:', err));
+    }), (err) => logger.error('[sticker.markStickerProcessing] audit write failed:', err));
     return updated;
   }
 
   /**
    * Mark sticker as printed and active (PENDING or PROCESSING → ACTIVE).
+   *
+   * Spec §1.5 rule 4, §4.2, §12.1 (Data Integrity Atomic Rule 1):
+   * QR codes cannot be manually activated while the partner's status is
+   * Inactive or Archived. We resolve venue → partner here and block activation
+   * before writing the status change (r2c B1).
    */
   async activateSticker(stickerId: string): Promise<Sticker> {
-    const sticker = await prisma.sticker.findUnique({ where: { stickerId }, select: { status: true } });
+    const sticker = await prisma.sticker.findUnique({
+      where: { stickerId },
+      select: {
+        status: true,
+        venue: {
+          select: {
+            partner: { select: { status: true, verifiedAt: true } },
+          },
+        },
+      },
+    });
     if (!sticker) throw new Error(`Sticker ${stickerId} not found`);
     const activatable: StickerStatus[] = [StickerStatus.PENDING, StickerStatus.PROCESSING];
     if (!activatable.includes(sticker.status)) {
       throw new Error(`Sticker ${stickerId} cannot be activated from ${sticker.status} state`);
+    }
+    // Spec §1.5 rule 4: block activation when the owning partner is non-operational.
+    if (sticker.venue?.partner && !isPartnerOperationallyActive(sticker.venue.partner)) {
+      throw new Error('Cannot activate QR code while partner status is not Active');
     }
     return prisma.sticker.update({
       where: { stickerId },
@@ -408,6 +522,77 @@ class StickerService {
         activatedAt: new Date(),
       },
     });
+  }
+
+  /**
+   * H2 (Spec §1.4 / §3.6 / Clash 2.4) — explicit per-QR reactivation of an
+   * INACTIVE sticker.
+   *
+   * After a partner is reactivated FROM Archived, `syncQrCodesForPartner` Case 3
+   * deliberately does NOT auto-reactivate that partner's stickers — they stay
+   * INACTIVE and each must be "explicitly reactivated by an admin per code".
+   * `activateSticker` only accepts PENDING/PROCESSING sources, so those stranded
+   * INACTIVE stickers had no reachable reactivation path. This method provides it
+   * WITHOUT introducing auto-reactivation: it operates on one sticker at a time
+   * and is only invoked by an explicit admin action.
+   *
+   * Guards (mirror activateSticker):
+   *   - Sticker must currently be INACTIVE (the Archived-phase auto-deactivated
+   *     state). Other states are rejected — PENDING/PROCESSING go through
+   *     activateSticker; ACTIVE/REPLACED/etc. are not reactivatable here.
+   *   - The owning partner must be operationally Active (status=ACTIVE AND
+   *     verifiedAt set). Spec §3.6: "QR codes cannot be manually activated while
+   *     the partner is Inactive or Archived." So an admin can only reactivate a
+   *     sticker once the re-onboarding completed and the partner re-verified.
+   *
+   * Clears autoDeactivatedAt so the sticker is no longer considered part of any
+   * future bulk auto-reactivation set.
+   */
+  async reactivateInactiveSticker(stickerId: string, actorUserId?: string | null): Promise<Sticker> {
+    const sticker = await prisma.sticker.findUnique({
+      where: { stickerId },
+      select: {
+        id: true,
+        status: true,
+        venue: {
+          select: {
+            partner: { select: { status: true, verifiedAt: true } },
+          },
+        },
+      },
+    });
+    if (!sticker) throw new Error(`Sticker ${stickerId} not found`);
+    if (sticker.status !== StickerStatus.INACTIVE) {
+      throw new Error(
+        `Sticker ${stickerId} cannot be reactivated from ${sticker.status} state. ` +
+        `This endpoint reactivates an INACTIVE sticker (e.g. one stranded after an ` +
+        `Archived→Active partner reactivation). Use POST /activate for PENDING/PROCESSING stickers.`
+      );
+    }
+    // Spec §3.6: block manual activation unless the owning partner is operationally
+    // Active. F3 — fail CLOSED on orphan stickers: if the venue/partner relation
+    // cannot be resolved we cannot confirm the partner is operationally Active, so
+    // we reject rather than reactivate unconditionally.
+    if (!sticker.venue?.partner || !isPartnerOperationallyActive(sticker.venue.partner)) {
+      throw new Error('Cannot reactivate QR code while partner status is not Active');
+    }
+    const updated = await prisma.sticker.update({
+      where: { stickerId },
+      data: {
+        status: StickerStatus.ACTIVE,
+        activatedAt: new Date(),
+        autoDeactivatedAt: null,
+      },
+    });
+    detach(writeAudit({
+      actorUserId: actorUserId ?? null,
+      action: 'STICKER_REACTIVATED',
+      objectType: 'Sticker',
+      objectId: sticker.id,
+      before: { status: StickerStatus.INACTIVE },
+      after: { status: StickerStatus.ACTIVE, reason: 'explicit admin reactivation (Clash 2.4)' },
+    }), (err) => logger.error('[sticker.reactivateInactiveSticker] audit write failed:', err));
+    return updated;
   }
 
   /**
@@ -516,14 +701,14 @@ class StickerService {
       throw err;
     }
 
-    writeAudit({
+    detach(writeAudit({
       actorUserId: actorUserId ?? null,
       action: 'STICKER_REPLACED',
       objectType: 'Sticker',
       objectId: old.id,
       before: { stickerId: oldStickerId, status: old.status },
       after: { status: StickerStatus.REPLACED, newStickerId, newStickerDbId: newSticker.id },
-    }).catch((err) => logger.error('[sticker.replaceSticker] audit write failed:', err));
+    }), (err) => logger.error('[sticker.replaceSticker] audit write failed:', err));
 
     return { oldSticker, newSticker };
   }
@@ -553,7 +738,6 @@ class StickerService {
     valid: boolean;
     venueId?: string;
     venueName?: string;
-    cashbackPercent?: number;
     message?: string;
   }> {
     const sticker = await prisma.sticker.findUnique({
@@ -565,7 +749,9 @@ class StickerService {
             id: true,
             name: true,
             stickerConfig: true,
-            partner: { select: { id: true, status: true, verifiedAt: true, discountRate: true, partnerType: { select: { maxDiscountRate: true } } } },
+            // discountRate and maxDiscountRate omitted — internal Business Formula components
+            // (spec §11.3, Clash 10.6). isPartnerOperationallyActive only needs status+verifiedAt.
+            partner: { select: { id: true, status: true, verifiedAt: true } },
           },
         },
       },
@@ -609,19 +795,17 @@ class StickerService {
       };
     }
 
-    // Show the best-case cashback % for this venue (Premium tier at partner's discount level).
-    // The actual % at scan time depends on the user's card tier.
-    const { cashbackPercent } = await fraudDetectionService.calculateCashback({
-      venueId: sticker.venue.id, // venue ID — calculateCashback traverses Venue → partner internally
-      amount: 100, // dummy amount — we only need the percent
-      cardTier: 'PREMIUM', // show maximum possible
-    });
-
+    // Spec §11.3 / Clash 10.6: cashbackPercent is internal-only and must NEVER
+    // be returned from a public (unauthenticated) endpoint. A partner with
+    // physical access to their QR can call this endpoint to learn the cashback
+    // rate and derive the internal margin (discountRate − cashbackPercent).
+    // If the mobile app needs a cashback estimate for the pre-scan preview it
+    // must call an authenticated user endpoint that resolves the user's actual
+    // subscription tier.
     return {
       valid: true,
       venueId: sticker.venueId,
       venueName: sticker.venue.name,
-      cashbackPercent,
       message: 'Valid BOOM sticker',
     };
   }
@@ -762,11 +946,28 @@ class StickerService {
         deviceFingerprint: data.deviceFingerprint,
         deviceFingerprintRaw: data.deviceFingerprintRaw,
       },
-      include: {
-        sticker: { include: { venue: true, location: true } },
-        card: true,
+      // Root-level select excludes all internal fields (fraudScore, fraudReasons,
+      // specRiskLevel, cashbackPercent, ipAddress, userAgent, deviceFingerprint*,
+      // receiptImageHash, ocrData) so they are never materialised by the ORM
+      // regardless of who calls this method (spec §11.3, Clash 5.1, r2d HIGH).
+      select: {
+        id: true,
+        userId: true,
+        venueId: true,
+        cardId: true,
+        billAmount: true,
+        cashbackAmount: true,
+        status: true,
+        latitude: true,
+        longitude: true,
+        distance: true,
+        sessionStartedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        sticker: { select: { id: true, status: true, locationType: true, venue: { select: { id: true, name: true, nameBg: true, city: true, address: true } }, location: { select: { id: true, name: true, locationNumber: true } } } },
+        card: { select: { id: true, type: true, status: true } },
       },
-    });
+    }) as unknown as StickerScan;
 
     // Update sticker last-scanned timestamp
     await prisma.sticker.update({
@@ -874,12 +1075,28 @@ class StickerService {
           ...(latitude !== undefined && { latitude }),
           ...(longitude !== undefined && { longitude }),
         },
-        include: {
+        // Root-level select excludes all internal fields (spec §11.3, Clash 5.1, r2d HIGH).
+        select: {
+          id: true,
+          userId: true,
+          venueId: true,
+          cardId: true,
+          billAmount: true,
+          cashbackAmount: true,
+          status: true,
+          rejectionReason: true,
+          latitude: true,
+          longitude: true,
+          distance: true,
+          sessionStartedAt: true,
+          processedAt: true,
+          createdAt: true,
+          updatedAt: true,
           user: { select: { id: true, firstName: true, lastName: true, email: true } },
-          sticker: { include: { venue: true, location: true } },
-          card: true,
+          sticker: { select: { id: true, status: true, locationType: true, venue: { select: { id: true, name: true, nameBg: true, city: true, address: true } }, location: { select: { id: true, name: true, locationNumber: true } } } },
+          card: { select: { id: true, type: true, status: true } },
         },
-      });
+      }) as unknown as StickerScan;
 
       await prisma.sticker.update({
         where: { id: existing.stickerId },
@@ -1054,12 +1271,28 @@ class StickerService {
         deviceFingerprint: data.deviceFingerprint,
         deviceFingerprintRaw: data.deviceFingerprintRaw,
       },
-      include: {
+      // Root-level select excludes all internal fields (spec §11.3, Clash 5.1, r2d HIGH).
+      select: {
+        id: true,
+        userId: true,
+        venueId: true,
+        cardId: true,
+        billAmount: true,
+        cashbackAmount: true,
+        status: true,
+        rejectionReason: true,
+        latitude: true,
+        longitude: true,
+        distance: true,
+        sessionStartedAt: true,
+        processedAt: true,
+        createdAt: true,
+        updatedAt: true,
         user: { select: { id: true, firstName: true, lastName: true, email: true } },
-        sticker: { include: { venue: true, location: true } },
-        card: true,
+        sticker: { select: { id: true, status: true, locationType: true, venue: { select: { id: true, name: true, nameBg: true, city: true, address: true } }, location: { select: { id: true, name: true, locationNumber: true } } } },
+        card: { select: { id: true, type: true, status: true } },
       },
-    });
+    }) as unknown as StickerScan;
 
     await prisma.sticker.update({
       where: { id: sticker.id },
@@ -1208,6 +1441,13 @@ class StickerService {
       throw err;
     }
 
+    // F-018: Spec requires notifyQRSessionOpened when a QR session is opened /
+    // receipt upload is confirmed. Fire non-fatally (must not block the upload flow).
+    if (userId ?? scan.userId) {
+      detach(notificationService
+        .notifyQRSessionOpened(userId ?? scan.userId, scanId), (err) => logger.error(`[uploadReceipt] notifyQRSessionOpened failed for scan ${scanId}:`, err));
+    }
+
     // Server-side OCR merchant verification is run asynchronously after the response
     // returns: Tesseract takes 10–30s per receipt, and blocking the upload response
     // that long would time out the mobile client. The scan is already in MANUAL_REVIEW,
@@ -1227,7 +1467,7 @@ class StickerService {
       const enqueued = await enqueueMerchantVerification(scanId);
       if (!enqueued && imageBuffer) {
         // Fallback: in-process detached promise (legacy). No restart durability.
-        void this.runMerchantVerificationFromBuffer(scanId, imageBuffer, candidateNames, scan.venue?.name ?? '');
+        detach(this.runMerchantVerificationFromBuffer(scanId, imageBuffer, candidateNames, scan.venue?.name ?? ''), () => {});
       }
     }
 
@@ -1240,10 +1480,14 @@ class StickerService {
     //   ocrConfidence:       OCR confidence from ocrData (0–100); below 60% → +30.
     //   locationMismatch:    GPS distance from the scanSticker phase is stored in
     //                        fraudReasons as 'GPS_FAR_FROM_VENUE'; detect it there.
-    // N3 fix: absent OCR confidence means no confidence data, not perfect confidence.
-    // Default to 0 (triggers +30 Signal 2 penalty) rather than 100 (no penalty) to
-    // avoid silently classifying receipts with missing OCR data as Low risk.
-    const ocrConfidence: number = (ocrData as any)?.confidence ?? 0;
+    // Spec §3.4 / Clash 5.1 — Signal 2 fires when OCR confidence < 60.
+    // When the client provides no OCR data we have no evidence of OCR failure,
+    // so we default to the threshold boundary (60) rather than 0. Defaulting to 0
+    // would permanently add +30 to every scan and make the Low-risk auto-approve
+    // path (spec §3.4: score 0–20 → auto-approve) unreachable, violating the spec.
+    // The client-supplied confidence field is dropped at the route layer to prevent
+    // spoofing; absent confidence therefore means "no data" not "failed OCR".
+    const ocrConfidence: number = (ocrData as any)?.confidence ?? 60;
     const locationMismatch = Array.isArray(scan.fraudReasons)
       && (scan.fraudReasons as string[]).some((r) => r === 'GPS_FAR_FROM_VENUE' || r === 'GPS_OUTSIDE_RANGE');
     const partnerId = scan.venue?.partner?.id ?? undefined;
@@ -1276,21 +1520,25 @@ class StickerService {
       locationMismatch,
     });
 
-    // Persist the spec risk level on the scan record so admin dashboard can filter/display.
-    // specRiskLevel is stored as a dedicated column (added in BC-SCHEMA-1) for clean
-    // filtering. specRiskTag is also pushed to fraudReasons for backward compat with
-    // existing callers that read fraudReasons for spec risk info.
-    const specRiskTag = `SPEC_RISK:${specRisk.riskLevel}:${specRisk.riskScore}`;
+    // Persist the spec risk level on the scan record so the admin dashboard can
+    // filter/display. specRiskLevel is the dedicated column (added in BC-SCHEMA-1) and
+    // is the single source of truth for spec risk.
+    //
+    // L3 (user-spec audit): the SPEC_RISK:<level>:<score> tag is no longer pushed into
+    // fraudReasons. fraudReasons is an internal fraud-rule enum array; mixing semantic
+    // risk metadata into it was fragile (a serializer change could leak the risk level
+    // to users). Nothing downstream parses "SPEC_RISK:" out of fraudReasons (verified by
+    // grep), so dropping the tag has no consumers to repoint.
     await prisma.stickerScan.update({
       where: { id: scanId },
-      data: { specRiskLevel: specRisk.riskLevel, fraudReasons: { push: specRiskTag } },
-    }).catch((err: unknown) => logger.error(`[uploadReceipt] failed to store spec risk tag:`, err));
+      data: { specRiskLevel: specRisk.riskLevel },
+    }).catch((err: unknown) => logger.error(`[uploadReceipt] failed to store spec risk level:`, err));
 
-    // Spec §3.4: Low risk → auto-approve within 24h. Medium/High → manual review queue.
-    // Low = riskScore 0–20 per spec §2.1 thresholds.
+    // Spec §9.4 (amendment 2026-06-04): only High risk → manual review queue.
+    // Low and Medium auto-process via the auto-approval (within 24h) path.
     if (!specRisk.requiresManualReview) {
-      // ── Auto-approve path (Spec §3.4: Low risk auto-approves) ────────────
-      // Spec §2.1 / §3.4: riskLevel=Low (score 0–20) → auto-approve within 24h.
+      // ── Auto-approve path (Spec §9.4: Low/Medium risk auto-approve) ───────
+      // riskLevel=Low or Medium → auto-approve within 24h.
       // Transition to MANUAL_REVIEW first so approveScan() accepts the scan,
       // then immediately promote. This reuses all cashback-credit, wallet,
       // audit-trail, and notification logic in a single call.
@@ -1321,7 +1569,16 @@ class StickerService {
         } catch (autoApproveError) {
           // Unexpected failure — leave in MANUAL_REVIEW for admin action.
           logger.error(`[uploadReceipt] auto-approve failed for scan ${scanId}, leaving in MANUAL_REVIEW:`, autoApproveError);
-          return prisma.stickerScan.findUniqueOrThrow({ where: { id: scanId } });
+          // Safe select: internal fields must not materialise even in the error path.
+          return prisma.stickerScan.findUniqueOrThrow({
+            where: { id: scanId },
+            select: {
+              id: true, userId: true, venueId: true, cardId: true,
+              billAmount: true, cashbackAmount: true, status: true,
+              rejectionReason: true, sessionStartedAt: true, processedAt: true,
+              createdAt: true, updatedAt: true,
+            },
+          }) as unknown as StickerScan;
         }
       }
 
@@ -1330,15 +1587,30 @@ class StickerService {
       return prisma.stickerScan.update({
         where: { id: scanId },
         data: { status: ScanStatus.APPROVED, processedAt: new Date() },
-      });
+        // Safe select — internal fields excluded (spec §11.3, r2d HIGH).
+        select: {
+          id: true, userId: true, venueId: true, cardId: true,
+          billAmount: true, cashbackAmount: true, status: true,
+          rejectionReason: true, sessionStartedAt: true, processedAt: true,
+          createdAt: true, updatedAt: true,
+        },
+      }) as unknown as StickerScan;
     }
 
-    // ── Manual review path (Spec §2.2: Medium/High risk → manual queue) ───
-    // Spec §2.1 thresholds: Medium = 21–50, High = 51+. Both enter admin queue.
+    // ── Manual review path (Spec §9.4: High risk only → manual queue) ─────
+    // Spec §2.1 thresholds: High = 51+. Only High-risk submissions enter the
+    // admin queue; Medium (21–50) and Low (0–20) take the auto-process path.
     const finalScan = await prisma.stickerScan.update({
       where: { id: scanId },
       data: { status: ScanStatus.MANUAL_REVIEW },
-    });
+      // Safe select — internal fields excluded (spec §11.3, r2d HIGH).
+      select: {
+        id: true, userId: true, venueId: true, cardId: true,
+        billAmount: true, cashbackAmount: true, status: true,
+        rejectionReason: true, sessionStartedAt: true, processedAt: true,
+        createdAt: true, updatedAt: true,
+      },
+    }) as unknown as StickerScan;
 
     // Spec §2.2 / §3.4 v1.1 — create a PENDING cashback record visible to the user
     // for the duration of the risk review. Non-fatal: a write failure here
@@ -1471,7 +1743,8 @@ class StickerService {
       where: { id: scanId },
       data: {
         fraudReasons: { push: newReason },
-        fraudScore: { increment: 40 },
+        // Spec Clash 5.1: receipt match signal = +30. Corrected from prior +40.
+        fraudScore: { increment: 30 },
       },
     });
   }
@@ -1490,7 +1763,8 @@ class StickerService {
     const scan = await prisma.stickerScan.findUnique({
       where: { id: scanId },
       include: {
-        user: true,
+        // user: true omitted — only scan.userId (scalar) is consumed in this method;
+        // fetching the full User row would load passwordHash/tokens into memory (r2e S4).
         venue: {
           include: {
             partner: { select: { id: true, discountRate: true, partnerType: { select: { maxDiscountRate: true } } } },
@@ -1629,6 +1903,9 @@ class StickerService {
     // cashback and no retry path (both guards throw "already approved" on re-entry).
     let transactionId: string | null = null;
     let updated: StickerScan | null = null;
+    // LOW-2 — set once a PENDING cashback entry has been promoted to CLEARED and
+    // the wallet credited, so the catch block can compensate on a later failure.
+    let promotedEntry: { id: string; walletId: string; amount: number } | null = null;
 
     try {
       // Spec §4.3 v1.1 — persist the fraud/risk score at transaction creation
@@ -1683,11 +1960,18 @@ class StickerService {
         where: { id: scanId },
         data: { transactionId: transaction.id },
         include: {
-          transaction: true,
-          user: true,
+          // marginAmount and riskScore are internal-only (spec §11.3, §7.4, Clash 10.6).
+          // Scoped select prevents them from appearing in any serialised response body,
+          // admin logs, or request-response traces (r2d B3, task fix #2).
+          transaction: { select: { id: true, cashbackAmount: true, status: true } },
+          // Full User row excluded — passwordHash/reset tokens must never appear in
+          // API responses or logs even on admin-only endpoints (r2e B1, task fix #3).
+          user: { select: { id: true, firstName: true, lastName: true, email: true } },
           sticker: {
             include: {
-              venue: true,
+              // Scoped select: any future Venue column addition won't silently reach
+              // admin responses or auto-approve path serialisation (r2c INFO-2, r2e B1).
+              venue: { select: { id: true, name: true, nameBg: true, city: true, address: true } },
               location: true,
             },
           },
@@ -1710,7 +1994,7 @@ class StickerService {
           type: WalletTransactionType.CASHBACK_CREDIT,
           cashbackStatus: 'PENDING' as any,
         },
-        select: { id: true, amount: true },
+        select: { id: true, amount: true, walletId: true },
       });
 
       if (pendingEntry) {
@@ -1725,6 +2009,14 @@ class StickerService {
             ? { overrideAmount: effectiveCashbackAmount }
             : {}),
         });
+        // LOW-2 (M5/approveScan rollback) — record that the PENDING entry was
+        // promoted to CLEARED *and* the wallet was credited, so if a later step
+        // in this same call throws, the catch block can compensate (demote back
+        // to PENDING + reverse the credit). Without this, a partial failure
+        // would leave the wallet credited while the scan reverts to
+        // MANUAL_REVIEW, and the next hourly sweep would re-credit (pendingEntry
+        // is now null → the credit() fallback runs a second time).
+        promotedEntry = { id: pendingEntry.id, walletId: pendingEntry.walletId, amount: effectiveCashbackAmount };
       } else {
         await walletService.credit({
           userId: scan.userId,
@@ -1746,14 +2038,14 @@ class StickerService {
       // before/after figures are permanently traceable to the actor (not just in the
       // transaction metadata JSON which is harder to query).
       if (opts?.verifiedAmount != null) {
-        writeAudit({
+        detach(writeAudit({
           actorUserId: opts.adminUserId ?? null,
           action: 'ADMIN_AMOUNT_OVERRIDE',
           objectType: 'StickerScan',
           objectId: scanId,
           before: { billAmount: scan.billAmount, cashbackAmount: scan.cashbackAmount },
           after: { billAmount: effectiveBillAmount, cashbackAmount: effectiveCashbackAmount, verifiedAmount: opts.verifiedAmount },
-        }).catch((err) => logger.error(`[approveScan] audit write failed for override on scan ${scanId}:`, err));
+        }), (err) => logger.error(`[approveScan] audit write failed for override on scan ${scanId}:`, err));
       }
 
       logger.info(`Credited ${effectiveCashbackAmount} BGN cashback for scan ${scanId}${opts?.verifiedAmount != null ? ` (admin override: ${scan.billAmount} → ${opts.verifiedAmount})` : ''}`);
@@ -1788,6 +2080,40 @@ class StickerService {
           logger.error(`CRITICAL: Failed to delete orphaned transaction ${transactionId} for scan ${scanId}. Manual intervention required.`, rollbackError);
         }
       }
+      // LOW-2 — if a PENDING cashback entry was already promoted to CLEARED (and
+      // the wallet credited) before this failure, compensate: demote it back to
+      // PENDING and reverse the wallet credit, atomically. This restores the
+      // pre-approve state so the next hourly sweep re-finds the PENDING entry and
+      // promotes it once — instead of seeing pendingEntry === null and running
+      // the credit() fallback, which would double-credit the user.
+      if (promotedEntry) {
+        try {
+          await prisma.$transaction(async (tx) => {
+            // Only reverse if the entry is still CLEARED (idempotent guard):
+            // if a concurrent operation already moved it, do not double-revert.
+            const { count } = await tx.walletTransaction.updateMany({
+              where: { id: promotedEntry!.id, cashbackStatus: 'CLEARED' as any },
+              data: {
+                status: 'PENDING' as any,
+                cashbackStatus: 'PENDING' as any,
+                clearedAt: null,
+                cashbackExpiresAt: null,
+              },
+            });
+            if (count > 0) {
+              await tx.wallet.update({
+                where: { id: promotedEntry!.walletId },
+                data: {
+                  balance:          { increment: -promotedEntry!.amount },
+                  availableBalance: { increment: -promotedEntry!.amount },
+                },
+              });
+            }
+          });
+        } catch (compError) {
+          logger.error(`CRITICAL: Failed to reverse promoted cashback credit for scan ${scanId} (entry ${promotedEntry.id}). Manual intervention required to avoid double-credit on next sweep.`, compError);
+        }
+      }
       throw new Error('Failed to process scan. Scan approval has been rolled back — please retry.');
     }
 
@@ -1820,6 +2146,31 @@ class StickerService {
   }
 
   /**
+   * F-008 / Spec §2.2 + §8.1 rule 6: ensure a void reason carries a controlled
+   * category prefix so cashbackLifecycle.assertVoidReasonCategory accepts it.
+   *
+   * - If the reason already starts with a canonical category ("DUPLICATE",
+   *   "FRAUD: foo", etc.) it is returned trimmed and unchanged.
+   * - Otherwise the free-text reason is prefixed with the neutral default
+   *   category (OTHER — per §8.1 rule 6 the voided record stays visible to the
+   *   user with the reason shown, so an un-categorized admin rejection must not
+   *   default to an unwarranted FRAUD accusation), producing e.g.
+   *   "OTHER: Rejected by admin".
+   *
+   * Reuses VOID_REASON_CATEGORIES from cashbackLifecycle.service — the canonical
+   * list is never redefined here.
+   */
+  private normalizeVoidReason(reason: string): string {
+    const trimmed = (reason ?? '').trim();
+    const firstToken = trimmed.split(':')[0].trim().toUpperCase();
+    if ((VOID_REASON_CATEGORIES as readonly string[]).includes(firstToken)) {
+      return trimmed;
+    }
+    const body = trimmed.length > 0 ? trimmed : 'Rejected by admin';
+    return `OTHER: ${body}`;
+  }
+
+  /**
    * Reject a scan.
    *
    * Spec §4.4 / §7.1 v1.1: also record a Voided cashback ghost row so the user
@@ -1842,6 +2193,21 @@ class StickerService {
     if (result.count === 0) {
       throw new Error('Scan has already been approved and cannot be rejected');
     }
+
+    // F-008 / Spec §2.2 + §8.1 rule 6: cashbackLifecycle.markVoided (and the
+    // ghost path) enforce a controlled void-reason vocabulary via
+    // assertVoidReasonCategory — a free-text reason ("Rejected by admin", admin
+    // notes, etc.) makes markVoided THROW, and the catch below swallows every
+    // non-LOCKED/PAID error, silently dropping the void (the wallet entry is
+    // never voided despite success:true). Normalize here so every reason carries
+    // a controlled category before it reaches the lifecycle service. Per §8.1
+    // rule 6 the voided record stays user-visible with its reason shown, so an
+    // un-categorized rejection defaults to the neutral category OTHER (NOT
+    // FRAUD — do not change this back to FRAUD; an un-categorized admin
+    // rejection must not become an unwarranted fraud accusation). If the caller
+    // already supplied a controlled category prefix (e.g. "DUPLICATE: ...") it
+    // is preserved.
+    const voidReason = this.normalizeVoidReason(reason);
 
     // Spec §4.4 — visible Voided record with the rejection reason. Non-fatal:
     // a ghost write failure must not leave the scan in an inconsistent state.
@@ -1881,13 +2247,13 @@ class StickerService {
         await cashbackLifecycleService.markVoided({
           walletTransactionId: pendingEntry.id,
           actorUserId,
-          reason,
+          reason: voidReason,
         });
       } else {
         await cashbackLifecycleService.recordRejectedAsVoided({
           userId: scan.userId,
           amount: scan.cashbackAmount ?? 0,
-          reason,
+          reason: voidReason,
           actorUserId,
           description: `Кешбек анулиран след риск преглед`,
           stickerScanId: scan.id,
@@ -1902,20 +2268,32 @@ class StickerService {
       logger.error(`[stickerService.rejectScan] failed to record voided ghost for ${scanId}:`, err);
     }
 
-    return prisma.stickerScan.findUniqueOrThrow({ where: { id: scanId } });
+    // Safe select: internal fields excluded (spec §11.3, r2e S1).
+    return prisma.stickerScan.findUniqueOrThrow({
+      where: { id: scanId },
+      select: {
+        id: true, userId: true, venueId: true, cardId: true,
+        billAmount: true, cashbackAmount: true, status: true,
+        rejectionReason: true, sessionStartedAt: true, processedAt: true,
+        createdAt: true, updatedAt: true,
+      },
+    }) as unknown as StickerScan;
   }
 
   /**
    * Bulk approve scans. Sequential to keep cashback crediting deterministic and
    * avoid hammering the DB; per-scan failures are isolated so one bad row
    * doesn't kill the batch.
+   *
+   * actorUserId is threaded to each approveScan call so audit log entries record
+   * the admin who triggered the bulk action (spec §10.3, r2e S3 / r2d S3).
    */
-  async bulkApprove(scanIds: string[]): Promise<{ successCount: number; errorCount: number; errors: Array<{ scanId: string; error: string }> }> {
+  async bulkApprove(scanIds: string[], actorUserId?: string | null): Promise<{ successCount: number; errorCount: number; errors: Array<{ scanId: string; error: string }> }> {
     let successCount = 0;
     const errors: Array<{ scanId: string; error: string }> = [];
     for (const scanId of scanIds) {
       try {
-        await this.approveScan(scanId);
+        await this.approveScan(scanId, { adminUserId: actorUserId ?? null });
         successCount++;
       } catch (error: any) {
         logger.error(`Bulk approve failed for scan ${scanId}:`, error);
@@ -2094,13 +2472,14 @@ class StickerService {
       fraudReasons.push('RAPID_SUBMISSIONS');
     }
 
-    // Spec §7.1: 0-30 = auto-approve, 31-60 = review, 61+ = high risk.
-    const autoApproveThreshold = config.autoApproveThreshold ?? 30;
+    // Spec §2.1: 0-20 = LOW, 21-50 = MEDIUM, 51+ = HIGH. autoApproveThreshold
+    // default is 20 so scores 0–20 (LOW) auto-approve and 21+ require review.
+    const autoApproveThreshold = config.autoApproveThreshold ?? 20;
 
     let riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-    if (fraudScore <= 30) {
+    if (fraudScore <= 20) {
       riskLevel = 'LOW';
-    } else if (fraudScore <= 60) {
+    } else if (fraudScore <= 50) {
       riskLevel = 'MEDIUM';
     } else if (fraudScore <= 90) {
       riskLevel = 'HIGH';
@@ -2130,12 +2509,12 @@ class StickerService {
       where: { userId },
       select: {
         id: true,
-        stickerId: true,
+        // stickerId omitted — raw QR token, spec §4.3/§11.3
         venueId: true,
         cardId: true,
         billAmount: true,
         verifiedAmount: true,
-        cashbackPercent: true,
+        // cashbackPercent omitted — internal Business Formula component (spec §11.3, Clash 10.6)
         cashbackAmount: true,
         status: true,
         receiptImageUrl: true,
@@ -2144,8 +2523,17 @@ class StickerService {
         processedAt: true,
         createdAt: true,
         updatedAt: true,
-        sticker: { include: { venue: true, location: true } },
-        transaction: true,
+        sticker: {
+          select: {
+            id: true,
+            status: true,
+            locationType: true,
+            // qrCode omitted — raw QR token
+            venue: { select: { id: true, name: true, city: true } },
+            location: { select: { id: true, name: true, locationNumber: true } },
+          },
+        },
+        // transaction omitted — contains marginAmount and riskScore (spec §11.3)
       },
       orderBy: { createdAt: 'desc' },
       take: limit,
@@ -2153,23 +2541,56 @@ class StickerService {
   }
 
   /**
-   * Get sticker scans by venue
+   * Get sticker scans by venue — partner-safe projection.
+   *
+   * IMPORTANT: uses an explicit select to exclude all internal fraud/risk and
+   * customer PII fields. Spec §11.3, §6, Clash 5.1: fraudScore, fraudReasons,
+   * specRiskLevel, ipAddress, userAgent, ocrData, deviceFingerprint, and
+   * receiptImageHash must NEVER reach a partner-role caller. cashbackPercent is
+   * likewise excluded (Clash 10.6: internal formula component).
+   *
+   * Mirror the safe-select discipline applied in getScansByUser(). If this
+   * method is ever extended, do NOT add include/select entries for the excluded
+   * fields listed above.
    */
-  async getScansByVenue(venueId: string, limit: number = 100): Promise<StickerScan[]> {
+  async getScansByVenue(venueId: string, limit: number = 100) {
     return prisma.stickerScan.findMany({
       where: { venueId },
-      include: {
+      select: {
+        id: true,
+        venueId: true,
+        // stickerId omitted — raw QR token, spec §4.3/§11.3 (never shown to partner)
+        // cardId omitted — spec §6/§11.3 (card identifiers not in permitted partner columns)
+        billAmount: true,
+        verifiedAmount: true,
+        cashbackAmount: true,
+        status: true,
+        rejectionReason: true,
+        sessionStartedAt: true,
+        processedAt: true,
+        createdAt: true,
+        updatedAt: true,
         user: {
           select: {
+            // firstName/lastName omitted — spec §6 permitted columns do not include
+            // customer name; user PII must not be disclosed to a third-party partner.
             id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
           },
         },
         sticker: {
-          include: {
-            location: true,
+          select: {
+            id: true,
+            // stickerId omitted — raw QR token, spec §4.3/§11.3
+            locationType: true,
+            location: {
+              select: {
+                id: true,
+                name: true,
+                nameBg: true,
+                locationNumber: true,
+                locationType: true,
+              },
+            },
           },
         },
       },
@@ -2179,16 +2600,53 @@ class StickerService {
   }
 
   /**
-   * Get stickers for a venue
+   * Get stickers for a venue — partner-safe projection.
+   *
+   * IMPORTANT: uses an explicit select to exclude:
+   *   - both raw token fields, stickerId AND qrCode: spec §4.3 / §11.3 — the raw
+   *     QR tokens must NEVER reach the partner. A partner can already see the
+   *     physical label; serving either raw token via API enables token cloning /
+   *     forged /validate|/session|/scan calls.
+   *   - nested scans: removed entirely. The scan listing is served by
+   *     getScansByVenue() which applies its own safe select. Including full
+   *     StickerScan rows here would expose fraudScore, fraudReasons,
+   *     specRiskLevel, ipAddress, and other internal fields (spec §11.3,
+   *     Clash 5.1). Callers that need recent-scan context for a sticker should
+   *     call getScansByVenue() filtered by stickerId.
    */
-  async getStickersByVenue(venueId: string): Promise<Sticker[]> {
+  async getStickersByVenue(venueId: string) {
     return prisma.sticker.findMany({
       where: { venueId },
-      include: {
-        location: true,
-        scans: {
-          take: 5,
-          orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        venueId: true,
+        locationId: true,
+        // stickerId AND qrCode both omitted — raw QR token fields, spec §4.3/§11.3.
+        // A partner can see the physical label, but serving either raw token via API
+        // enables token cloning / forged /validate|/session|/scan calls. Mirrors
+        // /me/stickers.
+        locationType: true,
+        status: true,
+        printedAt: true,
+        activatedAt: true,
+        deactivatedAt: true,
+        autoDeactivatedAt: true,
+        totalScans: true,
+        lastScannedAt: true,
+        replacesId: true,
+        createdAt: true,
+        updatedAt: true,
+        location: {
+          select: {
+            id: true,
+            name: true,
+            nameBg: true,
+            locationNumber: true,
+            locationType: true,
+            isActive: true,
+            floor: true,
+            section: true,
+          },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -2196,22 +2654,63 @@ class StickerService {
   }
 
   /**
-   * Get pending scans for manual review
+   * Get pending scans for manual review.
+   *
+   * Uses an explicit select to prevent full User rows (passwordHash, token fields)
+   * from being loaded. Any future caller of this public method gets a safe projection
+   * rather than relying on the route layer to strip credentials (r2e B2).
+   *
+   * Fields included align with the safe inline query in the admin pending-review route
+   * (stickers.routes.ts:864-882).
    */
-  async getPendingReviewScans(limit: number = 50): Promise<StickerScan[]> {
+  async getPendingReviewScans(limit: number = 50): Promise<any[]> {
     return prisma.stickerScan.findMany({
       where: {
         status: ScanStatus.MANUAL_REVIEW,
       },
-      include: {
-        user: true,
-        sticker: {
-          include: {
-            venue: true,
-            location: true,
+      select: {
+        id: true,
+        venueId: true,
+        billAmount: true,
+        cashbackAmount: true,
+        fraudScore: true,
+        specRiskLevel: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        // user: true excluded — would return passwordHash/passwordResetToken (r2e B2).
+        user: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
           },
         },
-        card: true,
+        sticker: {
+          select: {
+            id: true,
+            locationType: true,
+            venue: {
+              select: { id: true, name: true },
+            },
+            location: {
+              select: {
+                id: true,
+                name: true,
+                nameBg: true,
+                locationNumber: true,
+                locationType: true,
+              },
+            },
+          },
+        },
+        card: {
+          select: {
+            id: true,
+            type: true,
+          },
+        },
       },
       orderBy: [
         { fraudScore: 'desc' },
@@ -2222,23 +2721,38 @@ class StickerService {
   }
 
   /**
-   * Get venue sticker analytics
+   * Get venue sticker analytics.
+   *
+   * Uses a minimal explicit select — only the four fields consumed by the
+   * aggregation below (status, billAmount, cashbackAmount, createdAt). This
+   * prevents all internal fields (fraudScore, fraudReasons, specRiskLevel,
+   * cashbackPercent, ipAddress, ocrData, etc.) from being loaded into Node.js
+   * process memory, even though they never appear in the returned summary object
+   * (r2e S1). The sticker/location relation is not needed for aggregation.
+   *
+   * days is capped at MAX_ANALYTICS_DAYS (365) to prevent unbounded table scans
+   * from being triggered by an untrusted query parameter (r2e S2).
    */
+  private static readonly MAX_ANALYTICS_DAYS = 365;
+
   async getVenueAnalytics(venueId: string, days: number = 30) {
+    const safeDays = Math.min(Math.max(1, Math.floor(days)), StickerService.MAX_ANALYTICS_DAYS);
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
+    startDate.setDate(startDate.getDate() - safeDays);
 
     const scans = await prisma.stickerScan.findMany({
       where: {
         venueId,
         createdAt: { gte: startDate },
       },
-      include: {
-        sticker: {
-          include: {
-            location: true,
-          },
-        },
+      // Minimal select — only the four scalar fields consumed by the aggregations
+      // below. Internal fields (fraudScore, specRiskLevel, cashbackPercent, ipAddress,
+      // ocrData, deviceFingerprint, etc.) must not be loaded into memory (r2e S1).
+      select: {
+        status: true,
+        billAmount: true,
+        cashbackAmount: true,
+        createdAt: true,
       },
     });
 
@@ -2255,12 +2769,14 @@ class StickerService {
       .filter(s => s.status === ScanStatus.APPROVED)
       .reduce((sum, s) => sum + s.cashbackAmount, 0);
 
-    const avgBillAmount = totalScans > 0 ? totalRevenue / approvedScans : 0;
+    // Divide-by-zero guard: use approvedScans (not totalScans) as the denominator
+    // because totalRevenue and totalCashback are both derived from approved scans only.
+    const avgBillAmount = approvedScans > 0 ? totalRevenue / approvedScans : 0;
     const avgCashback = approvedScans > 0 ? totalCashback / approvedScans : 0;
 
     return {
       period: {
-        days,
+        days: safeDays,
         startDate,
         endDate: new Date(),
       },
@@ -2275,10 +2791,12 @@ class StickerService {
         total: totalRevenue,
         average: avgBillAmount,
       },
+      // Spec §11.3 / §7.4 / Clash 10.6: cashback.percentage (the derived effective
+      // cashback rate) is an internal formula component and must NEVER be shown to
+      // partners. Total and average cashback monetary amounts are permissible.
       cashback: {
         total: totalCashback,
         average: avgCashback,
-        percentage: totalRevenue > 0 ? (totalCashback / totalRevenue) * 100 : 0,
       },
     };
   }

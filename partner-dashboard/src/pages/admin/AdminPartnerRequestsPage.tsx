@@ -13,6 +13,7 @@ import {
 import { getCategoryName } from '../../types/categories.types';
 import PartnerRequestDrawer from '../../components/admin/PartnerRequestDrawer';
 
+import { palette } from '../../styles/adminTheme';
 // Maps legacy SCREAMING_SNAKE_CASE and old display-name values to canonical category IDs
 const LEGACY_CATEGORY_MAP: Record<string, string> = {
   'RESTAURANTS_FOOD': 'restaurants', 'ACCOMMODATION': 'accommodation',
@@ -31,22 +32,6 @@ function migrateCategoryId(id: string): string {
 }
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
-const palette = {
-  bg: '#faf9f5',
-  surface: '#ffffff',
-  border: '#e8e5dc',
-  text: '#141413',
-  textMuted: '#605a50',
-  textSubtle: '#8c8678',
-  accent: '#c96442',
-  accentSoft: '#f3e8de',
-  success: '#4a7c59',
-  successSoft: '#e6efe3',
-  warning: '#b5803a',
-  warningSoft: '#f5ead2',
-  danger: '#b54327',
-  dangerSoft: '#f4dcd2',
-};
 
 /* ─── Layout ───────────────────────────────────────────────────────────────── */
 const PageShell = styled.div`

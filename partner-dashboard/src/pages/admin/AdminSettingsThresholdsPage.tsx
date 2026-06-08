@@ -4,23 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { adminSettingsService } from '../../services/adminSettings.service';
 
-const palette = {
-  bg: '#faf9f5',
-  surface: '#ffffff',
-  border: '#e8e5dc',
-  text: '#141413',
-  textMuted: '#605a50',
-  textSubtle: '#8c8678',
-  accent: '#c96442',
-  accentSoft: '#f3e8de',
-  info: '#2563eb',
-  infoSoft: '#dbeafe',
-  amber: '#92400e',
-  amberSoft: '#fef3c7',
-  danger: '#dc2626',
-  dangerSoft: '#fee2e2',
-};
 
+import { palette } from '../../styles/adminTheme';
 const PageShell = styled.div`
   background: ${palette.bg};
   min-height: calc(100vh - 4rem);
@@ -134,7 +119,7 @@ const NotesInput = styled.input`
 const SaveBtn = styled.button`
   padding: 0.5625rem 1.25rem;
   background: ${palette.accent};
-  color: #fff;
+  color: ${palette.onAccent};
   border: none;
   border-radius: 0.5rem;
   font-size: 0.875rem;
@@ -207,15 +192,15 @@ const ConfirmBtn = styled.button`
   border: none;
   border-radius: 0.5rem;
   background: ${palette.danger};
-  color: #fff;
+  color: ${palette.onAccent};
   font-size: 0.875rem; font-weight: 600; cursor: pointer;
   &:hover { opacity: 0.9; }
 `;
 
 const PLANS = [
-  { key: 'BASIC'   as const, name: 'Basic',              hint: 'Абонати с Basic план',              accent: '#2563eb', color: '#2563eb' },
-  { key: 'PREMIUM' as const, name: 'Premium месечен',    hint: 'Premium месечен абонамент',          accent: '#c96442', color: '#c96442' },
-  { key: 'LIGHT'   as const, name: 'Premium седмичен',   hint: 'Premium седмичен абонамент',         accent: '#4a7c59', color: '#4a7c59' },
+  { key: 'BASIC'   as const, name: 'Basic',              hint: 'Абонати с Basic план',              accent: palette.info, color: palette.info },
+  { key: 'PREMIUM' as const, name: 'Premium месечен',    hint: 'Premium месечен абонамент',          accent: palette.accent, color: palette.accent },
+  { key: 'LIGHT'   as const, name: 'Premium седмичен',   hint: 'Premium седмичен абонамент',         accent: palette.success, color: palette.success },
 ] as const;
 
 type Plan = 'BASIC' | 'PREMIUM' | 'LIGHT';

@@ -78,6 +78,11 @@ export const bg: TranslationKey = {
     uploadReceipt: 'Качи бележка',
     subscription: 'Абонамент и плащания',
     help: 'Помощ',
+    // §5.2 canonical partner menu sections
+    transactions: 'Транзакции',
+    finance: 'Финанси',
+    profileAndPartnership: 'Профил и партньорство',
+    myRequests: 'Моите заявки',
     downloadApp: 'Изтегли приложение',
     adminDashboard: 'Административно табло',
     managePartners: 'Управление на партньори',
@@ -88,6 +93,7 @@ export const bg: TranslationKey = {
     adminReceipts: 'Касови бележки',
     switchAccount: 'Смени акаунт',
     impersonatePartner: 'Представи се като партньор',
+    impersonateUser: 'Влез като потребител',
     role: {
       admin: 'Администратор',
       superAdmin: 'Супер Администратор',
@@ -109,6 +115,10 @@ export const bg: TranslationKey = {
     stopping: 'Спиране…',
     bannerPrefix: 'Представяш се като',
     bannerSuffix: '. Действията ти се отчитат.',
+    userModalTitle: 'Влез като потребител',
+    userModalSubtitle: 'Избери потребител, за да видиш приложението от негова гледна точка.',
+    userSearchPlaceholder: 'Търси по име или имейл…',
+    userEmpty: 'Няма потребители.',
   },
 
   // Mobile Bottom Navigation
@@ -225,6 +235,15 @@ export const bg: TranslationKey = {
     errorSendingEmail: 'Грешка при изпращане на имейл',
     errorOccurred: 'Възникна грешка. Моля, опитайте отново.',
     sessionExpired: 'Сесията ви изтече. Моля, влезте отново.',
+    twoFactorTitle: 'Двуфакторно удостоверяване',
+    twoFactorCode: 'Код за удостоверяване',
+    twoFactorHelp: 'Въведете 6-цифрения код от приложението за удостоверяване или един от резервните си кодове за възстановяване.',
+    twoFactorPlaceholder: '123456 или резервен код',
+    twoFactorRequired: 'Моля, въведете кода си за удостоверяване',
+    twoFactorInvalid: 'Невалиден код за двуфакторно удостоверяване. Моля, опитайте отново.',
+    twoFactorPrompt: 'Въведете кода от приложението за удостоверяване, за да завършите входа.',
+    twoFactorUseAnotherAccount: 'Използвайте друг профил',
+    signingInAs: 'Влизане като',
     accountCreated: 'Акаунтът е създаден успешно! Добре дошли в BoomCard!',
     loggedOut: 'Успешно излизане',
     stoppedImpersonating: 'Спряхте да се представяте',
@@ -290,7 +309,7 @@ export const bg: TranslationKey = {
     emailRequired: 'Имейлът е задължителен',
     emailInvalid: 'Невалиден имейл адрес',
     phoneRequired: 'Телефонният номер е задължителен',
-    phoneInvalid: 'Невалиден телефонен номер (български формат)',
+    phoneInvalid: 'Въведете български телефонен номер: +359XXXXXXXXX или 0XXXXXXXXX',
     passwordRequired: 'Паролата е задължителна',
     passwordMinLength: 'Паролата трябва да е поне 8 символа',
     passwordNeedsUppercase: 'Паролата трябва да съдържа поне една главна буква',
@@ -2164,6 +2183,12 @@ export const bg: TranslationKey = {
   // Администраторски модул — 10 категории (Фаза 0+)
   // ============================================================
   admin: {
+    navLock: {
+      tooltipSetup2FA: 'Първо настройте двуфакторна автентикация, за да отключите тази секция.',
+      tooltipChangePassword: 'Първо сменете временната си парола, за да отключите тази секция.',
+      toastSetup2FA: 'Моля, настройте двуфакторна автентикация, за да продължите.',
+      toastChangePassword: 'Моля, сменете временната си парола, за да продължите.',
+    },
     dashboard: 'Табло',
     subscribers: 'Абонати',
     partners: 'Партньори',

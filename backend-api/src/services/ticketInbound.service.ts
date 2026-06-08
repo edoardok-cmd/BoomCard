@@ -2,13 +2,18 @@
  * Inbound email-to-ticket service — Spec §11.2 v1.1.
  *
  * Takes a normalized inbound email payload and threads it into the ticket
- * system using the priority ladder defined in §11.2:
+ * system using the priority ladder defined in §11.2 / §6.2 / Clash 7.1:
  *
- *   1. X-BoomCard-Ticket-ID custom header
+ *   1. X-BoomCard-Ticket-ID custom header (canonical alias: X-BoomCard-Request-ID)
  *   2. In-Reply-To / References → TicketReply.messageId
- *   3. Plus-addressing in the To header (`support+<shortRef>@…`)
- *   4. Subject `[#XXXXXXXX]` reference
- *   5. Fallback: create a new HelpTicket (source=EMAIL)
+ *   3. Subject `[#XXXX]` reference (4–32 hex)
+ *   4. Fallback: create a new HelpTicket (source=EMAIL)
+ *
+ * L7 / Spec §6.2 + Clash 7.1: Plus-addressing (`support+<shortRef>@…`) is DEFERRED
+ * to v1.3 and is OFF by default in v1.2. The plus-address match runs ONLY when the
+ * `isPlusAddressingEnabled()` flag is explicitly turned on; the v1.2-canonical
+ * threading relies solely on the header (primary) and the `[#XXXX]` subject pattern
+ * (fallback). Do not treat plus-addressing as an active priority step.
  *
  * Spoof protection (§11.2): when matching to an existing ticket, the sender
  * email must match the ticket owner, captured externalEmail, or a prior
@@ -20,13 +25,14 @@
  * but no further side-effects (no reopen, no notification fan-out).
  */
 
-import { TicketStatus, TicketCategory, TicketPriority } from '@prisma/client';
+import { TicketStatus, TicketCategory, TicketPriority, TicketRequestType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { writeAudit } from '../middleware/audit.middleware';
 import { emailService } from './email.service';
-import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef } from './ticketEmail.service';
+import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef, isPlusAddressingEnabled } from './ticketEmail.service';
 import { notificationService } from './notification.service';
+import { detach } from '../utils/detach';
 
 export interface InboundEmailPayload {
   /** RFC 5321 sender — bare email or "Name <email@host>" */
@@ -42,13 +48,26 @@ export interface InboundEmailPayload {
   inReplyTo?: string;
   /** RFC 5322 References chain */
   references?: string[];
-  /** Our custom header, when the email is a reply to a system-sent message */
+  /**
+   * Our custom threading header, when the email is a reply to a system-sent
+   * message. The system emits/reads `X-BoomCard-Ticket-ID` (field
+   * `xBoomCardTicketId`). Spec §6.2 / Clash 7.1 name the canonical marker
+   * `X-BoomCard-Request-ID`; a spec-literal external integrator may emit that
+   * instead. The webhook layer normalizes `xBoomCardRequestId` → this field, and
+   * `resolveTicket` falls back to it directly so the alias also threads when the
+   * service is called outside the webhook (e.g. internal callers / tests).
+   */
   xBoomCardTicketId?: string;
+  /** Canonical spec alias (§6.2 / Clash 7.1) for `xBoomCardTicketId`. */
+  xBoomCardRequestId?: string;
   /** RFC 3834 Auto-Submitted ("auto-replied" → out-of-office) */
   autoSubmitted?: string;
 }
 
-const SUBJECT_REF_RE = /\[#([a-f0-9]{8,32})\]/i;
+// M5 / Spec §6.2 + Clash 7.1: the canonical subject-fallback marker is `[#XXXX]`
+// (a 4-char-and-up hex reference). The threshold was previously 8, which silently
+// failed to thread the spec's literal `[#XXXX]` notation. Widen to {4,32}.
+const SUBJECT_REF_RE = /\[#([a-f0-9]{4,32})\]/i;
 const BOUNCE_SUBJECT_RE = /delivery (status|failure)|undeliverable|mailer[- ]daemon/i;
 // Spec §11.2 edge case: forwarded emails break header threading and must always
 // create a new ticket regardless of any [#ref] present in the subject. The
@@ -95,10 +114,13 @@ async function resolveTicket(payload: InboundEmailPayload): Promise<{
   ticket: Awaited<ReturnType<typeof prisma.helpTicket.findUnique>> | null;
   matchedBy: 'header' | 'in-reply-to' | 'plus-address' | 'subject-prefix' | null;
 }> {
-  // Priority 1: X-BoomCard-Ticket-ID
-  if (payload.xBoomCardTicketId) {
+  // Priority 1: X-BoomCard-Ticket-ID (system header) OR its canonical spec
+  // alias X-BoomCard-Request-ID (§6.2 / Clash 7.1). Prefer whichever is present;
+  // the ticket-id header wins when both are supplied.
+  const headerTicketId = payload.xBoomCardTicketId || payload.xBoomCardRequestId;
+  if (headerTicketId) {
     const t = await prisma.helpTicket.findUnique({
-      where: { id: payload.xBoomCardTicketId },
+      where: { id: headerTicketId },
     });
     if (t) return { ticket: t, matchedBy: 'header' };
   }
@@ -136,7 +158,11 @@ async function resolveTicket(payload: InboundEmailPayload): Promise<{
   // (e.g. a TicketCC join table). The current allowed-set (owner + assignee +
   // externalEmail + prior externalFrom senders) is strictly more permissive for
   // known participants and is an acceptable interim posture.
-  if (payload.to) {
+  // H3 (Spec Part 6 / Clash 7.1): plus-addressing is DEFERRED to v1.3. In v1.2
+  // (the default, flag OFF) this resolution path is disabled entirely so threading
+  // relies ONLY on the header (Priority 1) and subject (Priority 4) fallbacks.
+  // The path is preserved behind TICKET_PLUS_ADDRESSING_ENABLED for v1.3 preview.
+  if (isPlusAddressingEnabled() && payload.to) {
     const plusMatch = /[^@+\s]+\+([a-f0-9]{8,32})@/i.exec(payload.to);
     if (plusMatch) {
       const ref = plusMatch[1].toLowerCase();
@@ -208,13 +234,80 @@ async function getSystemOwnerId(): Promise<string | null> {
 }
 
 /**
- * Heuristic mapping of the destination mailbox to a default `requestType`.
- * Both support@ and office@ inbounds are support requests — the distinction
- * between "User support" and "Partner support" queues (§11.6) is determined
- * by the ticket owner's role, not by the destination address. The admin can
- * re-classify to DATA_CHANGE / CONTRACT_CHANGE etc. once they've read the email.
+ * Derive the inbound audience from the SENDER's account role, not the recipient
+ * mailbox. Since BC-USER-SPEC-FIX-013 collapsed both subscriber and partner
+ * inbound to office@boomcard.bg (spec §12.1), the old `to.includes('office@')`
+ * heuristic always returned true and mislabeled every subscriber inbound as a
+ * partner. We now look up the sender by email: a PARTNER-role account → 'partner'
+ * (Partner support queue); everything else — USER, ADMIN/SUPER_ADMIN (internal),
+ * and unidentified/no-account senders — defaults to 'subscriber' (User support),
+ * the safe default for an inbound we can't positively attribute to a partner.
  */
-function inferRequestType(_toAddress: string): string {
+async function resolveInboundAudience(
+  fromEmail: string
+): Promise<'partner' | 'subscriber'> {
+  // NB: `email` alone is not a unique key on User (the unique constraint is the
+  // compound email_role), so the same address can have both a USER and a PARTNER
+  // row. Query specifically for a PARTNER row (at most one per email under the
+  // email_role constraint) so the result is deterministic and a genuine partner
+  // is never mislabeled 'subscriber' by an incidental USER row on the same email.
+  const partnerRow = await prisma.user
+    .findFirst({ where: { email: fromEmail, role: 'PARTNER' }, select: { id: true } })
+    .catch(() => null);
+  return partnerRow ? 'partner' : 'subscriber';
+}
+
+/**
+ * M5 (Spec §1.7 / §3.8) — classify an inbound email into the canonical Request
+ * Type set: Support / Dispute / Change / Other. The earlier implementation always
+ * returned SUPPORT; the spec requires office@/support@ inbounds be parsed into a
+ * typed Help Request. Classification is a best-effort keyword heuristic over the
+ * subject + body (BG + EN terms); the admin can always reclassify later (§7.2 the
+ * type only affects the suggested team, all tickets land in the shared queue).
+ *
+ * Precedence: Dispute > Change > Support, with Other reserved for inbounds that
+ * match no signal AND carry no usable text. The destination mailbox is retained
+ * as a tie-break input (office@ → partner-leaning, but type is still text-driven).
+ *
+ * Keep keyword lists conservative and high-precision: a false SUPPORT default is
+ * cheap to fix in the UI, a false DISPUTE/CHANGE mis-routes the suggested team.
+ */
+const DISPUTE_KEYWORDS = [
+  // EN
+  'dispute', 'chargeback', 'fraud', 'unauthori', 'refund', 'complaint', 'wrong charge',
+  'incorrect cashback', 'not received', "didn't receive", 'did not receive', 'missing cashback',
+  // BG
+  'оспор', 'измам', 'възражение', 'жалба', 'не получих', 'грешна сума', 'грешно начислен',
+  'неоторизиран', 'възстановяване на сум', 'рекламация', 'спор',
+];
+const CHANGE_KEYWORDS = [
+  // EN
+  'change', 'update', 'modify', 'edit my', 'amend', 'cancel my subscription', 'contract',
+  'commission', 'new address', 'change iban', 'update iban', 'change bank', 'rename',
+  // BG
+  'промян', 'промен', 'актуализ', 'редактир', 'смяна', 'смени', 'обнови', 'договор',
+  'комисион', 'нов адрес', 'смяна на iban', 'промяна на iban', 'анекс',
+];
+
+function classifyKeywords(haystack: string, keywords: string[]): boolean {
+  return keywords.some((kw) => haystack.includes(kw));
+}
+
+export function inferRequestType(payload: Pick<InboundEmailPayload, 'subject' | 'text' | 'html' | 'to'>): TicketRequestType {
+  const subject = (payload.subject || '').toLowerCase();
+  const bodyText = (payload.text || (payload.html ? payload.html.replace(/<[^>]+>/g, ' ') : '')).toLowerCase();
+  const haystack = `${subject} ${bodyText}`.trim();
+
+  // No usable text to classify → Other (admin triages from the raw email).
+  if (!haystack) return 'OTHER';
+
+  // Dispute has the highest mis-route cost downstream, so it wins on overlap.
+  if (classifyKeywords(haystack, DISPUTE_KEYWORDS)) return 'DISPUTE';
+  // Generic Change classification — admin narrows to DATA_CHANGE / CONTRACT_CHANGE
+  // / LOCATION_CHANGE sub-types once they read the email.
+  if (classifyKeywords(haystack, CHANGE_KEYWORDS)) return 'CHANGE';
+
+  // Default: Support (the safe, lowest-cost default for any operational question).
   return 'SUPPORT';
 }
 
@@ -321,7 +414,7 @@ export async function ingestInboundEmail(
 
         // Fall back to ops notification if no assignee or no ticket resolved.
         if (!alertedAssignee) {
-          notificationService
+          detach(notificationService
             .notifyAdminOps({
               opsType: `bounce_alert_${relatedTicketId ?? normalizeAddress(payload.from)}`,
               title: 'Многократни bounce-и',
@@ -331,8 +424,7 @@ export async function ingestInboundEmail(
                 { label: 'Адрес', value: normalizeAddress(payload.from) },
                 ...(relatedTicketId ? [{ label: 'Ticket ID', value: relatedTicketId }] : []),
               ],
-            })
-            .catch(() => {});
+            }), () => {});
         }
       }
     } catch (err) {
@@ -397,7 +489,7 @@ export async function ingestInboundEmail(
       source: 'EMAIL',
       externalEmail: fromEmail,
       rootMessageId: payload.messageId || null,
-      requestType: inferRequestType(payload.to || ''),
+      requestType: inferRequestType(payload),
     };
     const ticket = await prisma.helpTicket.create({ data: newTicketData });
     // Gap 8: backfill shortRef immediately after creation (computed from the UUID
@@ -415,25 +507,30 @@ export async function ingestInboundEmail(
       after: { from: fromEmail, to: payload.to, messageId: payload.messageId },
     }).catch(() => {});
 
+    // Audience is derived from the SENDER's role (PARTNER → partner) — the
+    // recipient mailbox can no longer distinguish audiences now that all inbound
+    // lands on office@ (BC-USER-SPEC-FIX-013). Computed once, reused for the
+    // auto-reply and the admin-ops queue label below.
+    const isPartnerSender = (await resolveInboundAudience(fromEmail)) === 'partner';
+
     // Spec §11.1 — auto-reply to the sender with the ticket reference so
     // subsequent replies thread back via [#XXXXXXXX] / X-BoomCard-Ticket-ID.
     // Fire-and-forget: a mailer failure must not block ticket creation.
-    sendInboundAutoReply({
+    detach(sendInboundAutoReply({
       ticketId: ticket.id,
       to: fromEmail,
       originalSubject: cleanedSubject,
       inReplyTo: payload.messageId || null,
-      audience: payload.to?.includes('office@') ? 'partner' : 'subscriber',
-    }).catch((err) =>
-      logger.error(`[ticketInbound] failed to send auto-reply for ${ticket.id}:`, err),
-    );
+      audience: isPartnerSender ? 'partner' : 'subscriber',
+    }), (err) =>
+      logger.error(`[ticketInbound] failed to send auto-reply for ${ticket.id}:`, err));
 
     // Gap 9 fix: §11.6 routing — email tickets default to SUPPORT; admin can
     // reclassify. Surface the destination mailbox so the admin can see which
     // channel it arrived on (support@ vs. office@).
-    const emailReqType = inferRequestType(payload.to || '');
-    const emailQueue = payload.to?.includes('office@') ? 'Partner support' : 'User support';
-    notificationService
+    const emailReqType = inferRequestType(payload);
+    const emailQueue = isPartnerSender ? 'Partner support' : 'User support';
+    detach(notificationService
       .notifyAdminOps({
         opsType: `help_ticket_created_email_${ticket.id}`,
         title: `Имейл заявка [${emailReqType}]: ${emailQueue}`,
@@ -445,8 +542,7 @@ export async function ingestInboundEmail(
           { label: 'До', value: payload.to || '' },
           { label: 'Ticket ID', value: ticket.id },
         ],
-      })
-      .catch((err) => logger.warn('[ticketInbound] failed to notify admin ops of email ticket:', err));
+      }), (err) => logger.warn('[ticketInbound] failed to notify admin ops of email ticket:', err));
 
     return { ticketId: ticket.id, created: true };
   }
@@ -507,7 +603,7 @@ export async function ingestInboundEmail(
         source: 'EMAIL',
         externalEmail: fromEmail,
         rootMessageId: payload.messageId || null,
-        requestType: inferRequestType(payload.to || ''),
+        requestType: inferRequestType(payload),
         linkedTicketId: t.id,
       },
     });
@@ -529,16 +625,15 @@ export async function ingestInboundEmail(
     // address); silence would push them to resend or escalate. The reply
     // does NOT reveal that the original ticket existed — just acknowledges
     // their inbound was received and gives them a way to thread replies.
-    sendInboundAutoReply({
+    detach(sendInboundAutoReply({
       ticketId: linked.id,
       to: fromEmail,
       originalSubject:
         (payload.subject || '').replace(SUBJECT_REF_RE, '').trim() || `(re: ${t.subject})`,
       inReplyTo: payload.messageId || null,
-      audience: payload.to?.includes('office@') ? 'partner' : 'subscriber',
-    }).catch((err) =>
-      logger.error(`[ticketInbound] failed to send spoof-branch auto-reply for ${linked.id}:`, err),
-    );
+      audience: await resolveInboundAudience(fromEmail),
+    }), (err) =>
+      logger.error(`[ticketInbound] failed to send spoof-branch auto-reply for ${linked.id}:`, err));
 
     return { ticketId: linked.id, created: true };
   }
@@ -578,11 +673,15 @@ export async function ingestInboundEmail(
     },
   });
 
-  // Reopen-on-reply (§11.4 + §11.2 edge cases): a CLOSED or RESOLVED ticket
-  // transitions back to OPEN when the customer replies via email.
+  // Reopen-on-reply (§11.4 + §11.2 edge cases): a CLOSED, RESOLVED or WAITING
+  // ticket transitions back to OPEN when the customer replies via email.
   // RESOLVED is included for symmetry with the WEB-channel handlers in
   // adminHelp.routes.ts and partnerHelp.routes.ts (both handle RESOLVED→OPEN).
   // resolvedAt is cleared so the auto-close job doesn't immediately re-fire.
+  // CANCELLED and REJECTED are intentionally EXCLUDED — they are terminal
+  // (spec §1.7/§7.1: "withdrawn or invalid" / rejected). An inbound reply on a
+  // withdrawn ticket must NOT silently revive it; the message is still captured
+  // as a TicketReply for the record, but the ticket stays terminal.
   // Capture previousStatus before the update — the in-memory object may be
   // mutated by the ORM layer before writeAudit reads t.status.
   const previousStatus = t.status;
@@ -632,7 +731,7 @@ export async function ingestInboundEmail(
           inReplyTo: refChain.at(-1) ?? null,
           references: refChain,
         });
-        emailService
+        detach(emailService
           .sendEmail({
             to: assignee.email,
             subject: buildTicketSubject(t.id, `[Нов отговор от заявител] ${t.subject}`),
@@ -645,8 +744,7 @@ export async function ingestInboundEmail(
 </table>
 <p style="color:#999;font-size:12px;">Ticket ID: ${t.id}</p>`,
             text: `Здравей, ${assignee.firstName || assignee.email},\n\nЗаявителят отговори на заявка, назначена на вас.\n\nОт: ${fromEmail}\nТема: ${t.subject}\n\nTicket ID: ${t.id}`,
-          })
-          .catch((err) => logger.error('[ticketInbound] failed to notify assignee of inbound reply:', err));
+          }), (err) => logger.error('[ticketInbound] failed to notify assignee of inbound reply:', err));
       }
     } catch (err) {
       logger.error('[ticketInbound] failed to look up assignee for inbound reply notification:', err);
@@ -654,7 +752,7 @@ export async function ingestInboundEmail(
   } else {
     // No assignee (or self-assigned) — alert ops so the reply isn't silently
     // missed. Mirrors the unassigned-reply fallback in adminHelp.routes.ts.
-    notificationService
+    detach(notificationService
       .notifyAdminOps({
         opsType: `help_ticket_inbound_unassigned_${t.id}`,
         title: 'Нов имейл отговор на заявка без отговорник',
@@ -664,8 +762,7 @@ export async function ingestInboundEmail(
           { label: 'От', value: fromEmail },
           { label: 'Ticket ID', value: t.id },
         ],
-      })
-      .catch(() => {});
+      }), () => {});
   }
 
   return { ticketId: t.id, replyId: reply.id, created: false };

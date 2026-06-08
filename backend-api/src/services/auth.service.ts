@@ -8,7 +8,7 @@ import { AppError } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
 import { cardService } from './card.service';
 import { walletService } from './wallet.service';
-import { PartnerStatus, Prisma, UserStatus } from '@prisma/client';
+import { PartnerRequestStatus, PartnerStatus, Prisma, UserStatus } from '@prisma/client';
 import { emailService } from './email.service';
 import { notificationService } from './notification.service';
 import { SECURITY_CONFIG } from '../config/security.config';
@@ -16,6 +16,7 @@ import { resolveUserPermissions } from './permission.service';
 import { writeAudit } from '../middleware/audit.middleware';
 import { findInvalidCategoryEntry } from '../constants/categoryRegistry';
 import { parseVenueCountBucket } from './partnerVenueCountBucket.helper';
+import { detach, detachImmediate } from '../utils/detach';
 
 // Translate a Prisma P2002 (unique violation) on the (email, role) index
 // into a user-facing 409. Two concurrent register POSTs with the same
@@ -31,6 +32,17 @@ function isEmailRoleUniqueViolation(err: unknown): boolean {
       ? [target]
       : [];
   return fields.includes('email') || fields.includes('User_email_role_key');
+}
+
+// Map the raw Partner status enum to the canonical TITLE-CASE values the
+// frontend PartnerStatusRoute gate and spec §1.1 use. Kept consistent with
+// partners.routes.toCanonicalPartnerStatus: ACTIVE → Active; ARCHIVED and
+// REJECTED (closed/terminated states) → Archived; all other internal sub-states
+// (PAUSED / SUSPENDED / PENDING / INACTIVE / …) → Inactive (read-only).
+function mapPartnerCanonicalStatus(status: string): 'Active' | 'Inactive' | 'Archived' {
+  if (status === 'ACTIVE') return 'Active';
+  if (status === 'ARCHIVED' || status === 'REJECTED') return 'Archived';
+  return 'Inactive';
 }
 
 const TERMS_VERSION = process.env.TERMS_VERSION || '2026-02-24';
@@ -84,8 +96,26 @@ export interface BusinessInfo {
   website?: string;
   city?: string;
   address?: string;
+  /**
+   * BC-PARTNER-FU1 — primary venue geolocation collected on RegisterPartnerPage
+   * (map pin / address geocode). REQUIRED for partner self-registration so the
+   * venue created for the applicant is redeemable (offer redemption fails closed
+   * without coords). Must be finite, lat∈[-90,90], lng∈[-180,180].
+   */
+  latitude?: number;
+  longitude?: number;
   /** Spec §5.1 v1.1 — declared venue count bucket: "1" | "2-5" | "6-10" | "11+" */
   requestObjectCount?: string;
+  /** Spec §2.3 — Ниво на участие: "basic" | "active" | "growth" (required for partners). */
+  participationLevel?: string;
+  /** Spec §2.3 — free-text additional notes (optional). */
+  additionalInfo?: string;
+  /**
+   * Spec §2.3 — partner opt-in for marketing communications. Single general
+   * consent collected on RegisterPartnerPage; persisted to User.marketingConsent
+   * (+ marketingConsentAt). Optional/undefined defaults to no consent.
+   */
+  marketingConsent?: boolean;
 }
 
 // Spec §5.1 v1.1 — whitelist of allowed venue-count buckets. Must stay in sync
@@ -100,6 +130,8 @@ export interface RegisterInput {
   lastName?: string;
   phone: string;
   acceptTerms?: boolean;
+  /** Spec §2.3 — separate required Privacy Policy consent for partner applications. */
+  acceptPrivacy?: boolean;
   accountType?: 'user' | 'partner';
   businessInfo?: BusinessInfo;
 }
@@ -177,11 +209,25 @@ export class AuthService {
    * because login disambiguation would become a coin-flip.
    */
   static async register(input: RegisterInput) {
-    const { email, password, firstName, lastName, phone, acceptTerms, accountType, businessInfo } = input;
+    const { email, password, firstName, lastName, phone, acceptTerms, acceptPrivacy, accountType, businessInfo } = input;
     const isPartner = accountType === 'partner';
 
     if (isPartner && !businessInfo) {
       throw new AppError('businessInfo is required for partner accounts', 400);
+    }
+
+    // Spec §2.3 — partner applications carry two separate required consents
+    // (Terms + Privacy Policy) and a required participation level. The
+    // auth.validator layer already enforces these for the HTTP path; re-check
+    // here so the service stays safe for any non-HTTP caller.
+    if (isPartner) {
+      if (acceptPrivacy !== true) {
+        throw new AppError('You must accept the Privacy Policy to register as a partner', 400);
+      }
+      const level = businessInfo?.participationLevel;
+      if (!level || !['basic', 'active', 'growth'].includes(level)) {
+        throw new AppError('participationLevel must be one of: basic, active, growth', 400);
+      }
     }
 
     // Spec §5.1 v1.1 — if requestObjectCount is provided, it must be one of the
@@ -199,6 +245,37 @@ export class AuthService {
         `requestObjectCount must be one of: ${ALLOWED_REQUEST_OBJECT_COUNTS.join(', ')}`,
         400,
       );
+    }
+
+    // BC-PARTNER-FU1 — partner self-registration creates the applicant's primary
+    // venue below, and EVERY venue-creation path must enforce valid geolocation
+    // (offer redemption fails closed without coords). Validate here (same rules
+    // as POST /api/partners and POST /api/venues) so invalid/missing coords are
+    // rejected with a clear 400 BEFORE any DB write — never silently discarded.
+    let venueLat = 0;
+    let venueLng = 0;
+    if (isPartner) {
+      const info = businessInfo!;
+      const latNum = Number(info.latitude);
+      const lngNum = Number(info.longitude);
+      if (
+        info.latitude == null || info.longitude == null ||
+        !Number.isFinite(latNum) || !Number.isFinite(lngNum) ||
+        latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180
+      ) {
+        throw new AppError(
+          'Venue geolocation is required: provide a valid latitude (-90..90) and longitude (-180..180).',
+          400,
+        );
+      }
+      // A venue also requires a non-empty address + city (Venue.address/city are
+      // non-null). The applicant form collects both; enforce so we never attempt
+      // a venue.create that the DB would reject.
+      if (!info.address?.trim() || !info.city?.trim()) {
+        throw new AppError('Business address and city are required to create your venue.', 400);
+      }
+      venueLat = latNum;
+      venueLng = lngNum;
     }
 
     const targetRole: 'USER' | 'PARTNER' = isPartner ? 'PARTNER' : 'USER';
@@ -230,14 +307,23 @@ export class AuthService {
       ? await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12)
       : await bcrypt.hash(password!, 12);
 
-    // Record consent timestamps when terms are accepted
-    const consentData = acceptTerms
-      ? {
-          termsAcceptedAt: new Date(),
-          privacyAcceptedAt: new Date(),
-          termsVersion: TERMS_VERSION,
-        }
-      : {};
+    // Record consent timestamps. Terms and Privacy are two INDEPENDENT consents
+    // (spec §2.3): a partner may accept Privacy without accepting Terms in the
+    // same request, so each timestamp is gated on its own flag rather than both
+    // being driven by acceptTerms. termsVersion is stamped only alongside an
+    // actual terms acceptance.
+    const consentData: {
+      termsAcceptedAt?: Date;
+      privacyAcceptedAt?: Date;
+      termsVersion?: string;
+    } = {};
+    if (acceptTerms) {
+      consentData.termsAcceptedAt = new Date();
+      consentData.termsVersion = TERMS_VERSION;
+    }
+    if (acceptPrivacy) {
+      consentData.privacyAcceptedAt = new Date();
+    }
 
     const userSelect = {
       id: true,
@@ -270,6 +356,12 @@ export class AuthService {
               emailVerificationToken: crypto.randomBytes(32).toString('hex'),
               emailVerificationExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000),
               ...consentData,
+              // Spec §2.3 — persist the partner's marketing opt-in collected on
+              // RegisterPartnerPage (businessInfo.marketingConsent). Was previously
+              // dropped silently. Stamp marketingConsentAt only when opted in.
+              ...(info.marketingConsent === true
+                ? { marketingConsent: true, marketingConsentAt: new Date() }
+                : {}),
             },
             select: { ...userSelect, emailVerificationToken: true },
           });
@@ -299,6 +391,13 @@ export class AuthService {
               category: primaryCategory,
               categories: categoriesList,
               status: PartnerStatus.PENDING,
+              // Spec §2.4 — self-registered applications must enter the same
+              // request-pipeline as admin-created ones (adminPartners.routes
+              // initialises requestStatus=NEW for PENDING partners). Without this
+              // the row has requestStatus=null and the 24h internal-SLA escalation
+              // query (scheduler escalateOverduePartnerSla, filters `not: null`)
+              // silently skips it. NEW is the canonical pipeline entry state.
+              requestStatus: PartnerRequestStatus.NEW,
               email: normalizedEmail,
               phone: sanitizedPhone,
               website: info.website?.trim() || null,
@@ -306,6 +405,29 @@ export class AuthService {
               address: info.address?.trim() || null,
               // Spec §5.1 v1.1 — declared number of venues at application time.
               requestObjectCount: parseVenueCountBucket(info.requestObjectCount),
+              // Spec §2.3 — partner-application fields collected on RegisterPartnerPage.
+              participationLevel: info.participationLevel?.trim() || null,
+              acceptPrivacy: acceptPrivacy === true,
+              additionalInfo: info.additionalInfo?.trim() || null,
+            },
+            select: { id: true },
+          });
+
+          // BC-PARTNER-FU1 — create the applicant's primary venue in the SAME
+          // transaction with the validated coordinates collected on the register
+          // form. Previously the FE-submitted latitude/longitude were silently
+          // discarded and no venue existed for self-registered partners, leaving
+          // offer redemption (which requires geo) impossible. Coords were already
+          // validated above (present, finite, in-range) before any DB write.
+          await tx.venue.create({
+            data: {
+              partnerId: partner.id,
+              name: info.businessName.trim(),
+              address: info.address!.trim(),
+              city: info.city!.trim(),
+              phone: sanitizedPhone,
+              latitude: venueLat,
+              longitude: venueLng,
             },
             select: { id: true },
           });
@@ -325,52 +447,58 @@ export class AuthService {
       // Fire-and-forget emails — don't block the response on delivery
       const apiBase = process.env.API_URL || 'https://boomcard-api.fly.dev';
       const verificationUrl = `${apiBase}/api/auth/verify-email?token=${user.emailVerificationToken}`;
-      emailService.sendPartnerEmailVerification(user.email, {
+      detach(emailService.sendPartnerEmailVerification(user.email, {
         firstName: user.firstName || user.email.split('@')[0],
         businessName: info.businessName.trim(),
         verificationUrl,
-      }).catch((err) => logger.error('Failed to send partner email verification:', err));
+      }), (err) => logger.error('Failed to send partner email verification:', err));
 
       // Spec §5.1 v1.1 — "до 2 работни дни" external promise email. Sent in
       // addition to the email-verification message above so the applicant
       // has the SLA copy as a standalone, on-record reply.
-      emailService.sendPartnerApplicationAck(user.email, {
+      detach(emailService.sendPartnerApplicationAck(user.email, {
         firstName: user.firstName || user.email.split('@')[0],
         businessName: info.businessName.trim(),
-      }).catch((err) => logger.error('Failed to send partner application ack:', err));
+      }), (err) => logger.error('Failed to send partner application ack:', err));
 
-      emailService.sendPartnerApplicationAdminNotification({
+      detach(emailService.sendPartnerApplicationAdminNotification({
         applicantName: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
         applicantEmail: user.email,
         businessName: info.businessName.trim(),
         businessCategory: info.businessCategory.trim(),
         partnerId: result.partnerId,
-      }).catch((err) => logger.error('Failed to send admin application notification:', err));
+      }), (err) => logger.error('Failed to send admin application notification:', err));
 
       // Fan out to the unified admin-ops channel (in-app + email on critical) in
       // addition to the legacy email above. Both can coexist; the ops channel is
       // what admins filter in the dashboard bell.
-      notificationService.notifyAdminPartnerSignup({
+      detach(notificationService.notifyAdminPartnerSignup({
         partnerId: result.partnerId,
         businessName: info.businessName.trim(),
         email: user.email,
         category: info.businessCategory.trim(),
-      }).catch((err) => logger.error('Failed to post admin-ops partner signup:', err));
+      }), (err) => logger.error('Failed to post admin-ops partner signup:', err));
 
       // Welcome notification for the partner themselves — they see it the first
       // time they log in after email verification. Safe to fire here: the user
       // row exists and the partner is in PENDING status awaiting admin review.
-      notificationService.notifyPartnerWelcome({
+      detach(notificationService.notifyPartnerWelcome({
         partnerUserId: user.id,
         businessName: info.businessName.trim(),
         isBulkImport: false,
-      }).catch((err) => logger.error('Failed to send partner welcome:', err));
+      }), (err) => logger.error('Failed to send partner welcome:', err));
 
       // Do NOT issue tokens. Partner accounts are PENDING_VERIFICATION and the
       // dashboard has no useful state for them yet (GET /partners/:id filters on
       // status=ACTIVE). Auto-logging them in sends them to a broken dashboard.
       // The frontend should redirect to a "pending review" screen.
-      return { user, pendingVerification: true as const };
+      //
+      // SECURITY: emailVerificationToken was selected internally only to build
+      // the verification URL above. Strip it from the response so the raw token
+      // never leaks to the API caller (it would let anyone verify the email
+      // without access to the inbox).
+      const { emailVerificationToken: _evt, ...safeUser } = user;
+      return { user: safeUser, pendingVerification: true as const };
     }
 
     // Regular customer registration
@@ -416,6 +544,13 @@ export class AuthService {
     // It must be sent after payment, from the complete-profile route (POST /api/auth/complete-profile).
     // Sending it at registration would reach users who have not yet paid.
 
+    // F-005 ARCHITECTURAL NOTICE (BC-USER-SPEC-GAP-001 F-005):
+    // JWT issued at registration before subscription per implementation design.
+    // Spec §2 requires subscription/payment to precede operational access.
+    // This is tracked at BC-USER-SPEC-FIX-001 F-005 and requires a full flow redesign
+    // before it can be safely changed. For now the token is issued immediately to support
+    // the existing onboarding flow. Operational access gates (payout, scanning) are
+    // enforced at the subscription check level on each individual endpoint.
     const tokens = await this.generateTokens(user);
     return { user, ...tokens };
   }
@@ -444,7 +579,12 @@ export class AuthService {
     // Audit-pass [4.1]: fire-and-forget the mail work. Doing findMany +
     // per-user mint + sendEmail synchronously made response time scale with
     // "N real matches", a timing oracle for account enumeration.
-    setImmediate(async () => {
+    // detachImmediate runs this body on a real macrotask (identical to the
+    // prior bare setImmediate) but registers the resulting promise so the test
+    // harness can deterministically await it. The body's own try/catch swallows
+    // every error, so the onError below is an unreachable safety net and the
+    // production scheduling/behaviour is unchanged.
+    detachImmediate(async () => {
       try {
         const matches = await prisma.user.findMany({
           where: { email: normalized },
@@ -458,13 +598,13 @@ export class AuthService {
             await prisma.linkResendLog.create({
               data: { linkType: 'EMAIL_VERIFICATION', subjectId: u.id, actorId: null },
             }).catch((err: unknown) => logger.error(`[requestEmailVerificationByEmail] linkResendLog failed for ${u.id}:`, err));
-            writeAudit({
+            detach(writeAudit({
               actorUserId: null,
               action: 'auth.email-verification.request',
               objectType: 'user',
               objectId: u.id,
               after: { selfService: true, publicEndpoint: true },
-            }).catch((err: unknown) => logger.error(`[requestEmailVerificationByEmail] writeAudit failed for ${u.id}:`, err));
+            }), (err: unknown) => logger.error(`[requestEmailVerificationByEmail] writeAudit failed for ${u.id}:`, err));
           } catch (err) {
             logger.error(`[auth.requestEmailVerificationByEmail] failed for ${u.id}:`, err);
           }
@@ -472,7 +612,7 @@ export class AuthService {
       } catch (err) {
         logger.error(`[auth.requestEmailVerificationByEmail] async work failed:`, err);
       }
-    });
+    }, (err) => logger.error('[auth.requestEmailVerificationByEmail] detached body failed:', err));
 
     return { ok: true };
   }
@@ -544,20 +684,19 @@ export class AuthService {
     });
     if (!user) throw new AppError('User not found', 404);
     if (user.emailVerified) return { alreadyVerified: true };
-    this.issueAndSendVerification(user).catch((err) =>
-      logger.error('Failed to resend email verification:', err),
-    );
+    detach(this.issueAndSendVerification(user), (err) =>
+      logger.error('Failed to resend email verification:', err));
     // Spec §10.4 — log self-service email verification resends to LinkResendLog and AuditLog.
-    prisma.linkResendLog.create({
+    detach(prisma.linkResendLog.create({
       data: { linkType: 'EMAIL_VERIFICATION', subjectId: userId, actorId: userId },
-    }).catch((err: unknown) => logger.error('[resendEmailVerification] linkResendLog.create failed', err));
-    writeAudit({
+    }), (err: unknown) => logger.error('[resendEmailVerification] linkResendLog.create failed', err));
+    detach(writeAudit({
       actorUserId: userId,
       action: 'auth.email-verification.resend',
       objectType: 'user',
       objectId: userId,
       after: { selfService: true },
-    }).catch((err: unknown) => logger.error('[resendEmailVerification] writeAudit failed', err));
+    }), (err: unknown) => logger.error('[resendEmailVerification] writeAudit failed', err));
     return { alreadyVerified: false };
   }
 
@@ -618,6 +757,7 @@ export class AuthService {
         emailVerified: true,
         totpSecret: true,
         totpEnabledAt: true,
+        totpRecoveryCodes: true,
         mustChangePassword: true,
       },
       // Stable ordering so password-disambiguation picks the same row
@@ -637,9 +777,9 @@ export class AuthService {
     }
 
     if (matches.length === 0) {
-      prisma.loginHistory.createMany({
+      detach(prisma.loginHistory.createMany({
         data: candidates.map((c) => ({ userId: c.id, ip, userAgent, success: false, failReason: 'bad_password' })),
-      }).catch((err) => logger.error('loginHistory.createMany failed', { err }));
+      }), (err) => logger.error('loginHistory.createMany failed', { err }));
       throw new AppError('Invalid email or password', 401);
     }
 
@@ -660,10 +800,10 @@ export class AuthService {
     // NOTE: `INACTIVE` maps to spec §1.5 "Inactive admin" (login allowed, read-only).
     // `SUSPENDED` maps to spec §1.5 "Archived admin" (no login). `ARCHIVED` is the
     // dedicated enum value added in schema migration BC-SCHEMA-1.
-    if (user.status === 'SUSPENDED' || user.status === 'ARCHIVED') {
+    if ((user.status as string) === 'SUSPENDED' || user.status === 'ARCHIVED') {
       const failReason = user.status === 'ARCHIVED' ? 'archived' : 'suspended';
       const message = user.status === 'ARCHIVED' ? 'Account has been archived' : 'Account has been suspended';
-      prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason } }).catch((err) => logger.error('loginHistory.create failed', { err }));
+      detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason } }), (err) => logger.error('loginHistory.create failed', { err }));
       throw new AppError(message, 403);
     }
 
@@ -671,13 +811,19 @@ export class AuthService {
     // in the login response so the frontend can show a warning banner.
     let partnerRestriction: 'SUSPENDED' | null = null;
 
+    // Canonical partner status (Active|Inactive|Archived) for the login response.
+    // /auth/me exposes this via getUserById; surfacing it here too means the FE
+    // PartnerStatusRoute gate has a defined status immediately after login instead
+    // of undefined until the next /auth/me. Same mapping as getUserById.
+    let partnerAccountStatus: 'Active' | 'Inactive' | 'Archived' | undefined;
+
     if (user.role === 'PARTNER') {
       if (!user.emailVerified) {
-        prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'email_unverified' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
+        detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'email_unverified' } }), (err) => logger.error('loginHistory.create failed', { err }));
         throw new AppError('Please verify your email address before logging in. Check your inbox for the verification link.', 403);
       }
       if (user.status === 'PENDING_VERIFICATION') {
-        prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'pending_verification' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
+        detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'pending_verification' } }), (err) => logger.error('loginHistory.create failed', { err }));
         throw new AppError('Your partner application is under review. You will be notified by email once approved.', 403);
       }
 
@@ -701,21 +847,27 @@ export class AuthService {
         where: { userId: user.id },
         select: { status: true, verifiedAt: true },
       });
+      // Compute canonical status for the login payload. Statuses that throw below
+      // (ARCHIVED/REJECTED/awaiting-activation) never reach the return, so this is
+      // only meaningfully read for ACTIVE / INACTIVE / SUSPENDED / PAUSED partners.
+      if (partner) {
+        partnerAccountStatus = mapPartnerCanonicalStatus(partner.status);
+      }
       // Block login for any partner who has never activated (regardless of status).
       // ARCHIVED and REJECTED are excluded from the verifiedAt-null path because
       // they have explicit blocks below, but in practice verifiedAt is always null
       // for pre-activation records of those statuses too.
       const BLOCKED_WITHOUT_VERIFIED_AT = new Set(['ACTIVE', 'INACTIVE', 'SUSPENDED', 'PAUSED', 'PENDING']);
       if (partner && !partner.verifiedAt && BLOCKED_WITHOUT_VERIFIED_AT.has(partner.status)) {
-        prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'awaiting_activation' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
+        detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'awaiting_activation' } }), (err) => logger.error('loginHistory.create failed', { err }));
         throw new AppError('Вашият партньорски акаунт очаква активиране. Моля проверете имейла си за активационен линк.', 403);
       }
       if (partner?.status === 'ARCHIVED') {
-        prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'partner_archived' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
+        detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'partner_archived' } }), (err) => logger.error('loginHistory.create failed', { err }));
         throw new AppError('Вашият партньорски акаунт е архивиран и достъпът е прекратен.', 403);
       }
       if (partner?.status === 'REJECTED') {
-        prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'partner_rejected' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
+        detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'partner_rejected' } }), (err) => logger.error('loginHistory.create failed', { err }));
         throw new AppError('Вашата кандидатура за партньорство е отказана.', 403);
       }
       // SUSPENDED/PAUSED with verifiedAt set: login allowed with restriction.
@@ -737,22 +889,74 @@ export class AuthService {
     // password so role/existence can't be enumerated from error shape.
     if (clientType === 'mobile' && user.role !== 'USER') {
       logger.warn(`Mobile login rejected for non-USER role: ${user.email} (role=${user.role})`);
-      prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'role_mismatch' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
+      detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'role_mismatch' } }), (err) => logger.error('loginHistory.create failed', { err }));
       throw new AppError('Invalid email or password', 401);
     }
 
     // TOTP enforcement — only admins/partners can have 2FA enabled, but the
     // check is intentionally unconditional on role so it works if we ever
     // extend 2FA to other roles without touching this path.
+    let recoveryCodeLogin = false;
     if (user.totpEnabledAt) {
       if (!totpCode) {
-        prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'totp_required' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
-        throw new AppError('Two-factor authentication required', 403);
+        detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'totp_required' } }), (err) => logger.error('loginHistory.create failed', { err }));
+        throw new AppError('Two-factor authentication required', 403, { code: 'TWO_FACTOR_REQUIRED' });
       }
-      const result = otplib.verifySync({ token: totpCode, secret: user.totpSecret! });
-      if (!result.valid) {
-        prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'totp_invalid' } }).catch((err) => logger.error('loginHistory.create failed', { err }));
-        throw new AppError('Invalid two-factor authentication code', 401);
+      // The same `totpCode` field accepts EITHER a 6-digit TOTP code OR a one-time
+      // backup recovery code. We cannot reliably route on shape (the recovery-code
+      // alphabet can produce all-digit codes too), so we always try TOTP first (the
+      // common path) and only fall back to recovery-code verification when TOTP fails.
+      // A valid recovery code is CONSUMED (its hash is removed) so it can never be reused.
+      // Only attempt TOTP verification for a plausibly-TOTP-shaped input. In this
+      // otplib version verifySync THROWS a TokenLengthError on a non-6-digit token,
+      // so passing an 11-char recovery code straight in would crash (500) instead of
+      // falling through to the recovery-code path below. Gating on /^\d{6}$/ both
+      // avoids relying on exceptions for control flow and skips a needless crypto op
+      // for obvious recovery codes, while a wrong 6-digit TOTP still yields valid:false.
+      const totpValid = /^\d{6}$/.test(totpCode) && otplib.verifySync({ token: totpCode, secret: user.totpSecret! }).valid;
+      if (!totpValid) {
+        // Normalise the same way the codes were hashed at generation time:
+        // uppercase, strip any non-alphanumerics (e.g. the display dash).
+        const candidate = totpCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        let matchedRecoveryHash: string | null = null;
+        for (const hash of user.totpRecoveryCodes) {
+          if (await bcrypt.compare(candidate, hash)) {
+            matchedRecoveryHash = hash;
+            break;
+          }
+        }
+        if (!matchedRecoveryHash) {
+          detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'totp_invalid' } }), (err) => logger.error('loginHistory.create failed', { err }));
+          throw new AppError('Invalid two-factor authentication code', 401);
+        }
+        // Consume the used recovery code ATOMICALLY with a RELATIVE, in-place array
+        // element removal performed by Postgres on the LIVE row value — not a full-array
+        // `set:` from a stale in-memory snapshot. `array_remove` strips exactly this one
+        // hash from whatever the row currently holds, so a concurrent consume of a
+        // DIFFERENT code cannot be silently restored: each consumer only ever removes its
+        // own element, never overwrites the array. The `= ANY(...)` guard makes the write
+        // a no-op (affected rows = 0) once another request has already consumed THIS code,
+        // enforcing strict single-use. (Table `User` / column `totpRecoveryCodes` are
+        // unmapped PascalCase Prisma identifiers, hence the double quotes.)
+        const consumedCount = await prisma.$executeRaw`
+          UPDATE "User"
+             SET "totpRecoveryCodes" = array_remove("totpRecoveryCodes", ${matchedRecoveryHash})
+           WHERE id = ${user.id}
+             AND ${matchedRecoveryHash} = ANY("totpRecoveryCodes")
+        `;
+        const remaining = user.totpRecoveryCodes.filter((h) => h !== matchedRecoveryHash);
+        if (consumedCount === 0) {
+          // A concurrent request already consumed this exact code → not a valid
+          // single-use login. Treat it like any other invalid 2FA attempt.
+          detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'totp_invalid' } }), (err) => logger.error('loginHistory.create failed', { err }));
+          throw new AppError('Invalid two-factor authentication code', 401);
+        }
+        // Distinct login-history marker so a recovery-code login is auditable
+        // separately from a normal TOTP login. This is the SINGLE success row for
+        // this login — the generic success row below is skipped via this flag.
+        recoveryCodeLogin = true;
+        detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: true, failReason: 'totp_recovery_code_used' } }), (err) => logger.error('loginHistory.create failed', { err }));
+        logger.warn(`2FA recovery code used for login: ${user.email} (${remaining.length} codes remaining)`);
       }
     }
 
@@ -762,7 +966,11 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
-    prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: true } }).catch((err) => logger.error('loginHistory.create failed', { err }));
+    // For a recovery-code login the distinct success row above is the one and only
+    // success record — don't double-write a generic success row.
+    if (!recoveryCodeLogin) {
+      detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: true } }), (err) => logger.error('loginHistory.create failed', { err }));
+    }
     logger.info(`User logged in: ${user.email}`);
 
     // Compute the sibling-account group eligible for switching on this
@@ -790,12 +998,16 @@ export class AuthService {
 
     // Normalize and strip fields that must not reach the client.
     // totpEnabledAt / totpSecret are internal; expose only the boolean.
-    const { passwordHash, totpEnabledAt, totpSecret, ...userWithoutPassword } = user;
+    const { passwordHash, totpEnabledAt, totpSecret, totpRecoveryCodes, ...userWithoutPassword } = user;
 
     return {
       user: {
         ...userWithoutPassword,
         twoFactorEnabled: totpEnabledAt !== null,
+        // Surface canonical partner status (Active|Inactive|Archived) for PARTNER
+        // accounts so the FE gate has a defined value right after login, matching
+        // the shape /auth/me (getUserById) returns.
+        ...(partnerAccountStatus ? { partner_account_status: partnerAccountStatus } : {}),
       },
       ...tokens,
       ...(switchableAccounts ? { switchableAccounts } : {}),
@@ -842,7 +1054,7 @@ export class AuthService {
       }
 
       // Check if user is active
-      if (storedToken.user.status === 'SUSPENDED' || storedToken.user.status === 'ARCHIVED') {
+      if ((storedToken.user.status as string) === 'SUSPENDED' || storedToken.user.status === 'ARCHIVED') {
         await prisma.refreshToken.delete({ where: { id: storedToken.id } });
         throw new AppError(storedToken.user.status === 'ARCHIVED' ? 'Account has been archived' : 'Account has been suspended', 403);
       }
@@ -952,6 +1164,12 @@ export class AuthService {
             cashbackBalance: true,
           },
         },
+        // FIX #4 / spec §1.1 — surface the Partner row status so the frontend
+        // PartnerStatusRoute gate (Active / Inactive / Archived) can fire. Only
+        // populated for PARTNER accounts; null otherwise.
+        partner: {
+          select: { status: true },
+        },
       },
     });
 
@@ -959,10 +1177,23 @@ export class AuthService {
       throw new AppError('User not found', 404);
     }
 
-    const { totpEnabledAt, ...rest } = user;
+    const { totpEnabledAt, partner, ...rest } = user;
+
+    // FIX #4 — map the raw PartnerStatus enum to the canonical TITLE-CASE values
+    // PartnerStatusRoute.tsx and spec §1.1 use. Mapping is kept consistent with
+    // partners.routes.toCanonicalPartnerStatus: ACTIVE → Active; ARCHIVED and
+    // REJECTED → Archived (both are closed/terminated states); everything else
+    // (PAUSED / SUSPENDED / PENDING / INACTIVE / …) collapses to 'Inactive' so the
+    // gate treats it as non-operational.
+    let partner_account_status: 'Active' | 'Inactive' | 'Archived' | undefined;
+    if (rest.role === 'PARTNER' && partner) {
+      partner_account_status = mapPartnerCanonicalStatus(partner.status);
+    }
+
     return {
       ...rest,
       twoFactorEnabled: totpEnabledAt !== null,
+      ...(partner_account_status ? { partner_account_status } : {}),
     };
   }
 
@@ -1073,11 +1304,32 @@ export class AuthService {
       throw new AppError('Incorrect password', 401);
     }
 
-    const updated = await prisma.user.update({
-      where: { id: userId },
-      data: { email: user.pendingEmail, pendingEmail: null, pendingEmailToken: null, pendingEmailExpiry: null },
-      select: { id: true, email: true, firstName: true, lastName: true, phone: true, city: true, country: true, avatar: true, role: true, status: true },
+    // Spec §13.5 step 4 — re-check the new email for uniqueness at confirm time.
+    // requestEmailChange validated this, but another account could have claimed the
+    // address in the interval. Explicit pre-check inside the confirm step, plus a
+    // P2002 catch on the update as a backstop for the residual race window.
+    const collision = await prisma.user.findFirst({
+      where: { email: user.pendingEmail, deletedAt: null, NOT: { id: userId } },
+      select: { id: true },
     });
+    if (collision) {
+      throw new AppError('Email already in use', 409);
+    }
+
+    let updated;
+    try {
+      updated = await prisma.user.update({
+        where: { id: userId },
+        data: { email: user.pendingEmail, pendingEmail: null, pendingEmailToken: null, pendingEmailExpiry: null },
+        select: { id: true, email: true, firstName: true, lastName: true, phone: true, city: true, country: true, avatar: true, role: true, status: true },
+      });
+    } catch (err) {
+      // Backstop for the race between the pre-check above and the write.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new AppError('Email already in use', 409);
+      }
+      throw err;
+    }
 
     logger.info(`Email changed for user ${userId} → ${updated.email}`);
     return updated;
@@ -1179,7 +1431,7 @@ export class AuthService {
 
   /**
    * Delete user account (GDPR Art. 17 - Right to Erasure)
-   * Soft-delete: anonymize PII, set status INACTIVE, cancel subscriptions
+   * Soft-delete: anonymize PII, set status DELETED, cancel subscriptions
    */
   static async deleteAccount(userId: string, password: string) {
     const user = await prisma.user.findUnique({
@@ -1313,25 +1565,79 @@ export class AuthService {
   static async exportUserData(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        loyaltyAccount: {
-          include: {
-            transactions: true,
-            rewards: true,
-            badges: { include: { badge: true } },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        iban: true,
+        address: true,
+        createdAt: true,
+        updatedAt: true,
+        status: true,
+        emailVerified: true,
+        preferredLanguage: true,
+        marketingConsent: true,
+        marketingConsentEmail: true,
+        marketingConsentPhone: true,
+        marketingConsentAt: true,
+        marketingConsentEmailAt: true,
+        marketingConsentPhoneAt: true,
+        termsAcceptedAt: true,
+        termsVersion: true,
+        privacyAcceptedAt: true,
+        subscriptions: {
+          select: {
+            id: true,
+            plan: true,
+            status: true,
+            createdAt: true,
+            currentPeriodEnd: true,
           },
         },
-        transactions: true,
-        receipts: true,
-        subscriptions: true,
-        wallet: { include: { transactions: true } },
-        cards: true,
-        stickerScans: true,
-        reviews: true,
+        receipts: {
+          select: {
+            id: true,
+            createdAt: true,
+            status: true,
+            totalAmount: true,
+          },
+        },
+        stickerScans: {
+          select: {
+            id: true,
+            createdAt: true,
+          },
+        },
+        reviews: {
+          select: {
+            id: true,
+            rating: true,
+            comment: true,
+            createdAt: true,
+          },
+        },
         bookings: true,
         favorites: true,
-        notifications: true,
+        notifications: {
+          select: {
+            id: true,
+            title: true,
+            message: true,
+            isRead: true,
+            createdAt: true,
+          },
+        },
         pushTokens: { select: { platform: true, createdAt: true } },
+        cards: {
+          select: {
+            id: true,
+            type: true,
+            cardNumber: true,
+            status: true,
+          },
+        },
       },
     });
 
@@ -1339,8 +1645,16 @@ export class AuthService {
       throw new AppError('User not found', 404);
     }
 
-    // Remove sensitive fields
-    const { passwordHash, ...userData } = user;
+    // F-003: Wallet.payoutIban is the authoritative IBAN source per spec.
+    // User.iban is a legacy field that may be out of sync. Fetch wallet IBAN
+    // separately and prefer it in the export. User.iban is included for completeness
+    // but labelled as legacy so downstream consumers know which to trust.
+    const wallet = await prisma.wallet.findUnique({
+      where: { userId },
+      select: { payoutIban: true, payoutBeneficiaryName: true },
+    }).catch(() => null);
+
+    const userData = user;
 
     const exportData = {
       exportDate: new Date().toISOString(),
@@ -1360,6 +1674,14 @@ export class AuthService {
         marketingConsentEmailAt: (user as any).marketingConsentEmailAt || null,
         marketingConsentPhone: (user as any).marketingConsentPhone || false,
         marketingConsentPhoneAt: (user as any).marketingConsentPhoneAt || null,
+      },
+      // F-003: payoutIban is the authoritative bank account (from Wallet.payoutIban).
+      // User.iban is a legacy field retained for backward compatibility but should not be
+      // used for payout operations. Always prefer Wallet.payoutIban for financial operations.
+      payoutAccount: {
+        iban: wallet?.payoutIban ?? null,            // authoritative — Wallet.payoutIban
+        beneficiaryName: wallet?.payoutBeneficiaryName ?? null,
+        legacyIban: (user as any).iban ?? null,      // legacy — User.iban (may be stale)
       },
       userData,
     };
@@ -1454,11 +1776,9 @@ export class AuthService {
     const multipleAccounts = users.length > 1;
 
     for (const user of users) {
-      // Security: do not issue OTPs for suspended accounts. Silently skip the
-      // user — the caller receives the same "check your email" response whether
-      // the account exists, doesn't exist, or is suspended. This prevents
-      // status enumeration via the password-reset flow.
-      if (user.status === 'SUSPENDED' || user.status === 'ARCHIVED') {
+      // Security: do not issue OTPs for suspended accounts. Silently skip.
+      // ARCHIVED is intentionally allowed — it is the reactivation path per spec §14.
+      if ((user.status as string) === 'SUSPENDED') {
         continue;
       }
 
@@ -1508,22 +1828,22 @@ export class AuthService {
       }
 
       // Spec §10.4 — log every password reset request to LinkResendLog + AuditLog, not
-      // just admin accounts. Alert logic below still only fires for ADMIN/SUPER_ADMIN.
+      // just admin accounts. The reset-abuse alert/suspension below applies to all roles.
       await prisma.linkResendLog.create({
         data: { linkType: 'PASSWORD_RESET', subjectId: user.id, actorId: user.id },
       }).catch((err: unknown) => logger.error('[forgotPassword] linkResendLog.create failed', err));
-      writeAudit({
+      detach(writeAudit({
         actorUserId: user.id,
         action: 'auth.password-reset.request',
         objectType: 'user',
         objectId: user.id,
         after: { selfService: true },
-      }).catch((err: unknown) => logger.error('[forgotPassword] writeAudit failed', err));
+      }), (err: unknown) => logger.error('[forgotPassword] writeAudit failed', err));
 
-      // Spec Part 9, Tier 3 — password reset rate-limit for admin accounts:
+      // Spec §19 rule 12 — password reset rate-limit for ALL accounts:
       //   Alert at 3 resets in 24h → notify all SUPER_ADMINs.
       //   Account suspension pending Super Admin review at 5 resets in 24h.
-      if (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN') {
+      {
         const ALERT_WINDOW_HOURS = 24;
         const ALERT_THRESHOLD      = 3;  // fire alert email once at exactly 3
         const SUSPENSION_THRESHOLD = 5;  // suspend account at 5
@@ -1536,7 +1856,26 @@ export class AuthService {
           },
         }).catch(() => 0);
 
-        // Spec Part 9, Tier 3 — alert at exactly 3 resets (fire once; noise suppression).
+        // Spec §19 rule 12 — fire the SA alert email ONCE, at exactly the
+        // threshold (3). L1 fix: the prior `>= ALERT_THRESHOLD` re-fired on
+        // every subsequent reset (3,4,5+), spamming Super Admins. The spec
+        // intent (and the comment on ALERT_THRESHOLD) is a single alert.
+        //
+        // L1 (round 2) — silent-gap analysis: under a rare concurrent
+        // double-increment two requests could both skip the exact boundary at
+        // 3, so this Tier-1 alert may not fire. That gap is CLOSED downstream,
+        // not here: the Tier-3 suspension path below (recentCount >= 5) fires
+        // the SAME `sendAdminPasswordResetAlert` email + an in-app
+        // notifyAdminOps to all active Super Admins UNCONDITIONALLY — it runs
+        // whether the suspension is applied or skipped by the last-SA guard.
+        // Therefore at least one Super-Admin alert is GUARANTEED before/at
+        // suspension for any account that crosses the abuse threshold, even if
+        // the exact `=== 3` edge is missed. We deliberately keep `=== 3`
+        // one-shot here (rather than a band like `=== 3 || === 4`, which would
+        // re-spam) because the suspension-path alert is the robust floor. The
+        // only behaviour the `=== 3` edge-miss changes is the *timing* of the
+        // first alert (at suspension instead of at 3), not whether an SA is
+        // alerted at all.
         if (recentCount === ALERT_THRESHOLD) {
           const superAdmins = await prisma.user.findMany({
             where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
@@ -1544,55 +1883,162 @@ export class AuthService {
           }).catch(() => [] as { email: string }[]);
 
           if (superAdmins.length > 0) {
-            emailService.sendAdminPasswordResetAlert({
+            detach(emailService.sendAdminPasswordResetAlert({
               targetEmail: user.email,
               targetName:  `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email,
               resetCount:  recentCount,
               windowHours: ALERT_WINDOW_HOURS,
               recipientEmails: superAdmins.map((a) => a.email),
-            }).catch((err: unknown) => logger.error('[forgotPassword] alert email failed', err));
+            }), (err: unknown) => logger.error('[forgotPassword] alert email failed', err));
           }
         }
 
-        // Spec Part 9, Tier 3 — suspend account at 5 resets in 24h, pending Super Admin review.
-        // Only suspend once (when count exactly hits the threshold) to avoid redundant DB writes.
+        // Spec §19 atomic rule #12 — suspend account at 5 resets in 24h, pending
+        // Super Admin review. The rule lives in the USER domain and carries no role
+        // exception, so it applies to USER / PARTNER accounts as well as ADMIN /
+        // SUPER_ADMIN (the audit H3 corrected the prior admin-only scoping).
+        // Only suspend once (when the count first reaches the threshold) to avoid
+        // redundant DB writes.
+        //
+        // NOTE: this branch is reached from the PUBLIC /auth/forgot-password
+        // endpoint. The unauthenticated-DoS surface (an attacker spamming resets to
+        // disable an account) is mitigated by the per-IP authRateLimiter in front of
+        // this route plus the Tier-1 super-admin alert fired above at >= 3, which
+        // surfaces the abuse for Super Admin review. Suspension transitions status to
+        // SUSPENDED (pending Super Admin review). M1 fix: previously this set INACTIVE,
+        // but per spec §1.1 an Inactive account still permits login — which defeats the
+        // lockout. SUSPENDED blocks login (treated as no-login, equivalent to Archived
+        // for access purposes), so it is the correct abuse-lockout status.
         if (recentCount >= SUSPENSION_THRESHOLD && user.status === 'ACTIVE') {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { status: 'SUSPENDED' },
-          }).catch((err: unknown) => logger.error('[forgotPassword] suspension update failed', err));
+          // M2 — last-active-SUPER_ADMIN guard. The manual admin status route
+          // (adminAdmins.routes.ts) refuses to deactivate the last active
+          // SUPER_ADMIN (409). This automated lockout must honour the same
+          // invariant, or an attacker spamming the sole super-admin's
+          // forgot-password could suspend the last SA and require DB
+          // intervention to recover. We mirror the manual route's exact
+          // definition of "active SUPER_ADMIN": role === SUPER_ADMIN AND
+          // status === ACTIVE, excluding this user. If suspending would leave
+          // zero, SKIP the suspension — but still fire the SA alert below so the
+          // abuse remains visible.
+          let suspensionBlockedByLastSAGuard = false;
+          if (user.role === 'SUPER_ADMIN') {
+            const activeSuperAdmins = await prisma.user.count({
+              where: { role: 'SUPER_ADMIN', status: 'ACTIVE', id: { not: user.id } },
+            }).catch(() => 0); // fail-closed: on count failure, assume NO other active SA → guard trips → suspension SKIPPED
+            if (activeSuperAdmins === 0) {
+              suspensionBlockedByLastSAGuard = true;
+            }
+          }
 
-          writeAudit({
-            actorUserId: null,
-            action: 'auth.password-reset.suspension',
-            objectType: 'user',
-            objectId: user.id,
-            after: {
-              reason: `Spec Part 9 Tier 3: ${recentCount} password resets within ${ALERT_WINDOW_HOURS}h — account suspended pending Super Admin review`,
-              resetCount: recentCount,
-              windowHours: ALERT_WINDOW_HOURS,
-            },
-          }).catch((err: unknown) => logger.error('[forgotPassword] suspension audit failed', err));
+          if (!suspensionBlockedByLastSAGuard) {
+            await prisma.user.update({
+              where: { id: user.id },
+              data: { status: 'SUSPENDED' },
+            }).catch((err: unknown) => logger.error('[forgotPassword] suspension update failed', err));
 
-          // Notify all SUPER_ADMINs about the suspension (separate from the alert email).
+            detach(writeAudit({
+              actorUserId: null,
+              action: 'auth.password-reset.suspension',
+              objectType: 'user',
+              objectId: user.id,
+              after: {
+                reason: `Spec Part 9 Tier 3: ${recentCount} password resets within ${ALERT_WINDOW_HOURS}h — account suspended pending Super Admin review`,
+                resetCount: recentCount,
+                windowHours: ALERT_WINDOW_HOURS,
+              },
+            }), (err: unknown) => logger.error('[forgotPassword] suspension audit failed', err));
+          } else {
+            // M2 — suspension skipped to preserve the last active SUPER_ADMIN.
+            // Record the skip so the abuse + the non-action are auditable.
+            detach(writeAudit({
+              actorUserId: null,
+              action: 'auth.password-reset.suspension-skipped',
+              objectType: 'user',
+              objectId: user.id,
+              after: {
+                reason: `Spec Part 9 Tier 3 suspension SKIPPED: target is the last active SUPER_ADMIN (${recentCount} password resets within ${ALERT_WINDOW_HOURS}h). Account left ACTIVE to avoid lockout; flagged for Super Admin review.`,
+                resetCount: recentCount,
+                windowHours: ALERT_WINDOW_HOURS,
+              },
+            }), (err: unknown) => logger.error('[forgotPassword] suspension-skipped audit failed', err));
+          }
+
+          // Notify all SUPER_ADMINs (separate from the alert email). This fires
+          // whether or not the suspension was applied — when skipped by the
+          // last-SA guard the abuse must still be surfaced for manual review.
           const superAdmins = await prisma.user.findMany({
             where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
-            select: { email: true },
-          }).catch(() => [] as { email: string }[]);
+            select: { email: true, id: true },
+          }).catch(() => [] as { email: string; id: string }[]);
 
-          if (superAdmins.length > 0) {
-            emailService.sendAdminPasswordResetAlert({
+          // LOW-1 — skip-path alert dedupe. When the last-SA guard SKIPS the
+          // suspension the account stays ACTIVE, so it crosses `recentCount >= 5`
+          // on EVERY subsequent forgot-password request inside the 24h window and
+          // would re-fire the SA alert email + in-app notification each time
+          // (re-introducing the alert-spam class L1's `=== 3` one-shot prevents).
+          // The actual-suspension branch is naturally one-shot (status flips to
+          // SUSPENDED, so the `user.status === 'ACTIVE'` guard above stops re-entry),
+          // so dedupe is only needed on the skip path. We use a DISTINCT opsType
+          // for the skip case and pass `cooldownHours` to notifyAdminOps (which
+          // already supports opsType-scoped cooldown — see notification.service.ts),
+          // and gate the parallel email on the same prior-notification check so the
+          // first skip alert fires but in-window repeats are suppressed for both
+          // channels consistently.
+          const SKIP_OPS_TYPE = 'account_suspension_password_reset_skipped';
+          let suppressSkipAlert = false;
+          if (suspensionBlockedByLastSAGuard) {
+            const since = new Date(Date.now() - ALERT_WINDOW_HOURS * 60 * 60 * 1000);
+            const priorSkipNotice = await prisma.notification.findFirst({
+              where: {
+                createdAt: { gte: since },
+                OR: [
+                  { data: { contains: `"opsType":"${SKIP_OPS_TYPE}",` } },
+                  { data: { contains: `"opsType":"${SKIP_OPS_TYPE}"}` } },
+                ],
+              },
+              select: { id: true },
+            }).catch(() => null);
+            suppressSkipAlert = priorSkipNotice !== null;
+          }
+
+          if (superAdmins.length > 0 && !suppressSkipAlert) {
+            detach(emailService.sendAdminPasswordResetAlert({
               targetEmail: user.email,
               targetName:  `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email,
               resetCount:  recentCount,
               windowHours: ALERT_WINDOW_HOURS,
               recipientEmails: superAdmins.map((a) => a.email),
-            }).catch((err: unknown) => logger.error('[forgotPassword] suspension alert email failed', err));
+            }), (err: unknown) => logger.error('[forgotPassword] suspension alert email failed', err));
+
+            // F-002: In-app notification to Super Admins. M2: message reflects
+            // whether the account was actually suspended or the suspension was
+            // skipped to protect the last active SUPER_ADMIN. LOW-1: skip-path
+            // uses a distinct opsType + cooldownHours so repeated skip alerts in
+            // the window are deduped (consistent with the email gate above).
+            detach(notificationService.notifyAdminOps({
+              opsType: suspensionBlockedByLastSAGuard
+                ? SKIP_OPS_TYPE
+                : 'account_suspension_password_reset',
+              ...(suspensionBlockedByLastSAGuard ? { cooldownHours: ALERT_WINDOW_HOURS } : {}),
+              title: suspensionBlockedByLastSAGuard
+                ? 'Password-reset abuse on last SUPER_ADMIN (suspension skipped)'
+                : 'Account suspended: excessive password resets',
+              message: suspensionBlockedByLastSAGuard
+                ? `Account ${user.email} hit ${recentCount} password reset requests in ${ALERT_WINDOW_HOURS}h (Spec Part 9 Tier 3) but auto-suspension was SKIPPED because it is the last active SUPER_ADMIN. Manual Super Admin review required.`
+                : `Account ${user.email} was automatically suspended after ${recentCount} password reset requests in ${ALERT_WINDOW_HOURS}h (Spec Part 9 Tier 3). Pending Super Admin review.`,
+              severity: 'warning',
+              fields: [
+                { label: 'Account', value: user.email },
+                { label: 'Reset count', value: String(recentCount) },
+                { label: 'Window', value: `${ALERT_WINDOW_HOURS}h` },
+              ],
+            }), (err: unknown) => logger.error('[forgotPassword] admin in-app suspension notification failed', err));
           }
 
           logger.warn(
-            `[forgotPassword] Admin account ${user.id} (${user.email}) suspended after ` +
-            `${recentCount} password resets in ${ALERT_WINDOW_HOURS}h — Spec Part 9 Tier 3`
+            `[forgotPassword] Account ${user.id} (${user.email}, role ${user.role}) ` +
+            `${suspensionBlockedByLastSAGuard ? 'suspension SKIPPED (last active SUPER_ADMIN)' : 'suspended'} after ` +
+            `${recentCount} password resets in ${ALERT_WINDOW_HOURS}h — Spec §19 rule #12`
           );
         }
       }
@@ -1767,7 +2213,7 @@ export class AuthService {
     const users = await prisma.user.findMany({
       where: {
         id: { in: accountIds },
-        status: { notIn: ['SUSPENDED', 'INACTIVE', 'ARCHIVED'] },
+        status: { notIn: ['INACTIVE', 'ARCHIVED'] as any },
       },
       select: {
         id: true,
@@ -1791,7 +2237,7 @@ export class AuthService {
         firstName: u.firstName,
         lastName: u.lastName,
         avatar: u.avatar,
-        businessName: u.partner?.businessName ?? null,
+        businessName: (u as any).partner?.businessName ?? null,
       }));
   }
 
@@ -1876,7 +2322,7 @@ export class AuthService {
       throw new AppError('Target account no longer exists', 404);
     }
 
-    if (target.status === 'SUSPENDED' || target.status === 'INACTIVE' || target.status === 'ARCHIVED') {
+    if ((target.status as string) === 'SUSPENDED' || target.status === 'INACTIVE' || target.status === 'ARCHIVED') {
       throw new AppError('Target account is not available', 403);
     }
 
@@ -1952,11 +2398,17 @@ export class AuthService {
   }
 
   /**
-   * Admin-initiated impersonation of a PARTNER account.
+   * Admin-initiated impersonation of a PARTNER or USER account.
+   *
+   * Role gating is derived from the *resolved* target role, never from a
+   * client-supplied hint:
+   *   - target is PARTNER -> caller must be ADMIN or SUPER_ADMIN
+   *   - target is USER    -> caller must be SUPER_ADMIN only
+   * Any other target role is refused.
    *
    * Unlike switchAccount (which uses the login-time bcrypt-match `accountGroup`
-   * to authorize sibling pivots), impersonation grants an ADMIN/SUPER_ADMIN a
-   * PARTNER session based purely on the admin's role. The returned token is
+   * to authorize sibling pivots), impersonation grants the session based purely
+   * on the admin's role. The returned token is
    * stamped with `imp:true` + `impBy:<adminId>` so downstream code can tell
    * it's an impersonation and /auth/stop-impersonate knows who to restore.
    *
@@ -1969,7 +2421,11 @@ export class AuthService {
     adminId: string;
     adminRole: string;
     adminAccountGroup?: string[];
-    targetPartnerUserId: string;
+    // Generic impersonation target — may resolve to a PARTNER or a USER.
+    // (The route accepts the legacy `targetPartnerUserId` body field and maps
+    // it to this same parameter; role gating is derived from the resolved
+    // target role below, not from which field the client sent.)
+    targetUserId: string;
     clientType: 'mobile' | 'web' | undefined;
     tokenIssuedAt?: number;
     // Admin's current refresh token. Revoked here so the pre-impersonation
@@ -1980,7 +2436,7 @@ export class AuthService {
     // switchAccount.
     currentAdminRefreshToken?: string;
   }) {
-    const { adminId, adminRole, adminAccountGroup, targetPartnerUserId, clientType, tokenIssuedAt, currentAdminRefreshToken } = input;
+    const { adminId, adminRole, adminAccountGroup, targetUserId, clientType, tokenIssuedAt, currentAdminRefreshToken } = input;
 
     if (clientType === 'mobile') {
       throw new AppError('Impersonation is not available on mobile', 403);
@@ -1988,16 +2444,16 @@ export class AuthService {
     if (adminRole !== 'ADMIN' && adminRole !== 'SUPER_ADMIN') {
       throw new AppError('Not authorized', 403);
     }
-    if (!targetPartnerUserId) {
-      throw new AppError('targetPartnerUserId is required', 400);
+    if (!targetUserId) {
+      throw new AppError('targetUserId is required', 400);
     }
-    if (targetPartnerUserId === adminId) {
+    if (targetUserId === adminId) {
       throw new AppError('Cannot impersonate yourself', 400);
     }
 
     const [target, admin] = await Promise.all([
       prisma.user.findUnique({
-        where: { id: targetPartnerUserId },
+        where: { id: targetUserId },
         select: {
           id: true,
           email: true,
@@ -2015,12 +2471,23 @@ export class AuthService {
       }),
     ]);
 
-    if (!target) throw new AppError('Target partner not found', 404);
-    if (target.role !== 'PARTNER') {
-      throw new AppError('Target is not a partner', 400);
+    if (!target) throw new AppError('Target account not found', 404);
+    // Derive the required caller role from the *resolved* target role — never
+    // from a client-supplied hint. PARTNER targets may be impersonated by any
+    // admin; USER targets are SUPER_ADMIN-only; nothing else is impersonatable.
+    if (target.role === 'PARTNER') {
+      if (adminRole !== 'ADMIN' && adminRole !== 'SUPER_ADMIN') {
+        throw new AppError('Not authorized', 403);
+      }
+    } else if (target.role === 'USER') {
+      if (adminRole !== 'SUPER_ADMIN') {
+        throw new AppError('Only a Super Admin can impersonate a user', 403);
+      }
+    } else {
+      throw new AppError('Target account cannot be impersonated', 400);
     }
     if (target.status !== 'ACTIVE') {
-      throw new AppError('Target partner is not active', 403);
+      throw new AppError('Target account is not active', 403);
     }
     if (!admin) throw new AppError('Admin account not found', 404);
     if (admin.role !== 'ADMIN' && admin.role !== 'SUPER_ADMIN') {

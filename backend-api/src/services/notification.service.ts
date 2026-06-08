@@ -4,8 +4,23 @@ import { emitNotification } from '../lib/socket';
 import { sendWebPushToUser } from '../lib/webPush';
 import { sendExpoPushToUser } from '../lib/expoPush';
 import { logger } from '../utils/logger';
+import { detach } from '../utils/detach';
 
 type NotificationSeverity = 'info' | 'warning' | 'critical';
+
+/**
+ * Minimal HTML escaper — prevents admin email content injection when
+ * partner-controlled values (businessName, category, etc.) are interpolated
+ * into the notifyAdminOps critical-severity email body.
+ */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 /**
  * Notification Service
@@ -40,13 +55,6 @@ interface NotificationParams {
   relatedEntityType?: string;
   relatedEntityId?: string;
   expiresAt?: Date;
-}
-
-interface EmailParams {
-  to: string;
-  subject: string;
-  html: string;
-  text?: string;
 }
 
 export class NotificationService {
@@ -89,9 +97,9 @@ export class NotificationService {
         data: { receiptId, type: 'receipt_approved' },
       });
 
-      console.log(`✅ Approval notification sent for receipt ${receiptId}`);
+      logger.info(`Approval notification sent for receipt ${receiptId}`);
     } catch (error) {
-      console.error('❌ Error sending approval notification:', error);
+      logger.error('Error sending approval notification:', error);
     }
   }
 
@@ -131,7 +139,7 @@ export class NotificationService {
         data: { scanId, type: 'sticker_scan_approved' },
       });
     } catch (error) {
-      console.error('❌ Error sending sticker scan approved notification:', error);
+      logger.error('Error sending sticker scan approved notification:', error);
     }
   }
 
@@ -169,9 +177,9 @@ export class NotificationService {
         data: { receiptId, type: 'receipt_rejected' },
       });
 
-      console.log(`📧 Rejection notification sent for receipt ${receiptId}`);
+      logger.info(`Rejection notification sent for receipt ${receiptId}`);
     } catch (error) {
-      console.error('❌ Error sending rejection notification:', error);
+      logger.error('Error sending rejection notification:', error);
     }
   }
 
@@ -201,9 +209,9 @@ export class NotificationService {
         priority: 'low',
       });
 
-      console.log(`🔍 Review notification sent for receipt ${receiptId}`);
+      logger.info(`Manual review notification sent for receipt ${receiptId}`);
     } catch (error) {
-      console.error('❌ Error sending review notification:', error);
+      logger.error('Error sending review notification:', error);
     }
   }
 
@@ -239,9 +247,9 @@ export class NotificationService {
         data: { amount, type: 'cashback_credited' },
       });
 
-      console.log(`💰 Cashback notification sent to user ${userId}`);
+      logger.info(`Cashback notification sent to user ${userId}`);
     } catch (error) {
-      console.error('❌ Error sending cashback notification:', error);
+      logger.error('Error sending cashback notification:', error);
     }
   }
 
@@ -268,11 +276,14 @@ export class NotificationService {
           titleBg: 'Засечен е висок риск от измама',
           message: `Receipt ${receiptId} from user ${userId} has fraud score ${fraudScore}. Reasons: ${fraudReasons.join(', ')}`,
           messageBg: `Касова бележка ${receiptId} от потребител ${userId} с риск ${fraudScore}. Причини: ${fraudReasons.join(', ')}`,
+          // r2h B5: fraudScore and fraudReasons omitted from persisted data payload.
+          // getNotifications/getUnreadNotifications return all rows for a userId with no
+          // notification-type filter, so a user with both admin and partner roles could
+          // receive fraud data via those endpoints (spec §11.3, Clash 5.1).
+          // The full detail is available in the message text above (admin-only channel).
           data: {
             receiptId,
             userId,
-            fraudScore,
-            fraudReasons,
           },
           priority: 'high',
         });
@@ -281,20 +292,20 @@ export class NotificationService {
       // Also send email to each admin
       for (const admin of admins) {
         if (admin.email) {
-          emailService.sendFraudAlertEmail(admin.email, {
+          detach(emailService.sendFraudAlertEmail(admin.email, {
             receiptId,
             userId,
             fraudScore,
             fraudReasons,
-          }).catch((err) => {
-            console.error('❌ Error sending fraud alert email:', err);
+          }), (err) => {
+            logger.error('Error sending fraud alert email:', err);
           });
         }
       }
 
-      console.log(`🚨 Fraud alert sent for receipt ${receiptId} (score: ${fraudScore})`);
+      logger.warn(`Fraud alert sent for receipt ${receiptId} (score: ${fraudScore})`);
     } catch (error) {
-      console.error('❌ Error sending fraud alert:', error);
+      logger.error('Error sending fraud alert:', error);
     }
   }
 
@@ -347,9 +358,9 @@ export class NotificationService {
         }),
       });
 
-      console.log(`📨 Daily summary sent to ${user.email}`);
+      logger.info(`Daily summary sent to ${user.email}`);
     } catch (error) {
-      console.error('❌ Error sending daily summary:', error);
+      logger.error('Error sending daily summary:', error);
     }
   }
 
@@ -391,7 +402,7 @@ export class NotificationService {
         data: { venueId, type: 'menu_approved', url: '/partners/menus' },
       });
     } catch (error) {
-      console.error('❌ Error sending menu approved notification:', error);
+      logger.error('Error sending menu approved notification:', error);
     }
   }
 
@@ -432,7 +443,7 @@ export class NotificationService {
         data: { venueId, type: 'menu_rejected', url: '/partners/menus' },
       });
     } catch (error) {
-      console.error('❌ Error sending menu rejected notification:', error);
+      logger.error('Error sending menu rejected notification:', error);
     }
   }
 
@@ -475,7 +486,7 @@ export class NotificationService {
         data: { reviewId, type: 'review_received', url: '/analytics' },
       });
     } catch (error) {
-      console.error('❌ Error sending review received notification:', error);
+      logger.error('Error sending review received notification:', error);
     }
   }
 
@@ -520,11 +531,43 @@ export class NotificationService {
             <p>— The BoomCard Team</p>
           `,
         }).catch((err) => {
-          console.error('Error sending payment-failed email:', err);
+          logger.error('Error sending payment-failed email:', err);
         });
       }
     } catch (error) {
-      console.error('Error sending payment-failed notification:', error);
+      logger.error('Error sending payment-failed notification:', error);
+    }
+  }
+
+  async notifyPaymentSuccess(params: {
+    userId: string;
+    amount: number;
+    currency?: string;
+    context: 'SUBSCRIPTION' | 'WALLET_TOPUP';
+  }): Promise<void> {
+    const { userId, amount, currency = 'BGN', context } = params;
+    try {
+      const titleEn = context === 'SUBSCRIPTION' ? 'Subscription Activated' : 'Wallet Topped Up';
+      const titleBg = context === 'SUBSCRIPTION' ? 'Абонаментът е активиран' : 'Портфейлът е зареден';
+      const messageEn = context === 'SUBSCRIPTION'
+        ? `Your subscription has been activated. Payment of ${amount.toFixed(2)} ${currency} was received.`
+        : `Your wallet has been topped up with ${amount.toFixed(2)} ${currency}.`;
+      const messageBg = context === 'SUBSCRIPTION'
+        ? `Абонаментът ви е активиран. Получено плащане от ${amount.toFixed(2).replace('.', ',')} ${currency}.`
+        : `Портфейлът ви е зареден с ${amount.toFixed(2).replace('.', ',')} ${currency}.`;
+
+      await this.createNotification({
+        userId,
+        type: 'PAYMENT_SUCCESS' as any,
+        title: titleEn,
+        titleBg,
+        message: messageEn,
+        messageBg,
+        data: { amount, currency, context },
+        priority: 'medium',
+      });
+    } catch (error) {
+      logger.error('Error sending payment-success notification:', error);
     }
   }
 
@@ -550,15 +593,16 @@ export class NotificationService {
         type: 'SYSTEM',
         title: 'New scan at your venue',
         titleBg: 'Ново сканиране във вашия обект',
-        message: `A customer just scanned at ${venue.venueName} — ${params.billAmount.toFixed(2)} BGN bill, ${params.cashbackAmount.toFixed(2)} BGN cashback.`,
-        messageBg: `Клиент току-що сканира в ${venue.venueName} — сметка ${params.billAmount.toFixed(2).replace('.', ',')} лв., кешбек ${params.cashbackAmount.toFixed(2).replace('.', ',')} лв.`,
+        // Spec §11.3 Clash 10.6: cashbackAmount is internal — show only billAmount
+        message: `A customer just scanned at ${venue.venueName} — ${params.billAmount.toFixed(2)} BGN.`,
+        messageBg: `Клиент току-що сканира в ${venue.venueName} — сметка ${params.billAmount.toFixed(2).replace('.', ',')} лв.`,
         priority: 'low',
         actionUrl: '/analytics',
         actionText: 'View analytics',
         actionTextBg: 'Виж анализа',
         relatedEntityType: 'sticker_scan',
         relatedEntityId: params.scanId,
-        data: { venueId: params.venueId, scanId: params.scanId, billAmount: params.billAmount, cashbackAmount: params.cashbackAmount },
+        data: { venueId: params.venueId, scanId: params.scanId, billAmount: params.billAmount },
       });
     } catch (error) {
       logger.error('❌ Error sending partner scan notification:', error);
@@ -583,18 +627,147 @@ export class NotificationService {
         type: 'SYSTEM',
         title: 'New receipt at your venue',
         titleBg: 'Нова касова бележка във вашия обект',
-        message: `A customer submitted a ${params.totalAmount.toFixed(2)} BGN receipt at ${venue.venueName}. ${params.cashbackAmount.toFixed(2)} BGN cashback credited.`,
-        messageBg: `Клиент качи касова бележка за ${params.totalAmount.toFixed(2).replace('.', ',')} лв. в ${venue.venueName}. Кешбек: ${params.cashbackAmount.toFixed(2).replace('.', ',')} лв.`,
+        // Spec §11.3 Clash 10.6: cashbackAmount is internal — show only totalAmount to partner
+        message: `A customer submitted a ${params.totalAmount.toFixed(2)} BGN receipt at ${venue.venueName}.`,
+        messageBg: `Клиент качи касова бележка за ${params.totalAmount.toFixed(2).replace('.', ',')} лв. в ${venue.venueName}.`,
         priority: 'low',
         actionUrl: '/analytics',
         actionText: 'View analytics',
         actionTextBg: 'Виж анализа',
         relatedEntityType: 'receipt',
         relatedEntityId: params.receiptId,
-        data: { venueId: params.venueId, receiptId: params.receiptId, totalAmount: params.totalAmount, cashbackAmount: params.cashbackAmount },
+        data: { venueId: params.venueId, receiptId: params.receiptId, totalAmount: params.totalAmount },
       });
     } catch (error) {
       logger.error('❌ Error sending partner receipt notification:', error);
+    }
+  }
+
+  /**
+   * Spec §9.1 canonical template #6 — Status Changes.
+   * Notify a partner in-app when their partner_account_status changes.
+   * Clash 6.6: "Partners ARE notified of account status changes (operational requirement)".
+   * Called alongside email.service.sendPartnerStatusChangeEmail from partner
+   * status-change routes so both channels fire on every transition.
+   */
+  async notifyPartnerStatusChange(params: {
+    partnerUserId: string;
+    businessName: string;
+    fromStatus: string;
+    toStatus: string;
+  }): Promise<void> {
+    const { partnerUserId, businessName, fromStatus, toStatus } = params;
+
+    // Spec §1.1: canonical enum has exactly three values — ACTIVE, INACTIVE, ARCHIVED.
+    // SUSPENDED/PAUSED are UI labels that map to INACTIVE at the DB level; they must
+    // never appear in notification copy. REJECTED/PENDING belong to partner_application_status.
+    // Guard: log and return early if a non-canonical value slips through (r2h B1).
+    const canonicalStatuses = new Set(['ACTIVE', 'INACTIVE', 'ARCHIVED']);
+    if (!canonicalStatuses.has(toStatus)) {
+      logger.warn(
+        `[notifyPartnerStatusChange] Non-canonical toStatus "${toStatus}" received — skipping notification. ` +
+        `Caller must map to ACTIVE | INACTIVE | ARCHIVED before calling this function.`,
+      );
+      return;
+    }
+    // Defence-in-depth: fromStatus is informational only, but it is echoed into the
+    // notification data payload below. Coerce any non-canonical value (PAUSED/SUSPENDED/
+    // PENDING/REJECTED) to the canonical INACTIVE so internal sub-statuses never reach
+    // the partner, even if a future caller forgets to canonicalize it (ARCHIVED/ACTIVE
+    // pass through unchanged).
+    const canonicalFromStatus = canonicalStatuses.has(fromStatus) ? fromStatus : 'INACTIVE';
+
+    // Canonical status → human-readable labels (spec §1.8: status labels must be consistent).
+    // r2h B1: restricted to canonical three values only.
+    const statusLabelBg: Record<string, string> = {
+      ACTIVE: 'Активен',
+      INACTIVE: 'Неактивен',
+      ARCHIVED: 'Архивиран',
+    };
+    // r2h B2: English label map so the English message shows "Active/Inactive/Archived"
+    // rather than the raw enum value (spec §1.8 consistency across all notification copy).
+    const statusLabelEn: Record<string, string> = {
+      ACTIVE: 'Active',
+      INACTIVE: 'Inactive',
+      ARCHIVED: 'Archived',
+    };
+    const toLabelBg = statusLabelBg[toStatus] ?? toStatus;
+    const toLabelEn = statusLabelEn[toStatus] ?? toStatus;
+
+    // Priority escalates to 'high' only for the terminal ARCHIVED status.
+    // INACTIVE partners can still log in (spec §1.2), so it is not a blocking event.
+    // r2h B1: REJECTED/SUSPENDED removed — neither is a canonical partner_account_status.
+    const highPriorityStatuses = new Set(['ARCHIVED']);
+    const priority: 'low' | 'medium' | 'high' = highPriorityStatuses.has(toStatus) ? 'high' : 'medium';
+
+    try {
+      await this.createNotification({
+        userId: partnerUserId,
+        type: 'SYSTEM',
+        title: 'Account status changed',
+        titleBg: 'Статусът на акаунта е променен',
+        // r2h B2: use human-readable English label, not the raw enum value.
+        message: `Your partner account status for ${businessName} has changed to ${toLabelEn}.`,
+        messageBg: `Статусът на партньорския ви акаунт за ${businessName} е променен на ${toLabelBg}.`,
+        priority,
+        actionUrl: '/partners/profile',
+        actionText: 'View profile',
+        actionTextBg: 'Виж профила',
+        data: { businessName, fromStatus: canonicalFromStatus, toStatus },
+      });
+    } catch (error) {
+      logger.error('❌ Error sending partner status change notification:', error);
+    }
+  }
+
+  /**
+   * Spec §9.1 canonical template #8 — Marketing (campaigns, feature updates,
+   * product news). Respects the marketingConsentEmail gate (GDPR, spec §6.3).
+   * Returns without sending if the partner has not given marketing consent.
+   */
+  async notifyPartnerMarketing(params: {
+    partnerUserId: string;
+    title: string;
+    titleBg?: string;
+    message: string;
+    messageBg?: string;
+    actionUrl?: string;
+    actionText?: string;
+    actionTextBg?: string;
+    data?: Record<string, any>;
+  }): Promise<void> {
+    const { partnerUserId } = params;
+
+    try {
+      // GDPR consent gate — must check before any send (spec §6.3, Clash 6.1 template #8).
+      // r2h B4: use channel-agnostic marketingConsent for in-app; marketingConsentEmail
+      // for email. Over-blocking in-app/push because email consent is absent conflicts
+      // with spec §5.4 which defines a single channel-neutral marketing consent toggle.
+      const user = await prisma.user.findUnique({
+        where: { id: partnerUserId },
+        select: { marketingConsent: true, marketingConsentEmail: true },
+      });
+
+      if (!user?.marketingConsent) {
+        logger.info(`[notifyPartnerMarketing] Skipping in-app — user ${partnerUserId} has not given marketing consent.`);
+        return;
+      }
+
+      await this.createNotification({
+        userId: partnerUserId,
+        type: 'SYSTEM',
+        title: params.title,
+        titleBg: params.titleBg,
+        message: params.message,
+        messageBg: params.messageBg,
+        priority: 'low',
+        actionUrl: params.actionUrl,
+        actionText: params.actionText,
+        actionTextBg: params.actionTextBg,
+        data: params.data,
+      });
+    } catch (error) {
+      logger.error('❌ Error sending partner marketing notification:', error);
     }
   }
 
@@ -650,12 +823,15 @@ export class NotificationService {
    * fraud score. Distinct from notifyFraudAlert (admins only) — partners
    * don't see the user identity, only the venue/receipt context so they
    * can follow up in person if needed.
+   *
+   * Spec §11.3 / LOW S5: fraudScore and reasons are intentionally NOT accepted
+   * as parameters to eliminate any risk of a future maintainer accidentally
+   * exposing them in the message or data payload. Callers can log them
+   * separately without passing them into this function.
    */
   async notifyPartnerFraudFlag(params: {
     venueId: string;
     receiptId: string;
-    fraudScore: number;
-    reasons: string[];
   }): Promise<void> {
     try {
       const venue = await this.getVenuePartnerOwner(params.venueId);
@@ -665,12 +841,13 @@ export class NotificationService {
         type: 'FRAUD_ALERT',
         title: 'Suspicious receipt at your venue',
         titleBg: 'Подозрителна касова бележка',
-        message: `A receipt at ${venue.venueName} was flagged (score ${params.fraudScore}). Our team will review before cashback is credited.`,
-        messageBg: `Касова бележка в ${venue.venueName} е маркирана (риск ${params.fraudScore}). Екипът ни ще я прегледа преди начисление.`,
+        // Spec §11.3: fraudScore and reasons are internal-only — never expose to partner
+        message: `A receipt at ${venue.venueName} is under manual review. Our team will verify before cashback is credited.`,
+        messageBg: `Касова бележка в ${venue.venueName} е на ръчна проверка. Екипът ни ще я прегледа преди начисление.`,
         priority: 'medium',
         relatedEntityType: 'receipt',
         relatedEntityId: params.receiptId,
-        data: { venueId: params.venueId, receiptId: params.receiptId, fraudScore: params.fraudScore, reasons: params.reasons },
+        data: { venueId: params.venueId, receiptId: params.receiptId },
       });
     } catch (error) {
       logger.error('❌ Error sending partner fraud flag notification:', error);
@@ -714,21 +891,48 @@ export class NotificationService {
           select: { email: true, firstName: true },
         });
         if (user?.email) {
-          emailService.sendEmail({
+          detach(emailService.sendEmail({
             to: user.email,
             subject: `Welcome to BoomCard, ${params.businessName}`,
             html: `
               <p>Hi ${user.firstName || params.businessName},</p>
               <p>Your BoomCard partner account for <strong>${params.businessName}</strong> has been set up by our team.</p>
-              ${params.temporaryPassword ? `<p>Temporary password: <code>${params.temporaryPassword}</code> — please change it on first login.</p>` : ''}
+              <p>Use the link below to set your password and sign in. The link is valid for 72 hours.</p>
               <p>Sign in at <a href="${process.env.PARTNER_DASHBOARD_URL || 'https://partners.boomcard.bg'}">the partner dashboard</a> to complete your profile, upload your menu, and start earning from BoomCard members.</p>
               <p>— The BoomCard Team</p>
             `,
-          }).catch((err) => logger.error('Failed to send partner welcome email:', err));
+          }), (err) => logger.error('Failed to send partner welcome email:', err));
         }
       }
     } catch (error) {
       logger.error('❌ Error sending partner welcome notification:', error);
+    }
+  }
+
+  /**
+   * Audit L1 — Spec §11.2 "Profile created" → Transactional notification (mandatory).
+   * The welcome EMAIL is already sent from auth.routes.ts; this adds the in-app
+   * transactional notification record so the trigger is consistent with every other
+   * transactional event (cashback approved, transaction rejected, QR session), all of
+   * which create an in-app record. Transactional category → not opt-out gated.
+   */
+  async notifyProfileCreated(userId: string): Promise<void> {
+    try {
+      await this.createNotification({
+        userId,
+        type: 'SYSTEM',
+        title: 'Welcome to BoomCard',
+        titleBg: 'Добре дошли в BoomCard',
+        message: 'Your BoomCard profile is ready. Scan a venue QR sticker to start earning cashback.',
+        messageBg: 'Профилът ви в BoomCard е готов. Сканирайте QR стикер в обект, за да започнете да печелите кешбек.',
+        priority: 'medium',
+        actionUrl: '/dashboard',
+        actionText: 'Open dashboard',
+        actionTextBg: 'Към таблото',
+        data: { type: 'profile_created' },
+      });
+    } catch (error) {
+      logger.error('[notifyProfileCreated] failed:', error);
     }
   }
 
@@ -774,7 +978,7 @@ export class NotificationService {
         const balanceFmt = params.availableBalance.toFixed(2).replace('.', ',');
         const thresholdFmt = params.threshold.toFixed(2).replace('.', ',');
         const greeting = user.firstName ? `Здравейте, ${user.firstName}!` : 'Здравейте!';
-        emailService.sendEmail({
+        detach(emailService.sendEmail({
           to: user.email,
           subject: 'Готови за изтегляне — BoomCard',
           html: `
@@ -792,10 +996,65 @@ export class NotificationService {
                 </a>
               </p>
             </div>`,
-        }).catch((err) => logger.error('[notifyPayoutReady] email send failed:', err));
+        }), (err) => logger.error('[notifyPayoutReady] email send failed:', err));
       }
     } catch (error) {
       logger.error('❌ Error sending payout-ready notification:', error);
+    }
+  }
+
+  // Spec §3.7 — payout threshold reached but no IBAN on file.
+  // User must add bank details before a payout can proceed.
+  // Spec §3.2: IBAN is not required at registration but is required before payout.
+  async notifyPayoutHeldNoIban(params: {
+    userId: string;
+    availableBalance: number;
+    threshold: number;
+  }): Promise<void> {
+    try {
+      await this.createNotification({
+        userId: params.userId,
+        type: 'CASHBACK_CREDITED',
+        title: 'Add your IBAN to receive payout',
+        titleBg: 'Добавете IBAN за изплащане',
+        message: `Your available balance (${params.availableBalance.toFixed(2)} BGN) has reached the payout threshold. Please add your bank account (IBAN) to receive your funds.`,
+        messageBg: `Наличният ви баланс (${params.availableBalance.toFixed(2).replace('.', ',')} лв.) достигна прага за изплащане. Добавете банкова сметка (IBAN), за да получите средствата си.`,
+        priority: 'high',
+        actionUrl: '/profile/bank',
+        actionText: 'Add bank account',
+        actionTextBg: 'Добавете сметка',
+        data: { availableBalance: params.availableBalance, threshold: params.threshold, reason: 'no_iban' },
+      });
+      // Email notification
+      const user = await prisma.user.findUnique({
+        where: { id: params.userId },
+        select: { email: true, firstName: true },
+      });
+      if (user?.email) {
+        const balanceFmt = params.availableBalance.toFixed(2).replace('.', ',');
+        const greeting = user.firstName ? `Здравейте, ${user.firstName}!` : 'Здравейте!';
+        detach(emailService.sendEmail({
+          to: user.email,
+          subject: 'Добавете IBAN за изплащане — BoomCard',
+          html: `
+            <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#fff;">
+              <h2 style="color:#1a1a1a;margin-bottom:8px;">Добавете банкова сметка</h2>
+              <p style="color:#555;margin-bottom:16px;">${greeting}</p>
+              <p style="color:#555;margin-bottom:16px;">
+                Наличният ви баланс е <strong>${balanceFmt} лв.</strong> — достатъчно за изплащане.
+                За да получите средствата, трябва да добавите банкова сметка (IBAN) в профила си.
+              </p>
+              <p style="text-align:center;margin-bottom:0;">
+                <a href="${process.env.APP_URL || 'https://mobile.boomcard.bg'}/profile/bank"
+                   style="display:inline-block;background:#10b981;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;">
+                  Добавете IBAN
+                </a>
+              </p>
+            </div>`,
+        }), (err) => logger.error('[notifyPayoutHeldNoIban] email send failed:', err));
+      }
+    } catch (error) {
+      logger.error('[notifyPayoutHeldNoIban] Error sending no-IBAN notification:', error);
     }
   }
 
@@ -889,6 +1148,32 @@ export class NotificationService {
       );
     } catch (error) {
       logger.error('[notifySubscriptionPaused] failed:', error);
+    }
+  }
+
+  /**
+   * Audit L2 — Spec §11.2 "Payment method updated" → Payment notification (mandatory).
+   * Paysera already sends a payment confirmation on card update; the Stripe card
+   * paths did not. Payment-category (PAYMENT_SUCCESS) in-app notification so it is
+   * exempt from opt-out, mirroring the other Payment-category notifications.
+   */
+  async notifyPaymentMethodUpdated(userId: string): Promise<void> {
+    try {
+      await this.createNotification({
+        userId,
+        type: 'PAYMENT_SUCCESS',
+        title: 'Payment method updated',
+        titleBg: 'Платежният метод е обновен',
+        message: 'Your payment method has been updated. Future subscription charges will use this card.',
+        messageBg: 'Платежният ви метод е обновен. Бъдещите такси за абонамент ще използват тази карта.',
+        priority: 'medium',
+        actionUrl: '/subscription',
+        actionText: 'View subscription',
+        actionTextBg: 'Виж абонамент',
+        data: { type: 'payment_method_updated' },
+      });
+    } catch (error) {
+      logger.error('[notifyPaymentMethodUpdated] failed:', error);
     }
   }
 
@@ -1062,13 +1347,14 @@ export class NotificationService {
         type: 'SYSTEM',
         title: `${params.businessName}: yesterday's activity`,
         titleBg: `${params.businessName}: активност за вчера`,
-        message: `${params.scans} scan${params.scans === 1 ? '' : 's'}, ${params.receipts} receipt${params.receipts === 1 ? '' : 's'}, ${params.redemptions} redemption${params.redemptions === 1 ? '' : 's'} — ${params.revenueBGN.toFixed(2)} BGN tracked, ${params.cashbackOwedBGN.toFixed(2)} BGN cashback.`,
-        messageBg: `${params.scans} сканирания, ${params.receipts} бележки, ${params.redemptions} използвания — ${params.revenueBGN.toFixed(2).replace('.', ',')} лв. оборот, ${params.cashbackOwedBGN.toFixed(2).replace('.', ',')} лв. кешбек.`,
+        // Spec §11.3: cashbackOwedBGN is internal — omit from partner notifications
+        message: `${params.scans} scan${params.scans === 1 ? '' : 's'}, ${params.receipts} receipt${params.receipts === 1 ? '' : 's'}, ${params.redemptions} redemption${params.redemptions === 1 ? '' : 's'} — ${params.revenueBGN.toFixed(2)} BGN tracked.`,
+        messageBg: `${params.scans} сканирания, ${params.receipts} бележки, ${params.redemptions} използвания — ${params.revenueBGN.toFixed(2).replace('.', ',')} лв. оборот.`,
         priority: 'low',
         actionUrl: '/analytics',
         actionText: 'View analytics',
         actionTextBg: 'Виж анализа',
-        data: params,
+        data: { partnerUserId: params.partnerUserId, businessName: params.businessName, scans: params.scans, receipts: params.receipts, redemptions: params.redemptions, revenueBGN: params.revenueBGN },
       });
     } catch (error) {
       logger.error('❌ Error sending partner daily digest:', error);
@@ -1094,13 +1380,14 @@ export class NotificationService {
         type: 'SYSTEM',
         title: `${params.month} statement available`,
         titleBg: `Отчет за ${params.month}`,
-        message: `${params.businessName}: ${params.receipts} receipts, ${params.revenueBGN.toFixed(2)} BGN tracked revenue, ${params.cashbackOwedBGN.toFixed(2)} BGN cashback owed.`,
-        messageBg: `${params.businessName}: ${params.receipts} бележки, ${params.revenueBGN.toFixed(2).replace('.', ',')} лв. оборот, ${params.cashbackOwedBGN.toFixed(2).replace('.', ',')} лв. дължим кешбек.`,
+        // Spec §11.3: cashbackOwedBGN is internal — omit from partner notification
+        message: `${params.businessName}: ${params.receipts} receipts, ${params.revenueBGN.toFixed(2)} BGN tracked revenue.`,
+        messageBg: `${params.businessName}: ${params.receipts} бележки, ${params.revenueBGN.toFixed(2).replace('.', ',')} лв. оборот.`,
         priority: 'medium',
         actionUrl: '/partners/billing',
         actionText: 'View statement',
         actionTextBg: 'Виж отчета',
-        data: params,
+        data: { partnerUserId: params.partnerUserId, businessName: params.businessName, month: params.month, receipts: params.receipts, revenueBGN: params.revenueBGN },
       });
 
       const user = await prisma.user.findUnique({
@@ -1108,7 +1395,10 @@ export class NotificationService {
         select: { email: true, firstName: true },
       });
       if (user?.email) {
-        emailService.sendEmail({
+        // Spec §7.4 / §11.3 / Clash 10.6: cashbackOwedBGN is the cashback
+        // component of the internal business formula split and MUST NOT appear
+        // in any partner-facing channel including email.
+        detach(emailService.sendEmail({
           to: user.email,
           subject: `${params.businessName} — ${params.month} statement`,
           html: `
@@ -1117,14 +1407,85 @@ export class NotificationService {
             <ul>
               <li>Receipts processed: <strong>${params.receipts}</strong></li>
               <li>Tracked revenue: <strong>${params.revenueBGN.toFixed(2)} BGN</strong></li>
-              <li>Cashback owed: <strong>${params.cashbackOwedBGN.toFixed(2)} BGN</strong></li>
             </ul>
             <p>Open the <a href="${process.env.PARTNER_DASHBOARD_URL || 'https://partners.boomcard.bg'}/partners/billing">billing page</a> to view the breakdown.</p>
           `,
-        }).catch((err) => logger.error('Failed to send partner monthly statement email:', err));
+        }), (err) => logger.error('Failed to send partner monthly statement email:', err));
       }
     } catch (error) {
       logger.error('❌ Error sending partner monthly statement:', error);
+    }
+  }
+
+  /**
+   * Spec §9.1 canonical template #5 — Request Updates.
+   * In-app notification when the status of a partner's help request or change
+   * request changes. Spec §9.1 / Clash 6.1: this is one of exactly 8 canonical
+   * partner notification templates. Previously absent (r2h B3 / r2i F3).
+   *
+   * Callers: adminHelp.routes.ts ticket-status-change handler.
+   * IMPORTANT: do NOT include internal fields (cashback%, fraudScore, etc.)
+   * in the data payload — spec §11.3.
+   */
+  async notifyPartnerRequestUpdate(params: {
+    partnerUserId: string;
+    ticketId: string;
+    subject: string;
+    fromStatus: string;
+    toStatus: string;
+  }): Promise<void> {
+    try {
+      await this.createNotification({
+        userId: params.partnerUserId,
+        type: 'SYSTEM',
+        title: 'Your request has been updated',
+        titleBg: 'Вашата заявка е актуализирана',
+        message: `Your request "${params.subject}" has moved from ${params.fromStatus} to ${params.toStatus}.`,
+        messageBg: `Вашата заявка „${params.subject}" е преминала от статус ${params.fromStatus} на ${params.toStatus}.`,
+        priority: 'medium',
+        actionUrl: `/partners/help`,
+        actionText: 'View request',
+        actionTextBg: 'Виж заявката',
+        relatedEntityType: 'help_ticket',
+        relatedEntityId: params.ticketId,
+        data: { ticketId: params.ticketId, subject: params.subject, fromStatus: params.fromStatus, toStatus: params.toStatus },
+      });
+    } catch (error) {
+      logger.error('❌ Error sending partner request-update notification:', error);
+    }
+  }
+
+  /**
+   * Spec §9.1 canonical template #7 — Contract Changes.
+   * In-app notification when a commission rate or contract term changes.
+   * Previously email-only; in-app channel was absent (r2i F4).
+   *
+   * CRITICAL spec §11.3 / Clash 10.6: the old and new values of cashback%,
+   * discountRate, or marginAmount must NEVER be included in any partner-facing
+   * payload. Only the name of the changed field is disclosed.
+   */
+  async notifyPartnerContractChange(params: {
+    partnerUserId: string;
+    businessName: string;
+    fieldChanged: string;
+  }): Promise<void> {
+    try {
+      await this.createNotification({
+        userId: params.partnerUserId,
+        type: 'SYSTEM',
+        title: 'Your contract terms have changed',
+        titleBg: 'Условията на договора ви са променени',
+        message: `The ${params.fieldChanged} for ${params.businessName} has been updated. Please review your contract.`,
+        messageBg: `${params.fieldChanged} за ${params.businessName} е актуализирано. Моля, прегледайте договора си.`,
+        priority: 'high',
+        actionUrl: '/partners/profile',
+        actionText: 'View contract',
+        actionTextBg: 'Виж договора',
+        // fieldChanged only — old/new cashback%/margin% values are internal-only (spec §11.3).
+        data: { businessName: params.businessName, fieldChanged: params.fieldChanged },
+      });
+    } catch (error) {
+      logger.error('❌ Error sending partner contract-change notification:', error);
     }
   }
 
@@ -1182,7 +1543,7 @@ export class NotificationService {
         select: { email: true, firstName: true },
       });
       if (user?.email) {
-        emailService.sendEmail({
+        detach(emailService.sendEmail({
           to: user.email,
           subject: 'Your BoomCard subscription has ended',
           html: `
@@ -1191,7 +1552,7 @@ export class NotificationService {
             <p>You can reactivate your subscription at any time from the <a href="${process.env.PARTNER_DASHBOARD_URL || 'https://partners.boomcard.bg'}/dashboard/subscription">billing page</a>.</p>
             <p>— The BoomCard Team</p>
           `,
-        }).catch((err) => logger.error('Failed to send subscription-access-ended email:', err));
+        }), (err) => logger.error('Failed to send subscription-access-ended email:', err));
       }
     } catch (error) {
       logger.error('❌ Error sending subscription access-ended notification:', error);
@@ -1226,8 +1587,20 @@ export class NotificationService {
   }): Promise<void> {
     if (params.cooldownHours) {
       const since = new Date(Date.now() - params.cooldownHours * 3_600_000);
+      // Use a word-boundary-safe JSON string match to avoid substring collisions
+      // (e.g. 'partner_signup' must NOT suppress 'partner_signup_bulk').
+      // We match '"opsType":"<value>",' with a trailing comma or closing brace so
+      // 'partner_signup' cannot match 'partner_signup_bulk'.
+      // Two patterns cover both "last key" (no trailing comma) and "non-last key" forms.
+      const exactPattern1 = `"opsType":"${params.opsType}",`;  // non-last key
+      const exactPattern2 = `"opsType":"${params.opsType}"}`;  // last key before }
       const recent = await prisma.notification.findFirst({
-        where: { data: { contains: `"opsType":"${params.opsType}"` }, createdAt: { gte: since } },
+        where: {
+          OR: [
+            { data: { contains: exactPattern1 }, createdAt: { gte: since } },
+            { data: { contains: exactPattern2 }, createdAt: { gte: since } },
+          ],
+        },
         select: { id: true },
       });
       if (recent) {
@@ -1263,12 +1636,17 @@ export class NotificationService {
       // Email only for critical — floods otherwise. Caller can bump severity
       // when an event really needs to page someone.
       if (severity === 'critical') {
-        const fieldLines = (params.fields ?? []).map((f) => `<li><strong>${f.label}:</strong> ${f.value}</li>`).join('');
+        // Escape all partner-controlled values before embedding in HTML to
+        // prevent content injection (MEDIUM F2 — businessName/category from
+        // registration form may contain HTML markup).
+        const fieldLines = (params.fields ?? [])
+          .map((f) => `<li><strong>${escapeHtml(f.label)}:</strong> ${escapeHtml(f.value)}</li>`)
+          .join('');
         const html = `
-          <p><strong>${params.title}</strong></p>
-          <p>${params.message}</p>
+          <p><strong>${escapeHtml(params.title)}</strong></p>
+          <p>${escapeHtml(params.message)}</p>
           ${fieldLines ? `<ul>${fieldLines}</ul>` : ''}
-          ${params.actionUrl ? `<p><a href="${params.actionUrl}">Open in dashboard</a></p>` : ''}
+          ${params.actionUrl ? `<p><a href="${escapeHtml(params.actionUrl)}">Open in dashboard</a></p>` : ''}
         `;
         await Promise.all(
           admins
@@ -1363,8 +1741,18 @@ export class NotificationService {
     jobName: string;
     errorMessage: string;
   }): Promise<void> {
+    // Derive a PER-JOB opsType so each distinct scheduled job owns its own
+    // cooldown slot. A single fixed 'scheduler_failure' opsType meant the FIRST
+    // job to fail in a 24h window occupied the only cooldown slot, silently
+    // swallowing genuine failures of every OTHER job that day (cross-job alert
+    // suppression). The dedup/cooldown match in notifyAdminOps keys on the full
+    // opsType string, so per-job keys give each job an independent slot while
+    // repeated failures of the SAME job within the window are still deduped.
+    // Sanitize jobName to a stable key (lowercase, non-alphanumerics → '_') so
+    // it forms a safe, collision-free dedup token.
+    const jobKey = params.jobName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
     return this.notifyAdminOps({
-      opsType: 'scheduler_failure',
+      opsType: `scheduler_failure_${jobKey}`,
       title: `Scheduled job failed: ${params.jobName}`,
       message: `The ${params.jobName} job errored during its scheduled run. Investigate before the next run.`,
       severity: 'warning',
@@ -1372,6 +1760,10 @@ export class NotificationService {
         { label: 'Job', value: params.jobName },
         { label: 'Error', value: params.errorMessage.slice(0, 500) },
       ],
+      // Defense-in-depth: a flapping cron must not page every admin on every run.
+      // The first failure still alerts immediately (cooldown only dedupes repeats
+      // within the window); matches the cooldown of sibling ops alerts (ocr_backlog).
+      cooldownHours: 24,
     });
   }
 
@@ -1542,53 +1934,26 @@ export class NotificationService {
         body: params.body,
         data: params.data,
         url: typeof params.data?.url === 'string' ? params.data.url : undefined,
-      }).catch((err) => console.error('[notification.service] sendWebPushToUser failed', err)),
+      }).catch((err) => logger.error('[notification.service] sendWebPushToUser failed', err)),
 
       sendExpoPushToUser(params.userId, {
         title: params.title,
         body: params.body,
         data: params.data as Record<string, unknown> | undefined,
-      }).catch((err) => console.error('[notification.service] sendExpoPushToUser failed', err)),
+      }).catch((err) => logger.error('[notification.service] sendExpoPushToUser failed', err)),
     ]);
   }
 
   /**
-   * Send email via SMTP
-   */
-  private async sendEmail(params: EmailParams): Promise<void> {
-    // TODO: Integrate with email service (Nodemailer, SendGrid, etc.)
-    // Example using Nodemailer:
-    /*
-    const nodemailer = require('nodemailer');
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: false,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASSWORD,
-      },
-    });
-
-    await transporter.sendMail({
-      from: '"BOOM Card" <noreply@boomcard.com>',
-      to: params.to,
-      subject: params.subject,
-      html: params.html,
-      text: params.text,
-    });
-    */
-
-    console.log(`📧 Email queued to ${params.to}: ${params.subject}`);
-  }
-
-  /**
-   * Get admin users for fraud alerts
+   * Get active admin users for fraud alerts and operational notifications.
+   * Filters to ACTIVE status only (LOW S4) — Inactive/deleted admins should
+   * not receive operational emails or in-app notifications.
    */
   private async getAdminUsers(): Promise<Array<{ id: string; email: string }>> {
     const admins = await prisma.user.findMany({
       where: {
         role: { in: ['ADMIN', 'SUPER_ADMIN'] as any[] },
+        status: 'ACTIVE' as any,
       },
       select: {
         id: true,
@@ -1733,8 +2098,8 @@ export class NotificationService {
                 (r) => `
               <div class="receipt-item">
                 <div class="receipt-merchant">
-                  ${r.merchantName || 'Unknown Merchant'}
-                  <span class="receipt-status status-${r.status.toLowerCase()}">${r.status}</span>
+                  ${escapeHtml(r.merchantName || 'Unknown Merchant')}
+                  <span class="receipt-status status-${escapeHtml(r.status.toLowerCase())}">${escapeHtml(r.status)}</span>
                 </div>
                 <div style="font-size: 14px; color: #6b7280; margin-top: 5px;">
                   Amount: ${r.totalAmount?.toFixed(2) || '0.00'} BGN
@@ -1762,12 +2127,254 @@ export class NotificationService {
     `;
   }
 
+  // ===== F-018: Three missing notification methods =====
+
   /**
-   * Mark notification as read
+   * F-018 — Fires when a QR session is opened / receipt upload is confirmed.
+   * Lets the user know their scan was received and is being processed.
+   * Called from sticker.service.ts after a successful receipt upload.
    */
-  async markAsRead(notificationId: string): Promise<void> {
+  async notifyQRSessionOpened(userId: string, stickerId: string): Promise<void> {
+    try {
+      await this.createNotification({
+        userId,
+        type: 'SYSTEM',
+        title: 'Receipt received',
+        titleBg: 'Бележката е получена',
+        message: 'Your receipt has been received and is under review. You will be notified when cashback is confirmed.',
+        messageBg: 'Вашата бележка е получена и се преглежда. Ще получите известие, когато кешбекът бъде потвърден.',
+        priority: 'medium',
+        actionUrl: '/wallet',
+        actionText: 'View wallet',
+        actionTextBg: 'Виж портфейл',
+        relatedEntityType: 'sticker_scan',
+        relatedEntityId: stickerId,
+        data: { stickerId, type: 'qr_session_opened' },
+      });
+    } catch (error) {
+      logger.error('[notifyQRSessionOpened] failed:', error);
+    }
+  }
+
+  /**
+   * F-018 — First payout failure notification requesting IBAN correction.
+   * Spec §7.4: On first payout failure, notify the user to correct their IBAN.
+   * The user is NOT notified on second+ failures (admin reviews those directly).
+   */
+  async notifyPayoutFailedInvalidIban(userId: string): Promise<void> {
+    try {
+      await this.createNotification({
+        userId,
+        type: 'PAYMENT_FAILED',
+        title: 'Payout failed — please update your IBAN',
+        titleBg: 'Изплащането не успя — моля, обновете IBAN',
+        message: 'Your payout could not be processed. This is often caused by an incorrect IBAN. Please update your bank account details and try again.',
+        messageBg: 'Изплащането ви не успя. Причината може да е неверен IBAN. Моля, актуализирайте банковите си данни и опитайте отново.',
+        priority: 'high',
+        actionUrl: '/profile/bank',
+        actionText: 'Update bank account',
+        actionTextBg: 'Обнови банкова сметка',
+        data: { type: 'payout_failed_invalid_iban', reason: 'IBAN_CORRECTION_REQUIRED' },
+      });
+
+      await this.sendPushNotification({
+        userId,
+        title: 'Изплащането не успя',
+        body: 'Моля, проверете и обновете IBAN-а си.',
+        data: { type: 'payout_failed_invalid_iban', url: '/profile/bank' },
+      }).catch((err) => logger.error('[notifyPayoutFailedInvalidIban] push failed:', err));
+
+      // Also send email so the user has a durable record of the issue.
+      const payoutUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, firstName: true },
+      });
+      if (payoutUser?.email) {
+        detach(emailService.sendEmail({
+          to: payoutUser.email,
+          subject: 'Action Required: Payout failed — BoomCard',
+          html: `
+            <p>Hi ${payoutUser.firstName || 'there'},</p>
+            <p>Your BoomCard cashback payout could not be processed. This is often caused by an incorrect or invalid IBAN.</p>
+            <p>Please open the app and update your bank account details, then your next payout will be processed automatically.</p>
+            <p>— The BoomCard Team</p>
+          `,
+        }), (err) => logger.error('[notifyPayoutFailedInvalidIban] email failed:', err));
+      }
+    } catch (error) {
+      logger.error('[notifyPayoutFailedInvalidIban] failed:', error);
+    }
+  }
+
+  /**
+   * L1 — neutral first-failure payout notification.
+   *
+   * Used when the payout failure reason does NOT indicate an IBAN / bank-account
+   * problem. Mirrors notifyPayoutFailedInvalidIban (in-app + push + email) but
+   * with neutral "action may be required" wording instead of IBAN-correction
+   * copy, matching the failed_other branch of the admin /fail path's
+   * notifySubscriber. This keeps the Paysera auto-fail path and the admin /fail
+   * path consistent.
+   */
+  async notifyPayoutFailedGeneric(userId: string): Promise<void> {
+    try {
+      await this.createNotification({
+        userId,
+        type: 'PAYMENT_FAILED',
+        title: 'Payout failed — action may be required',
+        titleBg: 'Изплащането не успя — възможно е да е необходимо действие',
+        message: 'Your payout could not be processed and some action may be required on your side. Your balance has been restored.',
+        messageBg: 'Изплащането ви не успя и може да се наложи действие от ваша страна. Балансът ви е възстановен.',
+        priority: 'high',
+        actionUrl: '/profile/bank',
+        actionText: 'Review bank account',
+        actionTextBg: 'Прегледай банкова сметка',
+        data: { type: 'payout_failed_generic', reason: 'PAYOUT_FAILED' },
+      });
+
+      await this.sendPushNotification({
+        userId,
+        title: 'Изплащането не успя',
+        body: 'Може да се наложи действие от ваша страна. Балансът ви е възстановен.',
+        data: { type: 'payout_failed_generic', url: '/profile/bank' },
+      }).catch((err) => logger.error('[notifyPayoutFailedGeneric] push failed:', err));
+
+      const payoutUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, firstName: true },
+      });
+      if (payoutUser?.email) {
+        detach(emailService.sendEmail({
+          to: payoutUser.email,
+          subject: 'Payout failed — BoomCard',
+          html: `
+            <p>Hi ${payoutUser.firstName || 'there'},</p>
+            <p>Your BoomCard cashback payout could not be processed and some action may be required on your side.</p>
+            <p>Your balance has been restored. Please open the app to review your payout details and try again.</p>
+            <p>— The BoomCard Team</p>
+          `,
+        }), (err) => logger.error('[notifyPayoutFailedGeneric] email failed:', err));
+      }
+    } catch (error) {
+      logger.error('[notifyPayoutFailedGeneric] failed:', error);
+    }
+  }
+
+  /**
+   * F-018 / Audit M2 — Subscription-cancellation confirmation.
+   * Spec §11.1/§11.2: "Subscription cancellation confirmed" is a MANDATORY Payment
+   * notification (no opt-out) and must be accompanied by an email. Classified under
+   * the Payment category (PAYMENT_SUCCESS) so it is exempt from notification opt-out
+   * filtering, and a mandatory confirmation email is sent here so the user gets the
+   * email regardless of whether the caller also sends one.
+   *
+   * Callers (each fires exactly once per cancellation; see each caller's double-fire
+   * guard so a single cancellation never produces two notifications):
+   *   - subscriptionService.cancelSubscription (user-initiated via our API), and
+   *   - stripeService.handleSubscriptionDeleted when finalStatus === 'CANCELLED'
+   *     and canceledAt was not already set (i.e. a cancel made directly in the
+   *     Stripe customer portal that never passed through cancelSubscription).
+   * The Paysera grace-expiry job reaches CANCELLED only for subs already cancelled
+   * via cancelSubscription (which already notified), so it intentionally does not
+   * re-emit. This is a "cancellation confirmed" event only — EXPIRED / FAILED_PAYMENT
+   * (payment-failure) transitions are a different Failed Payment notification (§3.4).
+   *
+   * @param sendEmail When true (default) this method also sends its own plain
+   *   confirmation email — correct for the admin-cancel and Stripe-webhook paths
+   *   which have no other cancellation email. cancelSubscription (the user path)
+   *   passes false because it already sends a richer templated email via
+   *   emailService.sendSubscriptionCancelledEmail (plan name + access-until date +
+   *   manage URL); suppressing here avoids double-sending while still creating the
+   *   in-app record.
+   */
+  async notifySubscriptionCancelledInApp(userId: string, sendEmail: boolean = true): Promise<void> {
+    try {
+      // Payment-category in-app notification (mandatory, no opt-out per §11.1).
+      await this.createNotification({
+        userId,
+        type: 'PAYMENT_SUCCESS',
+        title: 'Subscription cancellation confirmed',
+        titleBg: 'Отмяната на абонамента е потвърдена',
+        message: 'Your BoomCard subscription has been cancelled. You will retain access until the end of your current billing period.',
+        messageBg: 'Абонаментът ви BoomCard е отменен. Ще запазите достъп до края на платения период.',
+        priority: 'high',
+        actionUrl: '/subscription',
+        actionText: 'View subscription',
+        actionTextBg: 'Виж абонамент',
+        data: { type: 'subscription_cancelled' },
+      });
+
+      // Mandatory Payment-category email (§11.2). Best-effort send — the in-app
+      // record above is the durable record; the email is the second channel.
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, firstName: true },
+      });
+      if (sendEmail && user?.email) {
+        detach(emailService.sendEmail({
+          to: user.email,
+          subject: 'Your BoomCard subscription has been cancelled',
+          html: `
+            <p>Hi ${user.firstName || ''},</p>
+            <p>This confirms that your BoomCard subscription has been cancelled.</p>
+            <p>You will retain access until the end of your current billing period.</p>
+            <p>You can review your subscription status any time on your <a href="${process.env.APP_URL || 'https://mobile.boomcard.bg'}/subscription">subscription page</a>.</p>
+          `,
+        }), (err) => logger.error('[notifySubscriptionCancelledInApp] confirmation email failed:', err));
+      }
+    } catch (error) {
+      logger.error('[notifySubscriptionCancelledInApp] failed:', error);
+    }
+  }
+
+  // ===== F-019: Direct cashback expiry warning notification =====
+
+  /**
+   * F-019 — Direct cashback expiry warning notification.
+   * Spec requires this notification to fire reliably regardless of automation config.
+   * Called by the scheduler alongside fireAutomation('cashback.expiring', ...).
+   * The automation call remains as belt-and-suspenders but this direct call
+   * ensures the mandatory spec notification fires even when automation is inactive.
+   */
+  async notifyCashbackExpiringSoon(userId: string, expiryDate: Date): Promise<void> {
+    try {
+      const dateStr = expiryDate.toLocaleDateString('bg-BG', { timeZone: 'Europe/Sofia' });
+      await this.createNotification({
+        userId,
+        type: 'SUBSCRIPTION_EXPIRING',
+        title: 'Cashback expiring soon',
+        titleBg: 'Кешбекът изтича скоро',
+        message: `You have cashback that expires on ${dateStr}. Request a payout now to avoid losing it.`,
+        messageBg: `Имате кешбек, който изтича на ${dateStr}. Изтеглете го сега, за да не го загубите.`,
+        priority: 'high',
+        actionUrl: '/wallet',
+        actionText: 'View wallet',
+        actionTextBg: 'Виж портфейл',
+        data: { type: 'cashback_expiring_soon', expiryDate: expiryDate.toISOString() },
+      });
+
+      await this.sendPushNotification({
+        userId,
+        title: 'Кешбекът изтича!',
+        body: `Изтегли кешбека си преди ${dateStr}.`,
+        data: { type: 'cashback_expiring_soon', url: '/wallet' },
+      }).catch((err) => logger.error('[notifyCashbackExpiringSoon] push failed:', err));
+    } catch (error) {
+      logger.error('[notifyCashbackExpiringSoon] failed:', error);
+    }
+  }
+
+  /**
+   * Mark notification as read.
+   *
+   * r2h B8 / r2i S1: userId added to the where-clause to prevent any caller from
+   * marking another user's notification as read by guessing a notification ID (IDOR).
+   * The update becomes a no-op when the notificationId belongs to a different user,
+   * which is the safe failure mode.
+   */
+  async markAsRead(notificationId: string, userId: string): Promise<void> {
     await prisma.notification.update({
-      where: { id: notificationId },
+      where: { id: notificationId, userId },
       data: { isRead: true },
     });
   }
@@ -1826,7 +2433,7 @@ export class NotificationService {
       },
     });
 
-    console.log(`🗑️  Deleted ${result.count} old notifications`);
+    logger.info(`Deleted ${result.count} old notifications`);
     return result.count;
   }
 }

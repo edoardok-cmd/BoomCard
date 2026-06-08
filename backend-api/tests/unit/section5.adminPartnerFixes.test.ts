@@ -199,7 +199,7 @@ describe('Bug 1 — INACTIVE blocked from POST /:id/approve', () => {
 
   it('returns 400 when partner status is INACTIVE', async () => {
     mockPartnerFindUnique.mockResolvedValueOnce(
-      partnerRow({ status: 'INACTIVE', requestStatus: 'ODOBRENA', verifiedAt: new Date() })
+      partnerRow({ status: 'INACTIVE', requestStatus: 'APPROVED', verifiedAt: new Date() })
     );
     const res = await request(makeApp()).post('/api/admin/partners/p1/approve').send({});
     expect(res.status).toBe(400);
@@ -208,7 +208,7 @@ describe('Bug 1 — INACTIVE blocked from POST /:id/approve', () => {
 
   it('returns 400 when partner status is SUSPENDED', async () => {
     mockPartnerFindUnique.mockResolvedValueOnce(
-      partnerRow({ status: 'SUSPENDED', requestStatus: 'ODOBRENA' })
+      partnerRow({ status: 'SUSPENDED', requestStatus: 'APPROVED' })
     );
     const res = await request(makeApp()).post('/api/admin/partners/p1/approve').send({});
     expect(res.status).toBe(400);
@@ -216,7 +216,7 @@ describe('Bug 1 — INACTIVE blocked from POST /:id/approve', () => {
 
   it('returns 400 when partner status is ARCHIVED', async () => {
     mockPartnerFindUnique.mockResolvedValueOnce(
-      partnerRow({ status: 'ARCHIVED', requestStatus: 'ODOBRENA' })
+      partnerRow({ status: 'ARCHIVED', requestStatus: 'APPROVED' })
     );
     const res = await request(makeApp()).post('/api/admin/partners/p1/approve').send({});
     expect(res.status).toBe(400);
@@ -225,7 +225,7 @@ describe('Bug 1 — INACTIVE blocked from POST /:id/approve', () => {
   it('succeeds for a PENDING partner at ONBOARDING stage', async () => {
     const p = partnerRow({ status: 'PENDING', requestStatus: 'ONBOARDING' });
     mockPartnerFindUnique.mockResolvedValueOnce(p);
-    const updated = { ...p, status: 'ACTIVE', requestStatus: 'ODOBRENA' };
+    const updated = { ...p, status: 'ACTIVE', requestStatus: 'APPROVED' };
     mockTxFn.mockResolvedValueOnce([updated, {}]);
     const res = await request(makeApp()).post('/api/admin/partners/p1/approve').send({});
     expect(res.status).toBe(200);
@@ -244,7 +244,7 @@ describe('Inaccuracy 2 — approve gate blocks ODOBRENA + non-PENDING', () => {
 
   it('blocks when requestStatus=ODOBRENA and partner.status=ACTIVE (already active guard)', async () => {
     mockPartnerFindUnique.mockResolvedValueOnce(
-      partnerRow({ status: 'ACTIVE', requestStatus: 'ODOBRENA', verifiedAt: new Date() })
+      partnerRow({ status: 'ACTIVE', requestStatus: 'APPROVED', verifiedAt: new Date() })
     );
     const res = await request(makeApp()).post('/api/admin/partners/p1/approve').send({});
     expect(res.status).toBe(400);
@@ -253,7 +253,7 @@ describe('Inaccuracy 2 — approve gate blocks ODOBRENA + non-PENDING', () => {
 
   it('blocks when requestStatus=ODOBRENA and partner.status=SUSPENDED (NON_APPROVABLE_STATUSES)', async () => {
     mockPartnerFindUnique.mockResolvedValueOnce(
-      partnerRow({ status: 'SUSPENDED', requestStatus: 'ODOBRENA' })
+      partnerRow({ status: 'SUSPENDED', requestStatus: 'APPROVED' })
     );
     const res = await request(makeApp()).post('/api/admin/partners/p1/approve').send({});
     expect(res.status).toBe(400);
@@ -263,16 +263,16 @@ describe('Inaccuracy 2 — approve gate blocks ODOBRENA + non-PENDING', () => {
   it('blocks when requestStatus=ODOBRENA and partner.status=INACTIVE (belt-and-braces guard)', async () => {
     // INACTIVE is now in NON_APPROVABLE_STATUSES — caught before the ODOBRENA guard
     mockPartnerFindUnique.mockResolvedValueOnce(
-      partnerRow({ status: 'INACTIVE', requestStatus: 'ODOBRENA', verifiedAt: new Date() })
+      partnerRow({ status: 'INACTIVE', requestStatus: 'APPROVED', verifiedAt: new Date() })
     );
     const res = await request(makeApp()).post('/api/admin/partners/p1/approve').send({});
     expect(res.status).toBe(400);
   });
 
   it('allows ODOBRENA when partner.status=PENDING (manual pipeline advance scenario)', async () => {
-    const p = partnerRow({ status: 'PENDING', requestStatus: 'ODOBRENA' });
+    const p = partnerRow({ status: 'PENDING', requestStatus: 'APPROVED' });
     mockPartnerFindUnique.mockResolvedValueOnce(p);
-    const updated = { ...p, status: 'ACTIVE', requestStatus: 'ODOBRENA' };
+    const updated = { ...p, status: 'ACTIVE', requestStatus: 'APPROVED' };
     mockTxFn.mockResolvedValueOnce([updated, {}]);
     const res = await request(makeApp()).post('/api/admin/partners/p1/approve').send({});
     expect(res.status).toBe(200);
@@ -289,11 +289,11 @@ describe('Bug 2 — audit objectType is PascalCase for all admin writes', () => 
   });
 
   it('PATCH /status writes objectType=Partner', async () => {
-    mockPartnerFindUnique.mockResolvedValueOnce(partnerRow({ requestStatus: 'NOVA' }));
-    mockPartnerUpdate.mockResolvedValueOnce(partnerRow({ requestStatus: 'KOMUNIKACIYA' }));
+    mockPartnerFindUnique.mockResolvedValueOnce(partnerRow({ requestStatus: 'NEW' }));
+    mockPartnerUpdate.mockResolvedValueOnce(partnerRow({ requestStatus: 'COMMUNICATION' }));
     await request(makeApp())
       .patch('/api/admin/partners/p1/status')
-      .send({ requestStatus: 'KOMUNIKACIYA' });
+      .send({ requestStatus: 'COMMUNICATION' });
     const audit = findAuditCall('partner.request.status');
     expect(audit).toBeDefined();
     expect(audit!.objectType).toBe('Partner');
@@ -459,7 +459,7 @@ describe('Bug 4 — POST /notes requestStatus init', () => {
 
   it('does NOT set requestStatus when requestStatus is already set (KOMUNIKACIYA)', async () => {
     mockPartnerFindUnique.mockResolvedValueOnce(
-      partnerRow({ status: 'PENDING', requestStatus: 'KOMUNIKACIYA' })
+      partnerRow({ status: 'PENDING', requestStatus: 'COMMUNICATION' })
     );
     let partnerUpdateCalledInTx = false;
     mockTxFn.mockImplementationOnce(async (fn: (tx: any) => Promise<any>) => {
@@ -489,7 +489,7 @@ describe('§5 audit — approve/reject write AuditLog entries', () => {
   it('POST /approve writes a partner.approve audit entry with before/after', async () => {
     const p = partnerRow({ status: 'PENDING', requestStatus: 'ONBOARDING' });
     mockPartnerFindUnique.mockResolvedValueOnce(p);
-    const updated = { ...p, status: 'ACTIVE', requestStatus: 'ODOBRENA' };
+    const updated = { ...p, status: 'ACTIVE', requestStatus: 'APPROVED' };
     mockTxFn.mockResolvedValueOnce([updated, {}]);
 
     await request(makeApp()).post('/api/admin/partners/p1/approve').send({});
@@ -499,14 +499,14 @@ describe('§5 audit — approve/reject write AuditLog entries', () => {
     expect(audit!.objectType).toBe('Partner');
     expect(audit!.objectId).toBe('p1');
     expect(audit!.before).toMatchObject({ status: 'PENDING', requestStatus: 'ONBOARDING' });
-    expect(audit!.after).toMatchObject({ status: 'ACTIVE', requestStatus: 'ODOBRENA' });
+    expect(audit!.after).toMatchObject({ status: 'ACTIVE', requestStatus: 'APPROVED' });
   });
 
   it('POST /reject writes a partner.reject audit entry with before/after', async () => {
     mockPartnerFindUnique.mockResolvedValueOnce(
-      partnerRow({ status: 'PENDING', requestStatus: 'NOVA' })
+      partnerRow({ status: 'PENDING', requestStatus: 'NEW' })
     );
-    const updated = partnerRow({ status: 'REJECTED', requestStatus: 'OTKAZANA' });
+    const updated = partnerRow({ status: 'REJECTED', requestStatus: 'REJECTED' });
     mockTxFn.mockResolvedValueOnce([updated, {}, {}]);
 
     await request(makeApp())
@@ -517,7 +517,7 @@ describe('§5 audit — approve/reject write AuditLog entries', () => {
     expect(audit).toBeDefined();
     expect(audit!.objectType).toBe('Partner');
     expect(audit!.before).toMatchObject({ status: 'PENDING' });
-    expect(audit!.after).toMatchObject({ status: 'REJECTED', requestStatus: 'OTKAZANA' });
+    expect(audit!.after).toMatchObject({ status: 'REJECTED', requestStatus: 'REJECTED' });
   });
 });
 
@@ -532,7 +532,7 @@ describe('§5 audit — POST /reject INACTIVE guard', () => {
 
   it('returns 400 when partner status is INACTIVE (post-onboarding)', async () => {
     mockPartnerFindUnique.mockResolvedValueOnce(
-      partnerRow({ status: 'INACTIVE', requestStatus: 'ODOBRENA', verifiedAt: new Date() })
+      partnerRow({ status: 'INACTIVE', requestStatus: 'APPROVED', verifiedAt: new Date() })
     );
     const res = await request(makeApp())
       .post('/api/admin/partners/p1/reject')
@@ -543,9 +543,9 @@ describe('§5 audit — POST /reject INACTIVE guard', () => {
 
   it('allows reject for a PENDING partner (onboarding pipeline)', async () => {
     mockPartnerFindUnique.mockResolvedValueOnce(
-      partnerRow({ status: 'PENDING', requestStatus: 'NOVA' })
+      partnerRow({ status: 'PENDING', requestStatus: 'NEW' })
     );
-    const updated = partnerRow({ status: 'REJECTED', requestStatus: 'OTKAZANA' });
+    const updated = partnerRow({ status: 'REJECTED', requestStatus: 'REJECTED' });
     mockTxFn.mockResolvedValueOnce([updated, {}, {}]);
     const res = await request(makeApp())
       .post('/api/admin/partners/p1/reject')

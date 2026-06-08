@@ -16,6 +16,7 @@ import { emailService } from '../services/email.service';
 import { logger } from '../utils/logger';
 import { writeAudit } from '../middleware/audit.middleware';
 import { notificationService } from '../services/notification.service';
+import { detach } from '../utils/detach';
 
 const APP_URL = process.env.APP_URL || 'https://mobile.boomcard.bg';
 
@@ -74,6 +75,19 @@ export async function processPayseraRenewals(): Promise<void> {
       logger.info(
         `[paysera-renewal] Subscription ${sub.id} ${finalStatus.toLowerCase()} after 7-day grace period${alreadyCancelled ? ' (user had already cancelled, no email)' : ''}`
       );
+
+      // Audit M2 / spec §11.1+§11.2: "Subscription cancellation confirmed" is a
+      // mandatory Payment notification on every cancellation channel. In this job
+      // a row reaches finalStatus=CANCELLED only when the user had already
+      // cancelled via subscriptionService.cancelSubscription (alreadyCancelled =
+      // canceledAt is set), which ALREADY fired notifySubscriptionCancelledInApp at
+      // cancel time. Firing again here would double-notify for a single
+      // cancellation, so we intentionally do NOT re-emit it.
+      //
+      // The EXPIRED branch (natural billing-period lapse, canceledAt null) is NOT a
+      // "cancellation confirmed" event and correctly gets no cancellation
+      // notification here. A separate Failed Payment notification (§3.4) is emitted
+      // by step 1b for the FAILED_PAYMENT path.
 
       // Sync the BoomCard loyalty card type to match the user's remaining active
       // BoomCard subscription, or downgrade to PREMIUM_WEEKLY if none exists. Mirrors the
@@ -139,6 +153,16 @@ export async function processPayseraRenewals(): Promise<void> {
 
   for (const sub of failedRenewals) {
     try {
+      // Spec §3.4: ONE renewal attempt, no retry period. The selection above
+      // already restricts to status=ACTIVE, so a sub that has already failed its
+      // single renewal (now FAILED_PAYMENT) is never re-processed. This explicit
+      // guard documents and hardens that invariant against future query changes —
+      // only an ACTIVE sub on its first (and only) renewal attempt may transition.
+      if (sub.status !== SubscriptionStatus.ACTIVE) {
+        logger.info(`[paysera-renewal] Subscription ${sub.id} not ACTIVE (${sub.status}) — skipping repeat renewal failure (spec §3.4 no-retry)`);
+        continue;
+      }
+
       const prevStatus = sub.status;
       const failedAt = new Date();
 
@@ -155,14 +179,14 @@ export async function processPayseraRenewals(): Promise<void> {
       });
 
       // Audit the transition (best-effort — must not block the renewal flow).
-      writeAudit({
+      detach(writeAudit({
         actorUserId: null,
         action: 'SUBSCRIPTION_FAILED_PAYMENT',
         objectType: 'Subscription',
         objectId: sub.id,
         before: { status: prevStatus },
         after: { status: 'FAILED_PAYMENT', failedPaymentAt: failedAt.toISOString() },
-      }).catch((err) => logger.error(`[paysera-renewal] audit write failed for sub ${sub.id}:`, err));
+      }), (err) => logger.error(`[paysera-renewal] audit write failed for sub ${sub.id}:`, err));
 
       // Notify the user that the auto-renewal attempt failed. Spec §4.2 v1.1: the
       // mobile app shows a renewal CTA on receiving SUBSCRIPTION_FAILED_PAYMENT.
@@ -177,14 +201,13 @@ export async function processPayseraRenewals(): Promise<void> {
         return plan.priceMonthlyEur ?? 0;
       })();
 
-      notificationService
+      detach(notificationService
         .notifyPaymentFailed({
           userId: sub.userId,
           paymentIntentId: sub.id, // no PI for Paysera renewal — surface sub id for reference
           amount: priceInCents / 100,
           currency: 'EUR',
-        })
-        .catch((err) => logger.error(`[paysera-renewal] FAILED_PAYMENT notify failed for sub ${sub.id}:`, err));
+        }), (err) => logger.error(`[paysera-renewal] FAILED_PAYMENT notify failed for sub ${sub.id}:`, err));
 
       logger.info(`[paysera-renewal] Subscription ${sub.id} → FAILED_PAYMENT (spec §4.2 v1.1, no grace)`);
     } catch (err) {
@@ -266,14 +289,12 @@ export async function processPayseraRenewals(): Promise<void> {
       }
 
       // §10 — in-app + push alongside the expiry-notice email.
-      notificationService
+      detach(notificationService
         .notifySubscriptionPaused({
           userId: sub.userId,
           pauseEndsAt,
-        })
-        .catch((err) =>
-          logger.error(`[paysera-renewal] notifySubscriptionPaused failed for sub ${sub.id}:`, err),
-        );
+        }), (err) =>
+          logger.error(`[paysera-renewal] notifySubscriptionPaused failed for sub ${sub.id}:`, err));
 
       logger.info(`[paysera-renewal] Subscription ${sub.id} paused — renewal reminder sent`);
     } catch (err) {

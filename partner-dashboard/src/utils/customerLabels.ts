@@ -28,7 +28,8 @@ export type CustomerSubStatus =
   | 'PAUSED'
   | 'EXPIRED';
 
-export type CustomerPlan = 'LIGHT' | 'BASIC' | 'PREMIUM';
+// Canonical backend SubscriptionPlan enum tokens (no legacy LIGHT/PREMIUM).
+export type CustomerPlan = 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY';
 
 // Mirrors backend prisma TransactionStatus (lowercased by the /subscriptions/history
 // route). The legacy 'paid'/'void' values are kept for invoice surfaces that still
@@ -56,9 +57,9 @@ const SUB_STATUS: Record<CustomerSubStatus, Record<Lang, string>> = {
 };
 
 const PLAN: Record<CustomerPlan, Record<Lang, string>> = {
-  LIGHT:   { en: 'Premium Weekly',  bg: 'Premium седмичен' },
-  BASIC:   { en: 'Basic',           bg: 'Basic' },
-  PREMIUM: { en: 'Premium Monthly', bg: 'Premium месечен' },
+  PREMIUM_WEEKLY:  { en: 'Premium Weekly',  bg: 'Premium седмичен' },
+  BASIC:           { en: 'Basic',           bg: 'Basic' },
+  PREMIUM_MONTHLY: { en: 'Premium Monthly', bg: 'Premium месечен' },
 };
 
 const PAYMENT_STATUS: Record<CustomerPaymentStatus, Record<Lang, string>> = {

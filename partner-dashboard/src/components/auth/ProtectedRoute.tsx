@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { getAdminGateReason, isGateBypassPath } from './adminGate';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 
@@ -72,22 +73,29 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   // Role-based access control
   if (requiredRole && user) {
+    // SUGGESTION-1 fix (review r2aa): when the required role is 'user', admins must
+    // NOT bypass the gate. The subscription route uses requiredRole="user" with an
+    // explicit comment that admins must be blocked from user-facing billing flows
+    // (retry-payment, cancel, reactivate mutations). The previous blanket admin bypass
+    // (user.role !== 'admin') made that enforcement aspirational — admins could reach
+    // the subscription page and trigger billing mutations.
+    if (requiredRole === 'user' && user.role !== 'user') {
+      return <Navigate to="/" replace />;
+    }
     if (user.role !== requiredRole && user.role !== 'admin') {
       return <Navigate to="/dashboard" replace />;
     }
 
     // For admin users: enforce password change and 2FA setup before allowing
-    // access to any page other than the security settings page.
-    if (user.role === 'admin') {
-      const onSecurityPage = location.pathname.startsWith('/admin/profile/security');
-      const onLogoutPage   = location.pathname.startsWith('/admin/profile/logout');
-      const bypass = onSecurityPage || onLogoutPage;
-
-      if (!bypass && user.mustChangePassword) {
-        return <Navigate to="/admin/profile/security" state={{ reason: 'mustChangePassword' }} replace />;
-      }
-      if (!bypass && user.twoFactorEnabled === false && import.meta.env.PROD) {
-        return <Navigate to="/admin/profile/security" state={{ reason: 'setup2FA' }} replace />;
+    // access to any page other than the security settings page. The gating
+    // decision is derived from the SAME helper the sidebar nav uses
+    // (adminGate.ts) so the redirect and the nav lock styling can never
+    // disagree. The security/logout routes are always reachable so the admin
+    // can complete the required step.
+    if (user.role === 'admin' && !isGateBypassPath(location.pathname)) {
+      const reason = getAdminGateReason(user);
+      if (reason) {
+        return <Navigate to="/admin/profile/security" state={{ reason }} replace />;
       }
     }
   }

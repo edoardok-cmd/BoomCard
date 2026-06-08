@@ -21,6 +21,7 @@ import {
   CashbackEntryStatus, approveEntry, lockEntry, expireEntry, payEntry, voidEntry, backfillCashbackExpiry,
 } from '../services/adminCashback.service';
 import { getPayoutThresholdBGN } from '../utils/payoutThreshold';
+import { parsePagination } from '../utils/pagination';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 
@@ -95,7 +96,16 @@ router.post('/:partnerId/:month/mark-paid', requirePermission('cashback.write'),
     res.json({ success: true, message: `Cashback for ${month} marked as paid` });
   } catch (error: any) {
     logger.error('Failed to mark cashback as paid:', error);
-    res.status(500).json({ success: false, error: 'Failed to mark cashback as paid' });
+    // markPaid throws AppError (409 period-locked, 400 already-paid) for guard
+    // rejections — surface those statuses/messages instead of a blanket 500.
+    const status =
+      typeof error?.statusCode === 'number' && error.statusCode >= 400 && error.statusCode < 500
+        ? error.statusCode
+        : 500;
+    res.status(status).json({
+      success: false,
+      error: status === 500 ? 'Failed to mark cashback as paid' : error.message,
+    });
   }
 });
 
@@ -179,15 +189,15 @@ router.post('/rates', requirePermission('cashback.write'), async (req: AuthReque
     res.status(201).json({ success: true, message: 'Cashback rates created' });
   } catch (error: any) {
     logger.error('Failed to create cashback rates:', error);
-    // Service throws validation errors with recognisable messages; treat them all as 400
-    const isValidationError = error.message && (
-      error.message.includes('Invalid') ||
-      error.message.includes('Duplicate') ||
-      error.message.includes('Missing discount steps') ||
-      error.message.includes('must all be numbers') ||
-      error.message.includes('must be between')
-    );
-    res.status(isValidationError ? 400 : 500).json({ success: false, error: error.message || 'Failed to create cashback rates' });
+    // The service tags client-input validation failures as AppError with an explicit
+    // statusCode (typically 400). Honour that status directly rather than pattern-matching
+    // the message text — the previous substring whitelist missed several validation
+    // messages (e.g. "cashback cannot exceed the partner discount") and mis-returned 500.
+    const status =
+      typeof error?.statusCode === 'number' && error.statusCode >= 400 && error.statusCode < 500
+        ? error.statusCode
+        : 500;
+    res.status(status).json({ success: false, error: error.message || 'Failed to create cashback rates' });
   }
 });
 
@@ -235,10 +245,24 @@ router.delete('/rates/snapshot/:iso', requirePermission('cashback.write'), async
 // ------------------------------------------------------------------
 router.get('/payout-thresholds', requirePermission('cashback.read'), async (_req: AuthRequest, res: Response) => {
   try {
-    const plans = ['BASIC', 'PREMIUM_WEEKLY', 'PREMIUM'] as const;
-    const amounts = await Promise.all(plans.map((plan) => getPayoutThresholdBGN(plan)));
-    const data: Record<string, number> = {};
-    for (let i = 0; i < plans.length; i++) data[plans[i]] = amounts[i];
+    // M1 (spec §3.7) — the spec-canonical plan key set is `BASIC, PREMIUM_WEEKLY,
+    // PREMIUM`. The SubscriptionPlan enum stores the third plan as `PREMIUM_MONTHLY`;
+    // we read the threshold by the enum key but emit it under the spec key `PREMIUM`
+    // so the response shape matches §3.7 exactly. `PREMIUM_MONTHLY` is retained as a
+    // backward-compat alias (additive — no key removed) because some enum-native
+    // callers reference it; the spec-canonical surface is `BASIC/PREMIUM_WEEKLY/PREMIUM`.
+    const [basic, premiumWeekly, premiumMonthly] = await Promise.all([
+      getPayoutThresholdBGN('BASIC'),
+      getPayoutThresholdBGN('PREMIUM_WEEKLY'),
+      getPayoutThresholdBGN('PREMIUM_MONTHLY'),
+    ]);
+    const data: Record<string, number> = {
+      BASIC: basic,
+      PREMIUM_WEEKLY: premiumWeekly,
+      PREMIUM: premiumMonthly,
+      // Backward-compat alias for enum-native consumers (spec key is PREMIUM).
+      PREMIUM_MONTHLY: premiumMonthly,
+    };
     res.json({ success: true, data });
   } catch {
     res.status(500).json({ success: false, error: 'Failed to fetch payout thresholds' });
@@ -253,8 +277,7 @@ router.get('/payout-thresholds', requirePermission('cashback.read'), async (_req
 // ------------------------------------------------------------------
 router.get('/entries', requirePermission('cashback.read'), async (req: AuthRequest, res: Response) => {
   try {
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 20), 10000);
+    const { page, limit } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 10000 });
     const status = typeof req.query.status === 'string' ? req.query.status : undefined;
     const validStatuses: CashbackEntryStatus[] = ['Pending', 'TrialPending', 'Cleared', 'Locked', 'Paid', 'Expired', 'Voided'];
     const statusFilter = status && (validStatuses as string[]).includes(status)
@@ -288,8 +311,7 @@ router.get('/entries', requirePermission('cashback.read'), async (req: AuthReque
 router.get('/subscriber/:userId', requirePermission('cashback.read'), async (req: AuthRequest, res: Response) => {
   try {
     const { userId } = req.params;
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 20), 100);
+    const { page, limit } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     const result = await getSubscriberCashbackEntries(userId, page, limit);
     res.json({ success: true, ...result });
@@ -352,7 +374,9 @@ router.post('/entries/:id/lock', requirePermission('cashback.write'), async (req
 
 router.post('/entries/:id/expire', requirePermission('cashback.write'), async (req: AuthRequest, res: Response) => {
   try {
-    await expireEntry(req.params.id, req.user!.id);
+    // L3 — Pending→Expired requires an explicit admin override (spec §8.1 / §3.4).
+    const allowPendingOverride = req.body?.adminOverride === true;
+    await expireEntry(req.params.id, req.user!.id, { allowPendingOverride });
     res.json({ success: true, message: 'Entry expired' });
   } catch (error: any) {
     const status = error.statusCode ?? 500;

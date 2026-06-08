@@ -7,17 +7,21 @@ import { Router, Response } from 'express';
 import multer from 'multer';
 import { asyncHandler } from '../middleware/error.middleware';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
-import { requireActivePartnerForWrites } from '../middleware/partnerStatus.middleware';
 import { prisma } from '../lib/prisma';
 import { venueService } from '../services/venue.service';
 import { imageUploadService } from '../services/imageUpload.service';
 import { logger } from '../utils/logger';
+import { parsePagination } from '../utils/pagination';
 
+// S1: image/jpeg|jpg|png|webp only — application/octet-stream removed because
+// it allows any binary to pass the MIME type filter. The offers image endpoint
+// already uses validateMagicBytes for defence-in-depth; the same protection
+// applies here via the restricted allowed list.
 const menuUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024, files: 20 },
   fileFilter: (_req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/octet-stream'];
+    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
     cb(null, allowed.includes(file.mimetype));
   },
 });
@@ -39,9 +43,11 @@ router.get(
       latitude,
       longitude,
       radius,
-      limit,
-      offset,
     } = req.query;
+
+    // Clamp untrusted limit/offset before they reach the service → Prisma.
+    // Default page size 20, hard cap 100; take == limit, skip == offset.
+    const { take, skip } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     const filters = {
       city: city as string,
@@ -51,8 +57,8 @@ router.get(
       latitude: latitude ? parseFloat(latitude as string) : undefined,
       longitude: longitude ? parseFloat(longitude as string) : undefined,
       radius: radius ? parseFloat(radius as string) : undefined,
-      limit: limit ? parseInt(limit as string) : undefined,
-      offset: offset ? parseInt(offset as string) : undefined,
+      limit: take,
+      offset: skip,
     };
 
     const result = await venueService.getVenues(filters);
@@ -72,12 +78,27 @@ router.get(
 
 /**
  * GET /api/venues/nearby
- * Get nearby venues based on GPS coordinates
+ * Get nearby venues based on GPS coordinates.
+ *
+ * F-020: Spec §16 marks this feature as deferred. Gated behind the
+ * ENABLE_NEARBY_VENUES env var (default: false). Returns 501 when disabled.
+ * Set ENABLE_NEARBY_VENUES=true to enable when product confirms the feature.
  */
 router.get(
   '/nearby',
   asyncHandler(async (req, res) => {
-    const { latitude, longitude, radius, limit } = req.query;
+    // F-020: Feature flag gate — spec §16 marks nearby-venues as deferred.
+    // Default is false (disabled) so production stays spec-compliant.
+    // Set env var ENABLE_NEARBY_VENUES=true when the feature is confirmed.
+    const isNearbyVenuesEnabled = (process.env.ENABLE_NEARBY_VENUES ?? 'false').toLowerCase() === 'true';
+    if (!isNearbyVenuesEnabled) {
+      return res.status(501).json({
+        success: false,
+        error: 'Feature not yet available.',
+      });
+    }
+
+    const { latitude, longitude, radius } = req.query;
 
     if (!latitude || !longitude) {
       return res.status(400).json({
@@ -89,7 +110,8 @@ router.get(
     const lat = parseFloat(latitude as string);
     const lon = parseFloat(longitude as string);
     const rad = radius ? parseFloat(radius as string) : 5;
-    const lim = limit ? parseInt(limit as string) : 20;
+    // Clamp untrusted limit before it reaches the service → Prisma. Default 20, cap 100.
+    const { take: lim } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     const venues = await venueService.getNearbyVenues(lat, lon, rad, lim);
 
@@ -112,7 +134,7 @@ router.get(
 router.get(
   '/search',
   asyncHandler(async (req, res) => {
-    const { q, limit } = req.query;
+    const { q } = req.query;
 
     if (!q) {
       return res.status(400).json({
@@ -121,7 +143,7 @@ router.get(
       });
     }
 
-    const lim = limit ? parseInt(limit as string) : 20;
+    const { take: lim } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
     const venues = await venueService.searchVenues(q as string, lim);
 
     res.json({
@@ -181,13 +203,17 @@ router.get(
 
 /**
  * POST /api/venues
- * Create new venue (Admin/Partner only)
+ * Create new venue (Admin only).
+ *
+ * B3 / §11.4 / §4.1: Partners must NOT directly create venue records.
+ * All partner-initiated location additions must flow through the Change Request
+ * (Help system) workflow so an admin reviews and applies the change.
+ * PARTNER has been removed from authorize() to enforce this.
  */
 router.post(
   '/',
   authenticate,
-  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
-  requireActivePartnerForWrites,
+  authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const {
       partnerId,
@@ -216,18 +242,20 @@ router.post(
       });
     }
 
-    // PARTNER role: verify they own the specified partner record
-    if (req.user!.role === 'PARTNER') {
-      const partner = await prisma.partner.findUnique({
-        where: { id: partnerId },
-        select: { userId: true },
+    // Geolocation is a REQUIRED field — every venue must be geocoded so the
+    // offer-redemption proximity gate (anti-fraud, 100m radius) can be enforced.
+    // A venue cannot be created without valid coordinates.
+    const latNum = Number(latitude);
+    const lngNum = Number(longitude);
+    if (
+      latitude == null || longitude == null ||
+      Number.isNaN(latNum) || Number.isNaN(lngNum) ||
+      latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: 'Venue geolocation is required: provide a valid latitude (-90..90) and longitude (-180..180).',
       });
-      if (!partner || partner.userId !== req.user!.id) {
-        return res.status(403).json({
-          success: false,
-          error: 'You do not have permission to create a venue for this partner',
-        });
-      }
     }
 
     const venue = await venueService.createVenue({
@@ -237,8 +265,8 @@ router.post(
       address,
       city,
       region,
-      latitude: (() => { const v = Number(latitude); return latitude != null && !isNaN(v) ? v : null; })(),
-      longitude: (() => { const v = Number(longitude); return longitude != null && !isNaN(v) ? v : null; })(),
+      latitude: latNum,
+      longitude: lngNum,
       phone,
       email,
       description,
@@ -259,31 +287,41 @@ router.post(
 
 /**
  * PUT /api/venues/:id
- * Update venue (Admin/Partner only)
+ * Update venue (Admin only).
+ *
+ * B2 / B3 / §11.4 / §4.1: Partners must NOT directly modify venue records.
+ * All partner-initiated location changes must flow through the Change Request
+ * (Help system) workflow so an admin reviews and applies the change. PARTNER
+ * has been removed from authorize() to enforce this requirement and to prevent
+ * the field-allowlist bypass (writing menuStatus, menuUrl, venueStatus, etc.
+ * directly into the venue row via req.body passthrough).
  */
 router.put(
   '/:id',
   authenticate,
-  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
-  requireActivePartnerForWrites,
+  authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
-    // PARTNER role: verify they own this venue
-    if (req.user!.role === 'PARTNER') {
-      const venue = await prisma.venue.findUnique({
-        where: { id },
-        include: { partner: { select: { userId: true } } },
-      });
-      if (!venue || venue.partner?.userId !== req.user!.id) {
-        return res.status(403).json({
-          success: false,
-          error: 'You do not have permission to update this venue',
-        });
-      }
-    }
+    // HIGH-2 (r2k): extract only the allowed fields from req.body before passing
+    // to the service. Express types req.body as `any` and updateVenue's parameter
+    // is `Partial<...>` with `any` spread inside, so TypeScript does NOT prevent
+    // unintended fields (menuStatus, venueStatus, partnerId, pendingMenuUrl, etc.)
+    // from reaching the Prisma update — they would be silently written to the DB,
+    // bypassing the menu lifecycle audit trail and venue lifecycle controls.
+    const {
+      name, nameBg, address, city, region,
+      latitude, longitude,
+      phone, email, description, descriptionBg,
+      images, openingHours, capacity, features,
+    } = req.body;
 
-    const venue = await venueService.updateVenue(id, req.body);
+    const venue = await venueService.updateVenue(id, {
+      name, nameBg, address, city, region,
+      latitude, longitude,
+      phone, email, description, descriptionBg,
+      images, openingHours, capacity, features,
+    });
 
     res.json({
       success: true,
@@ -315,14 +353,20 @@ router.delete(
 
 /**
  * POST /api/venues/:id/menu
- * Upload menu images for a venue (Admin or owning Partner)
+ * Upload menu images for a venue (Admin only).
  * multipart/form-data field: images (up to 20 files)
+ *
+ * §8a / MED-1: Offer & menu management is not a partner-owned self-service
+ * workflow. PARTNER removed here to align with the sibling /menu/submit and
+ * /menu/withdraw routes (which already removed PARTNER per §8a). Previously a
+ * partner got 403 on /menu/submit but 200 on this image-upload path — an
+ * inconsistency. Only admins may write venue menu content until a product spec
+ * authorizes partner self-service.
  */
 router.post(
   '/:id/menu',
   authenticate,
-  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
-  requireActivePartnerForWrites,
+  authorize('ADMIN', 'SUPER_ADMIN'),
   menuUpload.array('images', 20),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
@@ -332,23 +376,9 @@ router.post(
       return res.status(400).json({ success: false, error: 'At least one image file is required (field: images)' });
     }
 
-    // Authenticated partner/admin endpoint — admins legitimately operate on
-    // venues whose partner is suspended/archived; the per-role owner check
-    // below is the actual authorization gate.
     const venue = await venueService.getVenueById(id, { includeHidden: true });
     if (!venue) {
       return res.status(404).json({ success: false, error: 'Venue not found' });
-    }
-
-    // PARTNER role: verify they own this venue
-    if (req.user!.role === 'PARTNER') {
-      const venueRecord = await prisma.venue.findUnique({
-        where: { id },
-        include: { partner: { select: { userId: true } } },
-      });
-      if (!venueRecord || venueRecord.partner?.userId !== req.user!.id) {
-        return res.status(403).json({ success: false, error: 'You do not have permission to upload menu images for this venue' });
-      }
     }
 
     // Upload each image to S3
@@ -372,11 +402,31 @@ router.post(
       return res.status(500).json({ success: false, error: 'All image uploads failed' });
     }
 
-    // Append to existing menuImages
-    const existing: string[] = venue.menuImages ? JSON.parse(venue.menuImages as string) : [];
+    // Append to existing menuImages (INFO-1: guard against malformed stored JSON)
+    let existing: string[] = [];
+    if (venue.menuImages) {
+      try {
+        existing = JSON.parse(venue.menuImages as string);
+        if (!Array.isArray(existing)) existing = [];
+      } catch {
+        existing = [];
+      }
+    }
+
+    // LOW-2 (r2k): cap total accumulated menu images per venue. Without this a
+    // partner (or admin) could call the endpoint repeatedly to grow the array
+    // indefinitely. 100 total URLs is a generous ceiling for any real menu.
+    const MAX_MENU_IMAGES = 100;
+    if (existing.length + uploadedUrls.length > MAX_MENU_IMAGES) {
+      return res.status(400).json({
+        success: false,
+        error: `Venue already has ${existing.length} menu image(s). Cannot exceed ${MAX_MENU_IMAGES} total images per venue.`,
+      });
+    }
+
     const merged = [...existing, ...uploadedUrls];
 
-    const updated = await venueService.updateVenue(id, { menuImages: JSON.stringify(merged) });
+    await venueService.updateVenue(id, { menuImages: JSON.stringify(merged) });
 
     res.json({
       success: true,
@@ -388,33 +438,21 @@ router.post(
 
 /**
  * DELETE /api/venues/:id/menu
- * Clear all menu images for a venue (Admin or owning Partner)
+ * Clear all menu images for a venue (Admin only).
+ *
+ * §8a / MED-1: aligned with /menu/submit and /menu/withdraw — menu management
+ * is not a partner self-service workflow. PARTNER removed; admin-only.
  */
 router.delete(
   '/:id/menu',
   authenticate,
-  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
-  requireActivePartnerForWrites,
+  authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
-    // Authenticated partner/admin endpoint — admins legitimately operate on
-    // venues whose partner is suspended/archived; the per-role owner check
-    // below is the actual authorization gate.
     const venue = await venueService.getVenueById(id, { includeHidden: true });
     if (!venue) {
       return res.status(404).json({ success: false, error: 'Venue not found' });
-    }
-
-    // PARTNER role: verify they own this venue
-    if (req.user!.role === 'PARTNER') {
-      const venueRecord = await prisma.venue.findUnique({
-        where: { id },
-        include: { partner: { select: { userId: true } } },
-      });
-      if (!venueRecord || venueRecord.partner?.userId !== req.user!.id) {
-        return res.status(403).json({ success: false, error: 'You do not have permission to delete menu images for this venue' });
-      }
     }
 
     await venueService.updateVenue(id, { menuImages: null });
@@ -425,14 +463,18 @@ router.delete(
 
 /**
  * POST /api/venues/:id/menu/submit
- * Partner submits a menu URL for admin review.
+ * Submit a menu URL for admin review.
  * Sets pendingMenuUrl + status=PENDING. Existing menuUrl (if approved) remains visible to users.
+ *
+ * MEDIUM-3 / §8a: Partner self-service menu submission is scope-creep per §8a
+ * ("Not defined in source specs"). Removed PARTNER from authorize() until a
+ * product specification explicitly authorizes this workflow. Only admins can
+ * use this endpoint for now.
  */
 router.post(
   '/:id/menu/submit',
   authenticate,
-  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
-  requireActivePartnerForWrites,
+  authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const { url } = req.body as { url?: string };
@@ -455,15 +497,10 @@ router.post(
 
     const venueRecord = await prisma.venue.findUnique({
       where: { id },
-      include: { partner: { select: { userId: true } } },
+      select: { id: true },
     });
     if (!venueRecord) {
       return res.status(404).json({ success: false, error: 'Venue not found' });
-    }
-
-    // PARTNER role: verify they own this venue
-    if (req.user!.role === 'PARTNER' && venueRecord.partner?.userId !== req.user!.id) {
-      return res.status(403).json({ success: false, error: 'You do not have permission to submit a menu for this venue' });
     }
 
     const updated = await prisma.venue.update({
@@ -483,13 +520,14 @@ router.post(
       at: new Date().toISOString(),
     });
 
+    // MEDIUM-4: return only non-internal fields. pendingMenuUrl and
+    // menuRejectionReason are ADMIN_ONLY_VENUE_FIELDS per venue.service.ts
+    // and must not be returned to any non-admin caller.
     res.json({
       success: true,
       data: {
         menuUrl: updated.menuUrl,
-        pendingMenuUrl: updated.pendingMenuUrl,
         menuStatus: updated.menuStatus,
-        menuRejectionReason: updated.menuRejectionReason,
         menuSubmittedAt: updated.menuSubmittedAt,
       },
       message: 'Menu URL submitted for review',
@@ -499,27 +537,26 @@ router.post(
 
 /**
  * POST /api/venues/:id/menu/withdraw
- * Partner withdraws a PENDING menu submission.
+ * Withdraw a PENDING menu submission.
  * - If a previously approved menuUrl exists, keeps it and reverts status to APPROVED.
  * - Otherwise clears menu state back to NONE.
+ *
+ * MEDIUM-3 / §8a: Same reasoning as /menu/submit — PARTNER removed until a
+ * product spec authorizes partner self-service menu management.
  */
 router.post(
   '/:id/menu/withdraw',
   authenticate,
-  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
-  requireActivePartnerForWrites,
+  authorize('ADMIN', 'SUPER_ADMIN'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
     const venueRecord = await prisma.venue.findUnique({
       where: { id },
-      include: { partner: { select: { userId: true } } },
+      select: { id: true, menuStatus: true, menuUrl: true, menuSubmittedAt: true },
     });
     if (!venueRecord) {
       return res.status(404).json({ success: false, error: 'Venue not found' });
-    }
-    if (req.user!.role === 'PARTNER' && venueRecord.partner?.userId !== req.user!.id) {
-      return res.status(403).json({ success: false, error: 'You do not have permission to modify this venue' });
     }
     if (venueRecord.menuStatus !== 'PENDING') {
       return res.status(400).json({ success: false, error: 'No pending submission to withdraw' });
@@ -543,13 +580,12 @@ router.post(
       at: new Date().toISOString(),
     });
 
+    // MEDIUM-4: return only non-internal fields (same as /menu/submit response).
     res.json({
       success: true,
       data: {
         menuUrl: updated.menuUrl,
-        pendingMenuUrl: updated.pendingMenuUrl,
         menuStatus: updated.menuStatus,
-        menuRejectionReason: updated.menuRejectionReason,
         menuSubmittedAt: updated.menuSubmittedAt,
       },
       message: 'Submission withdrawn',

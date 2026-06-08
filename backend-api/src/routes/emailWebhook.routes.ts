@@ -57,14 +57,23 @@ function verifyAuth(req: Request): boolean {
 
   if (!hmacSecret && !sharedSecret) {
     // Fail closed in production — an unset secret must never let traffic
-    // through. Local/test environments get a warn-level log so the dev loop
-    // keeps working without provisioning a secret.
+    // through.
     if (process.env.NODE_ENV === 'production') {
       logger.error('[email-webhook] no INBOUND_EMAIL_HMAC_SECRET or EMAIL_WEBHOOK_SECRET set in production — refusing request');
       return false;
     }
-    logger.warn('[email-webhook] no INBOUND_EMAIL_HMAC_SECRET or EMAIL_WEBHOOK_SECRET set — skipping auth check (non-production)');
-    return true;
+    // Outside production, only skip auth when the operator has EXPLICITLY opted
+    // in via ALLOW_UNSIGNED_WEBHOOK=1. Previously the mere absence of secrets
+    // bypassed auth, which meant a misconfigured staging box (NODE_ENV≠production,
+    // secrets unset, flag unset) accepted forged inbound mail bearing a wrong
+    // signature. Now an unset flag fails closed everywhere except where dev has
+    // deliberately turned signing off.
+    if (process.env.ALLOW_UNSIGNED_WEBHOOK === '1') {
+      logger.warn('[email-webhook] ALLOW_UNSIGNED_WEBHOOK=1 and no secret set — skipping auth check (dev opt-in)');
+      return true;
+    }
+    logger.error('[email-webhook] no INBOUND_EMAIL_HMAC_SECRET or EMAIL_WEBHOOK_SECRET set and ALLOW_UNSIGNED_WEBHOOK!=1 — refusing request');
+    return false;
   }
 
   // HMAC path (preferred). Compare the provider's signature against the
@@ -130,6 +139,16 @@ router.post(
         error: 'invalid_payload',
         required: ['from', 'to', 'subject', 'text', 'messageId'],
       });
+    }
+
+    // Threading-header alias (§6.2 / Clash 7.1): the canonical spec marker is
+    // X-BoomCard-Request-ID, while the system emits/reads X-BoomCard-Ticket-ID.
+    // A spec-literal external integrator may normalize the header into
+    // `xBoomCardRequestId`. Map it onto `xBoomCardTicketId` (the field the
+    // resolver's Priority-1 lookup uses) when the latter is absent, so inbound
+    // mail from such an integrator still threads at Priority 1.
+    if (!body.xBoomCardTicketId && body.xBoomCardRequestId) {
+      body.xBoomCardTicketId = body.xBoomCardRequestId;
     }
 
     const result = await ingestInboundEmail(body);

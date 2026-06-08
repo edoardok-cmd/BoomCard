@@ -328,6 +328,36 @@ const ShowPasswordBtn = styled.button`
   }
 `;
 
+const ClosureNotice = styled.div`
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  [data-theme="dark"] & {
+    background: rgba(234, 88, 12, 0.1);
+    border-color: rgba(234, 88, 12, 0.4);
+  }
+`;
+
+const ClosureNoticeTitle = styled.p`
+  color: #92400e;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  [data-theme="dark"] & {
+    color: #fb923c;
+  }
+`;
+
+const ClosureNoticeText = styled.p`
+  color: #78350f;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  [data-theme="dark"] & {
+    color: #fdba74;
+  }
+`;
+
 interface NotificationSettings {
   emailNotifications: boolean;
   smsNotifications: boolean;
@@ -363,7 +393,8 @@ interface PasswordErrors {
 
 const SettingsPage: React.FC = () => {
   const { language, setLanguage, t } = useLanguage();
-  const { changePassword, logout } = useAuth();
+  const { changePassword, logout, user } = useAuth();
+  const isPartner = user?.role === 'partner';
 
   const [notifications, setNotifications] = useState<NotificationSettings>({
     emailNotifications: true,
@@ -373,6 +404,9 @@ const SettingsPage: React.FC = () => {
     weeklyDigest: true,
     accountActivity: true,
   });
+  // F2 fix (r2y): track whether server preferences have loaded so Save never writes
+  // the hard-coded defaults back over real persisted state.
+  const [notificationsLoaded, setNotificationsLoaded] = useState(false);
 
   const [marketing, setMarketing] = useState<MarketingConsents>({
     emailMarketing: false,
@@ -415,6 +449,42 @@ const SettingsPage: React.FC = () => {
     activityVisible: true,
   });
 
+  // F2 fix (r2y): load notification preferences from server on mount.
+  // Spec §5.1: "Notification preferences (email, SMS)" are self-service editable.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        // Backend contract (notifications.routes.ts) is category-keyed and nested:
+        // { email:{enabled,newOffers,…}, push:{enabled,…}, sms:{enabled}, inApp, quietHours }.
+        // Map the partner UI toggles onto that shape. weeklyDigest/accountActivity have
+        // no native backend field, so they live as extra sub-keys under `email` — the
+        // PUT handler's per-category spread preserves unknown sub-keys, so they persist.
+        type PrefCategory = Record<string, boolean | undefined>;
+        const response = await apiService.get<{
+          email?: PrefCategory;
+          push?: PrefCategory;
+          sms?: PrefCategory;
+        }>('/notifications/preferences');
+        const data = (response as any)?.data ?? response ?? {};
+        if (cancelled) return;
+        setNotifications({
+          emailNotifications: data.email?.enabled ?? true,
+          smsNotifications: data.sms?.enabled ?? false,
+          pushNotifications: data.push?.enabled ?? true,
+          newOffers: data.email?.newOffers ?? true,
+          weeklyDigest: data.email?.weeklyDigest ?? true,
+          accountActivity: data.email?.systemAnnouncements ?? true,
+        });
+        setNotificationsLoaded(true);
+      } catch (err) {
+        console.error('Failed to load notification preferences:', err);
+        // Do not set notificationsLoaded — save will skip the write until loaded
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const [selectedLanguage, setSelectedLanguage] = useState(language);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -429,6 +499,9 @@ const SettingsPage: React.FC = () => {
   const [deletePassword, setDeletePassword] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  // Partner-role: track the 30-day closure request state (spec §10.7).
+  const [closureRequested, setClosureRequested] = useState(false);
+  const [isRequestingClosure, setIsRequestingClosure] = useState(false);
 
   const toggleNotification = (key: keyof NotificationSettings) => {
     setNotifications(prev => ({ ...prev, [key]: !prev[key] }));
@@ -449,6 +522,10 @@ const SettingsPage: React.FC = () => {
         break;
       case 'newPassword':
         if (!value) return t('settings.enterNewPassword');
+        // Backend changePasswordValidation (auth.validator.ts) requires min 8 chars
+        // PLUS uppercase + lowercase + digit + special character. We enforce length
+        // here for fast feedback; the full complexity rules are validated server-side
+        // and the specific failure message is surfaced in handleChangePassword's catch.
         if (value.length < 8) return t('settings.passwordMinLength');
         break;
       case 'confirmPassword':
@@ -481,10 +558,15 @@ const SettingsPage: React.FC = () => {
       setShowPasswordForm(false);
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setPasswordErrors({});
-      toast.success(t('settings.passwordChangedSuccess'));
+      // Do NOT toast success here — AuthContext.changePassword already shows a success
+      // toast. This is the success-path counterpart to the error-toast de-duplication
+      // above: exactly one toast per outcome (AuthContext owns password-change toasts).
     } catch (error) {
+      // Do NOT toast here. AuthContext.changePassword already surfaces the specific
+      // error (its own complexity messages or the backend's, via extractErrorMessage)
+      // with toast.error and then re-throws. Toasting again produced a duplicate toast
+      // on every failure path. We only need to log and stop the spinner.
       console.error('Change password error:', error);
-      toast.error(t('settings.errorSavingSettings'));
     } finally {
       setIsSavingPassword(false);
     }
@@ -503,11 +585,32 @@ const SettingsPage: React.FC = () => {
         apiService.post('/auth/consent', { type: 'phone_marketing', granted: marketing.phoneMarketing }),
       ];
 
-      // Spec §7.1: system emails follow the user's selected language. The
-      // language is stored on User.preferredLanguage and only honored at email-
-      // send time, so persist any change made in this dropdown to the server
-      // — otherwise existing users stay on whatever language was set at
-      // registration regardless of how often they switch the UI.
+      // F2 fix (r2y): persist notification preferences to server (spec §5.1).
+      // Only write if the server state has loaded — never overwrite with hard-coded defaults.
+      if (notificationsLoaded) {
+        // Write back in the backend's category-keyed shape. The PUT handler
+        // deep-merges per category (preserving sibling sub-keys), so a partial
+        // payload like this is safe and actually persists (the prior flat-field
+        // payload was silently dropped — fields outside email/push/sms/inApp/
+        // quietHours are not merged).
+        tasks.push(
+          apiService.put('/notifications/preferences', {
+            email: {
+              enabled: notifications.emailNotifications,
+              newOffers: notifications.newOffers,
+              weeklyDigest: notifications.weeklyDigest,
+              systemAnnouncements: notifications.accountActivity,
+            },
+            sms: { enabled: notifications.smsNotifications },
+            push: {
+              enabled: notifications.pushNotifications,
+              newOffers: notifications.newOffers,
+            },
+          }),
+        );
+      }
+
+      // Spec §7.1: system emails follow the user's selected language.
       if (selectedLanguage !== language) {
         tasks.push(apiService.put('/auth/profile', { preferredLanguage: selectedLanguage }));
       }
@@ -531,7 +634,48 @@ const SettingsPage: React.FC = () => {
     setShowDeleteConfirm(true);
   };
 
+  // CRITICAL fix (B1 r2y / spec §5.4, §10.7, §11.1):
+  // Partner-role users MUST NOT trigger an immediate DELETE /auth/account.
+  // The spec mandates a 30-day notice period via a Help/Change Request.
+  // Consumer users retain the immediate self-service deletion path.
+  const handlePartnerClosureRequest = async () => {
+    setIsRequestingClosure(true);
+    try {
+      // Partner help tickets are created via POST /api/partner/help/ticket
+      // (partnerHelp.routes.ts). The body schema requires subject (>=5 chars),
+      // body (>=10 chars), a valid TicketCategory, and an optional requestType.
+      // Account closure is a contractual change, so requestType CONTRACT_CHANGE
+      // routes it to the SUPER_ADMIN contract-change queue (spec §11.6).
+      // apiService.post awaits a 2xx response and throws on any non-2xx, so
+      // closureRequested / success toast only fire when the request truly succeeds.
+      await apiService.post('/partner/help/ticket', {
+        subject: 'Account closure request',
+        body: 'I would like to close my partner account. I understand this is subject to a 30-day notice period.',
+        category: 'ACCOUNT',
+        requestType: 'CONTRACT_CHANGE',
+      });
+      setClosureRequested(true);
+      setShowDeleteConfirm(false);
+      toast.success(
+        language === 'bg'
+          ? 'Заявката е изпратена. Акаунтът ви ще бъде закрит в рамките на 30 дни.'
+          : 'Your request has been submitted. Account closure will be processed within 30 days.',
+        { duration: 8000 },
+      );
+    } catch (error: any) {
+      const msg = error?.response?.data?.message || t('settings.errorSavingSettings');
+      toast.error(msg);
+    } finally {
+      setIsRequestingClosure(false);
+    }
+  };
+
   const confirmDeleteAccount = async () => {
+    // Partner accounts must use the 30-day closure request path above.
+    if (isPartner) {
+      await handlePartnerClosureRequest();
+      return;
+    }
     if (!deletePassword) {
       toast.error(t('settings.enterCurrentPassword'));
       return;
@@ -590,47 +734,61 @@ const SettingsPage: React.FC = () => {
               <Toggle $active={notifications.smsNotifications} onClick={() => toggleNotification('smsNotifications')} />
             </SettingRow>
 
-            <SettingRow>
-              <SettingInfo>
-                <SettingLabel>{t('settings.pushNotifications')}</SettingLabel>
-                <SettingDesc>{t('settings.pushNotificationsDesc')}</SettingDesc>
-              </SettingInfo>
-              <Toggle $active={notifications.pushNotifications} onClick={() => toggleNotification('pushNotifications')} />
-            </SettingRow>
+            {/* Spec §5.1: partner self-service notification preferences are
+                limited to email + SMS only. The push / newOffers / weeklyDigest /
+                accountActivity toggles are NOT in the partner editable field set,
+                so they are hidden for partner accounts. Their persisted server
+                values are still round-tripped on Save (handleSave never overwrites
+                them with the hard-coded defaults), so hiding the UI does not mutate
+                any stored preference. Consumer accounts retain all toggles. */}
+            {!isPartner && (
+              <>
+                <SettingRow>
+                  <SettingInfo>
+                    <SettingLabel>{t('settings.pushNotifications')}</SettingLabel>
+                    <SettingDesc>{t('settings.pushNotificationsDesc')}</SettingDesc>
+                  </SettingInfo>
+                  <Toggle $active={notifications.pushNotifications} onClick={() => toggleNotification('pushNotifications')} />
+                </SettingRow>
 
-            <SettingRow>
-              <SettingInfo>
-                <SettingLabel>{t('settings.newOffers')}</SettingLabel>
-                <SettingDesc>{t('settings.newOffersDesc')}</SettingDesc>
-              </SettingInfo>
-              <Toggle $active={notifications.newOffers} onClick={() => toggleNotification('newOffers')} />
-            </SettingRow>
+                <SettingRow>
+                  <SettingInfo>
+                    <SettingLabel>{t('settings.newOffers')}</SettingLabel>
+                    <SettingDesc>{t('settings.newOffersDesc')}</SettingDesc>
+                  </SettingInfo>
+                  <Toggle $active={notifications.newOffers} onClick={() => toggleNotification('newOffers')} />
+                </SettingRow>
 
-            <SettingRow>
-              <SettingInfo>
-                <SettingLabel>{t('settings.weeklyDigest')}</SettingLabel>
-                <SettingDesc>{t('settings.weeklyDigestDesc')}</SettingDesc>
-              </SettingInfo>
-              <Toggle $active={notifications.weeklyDigest} onClick={() => toggleNotification('weeklyDigest')} />
-            </SettingRow>
+                <SettingRow>
+                  <SettingInfo>
+                    <SettingLabel>{t('settings.weeklyDigest')}</SettingLabel>
+                    <SettingDesc>{t('settings.weeklyDigestDesc')}</SettingDesc>
+                  </SettingInfo>
+                  <Toggle $active={notifications.weeklyDigest} onClick={() => toggleNotification('weeklyDigest')} />
+                </SettingRow>
 
-            <SettingRow>
-              <SettingInfo>
-                <SettingLabel>{t('settings.accountActivity')}</SettingLabel>
-                <SettingDesc>{t('settings.accountActivityDesc')}</SettingDesc>
-              </SettingInfo>
-              <Toggle $active={notifications.accountActivity} onClick={() => toggleNotification('accountActivity')} />
-            </SettingRow>
+                <SettingRow>
+                  <SettingInfo>
+                    <SettingLabel>{t('settings.accountActivity')}</SettingLabel>
+                    <SettingDesc>{t('settings.accountActivityDesc')}</SettingDesc>
+                  </SettingInfo>
+                  <Toggle $active={notifications.accountActivity} onClick={() => toggleNotification('accountActivity')} />
+                </SettingRow>
+              </>
+            )}
           </SettingCard>
 
-          {/* Browser Push Notifications */}
-          <SettingCard
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
-          >
-            <NotificationPreferences />
-          </SettingCard>
+          {/* Browser Push Notifications — push is not a partner self-service
+              preference per spec §5.1, so hide the browser-push card for partners. */}
+          {!isPartner && (
+            <SettingCard
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+            >
+              <NotificationPreferences />
+            </SettingCard>
+          )}
 
           {/* Marketing Consents (GDPR) */}
           <SettingCard
@@ -667,54 +825,61 @@ const SettingsPage: React.FC = () => {
             <ConsentNote>{t('settings.marketingConsentNote')}</ConsentNote>
           </SettingCard>
 
-          {/* Privacy */}
-          <SettingCard
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25 }}
-          >
-            <CardHeader>
-              <IconWrapper style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}>
-                <Eye />
-              </IconWrapper>
-              <div>
-                <CardTitle>{t('settings.privacyTitle')}</CardTitle>
-                <CardDescription>{t('settings.privacyDesc')}</CardDescription>
-              </div>
-            </CardHeader>
+          {/* Privacy — hidden for partner accounts.
+              Spec §1.4: partner visibility is controlled exclusively by
+              partner_account_status, not a separate self-service toggle.
+              Spec §11.4: partners may not directly edit the visibility field.
+              B2 fix (r2y): the privacy section was also never loaded from or
+              saved to the server, creating a convincing but non-functional UI. */}
+          {!isPartner && (
+            <SettingCard
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25 }}
+            >
+              <CardHeader>
+                <IconWrapper style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}>
+                  <Eye />
+                </IconWrapper>
+                <div>
+                  <CardTitle>{t('settings.privacyTitle')}</CardTitle>
+                  <CardDescription>{t('settings.privacyDesc')}</CardDescription>
+                </div>
+              </CardHeader>
 
-            <SettingRow>
-              <SettingInfo>
-                <SettingLabel>{t('settings.profileVisible')}</SettingLabel>
-                <SettingDesc>{t('settings.profileVisibleDesc')}</SettingDesc>
-              </SettingInfo>
-              <Toggle $active={privacy.profileVisible} onClick={() => togglePrivacy('profileVisible')} />
-            </SettingRow>
+              <SettingRow>
+                <SettingInfo>
+                  <SettingLabel>{t('settings.profileVisible')}</SettingLabel>
+                  <SettingDesc>{t('settings.profileVisibleDesc')}</SettingDesc>
+                </SettingInfo>
+                <Toggle $active={privacy.profileVisible} onClick={() => togglePrivacy('profileVisible')} />
+              </SettingRow>
 
-            <SettingRow>
-              <SettingInfo>
-                <SettingLabel>{t('settings.showEmail')}</SettingLabel>
-                <SettingDesc>{t('settings.showEmailDesc')}</SettingDesc>
-              </SettingInfo>
-              <Toggle $active={privacy.showEmail} onClick={() => togglePrivacy('showEmail')} />
-            </SettingRow>
+              <SettingRow>
+                <SettingInfo>
+                  <SettingLabel>{t('settings.showEmail')}</SettingLabel>
+                  <SettingDesc>{t('settings.showEmailDesc')}</SettingDesc>
+                </SettingInfo>
+                <Toggle $active={privacy.showEmail} onClick={() => togglePrivacy('showEmail')} />
+              </SettingRow>
 
-            <SettingRow>
-              <SettingInfo>
-                <SettingLabel>{t('settings.showPhone')}</SettingLabel>
-                <SettingDesc>{t('settings.showPhoneDesc')}</SettingDesc>
-              </SettingInfo>
-              <Toggle $active={privacy.showPhone} onClick={() => togglePrivacy('showPhone')} />
-            </SettingRow>
+              <SettingRow>
+                <SettingInfo>
+                  <SettingLabel>{t('settings.showPhone')}</SettingLabel>
+                  <SettingDesc>{t('settings.showPhoneDesc')}</SettingDesc>
+                </SettingInfo>
+                <Toggle $active={privacy.showPhone} onClick={() => togglePrivacy('showPhone')} />
+              </SettingRow>
 
-            <SettingRow>
-              <SettingInfo>
-                <SettingLabel>{t('settings.activityVisible')}</SettingLabel>
-                <SettingDesc>{t('settings.activityVisibleDesc')}</SettingDesc>
-              </SettingInfo>
-              <Toggle $active={privacy.activityVisible} onClick={() => togglePrivacy('activityVisible')} />
-            </SettingRow>
-          </SettingCard>
+              <SettingRow>
+                <SettingInfo>
+                  <SettingLabel>{t('settings.activityVisible')}</SettingLabel>
+                  <SettingDesc>{t('settings.activityVisibleDesc')}</SettingDesc>
+                </SettingInfo>
+                <Toggle $active={privacy.activityVisible} onClick={() => togglePrivacy('activityVisible')} />
+              </SettingRow>
+            </SettingCard>
+          )}
 
           {/* Language */}
           <SettingCard
@@ -862,37 +1027,104 @@ const SettingsPage: React.FC = () => {
               </div>
             </CardHeader>
 
-            <SettingRow>
-              <SettingInfo>
-                <SettingLabel style={{ color: '#dc2626' }}>{t('settings.deleteAccount')}</SettingLabel>
-                <SettingDesc>{t('settings.deleteAccountDescription')}</SettingDesc>
-              </SettingInfo>
-              <DangerButton variant="primary" size="medium" onClick={handleDeleteAccount}>
-                {t('settings.deleteButton')}
-              </DangerButton>
-            </SettingRow>
+            {/* CRITICAL fix (B1 r2y / spec §5.4, §10.7, §11.1):
+                Partner accounts cannot delete immediately — the spec mandates a
+                30-day notice period processed via a Change Request.
+                Consumer accounts retain the immediate self-service deletion path. */}
+            {isPartner ? (
+              <>
+                <SettingRow>
+                  <SettingInfo>
+                    <SettingLabel style={{ color: '#dc2626' }}>
+                      {language === 'bg' ? 'Закриване на акаунт' : 'Close Account'}
+                    </SettingLabel>
+                    <SettingDesc>
+                      {language === 'bg'
+                        ? 'Закриването на партньорски акаунт изисква 30-дневен срок за предизвестие.'
+                        : 'Closing a partner account requires a 30-day notice period.'}
+                    </SettingDesc>
+                  </SettingInfo>
+                  {!closureRequested && (
+                    <DangerButton variant="primary" size="medium" onClick={() => setShowDeleteConfirm(true)}>
+                      {language === 'bg' ? 'Заяви закриване' : 'Request Closure'}
+                    </DangerButton>
+                  )}
+                </SettingRow>
 
-            {showDeleteConfirm && (
-              <div style={{ marginTop: '1rem', padding: '1rem', background: '#fff5f5', border: '1px solid #fecaca', borderRadius: '8px' }}>
-                <p style={{ color: '#dc2626', fontWeight: 600, marginBottom: '0.5rem' }}>
-                  {t('settings.deleteConfirm')}
-                </p>
-                <input
-                  type="password"
-                  value={deletePassword}
-                  onChange={e => setDeletePassword(e.target.value)}
-                  placeholder={t('settings.enterCurrentPassword')}
-                  style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid #fca5a5', marginBottom: '0.75rem', boxSizing: 'border-box' }}
-                />
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                  <DangerButton variant="primary" size="medium" onClick={confirmDeleteAccount} disabled={isDeletingAccount}>
-                    {isDeletingAccount ? '...' : t('settings.deleteButton')}
+                {closureRequested && (
+                  <ClosureNotice>
+                    <ClosureNoticeTitle>
+                      {language === 'bg' ? 'Заявката е получена' : 'Request received'}
+                    </ClosureNoticeTitle>
+                    <ClosureNoticeText>
+                      {language === 'bg'
+                        ? 'Вашата заявка за закриване на акаунта е изпратена за преглед. Акаунтът ще бъде закрит в рамките на 30 дни. За въпроси се свържете с office@boomcard.bg.'
+                        : 'Your account closure request has been submitted for review. The account will be closed within 30 days. For questions contact office@boomcard.bg.'}
+                    </ClosureNoticeText>
+                  </ClosureNotice>
+                )}
+
+                {showDeleteConfirm && !closureRequested && (
+                  <ClosureNotice>
+                    <ClosureNoticeTitle>
+                      {language === 'bg' ? 'Потвърдете заявката' : 'Confirm your request'}
+                    </ClosureNoticeTitle>
+                    <ClosureNoticeText>
+                      {language === 'bg'
+                        ? 'Закриването на партньорски акаунт не е незабавно действие. Ще получите потвърждение от нашия екип. Акаунтът ще бъде закрит след изтичане на 30-дневния срок за предизвестие.'
+                        : 'Account closure is not immediate. You will receive confirmation from our team. The account will be closed after the 30-day notice period expires.'}
+                    </ClosureNoticeText>
+                    <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem' }}>
+                      <DangerButton
+                        variant="primary"
+                        size="medium"
+                        onClick={confirmDeleteAccount}
+                        disabled={isRequestingClosure}
+                      >
+                        {isRequestingClosure ? '...' : (language === 'bg' ? 'Потвърди заявката' : 'Confirm Request')}
+                      </DangerButton>
+                      <Button variant="secondary" size="medium" onClick={() => setShowDeleteConfirm(false)}>
+                        {t('settings.cancelChanges')}
+                      </Button>
+                    </div>
+                  </ClosureNotice>
+                )}
+              </>
+            ) : (
+              <>
+                <SettingRow>
+                  <SettingInfo>
+                    <SettingLabel style={{ color: '#dc2626' }}>{t('settings.deleteAccount')}</SettingLabel>
+                    <SettingDesc>{t('settings.deleteAccountDescription')}</SettingDesc>
+                  </SettingInfo>
+                  <DangerButton variant="primary" size="medium" onClick={handleDeleteAccount}>
+                    {t('settings.deleteButton')}
                   </DangerButton>
-                  <Button variant="secondary" size="medium" onClick={() => { setShowDeleteConfirm(false); setDeletePassword(''); }}>
-                    {t('settings.cancelChanges')}
-                  </Button>
-                </div>
-              </div>
+                </SettingRow>
+
+                {showDeleteConfirm && (
+                  <div style={{ marginTop: '1rem', padding: '1rem', background: '#fff5f5', border: '1px solid #fecaca', borderRadius: '8px' }}>
+                    <p style={{ color: '#dc2626', fontWeight: 600, marginBottom: '0.5rem' }}>
+                      {t('settings.deleteConfirm')}
+                    </p>
+                    <input
+                      type="password"
+                      value={deletePassword}
+                      onChange={e => setDeletePassword(e.target.value)}
+                      placeholder={t('settings.enterCurrentPassword')}
+                      style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid #fca5a5', marginBottom: '0.75rem', boxSizing: 'border-box' }}
+                    />
+                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                      <DangerButton variant="primary" size="medium" onClick={confirmDeleteAccount} disabled={isDeletingAccount}>
+                        {isDeletingAccount ? '...' : t('settings.deleteButton')}
+                      </DangerButton>
+                      <Button variant="secondary" size="medium" onClick={() => { setShowDeleteConfirm(false); setDeletePassword(''); }}>
+                        {t('settings.cancelChanges')}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </DangerZone>
 

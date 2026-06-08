@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import Pagination from '../../common/Pagination/Pagination';
+import { palette } from '../../../styles/adminTheme';
 
 export interface ColumnDef<T> {
   key: string;
@@ -210,8 +211,9 @@ const Wrapper = styled.div``;
 
 const TableScroll = styled.div`
   overflow-x: auto;
-  border: 1px solid #e8e5dc;
+  border: 1px solid ${palette.border};
   border-radius: 0.5rem;
+  background: ${palette.surface};
 `;
 
 const Table = styled.table`
@@ -227,14 +229,14 @@ const Th = styled.th<{ $sortable: boolean }>`
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #6b7280;
-  background: #f9fafb;
-  border-bottom: 1px solid #e8e5dc;
+  color: ${palette.textMuted};
+  background: ${palette.surfaceAlt};
+  border-bottom: 1px solid ${palette.border};
   cursor: ${(p) => (p.$sortable ? 'pointer' : 'default')};
   user-select: none;
 
   &:hover {
-    ${(p) => p.$sortable && 'color: #374151;'}
+    ${(p) => p.$sortable && `color: ${palette.text};`}
   }
 `;
 
@@ -249,7 +251,7 @@ const SortIcon = styled.span<{ $active: boolean; $dir?: 'asc' | 'desc' }>`
 `;
 
 const Tr = styled.tr<{ $clickable?: boolean }>`
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid ${palette.border};
   transition: background 100ms;
   cursor: ${(p) => (p.$clickable ? 'pointer' : 'default')};
 
@@ -258,20 +260,20 @@ const Tr = styled.tr<{ $clickable?: boolean }>`
   }
 
   &:hover {
-    background: #faf9f5;
+    background: ${palette.bg};
   }
 `;
 
 const Td = styled.td`
   padding: 0.75rem 1rem;
-  color: #374151;
+  color: ${palette.text};
   vertical-align: middle;
 `;
 
 const EmptyState = styled.div`
   padding: 3rem 1rem;
   text-align: center;
-  color: #9ca3af;
+  color: ${palette.textSubtle};
   font-size: 0.875rem;
 `;
 
@@ -284,15 +286,15 @@ const ActionToggle = styled.button`
   background: none;
   border: none;
   cursor: pointer;
-  color: #6b7280;
+  color: ${palette.textMuted};
   font-size: 1.25rem;
   line-height: 1;
   padding: 0.25rem 0.5rem;
   border-radius: 0.25rem;
 
   &:hover {
-    background: #f3f4f6;
-    color: #374151;
+    background: ${palette.surfaceAlt};
+    color: ${palette.text};
   }
 `;
 
@@ -301,8 +303,8 @@ const ActionDropdown = styled.div`
   right: 0;
   top: 100%;
   z-index: 50;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
+  background: ${palette.surface};
+  border: 1px solid ${palette.border};
   border-radius: 0.5rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   min-width: 10rem;
@@ -318,11 +320,11 @@ const ActionItem = styled.button<{ $danger: boolean }>`
   border: none;
   font-size: 0.875rem;
   cursor: pointer;
-  color: ${(p) => (p.$danger ? '#ef4444' : '#374151')};
+  color: ${(p) => (p.$danger ? palette.danger : palette.text)};
   transition: background 100ms;
 
   &:hover {
-    background: ${(p) => (p.$danger ? '#fef2f2' : '#f9fafb')};
+    background: ${(p) => (p.$danger ? palette.dangerSoft : palette.surfaceAlt)};
   }
 
   &:disabled {

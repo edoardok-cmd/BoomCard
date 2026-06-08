@@ -5,6 +5,7 @@ import { toast } from 'react-hot-toast';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import FraudReasonTag from '../../components/admin/FraudReasonTag';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { palette } from '../../styles/adminTheme';
 import {
   adminControlService,
   DisputeCase,
@@ -27,13 +28,13 @@ const RECEIPT_STATUS_BG: Record<string, string> = {
 // ── Palette ──────────────────────────────────────────────────────────────────
 
 const P = {
-  bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
-  text: '#141413', muted: '#605a50', subtle: '#8c8678',
-  accent: '#c96442', accentSoft: '#f3e8de',
-  success: '#4a7c59', successSoft: '#e6efe3',
-  danger: '#b54327', dangerSoft: '#f4dcd2',
-  warn: '#b5803a', warnSoft: '#f5ead2',
-  info: '#2563eb', infoSoft: '#dbeafe',
+  bg: palette.bg, surface: palette.surface, border: palette.border,
+  text: palette.text, muted: palette.textMuted, subtle: palette.textSubtle,
+  accent: palette.accent, accentSoft: palette.accentSoft,
+  success: palette.success, successSoft: palette.successSoft,
+  danger: palette.danger, dangerSoft: palette.dangerSoft,
+  warn: palette.warning, warnSoft: palette.warningSoft,
+  info: palette.info, infoSoft: palette.infoSoft,
 };
 
 // ── Status helpers ────────────────────────────────────────────────────────────
@@ -42,7 +43,7 @@ const STATUS_META: Record<DisputeStatus, { label: string; bg: string; color: str
   OPEN:      { label: 'Отворен',    bg: P.infoSoft,    color: P.info },
   IN_REVIEW: { label: 'В преглед',  bg: P.warnSoft,    color: P.warn },
   RESOLVED:  { label: 'Решен',      bg: P.successSoft, color: P.success },
-  CLOSED:    { label: 'Затворен',   bg: '#f1f0ed',     color: P.subtle },
+  CLOSED:    { label: 'Затворен',   bg: palette.surfaceAlt, color: P.subtle },
 };
 
 const NEXT_STATUS: Partial<Record<DisputeStatus, DisputeStatus>> = {
@@ -205,13 +206,13 @@ const AssigneeSelect = styled.select`
 `;
 const SmallBtn = styled.button`
   padding:.4rem .8rem;border:none;border-radius:.5rem;font-size:.8125rem;font-weight:700;
-  cursor:pointer;background:${P.accent};color:#fff;white-space:nowrap;
+  cursor:pointer;background:${P.accent};color:${palette.onAccent};white-space:nowrap;
   &:disabled{opacity:.5;cursor:not-allowed;}
 `;
 
 const ReceiptImg = styled.img`
   width:100%;border-radius:.5rem;border:1px solid ${P.border};
-  display:block;object-fit:contain;max-height:22rem;background:#f5f4f0;
+  display:block;object-fit:contain;max-height:22rem;background:${P.surface};
 `;
 
 // ── Modal ─────────────────────────────────────────────────────────────────────

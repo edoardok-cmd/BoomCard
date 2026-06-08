@@ -127,6 +127,18 @@ jest.mock('../../src/lib/prisma', () => {
     findUnique: jest.fn(async () => null),
   };
 
+  // Spec §1.3 / §8.2 — assertSubscriptionAllowsScanning() now reads user_account_status
+  // before the subscription gate. The scanning subscriber is ACTIVE in these fixtures.
+  const user = {
+    findUnique: jest.fn(async () => ({ status: 'ACTIVE' })),
+  };
+
+  // The post-scan risk pass reads recent IBAN-change audit rows. No such row in
+  // these fixtures → returning null leaves the IBAN-change risk signal unfired.
+  const auditLog = {
+    findFirst: jest.fn(async () => null),
+  };
+
   const client = {
     stickerScan,
     venueStickerConfig,
@@ -137,6 +149,8 @@ jest.mock('../../src/lib/prisma', () => {
     subscription,
     sticker,
     venue,
+    user,
+    auditLog,
     $transaction: jest.fn(async (fn: any) => {
       if (typeof fn === 'function') {
         return fn({ walletTransaction, wallet });
@@ -170,12 +184,27 @@ jest.mock('../../src/services/notification.service', () => ({
   notificationService: {
     notifyStickerScanApproved: jest.fn(async () => {}),
     notifyPartnerScanAtVenue: jest.fn(async () => {}),
+    notifyQRSessionOpened: jest.fn(async () => {}),
   },
 }));
 
 jest.mock('../../src/services/fraudDetection.service', () => ({
   fraudDetectionService: {
     calculateCashback: jest.fn(async () => ({ cashbackAmount: 5, cashbackPercent: 5 })),
+    // Spec §2.1/§9.4 — the manual-review gate now flows through computeSpecRiskLevel().
+    // The fixture scan carries the fraudScore + the venue's autoApproveThreshold; mirror
+    // the old routing rule (auto-approve when fraudScore ≤ threshold, else manual review)
+    // so each test's score/threshold scenario routes exactly as it asserts.
+    computeSpecRiskLevel: jest.fn(async () => {
+      const score = scanRow?.fraudScore ?? 0;
+      const threshold = scanRow?.venue?.stickerConfig?.autoApproveThreshold ?? 30;
+      const requiresManualReview = score > threshold;
+      return {
+        riskLevel: requiresManualReview ? 'High' : 'Low',
+        riskScore: score,
+        requiresManualReview,
+      };
+    }),
   },
 }));
 
@@ -576,7 +605,7 @@ describe('§7.1 verifyAndAnnotateScan — settled scans are not retroactively an
       (c) => c.data?.fraudReasons?.push?.startsWith?.('MERCHANT_MISMATCH'),
     );
     // The update should have been called with a MERCHANT_MISMATCH push
-    expect(stickerUpdateCalls.some((c) => c.data?.fraudScore?.increment === 40)).toBe(true);
+    expect(stickerUpdateCalls.some((c) => c.data?.fraudScore?.increment === 30)).toBe(true);
   });
 
   it('does not annotate when the scan is already flagged with MERCHANT_MISMATCH (idempotency)', async () => {
@@ -611,7 +640,7 @@ describe('§7.1 verifyAndAnnotateScan — settled scans are not retroactively an
     );
 
     // An update MUST have fired — VALIDATING is not a terminal state.
-    expect(stickerUpdateCalls.some((c) => c.data?.fraudScore?.increment === 40)).toBe(true);
+    expect(stickerUpdateCalls.some((c) => c.data?.fraudScore?.increment === 30)).toBe(true);
     // logger.warn must NOT have been called (no skip warning)
     const { logger } = require('../../src/utils/logger');
     expect(logger.warn).not.toHaveBeenCalledWith(
@@ -633,7 +662,7 @@ describe('§7.1 verifyAndAnnotateScan — settled scans are not retroactively an
       'Kristal Restaurant',
     );
 
-    expect(stickerUpdateCalls.some((c) => c.data?.fraudScore?.increment === 40)).toBe(true);
+    expect(stickerUpdateCalls.some((c) => c.data?.fraudScore?.increment === 30)).toBe(true);
     const { logger } = require('../../src/utils/logger');
     expect(logger.warn).not.toHaveBeenCalledWith(
       expect.stringContaining('is already PENDING'),

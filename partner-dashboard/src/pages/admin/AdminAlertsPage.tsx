@@ -10,6 +10,7 @@ import {
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { palette } from '../../styles/adminTheme';
 import {
   adminAlertsService,
   AdminAlert,
@@ -31,24 +32,6 @@ import {
 const REFRESH_INTERVAL_MS = 60_000;
 
 /* ─── Palette (matches admin dashboard) ───────────────────────────────────── */
-const palette = {
-  bg: '#faf9f5',
-  surface: '#ffffff',
-  surfaceAlt: '#f5f4ee',
-  border: '#e8e5dc',
-  borderStrong: '#d6d2c4',
-  text: '#141413',
-  textMuted: '#605a50',
-  textSubtle: '#8c8678',
-  accent: '#c96442',
-  accentSoft: '#f3e8de',
-  success: '#4a7c59',
-  successSoft: '#e6efe3',
-  warning: '#b5803a',
-  warningSoft: '#f5ead2',
-  danger: '#b54327',
-  dangerSoft: '#f4dcd2',
-};
 
 /* ─── Styled components ────────────────────────────────────────────────────── */
 const Shell = styled.div`

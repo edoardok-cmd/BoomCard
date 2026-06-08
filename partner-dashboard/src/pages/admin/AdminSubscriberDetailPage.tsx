@@ -16,6 +16,7 @@ import { apiService } from '../../services/api.service';
 import { planLabel, subStatusLabel, userStatusLabel, riskLabel, riskBucket, type RiskBucket, type Lang } from '../../utils/planLabels';
 import { formatPhoneBG } from '../../utils/validators';
 
+import { palette } from '../../styles/adminTheme';
 /* ─── i18n ─────────────────────────────────────────────────────────────────── */
 const I18N = {
   // Header / states
@@ -189,30 +190,6 @@ function tr(key: I18NKey, lang: Lang, vars?: Record<string, string | number>): s
 }
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
-const palette = {
-  bg: '#faf9f5',
-  surface: '#ffffff',
-  border: '#e8e5dc',
-  text: '#141413',
-  textMuted: '#605a50',
-  textSubtle: '#8c8678',
-  accent: '#c96442',
-  accentSoft: '#f3e8de',
-  success: '#4a7c59',
-  successSoft: '#e6efe3',
-  warning: '#b5803a',
-  warningSoft: '#f5ead2',
-  danger: '#b54327',
-  dangerSoft: '#f4dcd2',
-  info: '#2563eb',
-  infoSoft: '#dbeafe',
-  purple: '#7c3aed',
-  purpleSoft: '#ede9fe',
-  teal: '#0f766e',
-  tealSoft: '#ccfbf1',
-  amber: '#92400e',
-  amberSoft: '#fef3c7',
-};
 
 /* ─── Layout ───────────────────────────────────────────────────────────────── */
 const PageShell = styled.div`
@@ -303,14 +280,14 @@ const Btn = styled.button<{ $variant?: 'primary' | 'ghost' | 'danger' | 'warning
 
   ${({ $variant = 'ghost' }) => {
     if ($variant === 'primary')
-      return `background: ${palette.accent}; color: #fff; border-color: ${palette.accent};
+      return `background: ${palette.accent}; color: ${palette.onAccent}; border-color: ${palette.accent};
         &:hover { background: #b55a3b; } &:disabled { opacity: 0.55; cursor: not-allowed; }`;
     if ($variant === 'danger')
       return `background: ${palette.dangerSoft}; color: ${palette.danger}; border-color: ${palette.danger};
-        &:hover { background: #ebb8a8; } &:disabled { opacity: 0.55; cursor: not-allowed; }`;
+        &:hover { background: ${palette.dangerBorder}; } &:disabled { opacity: 0.55; cursor: not-allowed; }`;
     if ($variant === 'warning')
       return `background: ${palette.warningSoft}; color: ${palette.warning}; border-color: ${palette.warning};
-        &:hover { background: #edd9a3; } &:disabled { opacity: 0.55; cursor: not-allowed; }`;
+        &:hover { background: ${palette.warningBorder}; } &:disabled { opacity: 0.55; cursor: not-allowed; }`;
     return `background: ${palette.surface}; color: ${palette.textMuted}; border-color: ${palette.border};
       &:hover { background: ${palette.bg}; color: ${palette.text}; }
       &:disabled { opacity: 0.55; cursor: not-allowed; }`;
@@ -518,7 +495,7 @@ const UserStatusBadge = styled.span<{ $status: UserAccountStatus }>`
     if ($status === 'DELETED') return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
     if ($status === 'PENDING_PAYMENT') return `background: ${palette.infoSoft}; color: ${palette.info};`;
     if ($status === 'PENDING_VERIFICATION') return `background: ${palette.infoSoft}; color: ${palette.info};`;
-    return `background: #f3f4f6; color: #6b7280;`;
+    return `background: ${palette.surfaceAlt}; color: ${palette.textMuted};`;
   }}
 `;
 
@@ -555,7 +532,7 @@ const PlanBadge = styled.span<{ $plan: SubscriptionPlan }>`
       case 'PREMIUM': return `background: ${palette.amberSoft}; color: ${palette.amber};`;
       case 'BASIC':   return `background: ${palette.infoSoft}; color: ${palette.info};`;
       case 'LIGHT':   return `background: ${palette.tealSoft}; color: ${palette.teal};`;
-      default:        return `background: #f3f4f6; color: #6b7280;`;
+      default:        return `background: ${palette.surfaceAlt}; color: ${palette.textMuted};`;
     }
   }}
 `;
@@ -581,9 +558,9 @@ const SubStatusBadge = styled.span<{ $status: SubscriptionStatus }>`
       case 'INCOMPLETE':         return `background: ${palette.infoSoft}; color: ${palette.info};`;
       case 'INCOMPLETE_EXPIRED': return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
       case 'EXPIRED':            return `background: ${palette.purpleSoft}; color: ${palette.purple};`;
-      case 'PAUSED':             return `background: #f3f4f6; color: #374151;`;
+      case 'PAUSED':             return `background: ${palette.surfaceAlt}; color: ${palette.text};`;
       case 'CANCELLED':
-      default:                   return `background: #f3f4f6; color: #6b7280;`;
+      default:                   return `background: ${palette.surfaceAlt}; color: ${palette.textMuted};`;
     }
   }}
 `;
@@ -1299,8 +1276,8 @@ export default function AdminSubscriberDetailPage() {
                           letterSpacing: '0.05em',
                           borderRadius: '0.375rem',
                           padding: '0.15rem 0.45rem',
-                          background: s === 'Cleared' ? palette.successSoft : s === 'Pending' ? palette.infoSoft : s === 'Locked' ? palette.warningSoft : s === 'Paid' ? palette.tealSoft : s === 'Voided' ? '#fee2e2' : '#f3f4f6',
-                          color: s === 'Cleared' ? palette.success : s === 'Pending' ? palette.info : s === 'Locked' ? palette.warning : s === 'Paid' ? palette.teal : s === 'Voided' ? '#b91c1c' : '#6b7280',
+                          background: s === 'Cleared' ? palette.successSoft : s === 'Pending' ? palette.infoSoft : s === 'Locked' ? palette.warningSoft : s === 'Paid' ? palette.tealSoft : s === 'Voided' ? palette.dangerSoft : palette.surfaceAlt,
+                          color: s === 'Cleared' ? palette.success : s === 'Pending' ? palette.info : s === 'Locked' ? palette.warning : s === 'Paid' ? palette.teal : s === 'Voided' ? palette.danger : palette.textMuted,
                           textDecoration: s === 'Voided' ? 'line-through' : 'none',
                         }}>
                           {T(('status' + s) as I18NKey)}

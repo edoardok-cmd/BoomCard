@@ -5,30 +5,13 @@ import { toast } from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
+import { palette } from '../../styles/adminTheme';
 import {
   adminAdminsService,
   CriticalActionRequest,
   CriticalActionStatus,
 } from '../../services/adminAdmins.service';
 
-const palette = {
-  bg: '#faf9f5',
-  surface: '#ffffff',
-  border: '#e8e5dc',
-  text: '#141413',
-  textMuted: '#605a50',
-  textSubtle: '#8c8678',
-  accent: '#c96442',
-  accentSoft: '#f3e8de',
-  success: '#4a7c59',
-  successSoft: '#e6efe3',
-  warning: '#b5803a',
-  warningSoft: '#f5ead2',
-  danger: '#b54327',
-  dangerSoft: '#f4dcd2',
-  info: '#2563eb',
-  infoSoft: '#dbeafe',
-};
 
 const PageShell = styled.div`
   background: ${palette.bg};
@@ -91,7 +74,7 @@ const Card = styled.div`
 
 const InfoBanner = styled.div`
   background: ${palette.infoSoft};
-  border: 1px solid #bfdbfe;
+  border: 1px solid ${palette.infoBorder};
   border-radius: 0.5rem;
   padding: 0.75rem 1rem;
   font-size: 0.8125rem;
@@ -202,7 +185,7 @@ const PrimaryBtn = styled.button<{ $danger?: boolean; $loading?: boolean }>`
   flex: 1;
   padding: 0.625rem;
   background: ${({ $danger }) => ($danger ? palette.danger : palette.accent)};
-  color: #fff;
+  color: ${palette.onAccent};
   font-size: 0.9375rem;
   font-weight: 700;
   border: none;

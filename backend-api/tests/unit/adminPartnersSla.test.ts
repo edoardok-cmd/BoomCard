@@ -31,16 +31,20 @@ describe('§5.1 SLA helper', () => {
     expect(sla.hoursRemaining).toBe(0);
   });
 
-  it('marks closed when ODOBRENA regardless of elapsed time', () => {
+  // The generated Prisma client exposes the enum KEYS (APPROVED/REJECTED); the
+  // Bulgarian strings (ODOBRENA/OTKAZANA) are only the DB-mapped storage values
+  // (@map). Routes pass partner.requestStatus — i.e. the client key — into the
+  // helper, so the closed-state cases must use APPROVED/REJECTED.
+  it('marks closed when APPROVED (ODOBRENA) regardless of elapsed time', () => {
     const joined = new Date(Date.now() - 99 * 3600 * 1000);
-    const sla = computePartnerSla(joined, 'ODOBRENA');
+    const sla = computePartnerSla(joined, 'APPROVED');
     expect(sla.state).toBe('ok');
     expect(sla.isClosed).toBe(true);
   });
 
-  it('marks closed when OTKAZANA regardless of elapsed time', () => {
+  it('marks closed when REJECTED (OTKAZANA) regardless of elapsed time', () => {
     const joined = new Date(Date.now() - 200 * 3600 * 1000);
-    const sla = computePartnerSla(joined, 'OTKAZANA');
+    const sla = computePartnerSla(joined, 'REJECTED');
     expect(sla.state).toBe('ok');
     expect(sla.isClosed).toBe(true);
   });

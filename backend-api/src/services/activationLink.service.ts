@@ -19,6 +19,7 @@ import prisma from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { writeAudit } from '../middleware/audit.middleware';
 import { SECURITY_CONFIG } from '../config/security.config';
+import { validatePasswordPolicy } from '../validators/auth.validator';
 
 const LINK_TTL_MS = SECURITY_CONFIG.SECURITY.PARTNER_ACTIVATION_EXPIRY_MS;
 const SERIALIZATION_RETRY_LIMIT = 2;
@@ -258,6 +259,20 @@ export class ActivationLinkService {
       if (!consumed.partner.verifiedAt) {
         partnerUpdate.verifiedAt = new Date();
       }
+      // B1 (r2m): Guard against ARCHIVED/REJECTED partners consuming an
+      // activation link that was issued before archival. Spec §1.7 and §12 rule 5
+      // ("Archived Reactivation Requires Full Onboarding Review") prohibit a
+      // partner from self-activating out of the ARCHIVED state. An ARCHIVED
+      // partner still within the original link TTL must be blocked here; the
+      // link should have been invalidated at archival time but that is a
+      // belt-and-suspenders requirement, not a guarantee.
+      if (
+        consumed.partner.status === PartnerStatus.ARCHIVED ||
+        consumed.partner.status === PartnerStatus.REJECTED
+      ) {
+        throw new ActivationLinkError('INVALID_TOKEN', 'Invalid activation link');
+      }
+
       // Spec §5.2 — the activation link is the canonical hand-off for
       // admin-onboarded partners too. If they are still PENDING (admin
       // onboarded without a separate approve), bring them online.
@@ -271,15 +286,23 @@ export class ActivationLinkService {
         });
       }
 
-      // 3. Set the partner user's password if supplied. By the time we reach
-      //    here, admin-onboarded partners (mustChangePassword=true) are
-      //    guaranteed to have supplied one — the PASSWORD_REQUIRED guard above
-      //    rejects them otherwise. Self-registered partners may still omit it.
-      //    Also force-set status=ACTIVE and emailVerified — at this point the
-      //    token (an out-of-band secret) is sufficient proof.
+      // 3. Set the partner user's password. Every partner sets their password
+      //    here at activation — none is collected at registration. The route
+      //    layer requires it; internal callers may still omit it (the no-password
+      //    branch below keeps the account consistent), but the normal path always
+      //    supplies one. Also force-set status=ACTIVE and emailVerified — at this
+      //    point the token (an out-of-band secret) is sufficient proof.
       if (opts.password) {
-        if (opts.password.length < 8) {
-          throw new ActivationLinkError('PASSWORD_TOO_SHORT', 'Password must be at least 8 characters');
+        // Enforce the canonical password policy (min 8 chars + uppercase +
+        // lowercase + digit + special) — the single source of truth shared with
+        // /auth/register, change-password, reset-password and the activate route.
+        // Using the shared validator here (instead of a bare length check against
+        // SECURITY_CONFIG.MIN_PASSWORD_LENGTH) guarantees every code path that
+        // bypasses the HTTP layer (admin tools, tests, internal invocations)
+        // enforces the SAME policy.
+        const policyError = validatePasswordPolicy(opts.password);
+        if (policyError) {
+          throw new ActivationLinkError('PASSWORD_TOO_SHORT', policyError);
         }
         const passwordHash = await bcrypt.hash(opts.password, 12);
         await tx.user.update({

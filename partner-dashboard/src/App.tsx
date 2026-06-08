@@ -11,11 +11,18 @@ import { CookieConsentProvider } from './contexts/CookieConsentContext';
 import { LocationProvider } from './contexts/LocationContext';
 import { CookieConsentBanner, CookiePreferencesModal } from './components/common/CookieConsent';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import PartnerStatusRoute from './components/auth/PartnerStatusRoute';
 import { CategoryShell } from './components/admin/CategoryShell';
 import { ADMIN_NAV } from './components/admin/AdminNav';
 import Loading from './components/common/Loading/Loading';
 import ScrollToTop from './components/common/ScrollToTop/ScrollToTop';
 import ScrollToTopButton from './components/common/ScrollToTopButton/ScrollToTopButton';
+
+// Spec §8a — offer management is an unspecified feature.
+// HIGH-2 fix (review r2u): gate the write routes at the routing layer so navigating
+// directly to /partners/offers/new or /partners/offers/:id/edit is impossible when
+// the flag is not set, regardless of what the component-level check does.
+const OFFER_MANAGEMENT_ENABLED = import.meta.env.VITE_OFFER_MANAGEMENT_ENABLED === 'true';
 
 // Eager load critical pages
 import Layout from './components/Layout';
@@ -44,6 +51,9 @@ const EditOfferPage = lazy(() => import('./pages/EditOfferPage'));
 const PartnerMenusPage = lazy(() => import('./pages/PartnerMenusPage'));
 const PartnerStickersPage = lazy(() => import('./pages/PartnerStickersPage'));
 const PartnerHelpPage = lazy(() => import('./pages/PartnerHelpPage'));
+// BC-PARTNER-PORTAL-SCOPE-B — §6 transactions + §7 finance
+const PartnerTransactionsPage = lazy(() => import('./pages/PartnerTransactionsPage'));
+const PartnerFinancePage = lazy(() => import('./pages/PartnerFinancePage'));
 const NearbyOffersPage = lazy(() => import('./pages/NearbyOffersPage'));
 const RewardsPage = lazy(() => import('./pages/RewardsPage'));
 const PromotionsPage = lazy(() => import('./pages/PromotionsPage'));
@@ -251,69 +261,96 @@ function App() {
                     <Route
                       path="dashboard"
                       element={
-                        <ProtectedRoute>
+                        // PartnerStatusRoute handles admin/non-partner bypass internally;
+                        // wrapping here blocks Archived partners (spec §1.2, §5.1, §11.2).
+                        <PartnerStatusRoute allowedStatuses={['Active', 'Inactive']}>
                           <DashboardPage />
-                        </ProtectedRoute>
+                        </PartnerStatusRoute>
                       }
                     />
                     <Route
                       path="profile"
                       element={
-                        <ProtectedRoute>
+                        <PartnerStatusRoute allowedStatuses={['Active', 'Inactive']}>
                           <ProfilePage />
-                        </ProtectedRoute>
+                        </PartnerStatusRoute>
                       }
                     />
                     <Route
                       path="settings"
                       element={
-                        <ProtectedRoute>
+                        <PartnerStatusRoute allowedStatuses={['Active', 'Inactive']}>
                           <SettingsPage />
-                        </ProtectedRoute>
+                        </PartnerStatusRoute>
                       }
                     />
                     <Route
                       path="analytics"
                       element={
-                        <ProtectedRoute>
+                        <PartnerStatusRoute allowedStatuses={['Active', 'Inactive']}>
                           <AnalyticsPage />
-                        </ProtectedRoute>
+                        </PartnerStatusRoute>
                       }
                     />
                     <Route path="search" element={<SearchPage />} />
                     <Route path="nearby" element={<NearbyOffersPage />} />
-                    <Route path="rewards" element={<RewardsPage />} />
+                    <Route
+                      path="rewards"
+                      element={
+                        <PartnerStatusRoute allowedStatuses={['Active', 'Inactive']}>
+                          <RewardsPage />
+                        </PartnerStatusRoute>
+                      }
+                    />
                     <Route
                       path="receipts"
                       element={
-                        <ProtectedRoute>
+                        <PartnerStatusRoute allowedStatuses={['Active', 'Inactive']}>
                           <ReceiptsPage />
-                        </ProtectedRoute>
+                        </PartnerStatusRoute>
                       }
                     />
                     <Route
                       path="receipts/analytics"
                       element={
-                        <ProtectedRoute>
+                        <PartnerStatusRoute allowedStatuses={['Active', 'Inactive']}>
                           <ReceiptAnalyticsPage />
-                        </ProtectedRoute>
+                        </PartnerStatusRoute>
                       }
                     />
                     <Route
                       path="receipts/:id"
                       element={
-                        <ProtectedRoute>
+                        <PartnerStatusRoute allowedStatuses={['Active', 'Inactive']}>
                           <ReceiptDetailPage />
-                        </ProtectedRoute>
+                        </PartnerStatusRoute>
                       }
                     />
                     {/* §5.2 T8 — /cashback is the canonical Cashback & Transactions route */}
                     <Route
                       path="cashback"
                       element={
-                        <ProtectedRoute>
+                        <PartnerStatusRoute allowedStatuses={['Active', 'Inactive']}>
                           <CashbackPage />
-                        </ProtectedRoute>
+                        </PartnerStatusRoute>
+                      }
+                    />
+                    {/* BC-PARTNER-PORTAL-SCOPE-B §6 — partner transactions (read-only, Active + Inactive) */}
+                    <Route
+                      path="transactions"
+                      element={
+                        <PartnerStatusRoute allowedStatuses={['Active', 'Inactive']}>
+                          <PartnerTransactionsPage />
+                        </PartnerStatusRoute>
+                      }
+                    />
+                    {/* BC-PARTNER-PORTAL-SCOPE-B §7 — partner finance (read-only, Active + Inactive) */}
+                    <Route
+                      path="finance"
+                      element={
+                        <PartnerStatusRoute allowedStatuses={['Active', 'Inactive']}>
+                          <PartnerFinancePage />
+                        </PartnerStatusRoute>
                       }
                     />
                     <Route path="categories" element={<CategoryListingPage />} />
@@ -324,54 +361,68 @@ function App() {
 
                     {/* ⚠️ ROUTE ORDER CRITICAL: Specific routes MUST come before dynamic params */}
                     {/* Partner offer management routes - MUST come before :category route */}
+                    {/* Spec §1.2/§5.1/§11.2 — all partner routes enforce lifecycle status via PartnerStatusRoute */}
                     <Route
                       path="partners/offers"
                       element={
-                        <ProtectedRoute>
+                        <PartnerStatusRoute allowedStatuses={['Active', 'Inactive']}>
                           <MyOffersPage />
-                        </ProtectedRoute>
+                        </PartnerStatusRoute>
                       }
                     />
-                    <Route
-                      path="partners/offers/new"
-                      element={
-                        <ProtectedRoute requiredRole="admin">
-                          <CreateOfferPage />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="partners/offers/:id/edit"
-                      element={
-                        <ProtectedRoute requiredRole="admin">
-                          <EditOfferPage />
-                        </ProtectedRoute>
-                      }
-                    />
+                    {/* HIGH-2 fix (review r2u): only register write routes when the feature
+                        flag is explicitly set. When disabled, redirect to the list page so
+                        deep-linking to /partners/offers/new or /partners/offers/:id/edit
+                        does not reveal the route exists and never lazy-loads the component. */}
+                    {OFFER_MANAGEMENT_ENABLED ? (
+                      <>
+                        <Route
+                          path="partners/offers/new"
+                          element={
+                            <PartnerStatusRoute allowedStatuses={['Active']}>
+                              <CreateOfferPage />
+                            </PartnerStatusRoute>
+                          }
+                        />
+                        <Route
+                          path="partners/offers/:id/edit"
+                          element={
+                            <PartnerStatusRoute allowedStatuses={['Active']}>
+                              <EditOfferPage />
+                            </PartnerStatusRoute>
+                          }
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <Route path="partners/offers/new" element={<Navigate to="/partners/offers" replace />} />
+                        <Route path="partners/offers/:id/edit" element={<Navigate to="/partners/offers" replace />} />
+                      </>
+                    )}
                     <Route
                       path="partners/menus"
                       element={
-                        <ProtectedRoute>
+                        <PartnerStatusRoute allowedStatuses={['Active', 'Inactive']}>
                           <PartnerMenusPage />
-                        </ProtectedRoute>
+                        </PartnerStatusRoute>
                       }
                     />
                     {/* Spec §5.4 v1.1 — partner-side read-only QR view */}
                     <Route
                       path="partners/stickers"
                       element={
-                        <ProtectedRoute>
+                        <PartnerStatusRoute allowedStatuses={['Active', 'Inactive']}>
                           <PartnerStickersPage />
-                        </ProtectedRoute>
+                        </PartnerStatusRoute>
                       }
                     />
                     {/* Spec §11.1 v1.1 — partner-side help / ticketing */}
                     <Route
                       path="partners/help"
                       element={
-                        <ProtectedRoute requiredRole="partner">
+                        <PartnerStatusRoute allowedStatuses={['Active', 'Inactive']}>
                           <PartnerHelpPage />
-                        </ProtectedRoute>
+                        </PartnerStatusRoute>
                       }
                     />
 
@@ -688,7 +739,7 @@ function App() {
                     <Route path="admin/merchant-whitelist" element={<Navigate to="/admin/control/rules" replace />} />
                     <Route path="admin/menu-approvals" element={<Navigate to="/admin/partners/active" replace />} />
                     <Route path="admin/bulk-import" element={<Navigate to="/admin/partners/active" replace />} />
-                    <Route path="admin/partner-types" element={<AdminPartnerTypesPage />} />
+                    <Route path="admin/partner-types" element={<ProtectedRoute requiredRole="admin"><AdminPartnerTypesPage /></ProtectedRoute>} />
                     <Route path="admin/top-discounts" element={<Navigate to="/admin/control/risk" replace />} />
                     <Route path="admin/partners/new/*" element={<Navigate to="/admin/partners/active" replace />} />
                     <Route path="admin/administrators" element={<Navigate to="/admin/admins/all" replace />} />
@@ -705,20 +756,36 @@ function App() {
                     <Route path="payments/cancel" element={<PaymentCancelPage />} />
                     <Route path="subscription/success" element={<SubscriptionSuccessPage />} />
                     <Route path="subscription/cancel" element={<SubscriptionCancelPage />} />
-                    <Route path="complete-profile" element={<CompleteProfilePage />} />
+                    {/* MEDIUM-2 fix (r2ad): complete-profile moved to public route tree below.
+                        Keeping it here (inside the authenticated parent) causes the outer
+                        ProtectedRoute to intercept unauthenticated activation-link visits
+                        and redirect them to /login before CompleteProfilePage ever renders,
+                        consuming the activation token and breaking the §3.2 flow. */}
 
                     {/* Other routes */}
                     <Route path="favorites" element={<FavoritesPage />} />
                     <Route path="upload-receipt" element={<UploadReceiptInfoPage />} />
+                    {/* MEDIUM fix (r2z): add requiredRole="user" so admin accounts
+                        cannot reach user-facing billing flows. ProtectedRoute's admin
+                        bypass (user.role !== 'admin') means omitting requiredRole
+                        would let admins hit retry-payment, cancel, and reactivate
+                        mutations. */}
                     <Route
                       path="subscription"
                       element={
-                        <ProtectedRoute>
+                        <ProtectedRoute requiredRole="user">
                           <SubscriptionPage />
                         </ProtectedRoute>
                       }
                     />
-                    <Route path="integrations" element={<IntegrationsPage />} />
+                    <Route
+                      path="integrations"
+                      element={
+                        <PartnerStatusRoute allowedStatuses={['Active']}>
+                          <IntegrationsPage />
+                        </PartnerStatusRoute>
+                      }
+                    />
                     <Route path="*" element={<NotFoundPage />} />
                   </Route>
                   <Route
@@ -778,6 +845,13 @@ function App() {
                       </ProtectedRoute>
                     }
                   />
+                  {/* MEDIUM-2 fix (r2ad): complete-profile is a public activation route.
+                      Spec §3.2 — activation is for users who have never logged in.
+                      Placed here (outside the authenticated route tree) so unauthenticated
+                      activation-link visits are not intercepted and redirected to /login.
+                      The component itself guards against already-authenticated users
+                      (redirects to /dashboard when an existing token is found). */}
+                  <Route path="/complete-profile" element={<CompleteProfilePage />} />
                 </Routes>
               </Suspense>
             </Router>

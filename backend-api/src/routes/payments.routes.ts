@@ -2,6 +2,8 @@ import { Router, Response } from 'express';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { stripeService } from '../services/stripe.service';
+import { notificationService } from '../services/notification.service';
+import { detach } from '../utils/detach';
 import prisma from '../lib/prisma';
 import { logger } from '../utils/logger';
 
@@ -216,6 +218,8 @@ router.post('/cards', asyncHandler(async (req: AuthRequest, res: Response) => {
     // Set as default if requested
     if (setAsDefault) {
       await stripeService.setDefaultPaymentMethod(customerId, paymentMethodId);
+      // L2: Spec §11.2 — "Payment method updated" Payment notification.
+      detach(notificationService.notifyPaymentMethodUpdated(user.id), (err) => logger.error('Failed to send payment-method-updated notification:', err));
     }
 
     res.status(201).json({
@@ -296,6 +300,9 @@ router.post('/cards/:id/default', asyncHandler(async (req: AuthRequest, res: Res
     }
 
     await stripeService.setDefaultPaymentMethod(userDetails.stripeCustomerId, id);
+
+    // L2: Spec §11.2 — "Payment method updated" Payment notification.
+    detach(notificationService.notifyPaymentMethodUpdated(user.id), (err) => logger.error('Failed to send payment-method-updated notification:', err));
 
     res.json({
       success: true,

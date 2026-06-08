@@ -6,6 +6,13 @@ import { AdminNavCategory, ADMIN_NAV } from './AdminNav';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { adminHelpService } from '../../services/adminHelp.service';
+import {
+  getAdminGateReason,
+  isNavTargetLocked,
+  ADMIN_GATE_HIGHLIGHT_EVENT,
+  type AdminGateHighlightDetail,
+} from '../auth/adminGate';
+import { palette } from '../../styles/adminTheme';
 
 interface CategoryShellProps {
   category: AdminNavCategory;
@@ -13,10 +20,37 @@ interface CategoryShellProps {
 
 export const CategoryShell: React.FC<CategoryShellProps> = ({ category }) => {
   const { user, logout } = useAuth();
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [logoutConfirm, setLogoutConfirm] = useState(false);
+
+  // Gated state (2FA setup / temp-password change required). Derived from the
+  // SAME helper the route guard uses so the lock styling and the redirect can
+  // never disagree.
+  const gateReason = getAdminGateReason(user);
+
+  const handleLockedNavClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!gateReason) return;
+
+    const onSecurityPage = pathname.startsWith('/admin/profile/security');
+    if (onSecurityPage) {
+      // Already here — navigating would be a no-op (the "app looks frozen"
+      // bug). Dispatch the highlight event; AdminProfileSecurityPage's handler
+      // owns the single deduped (id'd) toast + banner pulse so repeated clicks
+      // never stack.
+      window.dispatchEvent(
+        new CustomEvent<AdminGateHighlightDetail>(ADMIN_GATE_HIGHLIGHT_EVENT, {
+          detail: { reason: gateReason },
+        }),
+      );
+    } else {
+      // Send them to the security page; it fires the same single deduped toast
+      // + banner highlight on arrival from location.state.reason.
+      navigate('/admin/profile/security', { state: { reason: gateReason } });
+    }
+  };
 
   const permissions: string[] = user?.permissions ?? [];
   const isSuperAdmin = user?.rawRole === 'SUPER_ADMIN';
@@ -48,14 +82,32 @@ export const CategoryShell: React.FC<CategoryShellProps> = ({ category }) => {
         {visibleNavCategories.map((cat) => {
           const isActive = pathname.startsWith(cat.path);
           const catLabel = language === 'bg' ? cat.labelBg : cat.labelEn;
+          const locked = isNavTargetLocked(user, cat.path);
+          const lockTooltip = locked
+            ? gateReason === 'mustChangePassword'
+              ? t('admin.navLock.tooltipChangePassword')
+              : t('admin.navLock.tooltipSetup2FA')
+            : undefined;
           return (
-            <SideNavItem key={cat.key} to={cat.path} $active={isActive}>
+            <SideNavItem
+              key={cat.key}
+              to={cat.path}
+              $active={isActive}
+              $locked={locked}
+              title={lockTooltip}
+              aria-disabled={locked || undefined}
+              onClick={locked ? handleLockedNavClick : undefined}
+            >
               <SideNavIcon viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
                 <path d={cat.icon} />
               </SideNavIcon>
               <SideNavLabel>{catLabel}</SideNavLabel>
-              {cat.key === 'help' && helpNewCount > 0 && (
-                <NavBadge>{helpNewCount > 99 ? '99+' : helpNewCount}</NavBadge>
+              {locked ? (
+                <LockIcon aria-hidden="true">🔒</LockIcon>
+              ) : (
+                cat.key === 'help' && helpNewCount > 0 && (
+                  <NavBadge>{helpNewCount > 99 ? '99+' : helpNewCount}</NavBadge>
+                )
               )}
             </SideNavItem>
           );
@@ -109,14 +161,14 @@ export const CategoryShell: React.FC<CategoryShellProps> = ({ category }) => {
 const Shell = styled.div`
   display: flex;
   min-height: calc(100vh - 4rem);
-  background: #faf9f5;
+  background: ${palette.bg};
 `;
 
 const SideNav = styled.nav`
   width: 13rem;
   flex-shrink: 0;
-  background: #ffffff;
-  border-right: 1px solid #e8e5dc;
+  background: ${palette.surface};
+  border-right: 1px solid ${palette.border};
   padding: 1rem 0;
   display: flex;
   flex-direction: column;
@@ -124,22 +176,31 @@ const SideNav = styled.nav`
   overflow-y: auto;
 `;
 
-const SideNavItem = styled(NavLink)<{ $active: boolean }>`
+const SideNavItem = styled(NavLink)<{ $active: boolean; $locked?: boolean }>`
   display: flex;
   align-items: center;
   gap: 0.625rem;
   padding: 0.625rem 1rem;
   font-size: 0.8125rem;
   font-weight: ${({ $active }) => ($active ? '700' : '500')};
-  color: ${({ $active }) => ($active ? '#f97316' : '#374151')};
-  background: ${({ $active }) => ($active ? '#fff7ed' : 'transparent')};
-  border-left: 3px solid ${({ $active }) => ($active ? '#f97316' : 'transparent')};
+  color: ${({ $active, $locked }) => ($locked ? palette.textSubtle : $active ? palette.navActive : palette.textMuted)};
+  background: ${({ $active, $locked }) => (!$locked && $active ? palette.navActiveSoft : 'transparent')};
+  border-left: 3px solid ${({ $active, $locked }) => (!$locked && $active ? palette.navActive : 'transparent')};
   text-decoration: none;
+  opacity: ${({ $locked }) => ($locked ? 0.6 : 1)};
+  cursor: ${({ $locked }) => ($locked ? 'not-allowed' : 'pointer')};
   transition: background 120ms, color 120ms, border-color 120ms;
   &:hover {
-    background: #f9fafb;
-    color: #111827;
+    background: ${({ $locked }) => ($locked ? 'transparent' : palette.surfaceAlt)};
+    color: ${({ $locked }) => ($locked ? palette.textSubtle : palette.text)};
   }
+`;
+
+const LockIcon = styled.span`
+  font-size: 0.75rem;
+  line-height: 1;
+  flex-shrink: 0;
+  opacity: 0.8;
 `;
 
 const SideNavIcon = styled.svg`
@@ -163,8 +224,8 @@ const NavBadge = styled.span`
   height: 1.125rem;
   padding: 0 0.3rem;
   border-radius: 9999px;
-  background: #ef4444;
-  color: #fff;
+  background: ${palette.danger};
+  color: ${palette.onAccent};
   font-size: 0.6rem;
   font-weight: 700;
   line-height: 1;
@@ -179,15 +240,15 @@ const MainArea = styled.div`
 `;
 
 const ShellHeader = styled.div`
-  background: #ffffff;
-  border-bottom: 1px solid #e8e5dc;
+  background: ${palette.surface};
+  border-bottom: 1px solid ${palette.border};
   padding: 0 1.5rem;
 `;
 
 const CategoryTitle = styled.h1`
   font-size: 1.25rem;
   font-weight: 600;
-  color: #111827;
+  color: ${palette.text};
   padding: 1.25rem 0 0.75rem;
   margin: 0;
 `;
@@ -203,19 +264,19 @@ const Tab = styled(NavLink)`
   padding: 0.625rem 1rem;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #6b7280;
+  color: ${palette.textMuted};
   border-bottom: 2px solid transparent;
   text-decoration: none;
   white-space: nowrap;
   transition: color 150ms, border-color 150ms;
 
   &:hover {
-    color: #374151;
+    color: ${palette.text};
   }
 
   &.active {
-    color: #f97316;
-    border-bottom-color: #f97316;
+    color: ${palette.navActive};
+    border-bottom-color: ${palette.navActive};
   }
 `;
 
@@ -226,7 +287,7 @@ const LogoutTab = styled.button`
   padding: 0.625rem 1rem;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #b54327;
+  color: ${palette.danger};
   border: none;
   background: transparent;
   border-bottom: 2px solid transparent;
@@ -234,8 +295,8 @@ const LogoutTab = styled.button`
   white-space: nowrap;
   transition: color 150ms, border-color 150ms;
   &:hover {
-    color: #903021;
-    border-bottom-color: #b54327;
+    color: ${palette.danger};
+    border-bottom-color: ${palette.danger};
   }
 `;
 const LogoutOverlay = styled.div`
@@ -245,26 +306,26 @@ const LogoutOverlay = styled.div`
   z-index: 1000;
 `;
 const LogoutBox = styled.div`
-  background: #ffffff;
-  border: 1px solid #e8e5dc;
+  background: ${palette.surface};
+  border: 1px solid ${palette.border};
   border-radius: 0.875rem;
   padding: 2rem;
   width: 100%; max-width: 26rem;
   display: flex; flex-direction: column; gap: 1rem;
   box-shadow: 0 8px 32px rgba(0,0,0,0.12);
 `;
-const LogoutBoxTitle = styled.h3`font-size: 1rem; font-weight: 700; color: #141413; margin: 0;`;
-const LogoutBoxBody = styled.p`font-size: 0.9375rem; color: #605a50; margin: 0; line-height: 1.5;`;
+const LogoutBoxTitle = styled.h3`font-size: 1rem; font-weight: 700; color: ${palette.text}; margin: 0;`;
+const LogoutBoxBody = styled.p`font-size: 0.9375rem; color: ${palette.textMuted}; margin: 0; line-height: 1.5;`;
 const LogoutBoxActions = styled.div`display: flex; gap: 0.5rem; margin-top: 0.25rem;`;
 const LogoutConfirmBtn = styled.button`
-  background: #b54327; color: white; border: 0;
+  background: ${palette.danger}; color: ${palette.onAccent}; border: 0;
   padding: 0.625rem 1.25rem; border-radius: 0.5rem;
   font-size: 0.9375rem; font-weight: 600; cursor: pointer;
-  &:hover { background: #903021; }
+  &:hover { opacity: 0.9; }
 `;
 const LogoutCancelBtn = styled.button`
-  background: #faf9f5; color: #141413; border: 1px solid #e8e5dc;
+  background: ${palette.bg}; color: ${palette.text}; border: 1px solid ${palette.border};
   padding: 0.625rem 1.25rem; border-radius: 0.5rem;
   font-size: 0.9375rem; font-weight: 600; cursor: pointer;
-  &:hover { background: #f3e8de; border-color: #c96442; }
+  &:hover { background: ${palette.accentSoft}; border-color: ${palette.accent}; }
 `;

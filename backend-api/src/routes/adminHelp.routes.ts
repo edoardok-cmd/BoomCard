@@ -1,14 +1,16 @@
 import { Router } from 'express';
-import { TicketStatus, TicketPriority, TicketCategory } from '@prisma/client';
+import { TicketStatus, TicketPriority, TicketCategory, TicketRequestType } from '@prisma/client';
 import { authenticate, authorize, requirePermission } from '../middleware/auth.middleware';
 import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { notificationService } from '../services/notification.service';
 import { emailService } from '../services/email.service';
-import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef } from '../services/ticketEmail.service';
+import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef, withCanonicalRequestStatus } from '../services/ticketEmail.service';
 import { fireAutomation } from '../lib/automationDispatcher';
 import { logger } from '../utils/logger';
+import { parsePagination } from '../utils/pagination';
 import type { AuthRequest } from '../middleware/auth.middleware';
+import { detach } from '../utils/detach';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -65,10 +67,13 @@ function hasFullAccess(req: AuthRequest): boolean {
   return req.user!.role === 'SUPER_ADMIN' || (req.user!.permissions ?? []).includes('help.read.all');
 }
 
-// Spec §11.3: valid requestTypes for admin internal tickets.
-// DATA_CHANGE / LOCATION_CHANGE are partner-facing; admins may still classify
-// an internal ticket with any type for flexibility.
-const ADMIN_VALID_REQUEST_TYPES = ['SUPPORT', 'DISPUTE', 'DATA_CHANGE', 'LOCATION_CHANGE', 'CONTRACT_CHANGE', 'OTHER'];
+// Spec §1.7 / §11.3: valid requestTypes for admin internal tickets.
+// The canonical spec Request Type enum is Support / Dispute / Change / Other.
+// CHANGE is the bare canonical "Change" classification; DATA_CHANGE /
+// LOCATION_CHANGE / CONTRACT_CHANGE are its sub-types (all partner-facing).
+// L5 fix: include the bare CHANGE member so admins can classify a generic
+// change request that does not fit a specific sub-type.
+const ADMIN_VALID_REQUEST_TYPES = ['SUPPORT', 'DISPUTE', 'CHANGE', 'DATA_CHANGE', 'LOCATION_CHANGE', 'CONTRACT_CHANGE', 'OTHER'];
 
 // POST /api/admin/help — G8: admin creates a new help ticket (Spec §11 "Нова заявка")
 router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, next) => {
@@ -105,8 +110,8 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
         ? (priority as TicketPriority)
         : 'MEDIUM';
 
-    const resolvedRequestType = requestType && ADMIN_VALID_REQUEST_TYPES.includes(requestType)
-      ? requestType
+    const resolvedRequestType: TicketRequestType = requestType && ADMIN_VALID_REQUEST_TYPES.includes(requestType)
+      ? (requestType as TicketRequestType)
       : 'SUPPORT';
 
     const ticket = await prisma.helpTicket.create({
@@ -133,7 +138,7 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
       },
     });
 
-    notificationService
+    detach(notificationService
       .notifyAdminOps({
         opsType: 'help_ticket_created',
         title: `Admin ticket: ${category}`,
@@ -145,12 +150,13 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
           { label: 'Admin', value: req.user!.email },
           { label: 'Ticket ID', value: ticket.id },
         ],
-      })
-      .catch((err) => logger.error('[adminHelp] Failed to notify on admin ticket creation:', err));
+      }), (err) => logger.error('[adminHelp] Failed to notify on admin ticket creation:', err));
 
     // Spec §11.6: send auto-reply confirmation to the admin who created the ticket
     // (same pattern as partner and user web-form tickets).
-    ;(async () => {
+    // Routed through detach() so the detached DB writes settle inside this suite
+    // under test (no cross-suite mock-queue leak); no-op .catch in prod.
+    ;detach((async () => {
       try {
         // Generate threading headers first so rootMessageId matches the actual
         // Message-ID sent in the email (a second newMessageId() call would
@@ -185,7 +191,7 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
       } catch (err) {
         logger.error('[adminHelp] Failed to send auto-reply to ticket creator:', err);
       }
-    })();
+    })(), () => {});
 
     const adminEmail = req.user!.email;
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -195,7 +201,7 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
     const PRIORITY_BG: Record<string, string> = {
       LOW: 'Нисък', MEDIUM: 'Среден', HIGH: 'Висок', URGENT: 'Спешен',
     };
-    emailService
+    detach(emailService
       .sendEmail({
         to: 'support@boomcard.bg',
         subject: `[Admin заявка] ${CATEGORY_BG[category] ?? category}: ${subject.trim()}`,
@@ -210,8 +216,7 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
 <p>${esc(body.trim()).replace(/\n/g, '<br/>')}</p>
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id}</p>`,
         text: `Нова вътрешна заявка от администратор\n\nАдминистратор: ${adminEmail}\nКатегория: ${CATEGORY_BG[category] ?? category}\nПриоритет: ${PRIORITY_BG[resolvedPriority] ?? resolvedPriority}\nТема: ${subject.trim()}\n\n${body.trim()}\n\nTicket ID: ${ticket.id}`,
-      })
-      .catch((err) => logger.error('[adminHelp] Failed to send email to support@boomcard.bg:', err));
+      }), (err) => logger.error('[adminHelp] Failed to send email to support@boomcard.bg:', err));
 
     res.status(201).json({ ticket });
   } catch (error) {
@@ -249,12 +254,8 @@ router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
     const {
       status, priority, category, search,
       from, to, assigneeId,
-      page = '1', limit = '25',
     } = req.query as Record<string, string>;
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 25));
-    const skip = (pageNum - 1) * limitNum;
-    const take = limitNum;
+    const { skip, take, page: pageNum } = parsePagination(req.query, { defaultLimit: 25, maxLimit: 100 });
 
     const where: Parameters<typeof prisma.helpTicket.findMany>[0]['where'] = {};
     if (status && Object.values(TicketStatus).includes(status as TicketStatus)) {
@@ -270,7 +271,7 @@ router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
       if (!ADMIN_VALID_REQUEST_TYPES.includes(req.query.requestType)) {
         return res.status(400).json({ error: 'Невалиден тип заявка' });
       }
-      where.requestType = req.query.requestType;
+      where.requestType = req.query.requestType as TicketRequestType;
     }
     // Spec §11.5 "период" — date range filter on createdAt.
     // `from` and `to` are ISO-8601 strings; invalid values are silently ignored.
@@ -300,7 +301,8 @@ router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
       prisma.helpTicket.count({ where }),
     ]);
 
-    res.json({ tickets, total, page: pageNum, limit: take });
+    // M6 (§1.7): surface the canonical request_status alongside the raw enum token.
+    res.json({ tickets: tickets.map(withCanonicalRequestStatus), total, page: pageNum, limit: take });
   } catch (error) {
     next(error);
   }
@@ -309,11 +311,8 @@ router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
 // GET /api/admin/help/mine — tickets created by the current admin (Spec §11 "Моите заявки")
 router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res, next) => {
   try {
-    const { status, priority, category, search, page = '1', limit = '25' } = req.query as Record<string, string>;
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 25));
-    const skip = (pageNum - 1) * limitNum;
-    const take = limitNum;
+    const { status, priority, category, search } = req.query as Record<string, string>;
+    const { skip, take, page: pageNum } = parsePagination(req.query, { defaultLimit: 25, maxLimit: 100 });
 
     // Build where as AND conditions so status + search can coexist without clobbering each other.
     // Spec §11.5 "Моите заявки": tickets where the current admin is owner OR assignee.
@@ -335,7 +334,7 @@ router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res
       if (!ADMIN_VALID_REQUEST_TYPES.includes(req.query.requestType)) {
         return res.status(400).json({ error: 'Невалиден тип заявка' });
       }
-      conditions.push({ requestType: req.query.requestType });
+      conditions.push({ requestType: req.query.requestType as TicketRequestType });
     }
     if (search) {
       conditions.push({ OR: [
@@ -351,7 +350,8 @@ router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res
       prisma.helpTicket.count({ where }),
     ]);
 
-    res.json({ tickets, total, page: pageNum, limit: take });
+    // M6 (§1.7): surface the canonical request_status alongside the raw enum token.
+    res.json({ tickets: tickets.map(withCanonicalRequestStatus), total, page: pageNum, limit: take });
   } catch (error) {
     next(error);
   }
@@ -395,7 +395,8 @@ router.get('/:id', requirePermission('help.read'), async (req: AuthRequest, res,
       });
     }
 
-    res.json({ ticket: { ...ticket, bounceCount } });
+    // M6 (§1.7): surface the canonical request_status alongside the raw enum token.
+    res.json({ ticket: { ...withCanonicalRequestStatus(ticket), bounceCount } });
   } catch (error) {
     next(error);
   }
@@ -430,6 +431,23 @@ router.post('/:id/assign', requirePermission('help.write'), async (req: AuthRequ
     // Resolve final assignee: null (unassign), explicit UUID (SUPER_ADMIN), or self.
     const resolvedAssigneeId: string | null = isUnassign ? null : (targetId ?? req.user!.id);
 
+    // H4 / Spec §1.7 + §3.8 + Clash 7.2: "any admin can CLAIM; only Super Admin can
+    // REASSIGN a claimed request." A self-assign (no explicit target) is a CLAIM and is
+    // only valid on an UNASSIGNED ticket. If the ticket is already claimed by a different
+    // admin, a non-Super-Admin self-assign would silently STEAL the claim — reject 403.
+    // (The explicit-target path is already SUPER_ADMIN-gated above. Re-claiming a ticket
+    // already assigned to oneself is handled by the no-op short-circuit below.)
+    if (
+      !hasExplicitTarget &&
+      ticket.assigneeId !== null &&
+      ticket.assigneeId !== req.user!.id &&
+      req.user!.role !== 'SUPER_ADMIN'
+    ) {
+      return res.status(403).json({
+        error: 'Заявката вече е поета от друг администратор. Само SUPER_ADMIN може да преназначава.',
+      });
+    }
+
     // Validate the target admin exists (skip for unassign and self-assign, self is already authed).
     if (typeof targetId === 'string') {
       const targetUser = await prisma.user.findUnique({
@@ -461,6 +479,11 @@ router.post('/:id/assign', requirePermission('help.write'), async (req: AuthRequ
       return res.json({ ok: true });
     }
 
+    // Terminal-state reassignment (CANCELLED / CLOSED / REJECTED) is intentionally
+    // permitted, per §3.8 (Super Admin may reassign historical tickets). It is NOT
+    // a state-machine violation: newStatus below only promotes NEW/OPEN → IN_REVIEW
+    // and leaves every other state — including the terminal ones — untouched, so a
+    // terminal ticket's assigneeId can change without the ticket being revived.
     const newStatus =
       resolvedAssigneeId !== null && (ticket.status === 'NEW' || ticket.status === 'OPEN')
         ? 'IN_REVIEW'
@@ -481,14 +504,14 @@ router.post('/:id/assign', requirePermission('help.write'), async (req: AuthRequ
     });
 
     req.skipAudit = true;
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'ticket.assign',
       objectType: 'ticket',
       objectId: req.params.id,
       before: { assigneeId: ticket.assigneeId, status: ticket.status },
       after: { assigneeId: resolvedAssigneeId, status: newStatus },
-    }).catch(() => {});
+    }), () => {});
 
     res.json({ ok: true });
   } catch (error) {
@@ -514,7 +537,7 @@ router.post('/:id/reject', requirePermission('help.write'), async (req: AuthRequ
 
     const ticket = await prisma.helpTicket.findUnique({
       where: { id: req.params.id },
-      include: { user: { select: { email: true, firstName: true, role: true } } },
+      include: { user: { select: { id: true, email: true, firstName: true, role: true } } },
     });
     if (!ticket) return res.status(404).json({ error: 'Заявката не е намерена' });
     // Policy (confirmed audit-fix [7]): only the assignee or SUPER_ADMIN can reject.
@@ -526,8 +549,11 @@ router.post('/:id/reject', requirePermission('help.write'), async (req: AuthRequ
       return res.status(403).json({ error: 'Отказан достъп — само отговорникът или SUPER_ADMIN може да отхвърли' });
     }
     // Terminal states cannot transition further. CLOSED is the success-side
-    // terminal; REJECTED is the failure-side terminal — both are immutable.
-    if (ticket.status === 'CLOSED' || ticket.status === 'REJECTED') {
+    // terminal; REJECTED is the failure-side terminal; CANCELLED is the
+    // withdrawn/invalid terminal (spec §1.7/§7.1) — all immutable. CANCELLED
+    // is added here so the admin path matches the user/partner terminal guards
+    // (help.routes.ts:247, partnerHelp.routes.ts:299).
+    if (ticket.status === 'CLOSED' || ticket.status === 'REJECTED' || ticket.status === 'CANCELLED') {
       return res.status(400).json({ error: 'Заявката вече е в крайно състояние' });
     }
 
@@ -551,14 +577,14 @@ router.post('/:id/reject', requirePermission('help.write'), async (req: AuthRequ
     });
 
     req.skipAudit = true;
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'ticket.reject',
       objectType: 'ticket',
       objectId: req.params.id,
       before: { status: ticket.status },
       after: { status: 'REJECTED', reason: trimmedReason },
-    }).catch(() => {});
+    }), () => {});
 
     // Notify the creator (non-fatal; do not block the response).
     if (ticket.user.email) {
@@ -575,7 +601,7 @@ router.post('/:id/reject', requirePermission('help.write'), async (req: AuthRequ
       ].filter((id): id is string => !!id);
       const escR = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const rejectAudience = ticket.user.role === 'PARTNER' ? 'partner' : 'subscriber';
-      emailService
+      detach(emailService
         .sendEmail({
           to: ticket.user.email,
           audience: ticket.user.role === 'PARTNER' ? 'partner' : undefined,
@@ -592,8 +618,141 @@ router.post('/:id/reject', requirePermission('help.write'), async (req: AuthRequ
 <blockquote style="border-left:3px solid #e5e7eb;padding-left:12px;color:#555;">${escR(trimmedReason)}</blockquote>
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id}</p>`,
           text: `Здравей, ${ticket.user.firstName || ticket.user.email},\n\nВашата заявка беше отказана.\n\nПричина: ${trimmedReason}\n\nTicket ID: ${ticket.id}`,
-        })
-        .catch((err) => logger.error('[adminHelp] reject notification email failed:', err));
+        }), (err) => logger.error('[adminHelp] reject notification email failed:', err));
+    }
+
+    // Spec §9.1 template #5 "Request Updates" — partner in-app bell. Parity with the
+    // PATCH /:id status-update handler: the reject email above covers the email channel;
+    // this adds the in-app channel for PARTNER creators so both fire coherently (distinct
+    // channels — no double-send vs the reject email). Gated on PARTNER role (subscriber/
+    // user creators have no partner dashboard). The terminal-state guard above guarantees
+    // this is a real status change (prior status was not already REJECTED).
+    if (ticket.user.role === 'PARTNER') {
+      const REJECT_STATUS_BG: Record<string, string> = {
+        NEW: 'Нова', OPEN: 'Отворена', IN_REVIEW: 'В преглед', WAITING: 'Чака отговор',
+        RESOLVED: 'Решена', CLOSED: 'Затворена', REJECTED: 'Отказана', CANCELLED: 'Отменена',
+      };
+      const rejectFromLabel = REJECT_STATUS_BG[ticket.status] ?? ticket.status;
+      const rejectToLabel = REJECT_STATUS_BG['REJECTED'];
+      detach(notificationService
+        .notifyPartnerRequestUpdate({
+          partnerUserId: ticket.user.id,
+          ticketId: req.params.id,
+          subject: ticket.subject,
+          fromStatus: rejectFromLabel,
+          toStatus: rejectToLabel,
+        }), (err) => logger.error('[adminHelp] Failed to send partner in-app request-update notification (reject):', err));
+    }
+
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/admin/help/:id/cancel — Spec §1.7 "Cancelled = withdrawn/invalid".
+// L4 fix: the CANCELLED TicketStatus was defined and guarded as a terminal state
+// but had no writer — it was unreachable. This endpoint exposes an explicit admin
+// withdraw/cancel action (terminal transition → CANCELLED), distinct from REJECTED
+// ("admin declined with reason"). Used when a ticket is a duplicate, spam, or the
+// requester withdrew it. An optional note is recorded; unlike /reject it does not
+// require a long reason because a cancellation is not an adverse decision.
+router.post('/:id/cancel', requirePermission('help.write'), async (req: AuthRequest, res, next) => {
+  try {
+    const { reason } = req.body as { reason?: string };
+    const trimmedReason = reason?.trim() || '';
+    if (trimmedReason.length > 1000) {
+      return res.status(400).json({ error: 'Причината е твърде дълга (максимум 1000 символа)' });
+    }
+
+    const ticket = await prisma.helpTicket.findUnique({
+      where: { id: req.params.id },
+      include: { user: { select: { id: true, email: true, firstName: true, role: true } } },
+    });
+    if (!ticket) return res.status(404).json({ error: 'Заявката не е намерена' });
+    // Mirror /reject's access policy: only the assignee or SUPER_ADMIN may cancel a
+    // ticket — a terminal action that should be owned by someone accountable.
+    if (req.user!.role !== 'SUPER_ADMIN' && ticket.assigneeId !== req.user!.id) {
+      return res.status(403).json({ error: 'Отказан достъп — само отговорникът или SUPER_ADMIN може да отмени заявка' });
+    }
+    // Terminal states cannot transition further (CLOSED / REJECTED / CANCELLED).
+    if (ticket.status === 'CLOSED' || ticket.status === 'REJECTED' || ticket.status === 'CANCELLED') {
+      return res.status(400).json({ error: 'Заявката вече е в крайно състояние' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.helpTicket.update({
+        where: { id: req.params.id },
+        data: { status: 'CANCELLED' as TicketStatus },
+      });
+      await tx.ticketReply.create({
+        data: {
+          ticketId: req.params.id,
+          authorId: req.user!.id,
+          body: trimmedReason ? `[ОТМЕНЕНА] ${trimmedReason}` : '[ОТМЕНЕНА] Заявката беше отменена.',
+          isAdmin: true,
+          channel: 'INTERNAL',
+        },
+      });
+    });
+
+    req.skipAudit = true;
+    detach(writeAudit({
+      actorUserId: req.user!.id,
+      action: 'ticket.cancel',
+      objectType: 'ticket',
+      objectId: req.params.id,
+      before: { status: ticket.status },
+      after: { status: 'CANCELLED', reason: trimmedReason || null },
+    }), () => {});
+
+    // Notify the creator (non-fatal). Spec §1.7: Cancelled tickets remain in history.
+    if (ticket.user.email) {
+      const cancelPriorMsgs = await prisma.ticketReply.findMany({
+        where: { ticketId: req.params.id, messageId: { not: null } },
+        orderBy: { createdAt: 'asc' },
+        select: { messageId: true },
+      });
+      const cancelRefChain: string[] = [
+        ticket.rootMessageId,
+        ...cancelPriorMsgs.map((r) => r.messageId),
+      ].filter((id): id is string => !!id);
+      const escC = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const cancelAudience = ticket.user.role === 'PARTNER' ? 'partner' : 'subscriber';
+      detach(emailService
+        .sendEmail({
+          to: ticket.user.email,
+          audience: ticket.user.role === 'PARTNER' ? 'partner' : undefined,
+          subject: buildTicketSubject(ticket.id, `[Заявката отменена] ${ticket.subject}`),
+          headers: buildTicketHeaders({
+            ticketId: req.params.id,
+            inReplyTo: cancelRefChain.at(-1) ?? null,
+            references: cancelRefChain,
+          }).headers,
+          replyTo: buildPlusReplyTo(ticket.id, cancelAudience),
+          html: `<p>Здравей, ${escC(ticket.user.firstName || ticket.user.email)},</p>
+<p>Вашата заявка беше отменена.</p>${trimmedReason ? `
+<p><strong>Бележка:</strong></p>
+<blockquote style="border-left:3px solid #e5e7eb;padding-left:12px;color:#555;">${escC(trimmedReason)}</blockquote>` : ''}
+<p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id}</p>`,
+          text: `Здравей, ${ticket.user.firstName || ticket.user.email},\n\nВашата заявка беше отменена.${trimmedReason ? `\n\nБележка: ${trimmedReason}` : ''}\n\nTicket ID: ${ticket.id}`,
+        }), (err) => logger.error('[adminHelp] cancel notification email failed:', err));
+    }
+
+    // Spec §9.1 template #5 "Request Updates" — partner in-app bell parity.
+    if (ticket.user.role === 'PARTNER') {
+      const CANCEL_STATUS_BG: Record<string, string> = {
+        NEW: 'Нова', OPEN: 'Отворена', IN_REVIEW: 'В преглед', WAITING: 'Чака отговор',
+        RESOLVED: 'Решена', CLOSED: 'Затворена', REJECTED: 'Отказана', CANCELLED: 'Отменена',
+      };
+      detach(notificationService
+        .notifyPartnerRequestUpdate({
+          partnerUserId: ticket.user.id,
+          ticketId: req.params.id,
+          subject: ticket.subject,
+          fromStatus: CANCEL_STATUS_BG[ticket.status] ?? ticket.status,
+          toStatus: CANCEL_STATUS_BG['CANCELLED'],
+        }), (err) => logger.error('[adminHelp] Failed to send partner in-app request-update notification (cancel):', err));
     }
 
     res.json({ ok: true });
@@ -609,17 +768,19 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
 
     const ticket = await prisma.helpTicket.findUnique({
       where: { id: req.params.id },
-      include: { user: { select: { email: true, firstName: true, role: true } } },
+      include: { user: { select: { id: true, email: true, firstName: true, role: true } } },
     });
     if (!ticket) return res.status(404).json({ error: 'Заявката не е намерена' });
     if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
       return res.status(403).json({ error: 'Отказан достъп' });
     }
-    // Both CLOSED and REJECTED are terminal — no further status or priority
-    // changes are allowed for any role (spec §11.4). Use the dedicated reject
-    // endpoint to create a REJECTED ticket; use the reopen flow (POST /:id/reply
-    // from the ticket owner) to reopen a CLOSED ticket.
-    if (ticket.status === 'CLOSED' || ticket.status === 'REJECTED') {
+    // CLOSED, REJECTED and CANCELLED are all terminal — no further status or
+    // priority changes are allowed for any role (spec §11.4 / §1.7 / §7.1). Use
+    // the dedicated reject endpoint to create a REJECTED ticket; use the reopen
+    // flow (POST /:id/reply from the ticket owner) to reopen a CLOSED ticket.
+    // CANCELLED ("withdrawn or invalid") is added so admin matches the
+    // user/partner terminal guards.
+    if (ticket.status === 'CLOSED' || ticket.status === 'REJECTED' || ticket.status === 'CANCELLED') {
       return res.status(400).json({ error: 'Не може да се променя заявка в крайно състояние' });
     }
     // Spec §11.4: REJECTED requires a reason (enforced by POST /:id/reject).
@@ -673,7 +834,7 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
     await prisma.helpTicket.update({ where: { id: req.params.id }, data });
 
     req.skipAudit = true;
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'ticket.update',
       objectType: 'ticket',
@@ -683,7 +844,7 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
         ...(data.priority !== undefined ? { priority: ticket.priority } : {}),
       },
       after: data as object,
-    }).catch(() => {});
+    }), () => {});
 
     // Spec §11.6: notify the ticket creator on every status change.
     // Guard old-status !== new-status to avoid duplicate emails if an admin
@@ -713,7 +874,7 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
         ...patchPriorMsgs.map((r) => r.messageId),
       ].filter((id): id is string => !!id);
       const patchAudience = ticket.user.role === 'PARTNER' ? 'partner' : 'subscriber';
-      emailService
+      detach(emailService
         .sendEmail({
           to: ticket.user.email,
           audience: ticket.user.role === 'PARTNER' ? 'partner' : undefined,
@@ -738,8 +899,23 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id}${footerLink}</p>`;
           })(),
           text: `Здравей, ${ticket.user.firstName || ticket.user.email},\n\nСтатусът на вашата заявка беше обновен на: ${newStatusLabel}\n\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG_NOTIFY[ticket.category] ?? ticket.category}\n\nTicket ID: ${ticket.id}`,
-        })
-        .catch((err) => logger.error('[adminHelp] Failed to send status-change notification to creator:', err));
+        }), (err) => logger.error('[adminHelp] Failed to send status-change notification to creator:', err));
+
+      // Spec §9.1 template #5 "Request Updates" — partner in-app bell. The email
+      // above covers the email channel; this adds the in-app channel for PARTNER
+      // creators so both fire coherently (no double-send: distinct channels).
+      // Subscriber/user creators have no partner dashboard, so this is gated on role.
+      if (ticket.user.role === 'PARTNER') {
+        const fromLabel = STATUS_BG_NOTIFY[ticket.status] ?? ticket.status;
+        detach(notificationService
+          .notifyPartnerRequestUpdate({
+            partnerUserId: ticket.user.id,
+            ticketId: req.params.id,
+            subject: ticket.subject,
+            fromStatus: fromLabel,
+            toStatus: newStatusLabel,
+          }), (err) => logger.error('[adminHelp] Failed to send partner in-app request-update notification:', err));
+      }
     }
 
     res.json({ ok: true });
@@ -771,7 +947,10 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
     if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
       return res.status(403).json({ error: 'Отказан достъп' });
     }
-    if (ticket.status === 'CLOSED' || ticket.status === 'REJECTED') {
+    // CLOSED, REJECTED and CANCELLED are terminal — replies are blocked for all
+    // roles (spec §1.7/§7.1). CANCELLED ("withdrawn or invalid") is added so the
+    // admin path matches the user/partner guards (help.routes.ts:247).
+    if (ticket.status === 'CLOSED' || ticket.status === 'REJECTED' || ticket.status === 'CANCELLED') {
       return res.status(400).json({ error: 'Не може да се отговаря на заявка в крайно състояние' });
     }
 
@@ -863,7 +1042,7 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
     }
 
     req.skipAudit = true;
-    writeAudit({
+    detach(writeAudit({
       actorUserId: req.user!.id,
       action: 'ticket.reply',
       objectType: 'ticket',
@@ -874,7 +1053,7 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
         isAdmin: !isCreator,
         replyId: reply.id,
       },
-    }).catch(() => {});
+    }), () => {});
 
     // Spec §8.2 / §11 — fire support.reply automation when staff replies to a ticket.
     // skipEmail=true: the direct rich email below always carries the reply body,
@@ -882,8 +1061,7 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
     // produce two emails for any user with marketingConsentEmail=true. The
     // automation still creates the in-app bell notification unconditionally.
     if (!isCreator && ticket.userId) {
-      fireAutomation('support.reply', { userId: ticket.userId, skipEmail: true })
-        .catch((err) => logger.error('[automation] support.reply fire failed:', err));
+      detach(fireAutomation('support.reply', { userId: ticket.userId, skipEmail: true }), (err) => logger.error('[automation] support.reply fire failed:', err));
     }
 
     // Shared helpers for reply notification emails
@@ -895,7 +1073,7 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
     // Notify the ticket creator by email when support (non-creator) replies
     if (!isCreator && ticket.user?.email) {
       const replyAudience = ticket.user.role === 'PARTNER' ? 'partner' : 'subscriber';
-      emailService
+      detach(emailService
         .sendEmail({
           to: ticket.user.email,
           audience: ticket.user.role === 'PARTNER' ? 'partner' : undefined,
@@ -918,15 +1096,14 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id}${footerLink}</p>`;
           })(),
           text: `Здравей, ${ticket.user.firstName || ticket.user.email},\n\nПолучихте отговор на вашата заявка.\n\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG[ticket.category] ?? ticket.category}\n\n${body.trim()}\n\nTicket ID: ${ticket.id}`,
-        })
-        .catch((err) => logger.error('[adminHelp] Failed to send reply notification email:', err));
+        }), (err) => logger.error('[adminHelp] Failed to send reply notification email:', err));
     }
 
     // Notify the assigned admin by email when the ticket creator replies.
     // Skip when the ticket is self-assigned (assigneeId === userId) — the
     // creator would otherwise receive an email telling themselves they replied.
     if (isCreator && ticket.assignee?.email && ticket.assigneeId !== ticket.userId) {
-      emailService
+      detach(emailService
         .sendEmail({
           to: ticket.assignee.email,
           subject: buildTicketSubject(ticket.id, `[Отговор от заявител] ${ticket.subject}`),
@@ -941,13 +1118,12 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
 <p>${escR(body.trim()).replace(/\n/g, '<br/>')}</p>
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id} &middot; <a href="${FRONTEND_URL}/admin/help/all?ticket=${ticket.id}">Отвори заявката</a></p>`,
           text: `Здравей, ${ticket.assignee.firstName || ticket.assignee.email},\n\nЗаявителят изпрати отговор на заявка, назначена на вас.\n\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG[ticket.category] ?? ticket.category}\n\n${body.trim()}\n\nTicket ID: ${ticket.id}`,
-        })
-        .catch((err) => logger.error('[adminHelp] Failed to send creator-reply notification to assignee:', err));
+        }), (err) => logger.error('[adminHelp] Failed to send creator-reply notification to assignee:', err));
     }
 
     // When creator replies on an unassigned ticket, alert support so it isn't silently missed.
     if (isCreator && !ticket.assigneeId) {
-      emailService
+      detach(emailService
         .sendEmail({
           to: 'support@boomcard.bg',
           subject: buildTicketSubject(ticket.id, `[Без отговорник] ${ticket.subject}`),
@@ -960,8 +1136,7 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
 </table>
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id} &middot; <a href="${FRONTEND_URL}/admin/help/all?ticket=${ticket.id}">Отвори заявката</a></p>`,
           text: `Заявителят изпрати отговор на заявка без назначен отговорник.\n\nЗаявител: ${ticket.user.firstName || ticket.user.email}\nТема: ${ticket.subject}\nКатегория: ${CATEGORY_BG[ticket.category] ?? ticket.category}\n\nTicket ID: ${ticket.id}`,
-        })
-        .catch((err) => logger.error('[adminHelp] Failed to send unassigned-reply alert to support:', err));
+        }), (err) => logger.error('[adminHelp] Failed to send unassigned-reply alert to support:', err));
     }
 
     res.status(201).json({ reply });

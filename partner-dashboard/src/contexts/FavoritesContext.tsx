@@ -60,7 +60,7 @@ interface FavoritesProviderProps {
 }
 
 export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { t } = useLanguage();
   const [favorites, setFavorites] = useState<FavoriteItem[]>(() => {
     try {
@@ -92,6 +92,11 @@ export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }
   // transient network error and will be retried on the next sync.
   useEffect(() => {
     if (!isAuthenticated) return;
+    // Admin / super-admin sessions have no partner-favorites surface. Running
+    // the hydration sync for them only produced GET /partners/{id} 404 console
+    // noise (deleted venues, ids they never favorited). `role` is normalized
+    // server-side so both ADMIN and SUPER_ADMIN collapse to 'admin' here.
+    if (user?.role === 'admin') return;
     let cancelled = false;
     (async () => {
       try {
@@ -160,7 +165,18 @@ export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }
                   synced: true,
                 };
                 return item;
-              } catch {
+              } catch (err) {
+                // A definitive 404 means the favorited entity was deleted
+                // server-side. Prune it from the server-side favorites list so
+                // it stops being re-hydrated (and re-404ing) on every login.
+                // Only act on a real 404 — transient errors (network, 5xx) must
+                // leave the favorite intact so a temporary outage can't wipe it.
+                const status = (err as { response?: { status?: number } })?.response?.status;
+                if (status === 404) {
+                  apiService
+                    .delete('/favorites', { data: { entityKind: kind, entityId: id } } as any)
+                    .catch(delErr => console.error('Failed to prune deleted favorite:', delErr));
+                }
                 return null;
               }
             })
@@ -195,7 +211,7 @@ export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }
       }
     })();
     return () => { cancelled = true; };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user?.role]);
 
   const addToFavorites = (item: Omit<FavoriteItem, 'addedAt'>) => {
     if (favorites.some(fav => fav.id === item.id)) {

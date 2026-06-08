@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { normalizePhone } from '../utils/validators';
 import Header from '../components/layout/Header/Header';
+import VenueLocationPicker, { type Coordinates } from '../components/common/VenueLocationPicker/VenueLocationPicker';
 import { placesCategories, experiencesCategories, findCategory } from '../types/categories.types';
 
 const PageWrapper = styled.div`
@@ -345,6 +346,35 @@ const SwitchAccountType = styled.p`
   }
 `;
 
+const Textarea = styled.textarea<{ $hasError?: boolean }>`
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid ${props => props.$hasError ? 'var(--color-error)' : '#cbd5e1'};
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  transition: all var(--transition-normal);
+  resize: vertical;
+  min-height: 6rem;
+  font-family: inherit;
+
+  &:focus {
+    outline: none;
+    border-color: ${props => props.$hasError ? 'var(--color-error)' : 'var(--color-primary)'};
+    box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)'};
+  }
+
+  &::placeholder {
+    color: var(--color-text-tertiary);
+  }
+
+  [data-theme="dark"] & {
+    background: var(--color-background-tertiary);
+    border-color: ${props => props.$hasError ? 'var(--color-error)' : '#64748b'};
+  }
+`;
+
 interface FormErrors {
   firstName?: string;
   lastName?: string;
@@ -354,15 +384,27 @@ interface FormErrors {
   businessCategory?: string;
   city?: string;
   address?: string;
+  // BC-PARTNER-FU1 — venue coordinates are required so the venue is redeemable.
+  // Offer redemption fails closed server-side when lat/long are missing.
+  coordinates?: string;
   // Spec §5.1 v1.1 — Брой обекти dropdown is required at submit time.
   requestObjectCount?: string;
+  // Spec §2.3 — Ниво на участие (required)
+  participationLevel?: string;
+  // Spec §2.3 — TWO separate required consent checkboxes
   acceptTerms?: string;
-  confirmBusiness?: string;
+  acceptPrivacy?: string;
+  // confirmBusiness is not in spec §2.3 (B5 fix, r2x) — no error entry needed
 }
 
 // Spec §5.1 v1.1 — declared venue count buckets. Must stay in sync with the
 // backend whitelist in auth.service.ts.
 const ALLOWED_OBJECT_COUNTS = ['1', '2-5', '6-10', '11+'] as const;
+
+// LOW fix (review r2x S1): whitelist the three valid participation levels so
+// a tampered form submission cannot send an arbitrary string to the backend.
+// Must stay in sync with the select options rendered in the form below.
+const ALLOWED_PARTICIPATION_LEVELS = ['basic', 'active', 'growth'] as const;
 
 const RegisterPartnerPage: React.FC = () => {
   const navigate = useNavigate();
@@ -391,13 +433,49 @@ const RegisterPartnerPage: React.FC = () => {
     address: '',
     // Spec §5.1 v1.1 — Брой обекти dropdown
     requestObjectCount: '',
+    // Spec §2.3 — Ниво на участие (required)
+    participationLevel: '',
+    // Spec §2.3 — Свободен текст (optional)
+    additionalInfo: '',
+    // Spec §2.3 — TWO separate required consent checkboxes
     acceptTerms: false,
-    confirmBusiness: false,
+    acceptPrivacy: false,
+    // Spec §2.3 — Маркетингов консент (optional)
+    marketingConsent: false,
   });
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [selectedSubcategories, setSelectedSubcategories] = useState<string[]>([]);
+  // BC-PARTNER-FU1 — resolved venue coordinates (null until the partner geocodes
+  // the address or drops a pin). Submitted as latitude/longitude numbers.
+  const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
+
+  // Validate coordinates: both present and within geographic bounds.
+  const validateCoordinates = (coords: Coordinates | null): string | undefined => {
+    if (!coords) {
+      return language === 'bg'
+        ? 'Намерете обекта на картата (натиснете „Намери на картата“)'
+        : 'Please locate the venue on the map (press "Find on map")';
+    }
+    const { latitude, longitude } = coords;
+    if (
+      typeof latitude !== 'number' || !Number.isFinite(latitude) ||
+      typeof longitude !== 'number' || !Number.isFinite(longitude) ||
+      latitude < -90 || latitude > 90 ||
+      longitude < -180 || longitude > 180
+    ) {
+      return language === 'bg' ? 'Невалидни координати' : 'Invalid coordinates';
+    }
+    return undefined;
+  };
+
+  const handleCoordinatesChange = (coords: Coordinates) => {
+    setCoordinates(coords);
+    if (touched.coordinates) {
+      setErrors(prev => ({ ...prev, coordinates: validateCoordinates(coords) }));
+    }
+  };
 
   const subcategoriesForCategory = formData.businessCategory
     ? findCategory(formData.businessCategory)?.subcategories ?? []
@@ -429,12 +507,21 @@ const RegisterPartnerPage: React.FC = () => {
         return undefined;
       }
 
-      case 'phone':
+      case 'phone': {
         if (!value) return t('partnerRegistration.phoneRequired');
-        if (!/^(\+359|0)[0-9\s-]{8,}$/.test(strVal)) {
+        // HIGH fix (re-audit): the backend (auth.validator.ts PHONE_REGEX) accepts
+        // ONLY Bulgarian numbers — /^(\+359|0)\d{9}$/ — after stripping spaces and
+        // dashes. The previous loosened E.164 regex let international numbers (e.g.
+        // +14155550100) pass every FE check, then fail with a generic backend 400
+        // the user could not self-diagnose. Mirror the backend exactly: normalize
+        // with the same helper used on the submitted value (strips spaces/dashes),
+        // then require the BG format the backend enforces.
+        const normalizedPhone = normalizePhone(strVal);
+        if (!/^(\+359|0)\d{9}$/.test(normalizedPhone)) {
           return t('partnerRegistration.phoneInvalid');
         }
         return undefined;
+      }
 
       case 'businessName':
         if (!value) return t('partnerRegistration.businessNameRequired');
@@ -462,12 +549,29 @@ const RegisterPartnerPage: React.FC = () => {
         }
         return undefined;
 
+      // Spec §2.3 — Ниво на участие (required)
+      case 'participationLevel':
+        if (!value) {
+          return language === 'bg' ? 'Изберете ниво на участие' : 'Please select a participation level';
+        }
+        // LOW fix (review r2x S1): whitelist against canonical values to prevent
+        // tampered form submissions from sending arbitrary strings to the backend.
+        if (!(ALLOWED_PARTICIPATION_LEVELS as readonly string[]).includes(strVal)) {
+          return language === 'bg' ? 'Невалидна стойност' : 'Invalid value';
+        }
+        return undefined;
+
       case 'acceptTerms':
         if (!value) return t('partnerRegistration.acceptTermsRequired');
         return undefined;
 
-      case 'confirmBusiness':
-        if (!value) return t('partnerRegistration.confirmBusinessRequired');
+      // Spec §2.3 — Privacy Policy is a SEPARATE required consent from Terms
+      case 'acceptPrivacy':
+        if (!value) {
+          return language === 'bg'
+            ? 'Трябва да приемете Политиката за поверителност'
+            : 'You must accept the Privacy Policy';
+        }
         return undefined;
 
       default:
@@ -482,7 +586,7 @@ const RegisterPartnerPage: React.FC = () => {
     setErrors(prev => ({ ...prev, [field]: error }));
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
     const newValue = type === 'checkbox' ? checked : value;
@@ -512,7 +616,11 @@ const RegisterPartnerPage: React.FC = () => {
       'firstName', 'lastName', 'email', 'phone',
       'businessName', 'businessCategory', 'city', 'address',
       'requestObjectCount',
-      'acceptTerms', 'confirmBusiness'
+      // Spec §2.3 — Ниво на участие is required
+      'participationLevel',
+      // Spec §2.3 — both Terms and Privacy Policy consents are individually required.
+      // confirmBusiness is NOT in the spec and has been removed from the form (MEDIUM-3 fix, r2x).
+      'acceptTerms', 'acceptPrivacy',
     ];
 
     requiredFields.forEach(field => {
@@ -520,12 +628,26 @@ const RegisterPartnerPage: React.FC = () => {
       if (error) newErrors[field as keyof FormErrors] = error;
     });
 
+    // Spec §2.3 — Подкатегория is required when the selected category exposes
+    // sub-options.
+    if (subcategoriesForCategory.length > 0 && selectedSubcategories.length === 0) {
+      newErrors.businessCategory = language === 'bg'
+        ? 'Изберете поне една подкатегория'
+        : 'Please select at least one subcategory';
+    }
+
+    // BC-PARTNER-FU1 — venue coordinates are required (offer redemption fails
+    // closed without them). Validate bounds before submit.
+    const coordError = validateCoordinates(coordinates);
+    if (coordError) newErrors.coordinates = coordError;
+
     setErrors(newErrors);
 
     const newTouched: Record<string, boolean> = {};
     requiredFields.forEach(field => {
       newTouched[field] = true;
     });
+    newTouched.coordinates = true;
     setTouched(newTouched);
 
     // If there are errors, don't submit
@@ -534,12 +656,17 @@ const RegisterPartnerPage: React.FC = () => {
     }
 
     try {
+      // RegisterData now includes acceptPrivacy, participationLevel,
+      // additionalInfo, and marketingConsent — the `as any` cast is no longer
+      // needed (H1 fix from r2x).
       await register({
         email: formData.email,
         firstName: formData.firstName,
         lastName: formData.lastName,
         phone: formData.phone ? normalizePhone(formData.phone) : undefined,
         acceptTerms: formData.acceptTerms,
+        // Spec §2.3 — separate required privacy policy consent
+        acceptPrivacy: formData.acceptPrivacy,
         accountType: 'partner',
         businessInfo: {
           businessName: formData.businessName,
@@ -550,7 +677,15 @@ const RegisterPartnerPage: React.FC = () => {
           website: formData.website || undefined,
           city: formData.city.trim() || undefined,
           address: formData.address.trim() || undefined,
+          // BC-PARTNER-FU1 — required venue coordinates (numbers). Backend onboard
+          // requires these so the created venue is redeemable.
+          latitude: coordinates ? coordinates.latitude : undefined,
+          longitude: coordinates ? coordinates.longitude : undefined,
           requestObjectCount: formData.requestObjectCount || undefined,
+          // Spec §2.3 — Ниво на участие (required)
+          participationLevel: formData.participationLevel || undefined,
+          additionalInfo: formData.additionalInfo?.trim() || undefined,
+          marketingConsent: formData.marketingConsent,
         },
       });
 
@@ -891,6 +1026,29 @@ const RegisterPartnerPage: React.FC = () => {
               </FormGroup>
             </FormRow>
 
+            {/* BC-PARTNER-FU1 — venue geolocation. Required so the venue is
+                redeemable (offer redemption fails closed without lat/long). */}
+            <FormGroup>
+              <Label as="span">
+                {language === 'bg' ? 'Местоположение на обекта' : 'Venue location'} *
+              </Label>
+              <VenueLocationPicker
+                address={formData.address}
+                city={formData.city}
+                value={coordinates}
+                onChange={handleCoordinatesChange}
+                disabled={isLoading}
+              />
+              {touched.coordinates && errors.coordinates && (
+                <ErrorMessage
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  {errors.coordinates}
+                </ErrorMessage>
+              )}
+            </FormGroup>
+
             {/* Spec §5.1 v1.1 — Брой обекти / Number of venues */}
             <FormGroup>
               <Label htmlFor="requestObjectCount">
@@ -924,6 +1082,59 @@ const RegisterPartnerPage: React.FC = () => {
             </FormGroup>
           </Section>
 
+          {/* Spec §2.3 — Ниво на участие (required) */}
+          <Section>
+            <SectionTitle>
+              🎯 {language === 'bg' ? 'Квалификация' : 'Qualification'}
+            </SectionTitle>
+            <FormGroup>
+              <Label htmlFor="participationLevel">
+                {language === 'bg' ? 'Ниво на участие' : 'Participation level'} *
+              </Label>
+              <Select
+                id="participationLevel"
+                name="participationLevel"
+                value={formData.participationLevel}
+                onChange={handleChange}
+                onBlur={() => handleBlur('participationLevel')}
+                $hasError={touched.participationLevel && !!errors.participationLevel}
+                disabled={isLoading}
+              >
+                <option value="">{language === 'bg' ? '— Изберете —' : '— Select —'}</option>
+                {/* Spec §2.3 canonical Bulgarian labels */}
+                <option value="basic">{language === 'bg' ? 'Базово участие' : 'Basic participation'}</option>
+                <option value="active">{language === 'bg' ? 'Активно участие' : 'Active participation'}</option>
+                <option value="growth">{language === 'bg' ? 'Силен растеж' : 'Strong growth'}</option>
+              </Select>
+              {touched.participationLevel && errors.participationLevel && (
+                <ErrorMessage initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}>
+                  {errors.participationLevel}
+                </ErrorMessage>
+              )}
+            </FormGroup>
+          </Section>
+
+          {/* Spec §2.3 — Допълнително: Свободен текст (optional) */}
+          <Section>
+            <SectionTitle>
+              📝 {language === 'bg' ? 'Допълнително' : 'Additional information'}
+            </SectionTitle>
+            <FormGroup>
+              <Label htmlFor="additionalInfo">
+                {language === 'bg' ? 'Допълнителна информация (по избор)' : 'Additional information (optional)'}
+              </Label>
+              <Textarea
+                id="additionalInfo"
+                name="additionalInfo"
+                value={formData.additionalInfo}
+                onChange={handleChange}
+                placeholder={language === 'bg' ? 'Допълнителни бележки или контекст...' : 'Additional notes or context...'}
+                disabled={isLoading}
+              />
+            </FormGroup>
+          </Section>
+
+          {/* Spec §2.3 — "Общи условия": Terms consent (required, separate from Privacy) */}
           <div>
             <CheckboxGroup>
               <Checkbox
@@ -938,7 +1149,10 @@ const RegisterPartnerPage: React.FC = () => {
                 htmlFor="acceptTerms"
                 $hasError={touched.acceptTerms && !!errors.acceptTerms}
               >
-                {t('partnerRegistration.acceptTerms')} <Link to="/terms">{t('partnerRegistration.termsAndConditions')}</Link> {t('partnerRegistration.and')} <Link to="/privacy">{t('partnerRegistration.privacyPolicy')}</Link>
+                {language === 'bg'
+                  ? <><Link to="/terms">Общи условия</Link> — прочетох и приемам *</>
+                  : <>I have read and accept the <Link to="/terms">Terms and Conditions</Link> *</>
+                }
               </CheckboxLabel>
             </CheckboxGroup>
             {touched.acceptTerms && errors.acceptTerms && (
@@ -951,32 +1165,64 @@ const RegisterPartnerPage: React.FC = () => {
             )}
           </div>
 
+          {/* Spec §2.3 — "Политика за поверителност": Privacy Policy consent (required, separate from Terms) */}
           <div>
             <CheckboxGroup>
               <Checkbox
-                id="confirmBusiness"
+                id="acceptPrivacy"
                 type="checkbox"
-                name="confirmBusiness"
-                checked={formData.confirmBusiness}
+                name="acceptPrivacy"
+                checked={formData.acceptPrivacy}
                 onChange={handleChange}
                 disabled={isLoading}
               />
               <CheckboxLabel
-                htmlFor="confirmBusiness"
-                $hasError={touched.confirmBusiness && !!errors.confirmBusiness}
+                htmlFor="acceptPrivacy"
+                $hasError={touched.acceptPrivacy && !!errors.acceptPrivacy}
               >
-                {t('partnerRegistration.confirmBusiness')}
+                {language === 'bg'
+                  ? <><Link to="/privacy">Политика за поверителност</Link> — прочетох и приемам *</>
+                  : <>I have read and accept the <Link to="/privacy">Privacy Policy</Link> *</>
+                }
               </CheckboxLabel>
             </CheckboxGroup>
-            {touched.confirmBusiness && errors.confirmBusiness && (
+            {touched.acceptPrivacy && errors.acceptPrivacy && (
               <ErrorMessage
                 initial={{ opacity: 0, y: -5 }}
                 animate={{ opacity: 1, y: 0 }}
               >
-                {errors.confirmBusiness}
+                {errors.acceptPrivacy}
               </ErrorMessage>
             )}
           </div>
+
+          {/* Spec §2.3 — Маркетингов консент (optional) */}
+          <div>
+            <CheckboxGroup>
+              <Checkbox
+                id="marketingConsent"
+                type="checkbox"
+                name="marketingConsent"
+                checked={formData.marketingConsent}
+                onChange={handleChange}
+                disabled={isLoading}
+              />
+              <CheckboxLabel htmlFor="marketingConsent">
+                {language === 'bg'
+                  ? 'Съгласявам се да получавам маркетингови съобщения (по избор)'
+                  : 'I agree to receive marketing communications (optional)'}
+              </CheckboxLabel>
+            </CheckboxGroup>
+          </div>
+
+          {/* MEDIUM-3 fix (review r2x): confirmBusiness removed entirely.
+              Spec §2.3 defines exactly three consent items: Terms (required),
+              Privacy Policy (required), Marketing (optional). A fourth unexplained
+              checkbox in the legal section creates compliance ambiguity — it is
+              unclear what was agreed to at the time of application. The field was
+              already dropped at the API call layer; it is now removed from the UI
+              as well. A new product spec with exact wording and legal review is
+              required before any business-confirmation acknowledgement is re-added. */}
 
           <InfoBox>
             <strong>📋 {t('partnerRegistration.note')}</strong>{' '}

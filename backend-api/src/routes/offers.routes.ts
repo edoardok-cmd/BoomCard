@@ -5,6 +5,7 @@ import { asyncHandler } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
 import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
 import { imageUploadService } from '../services/imageUpload.service';
+import { parsePagination } from '../utils/pagination';
 
 const router = Router();
 
@@ -16,6 +17,43 @@ async function resolveUserPlan(req: AuthRequest) {
   if (!req.user) return null;
   if (req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN') return null; // admins bypass — isAdmin flag handles it
   return offersService.getUserActivePlan(req.user.id);
+}
+
+// ------------------------------------------------------------------
+// Helper: strip internal fields from an offer before returning it to
+// non-admin callers.
+// Spec §11.3 / §10.6: the ONLY internal-only Business-Formula fields
+// are MARGIN % and CASHBACK % — these must never be surfaced outside
+// admin views. maxDiscountRate is the customer-facing discount ceiling
+// (§14.3) and is legitimately public — the public partner directory
+// (/api/partners) exposes it, so we keep it here too for consistency.
+// ------------------------------------------------------------------
+function mapOffer(offer: any, isAdmin: boolean): any {
+  if (isAdmin) return offer;
+  // Strip the genuinely-internal cashbackPercent (and any margin field)
+  // from the offer itself.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { cashbackPercent: _cp, ...safe } = offer;
+
+  // Sanitize nested partner.partnerType: strip internal cashbackPercent
+  // but keep the customer-facing fields including maxDiscountRate (§14.3).
+  if (safe.partner && safe.partner.partnerType) {
+    const pt = safe.partner.partnerType;
+    safe.partner = {
+      ...safe.partner,
+      partnerType: {
+        id: pt.id,
+        name: pt.name,
+        nameBg: pt.nameBg,
+        description: pt.description,
+        descriptionBg: pt.descriptionBg,
+        color: pt.color,
+        maxDiscountRate: pt.maxDiscountRate,
+      },
+    };
+  }
+
+  return safe;
 }
 
 // ------------------------------------------------------------------
@@ -38,12 +76,12 @@ router.get('/tags', optionalAuthenticate, async (_req: AuthRequest, res: Respons
 // ------------------------------------------------------------------
 router.get('/top', optionalAuthenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const limit = parseInt(req.query.limit as string) || 10;
+    const { limit } = parsePagination(req.query, { defaultLimit: 10, maxLimit: 100 });
     const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
     const userPlan = await resolveUserPlan(req);
     const offers = await offersService.getTopOffers(limit, userPlan, isAdmin);
 
-    res.json({ success: true, data: offers });
+    res.json({ success: true, data: offers.map((o: any) => mapOffer(o, isAdmin)) });
   } catch (error: any) {
     logger.error('Failed to fetch top offers:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch top offers' });
@@ -56,12 +94,12 @@ router.get('/top', optionalAuthenticate, async (req: AuthRequest, res: Response)
 // ------------------------------------------------------------------
 router.get('/featured', optionalAuthenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const limit = parseInt(req.query.limit as string) || 10;
+    const { limit } = parsePagination(req.query, { defaultLimit: 10, maxLimit: 100 });
     const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
     const userPlan = await resolveUserPlan(req);
     const offers = await offersService.getFeaturedOffers(limit, userPlan, isAdmin);
 
-    res.json({ success: true, data: offers });
+    res.json({ success: true, data: offers.map((o: any) => mapOffer(o, isAdmin)) });
   } catch (error: any) {
     logger.error('Failed to fetch featured offers:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch featured offers' });
@@ -82,6 +120,7 @@ router.get('/', optionalAuthenticate, async (req: AuthRequest, res: Response) =>
       ? (Array.isArray(rawTags) ? rawTags : (rawTags as string).split(',')).map(t => (t as string).trim()).filter(Boolean)
       : undefined;
 
+    const { page, limit } = parsePagination(req.query, { defaultLimit: 10, maxLimit: 100 });
     const filters = {
       category: req.query.category as string,
       city: req.query.city as string,
@@ -89,14 +128,18 @@ router.get('/', optionalAuthenticate, async (req: AuthRequest, res: Response) =>
       search: req.query.search as string,
       isFeatured: req.query.featured === 'true' ? true : undefined,
       tags,
-      page: parseInt(req.query.page as string) || 1,
-      limit: parseInt(req.query.limit as string) || 10,
+      page,
+      limit,
       userPlan,
       isAdmin,
     };
 
     const result = await offersService.getOffers(filters);
-    res.json({ success: true, ...result });
+    res.json({
+      success: true,
+      ...result,
+      data: result.data.map((o: any) => mapOffer(o, isAdmin)),
+    });
   } catch (error: any) {
     logger.error('Failed to fetch offers:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch offers' });
@@ -111,15 +154,20 @@ router.get('/partner/:partnerId', optionalAuthenticate, async (req: AuthRequest,
   try {
     const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
     const userPlan = await resolveUserPlan(req);
+    const { page, limit } = parsePagination(req.query, { defaultLimit: 10, maxLimit: 100 });
     const filters = {
-      page: parseInt(req.query.page as string) || 1,
-      limit: parseInt(req.query.limit as string) || 10,
+      page,
+      limit,
       userPlan,
       isAdmin,
     };
 
     const result = await offersService.getOffersByPartner(req.params.partnerId, filters);
-    res.json({ success: true, ...result });
+    res.json({
+      success: true,
+      ...result,
+      data: (result.data ?? []).map((o: any) => mapOffer(o, isAdmin)),
+    });
   } catch (error: any) {
     logger.error('Failed to fetch partner offers:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch partner offers' });
@@ -134,15 +182,20 @@ router.get('/city/:city', optionalAuthenticate, async (req: AuthRequest, res: Re
   try {
     const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
     const userPlan = await resolveUserPlan(req);
+    const { page, limit } = parsePagination(req.query, { defaultLimit: 10, maxLimit: 100 });
     const filters = {
-      page: parseInt(req.query.page as string) || 1,
-      limit: parseInt(req.query.limit as string) || 10,
+      page,
+      limit,
       userPlan,
       isAdmin,
     };
 
     const result = await offersService.getOffersByCity(req.params.city, filters);
-    res.json({ success: true, ...result });
+    res.json({
+      success: true,
+      ...result,
+      data: (result.data ?? []).map((o: any) => mapOffer(o, isAdmin)),
+    });
   } catch (error: any) {
     logger.error('Failed to fetch city offers:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch city offers' });
@@ -157,15 +210,20 @@ router.get('/category/:category', optionalAuthenticate, async (req: AuthRequest,
   try {
     const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
     const userPlan = await resolveUserPlan(req);
+    const { page, limit } = parsePagination(req.query, { defaultLimit: 10, maxLimit: 100 });
     const filters = {
-      page: parseInt(req.query.page as string) || 1,
-      limit: parseInt(req.query.limit as string) || 10,
+      page,
+      limit,
       userPlan,
       isAdmin,
     };
 
     const result = await offersService.getOffersByCategory(req.params.category, filters);
-    res.json({ success: true, ...result });
+    res.json({
+      success: true,
+      ...result,
+      data: (result.data ?? []).map((o: any) => mapOffer(o, isAdmin)),
+    });
   } catch (error: any) {
     logger.error('Failed to fetch category offers:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch category offers' });
@@ -222,7 +280,7 @@ router.get('/:id', optionalAuthenticate, async (req: AuthRequest, res: Response)
       return res.status(404).json({ success: false, error: 'Offer not found' });
     }
 
-    res.json({ success: true, data: offer });
+    res.json({ success: true, data: mapOffer(offer, isAdmin) });
   } catch (error: any) {
     logger.error('Failed to fetch offer:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch offer' });

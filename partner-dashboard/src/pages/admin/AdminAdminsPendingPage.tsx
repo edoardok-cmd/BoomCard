@@ -5,6 +5,7 @@ import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
+import { palette } from '../../styles/adminTheme';
 import {
   adminAdminsService,
   PendingAdmin,
@@ -12,24 +13,6 @@ import {
   AdminRoleKey,
 } from '../../services/adminAdmins.service';
 
-const palette = {
-  bg: '#faf9f5',
-  surface: '#ffffff',
-  border: '#e8e5dc',
-  text: '#141413',
-  textMuted: '#605a50',
-  textSubtle: '#8c8678',
-  accent: '#c96442',
-  accentSoft: '#f3e8de',
-  success: '#4a7c59',
-  successSoft: '#e6efe3',
-  warning: '#b5803a',
-  warningSoft: '#f5ead2',
-  danger: '#b54327',
-  dangerSoft: '#f4dcd2',
-  info: '#2563eb',
-  infoSoft: '#dbeafe',
-};
 
 const PageShell = styled.div`
   background: ${palette.bg};
@@ -144,7 +127,7 @@ const StatusDot = styled.span<{ $status: string }>`
 
 const DangerBanner = styled.div`
   background: ${palette.dangerSoft};
-  border: 1px solid #e8bdb4;
+  border: 1px solid ${palette.dangerBorder};
   border-radius: 0.5rem;
   padding: 0.75rem 1rem;
   font-size: 0.8125rem;
@@ -154,7 +137,7 @@ const DangerBanner = styled.div`
 
 const InfoBanner = styled.div`
   background: ${palette.infoSoft};
-  border: 1px solid #bfdbfe;
+  border: 1px solid ${palette.infoBorder};
   border-radius: 0.5rem;
   padding: 0.75rem 1rem;
   font-size: 0.8125rem;
@@ -218,7 +201,7 @@ const PrimaryBtn = styled.button<{ $loading?: boolean }>`
   flex: 1;
   padding: 0.625rem;
   background: ${palette.accent};
-  color: #fff;
+  color: ${palette.onAccent};
   font-size: 0.9375rem;
   font-weight: 700;
   border: none;
@@ -402,7 +385,7 @@ export default function AdminAdminsPendingPage() {
           display: 'inline-flex', alignItems: 'center',
           fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase' as const,
           letterSpacing: '0.05em', borderRadius: '0.375rem', padding: '0.125rem 0.5rem',
-          ...( ROLE_BADGE_STYLE[row.role] ?? { background: '#f3f4f6', color: '#374151' }),
+          ...( ROLE_BADGE_STYLE[row.role] ?? { background: palette.surfaceAlt, color: palette.text }),
         }}>
           {ROLE_LABEL[row.role] ?? row.role}
         </span>

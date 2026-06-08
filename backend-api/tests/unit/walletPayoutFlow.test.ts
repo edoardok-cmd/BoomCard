@@ -34,6 +34,14 @@ let walletStore: any = {
   payoutBeneficiaryName: 'Ivan Ivanov',
 };
 let inflightExisting: any = null; // set per-test to simulate existing PENDING/PROCESSING
+// The payout owner. requestPayout() reads `status` (F-001 INACTIVE gate, spec §1.2)
+// and the shared two-strike risk helper reads/writes `riskScore` / `riskBucket`.
+let userStore: any = {
+  id: 'user-1',
+  status: 'ACTIVE',
+  riskScore: 0,
+  riskBucket: null,
+};
 
 jest.mock('../../src/lib/prisma', () => {
   const txDelegate = {
@@ -72,6 +80,29 @@ jest.mock('../../src/lib/prisma', () => {
       txCreated.push(created);
       return created;
     }),
+    // F-014 payout-failure escalation counts prior FAILED withdrawals for the
+    // wallet. Effective status = latest txUpdated stamp merged over the created
+    // row (the reversal marks the row FAILED via update(), which lands in
+    // txUpdated rather than mutating txCreated in place).
+    count: jest.fn(async (args: any) => {
+      const w = args?.where ?? {};
+      return txCreated.filter((t) => {
+        const last = [...txUpdated].reverse().find((u) => u.id === t.id);
+        const eff = { ...t, ...(last ?? {}) };
+        if (w.walletId !== undefined && eff.walletId !== w.walletId) return false;
+        if (w.type !== undefined && eff.type !== w.type) return false;
+        if (w.status !== undefined) {
+          // status may be a scalar or a Prisma `{ in: [...] }` operator (the
+          // strike-count query filters FAILED + RISK_HOLD via `in`).
+          if (w.status && typeof w.status === 'object' && Array.isArray(w.status.in)) {
+            if (!w.status.in.includes(eff.status)) return false;
+          } else if (eff.status !== w.status) {
+            return false;
+          }
+        }
+        return true;
+      }).length;
+    }),
   };
   const applyField = (field: 'balance' | 'availableBalance' | 'pendingBalance', value: any) => {
     if (value && typeof value === 'object') {
@@ -107,14 +138,33 @@ jest.mock('../../src/lib/prisma', () => {
       return { id: 'sub-1', plan: 'BASIC', status: 'ACTIVE', createdAt: new Date() };
     }),
   };
+  // requestPayout() reads user.status (INACTIVE gate); the shared two-strike risk
+  // helper reads riskScore and writes riskScore/riskBucket via updateMany.
+  const userDelegate = {
+    findUnique: jest.fn(async (args: any) => {
+      if (args.where?.id !== userStore.id) return null;
+      const select = args.select as Record<string, boolean> | undefined;
+      if (!select) return { ...userStore };
+      const picked: any = {};
+      for (const k of Object.keys(select)) if (select[k]) picked[k] = userStore[k];
+      return picked;
+    }),
+    updateMany: jest.fn(async (args: any) => {
+      if (args.where?.id !== userStore.id) return { count: 0 };
+      Object.assign(userStore, args.data);
+      return { count: 1 };
+    }),
+  };
   const client = {
     walletTransaction: txDelegate,
     wallet: walletDelegate,
     subscription: subscriptionDelegate,
+    user: userDelegate,
     $transaction: async (fn: any) => fn({
       walletTransaction: txDelegate,
       wallet: walletDelegate,
       subscription: subscriptionDelegate,
+      user: userDelegate,
     }),
   };
   // wallet.service.ts uses both `import prisma from '../lib/prisma'` (default)
@@ -133,6 +183,15 @@ jest.mock('../../src/services/paysera.service', () => ({
 jest.mock('../../src/services/notification.service', () => ({
   notificationService: {
     notifyPayoutReady: jest.fn(async () => undefined),
+    // F-014 payout-failure escalation (spec §7.4): first failure notifies the
+    // user to correct their IBAN; second+ failure notifies admin ops.
+    notifyPayoutFailedInvalidIban: jest.fn(async () => undefined),
+    // Second+ failure with a non-IBAN cause: generic "could not be processed"
+    // notice (mirrors notifyPayoutFailedInvalidIban). Added when wallet.service
+    // gained the generic-failure branch.
+    notifyPayoutFailedGeneric: jest.fn(async () => undefined),
+    notifyPayoutHeldNoIban: jest.fn(async () => undefined),
+    notifyAdminOps: jest.fn(async () => undefined),
   },
 }));
 
@@ -174,6 +233,12 @@ beforeEach(() => {
     payoutBeneficiaryName: 'Ivan Ivanov',
   };
   inflightExisting = null;
+  userStore = {
+    id: 'user-1',
+    status: 'ACTIVE',
+    riskScore: 0,
+    riskBucket: null,
+  };
   // Reset call counters on the Paysera spies so per-test expectations on
   // createTransfer / reserveTransfer call counts don't leak across cases.
   const { payseraService } = jest.requireMock('../../src/services/paysera.service');
@@ -183,6 +248,14 @@ beforeEach(() => {
   payseraService.createTransfer.mockResolvedValue({ id: 'paysera-transfer-1' });
   payseraService.reserveTransfer.mockReset();
   payseraService.reserveTransfer.mockResolvedValue(undefined);
+  // Notification spies are module-level — clear call history so the F-014
+  // first-vs-second-failure assertions below don't see leaked calls.
+  const { notificationService } = jest.requireMock('../../src/services/notification.service');
+  notificationService.notifyPayoutReady.mockClear();
+  notificationService.notifyPayoutFailedInvalidIban.mockClear();
+  notificationService.notifyPayoutFailedGeneric.mockClear();
+  notificationService.notifyPayoutHeldNoIban.mockClear();
+  notificationService.notifyAdminOps.mockClear();
 });
 
 // Latest mutation observed via Prisma .update() for a given row id.
@@ -340,6 +413,79 @@ describe('§6.1 v1.1 executePayoutTransfer (admin /approve helper)', () => {
     expect(adjustment.balanceBefore).toBe(0);
     expect(adjustment.balanceAfter).toBe(100);
     expect(adjustment.status).toBe('COMPLETED');
+
+    payseraService.isTransferConfigured.mockReturnValue(false);
+  });
+
+  it('F-014 first payout failure notifies the user to correct their IBAN (spec §7.4), with no risk escalation', async () => {
+    const { payseraService } = jest.requireMock('../../src/services/paysera.service');
+    const { notificationService } = jest.requireMock('../../src/services/notification.service');
+    payseraService.isTransferConfigured.mockReturnValue(true);
+    // L1 classifier: an IBAN-indicating failure reason routes to IBAN-correction
+    // wording (notifyPayoutFailedInvalidIban), matching this test's intent.
+    payseraService.createTransfer.mockRejectedValueOnce(new Error('Invalid IBAN — beneficiary account rejected'));
+
+    await walletService.requestPayout('user-1');
+    const pending = txCreated.find((t) => t.status === 'PENDING' && t.type === 'WITHDRAWAL');
+
+    await expect(walletService.executePayoutTransfer(pending.id))
+      .rejects.toThrow(/Payout could not be processed/i);
+
+    // Exactly one FAILED withdrawal (the one just reversed) → first-failure branch.
+    expect(notificationService.notifyPayoutFailedInvalidIban).toHaveBeenCalledWith('user-1');
+    expect(notificationService.notifyPayoutFailedGeneric).not.toHaveBeenCalled();
+    expect(notificationService.notifyAdminOps).not.toHaveBeenCalled();
+    // A first failure must not touch the risk profile.
+    expect(userStore.riskScore).toBe(0);
+    expect(userStore.riskBucket).toBeNull();
+
+    payseraService.isTransferConfigured.mockReturnValue(false);
+  });
+
+  it('F-014 second payout failure escalates the user to HIGH risk, riskScore floored at 61 (spec §2.1/§7.4)', async () => {
+    const { payseraService } = jest.requireMock('../../src/services/paysera.service');
+    const { notificationService } = jest.requireMock('../../src/services/notification.service');
+    payseraService.isTransferConfigured.mockReturnValue(true);
+    payseraService.createTransfer.mockRejectedValueOnce(new Error('Paysera 503 — unavailable'));
+
+    // Seed a prior FAILED withdrawal on this wallet so the new failure is the 2nd strike.
+    txCreated.push({ id: 'prior-failed', walletId: 'wallet-1', type: 'WITHDRAWAL', status: 'FAILED', amount: -50 });
+
+    await walletService.requestPayout('user-1');
+    const pending = txCreated.find((t) => t.status === 'PENDING' && t.type === 'WITHDRAWAL');
+
+    await expect(walletService.executePayoutTransfer(pending.id))
+      .rejects.toThrow(/Payout could not be processed/i);
+
+    // Two FAILED withdrawals now (seeded + just-reversed) → second-failure branch.
+    // The shared two-strike helper floors riskScore at 61 and sets the HIGH bucket;
+    // it must NOT inflate unbounded (the old Paysera path did riskScore += 40).
+    expect(userStore.riskScore).toBe(61);
+    expect(userStore.riskBucket).toBe('HIGH_51_PLUS');
+    expect(notificationService.notifyAdminOps).toHaveBeenCalled();
+    // Second failure does NOT notify the user (spec §7.4).
+    expect(notificationService.notifyPayoutFailedInvalidIban).not.toHaveBeenCalled();
+
+    payseraService.isTransferConfigured.mockReturnValue(false);
+  });
+
+  it('F-014 escalation never downgrades a higher existing riskScore (Math.max floor)', async () => {
+    const { payseraService } = jest.requireMock('../../src/services/paysera.service');
+    payseraService.isTransferConfigured.mockReturnValue(true);
+    payseraService.createTransfer.mockRejectedValueOnce(new Error('Paysera 503 — unavailable'));
+
+    userStore.riskScore = 85; // already higher than the 61 floor
+    txCreated.push({ id: 'prior-failed', walletId: 'wallet-1', type: 'WITHDRAWAL', status: 'FAILED', amount: -50 });
+
+    await walletService.requestPayout('user-1');
+    const pending = txCreated.find((t) => t.status === 'PENDING' && t.type === 'WITHDRAWAL');
+
+    await expect(walletService.executePayoutTransfer(pending.id))
+      .rejects.toThrow(/Payout could not be processed/i);
+
+    // Existing score 85 > 61 floor → preserved, not downgraded.
+    expect(userStore.riskScore).toBe(85);
+    expect(userStore.riskBucket).toBe('HIGH_51_PLUS');
 
     payseraService.isTransferConfigured.mockReturnValue(false);
   });

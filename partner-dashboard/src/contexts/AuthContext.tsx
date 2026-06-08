@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { toast } from 'react-hot-toast';
 import { apiService } from '../services/api.service';
 import { useLanguage } from './LanguageContext';
@@ -13,11 +13,30 @@ type ApiError = {
     data?: {
       message?: string;
       error?: string | { message?: string };
+      details?: { code?: string };
     };
   };
   message?: string;
   code?: string;
 };
+
+/**
+ * Thrown by login() when the backend reports that an account has 2FA enabled
+ * and the request omitted the TOTP/recovery code (HTTP 403 with
+ * details.code === 'TWO_FACTOR_REQUIRED'). This is an EXPECTED control-flow
+ * signal — not a genuine failure — so it is NOT toasted. LoginPage catches it
+ * to reveal the second-factor input. Carries a `code` property so callers that
+ * prefer duck-typing over instanceof can detect it too.
+ */
+export class TwoFactorRequiredError extends Error {
+  code = 'TWO_FACTOR_REQUIRED' as const;
+  constructor(message = 'Two-factor authentication required') {
+    super(message);
+    this.name = 'TwoFactorRequiredError';
+    // Restore prototype chain for instanceof after TS down-compilation.
+    Object.setPrototypeOf(this, TwoFactorRequiredError.prototype);
+  }
+}
 
 // Backend responses arrive in two shapes across this codebase: the flat
 // payload itself, and an envelope { data: payload }. Callers have to probe
@@ -38,6 +57,7 @@ interface MePayload {
   emailVerified?: boolean;
   avatar?: string;
   impersonation?: { adminId: string; adminRole: string } | null;
+  partner_account_status?: 'Active' | 'Inactive' | 'Archived';
 }
 
 interface AuthSuccessPayload {
@@ -48,7 +68,10 @@ interface AuthSuccessPayload {
   switchableAccounts?: SwitchableAccount[];
   impersonation?: ImpersonationMeta;
   pendingVerification?: boolean;
+  // Backend (auth.service.ts) only ever emits 'SUSPENDED'; the previous
+  // 'PAUSED' member was never produced server-side. Narrowed to match.
   partnerRestriction?: 'SUSPENDED';
+  partner_account_status?: 'Active' | 'Inactive' | 'Archived';
 }
 
 type SwitchableAccountsResponse = Envelope<SwitchableAccount[]>;
@@ -123,6 +146,10 @@ export interface User {
   mustChangePassword?: boolean;
   // Admin-only: whether TOTP 2FA has been configured.
   twoFactorEnabled?: boolean;
+  // Spec §1.1, §5.1, §11.2 — partner lifecycle status.
+  // Active = full access, Inactive = read-only, Archived = no access.
+  // Only present for partner accounts. Used by PartnerStatusRoute and partner pages.
+  partner_account_status?: 'Active' | 'Inactive' | 'Archived';
 }
 
 // Backend emits roles in uppercase (USER|PARTNER|ADMIN|SUPER_ADMIN); this
@@ -148,6 +175,13 @@ export interface LoginCredentials {
   email: string;
   password: string;
   rememberMe?: boolean;
+  /**
+   * Optional second factor for accounts with 2FA enabled. Accepts EITHER a
+   * 6-digit TOTP code from an authenticator app OR a one-time backup recovery
+   * code (format `XXXXX-XXXXX`). Spread verbatim into the /auth/login body, so
+   * the backend receives whichever the user typed.
+   */
+  totpCode?: string;
 }
 
 export interface RegisterData {
@@ -157,6 +191,10 @@ export interface RegisterData {
   lastName: string;
   phone?: string;
   acceptTerms: boolean;
+  /** Spec §2.3 — required Privacy Policy consent for partner registrations.
+   * Boolean when provided; undefined for regular user registrations that
+   * do not present a separate Privacy Policy checkbox. */
+  acceptPrivacy?: boolean;
   accountType?: 'user' | 'partner';
   businessInfo?: {
     businessName: string;
@@ -168,8 +206,18 @@ export interface RegisterData {
     website?: string;
     city?: string;
     address?: string;
+    /** BC-PARTNER-FU1 — venue geolocation. Required by the backend onboard so the
+     * created venue is redeemable (offer redemption fails closed without these). */
+    latitude?: number;
+    longitude?: number;
     /** Spec §5.1 v1.1 — venue count bucket */
     requestObjectCount?: string;
+    /** Spec §2.3 — required participation tier (basic | active | growth) */
+    participationLevel?: string;
+    /** Spec §2.3 — optional free-text additional info */
+    additionalInfo?: string;
+    /** Spec §2.3 — optional marketing consent */
+    marketingConsent?: boolean;
   };
 }
 
@@ -216,9 +264,34 @@ export interface AuthContextType extends AuthState {
   removeAvatar: () => Promise<void>;
   switchAccount: (targetAccountId: string) => Promise<void>;
   impersonate: (targetPartnerUserId: string) => Promise<void>;
+  // SUPER_ADMIN-only: impersonate an end-user (sends generic targetUserId).
+  // Shares all post-success handling + the stop machinery with impersonate().
+  impersonateUser: (targetUserId: string) => Promise<void>;
   stopImpersonating: () => Promise<void>;
   // Re-fetch /auth/me and refresh user state in-place (used after 2FA setup, password change, etc.)
   reloadUser: () => Promise<void>;
+  // 2FA second-factor step gate. login() sets this true when the backend reports
+  // an account has 2FA enabled but no code was supplied (alongside throwing
+  // TwoFactorRequiredError). It MUST live on the provider — not in LoginPage's
+  // local state — because App.tsx unmounts LoginPage while isLoading is true,
+  // wiping any local state set during the in-flight login. LoginPage derives the
+  // code field's visibility from this so it survives the remount.
+  twoFactorRequired: boolean;
+  // Email captured at the password step, surfaced so LoginPage can show
+  // "Signing in as <email>" during the 2FA step. The credentials themselves
+  // live in a ref (out of React state / devtools), but the email is non-secret
+  // and useful for UX, so it is mirrored into state here. Null when no 2FA step
+  // is in flight.
+  twoFactorEmail: string | null;
+  // Submit the second factor against the credentials captured at the password
+  // step. LoginPage's local formData is wiped by the isLoading-driven remount,
+  // so the code step MUST go through this method (which reads the provider-held
+  // pending credentials) rather than re-submitting formData. Resolves on a
+  // successful login (user is now authenticated); rejects (and toasts) on a
+  // wrong code, leaving the 2FA step active for a retry.
+  submitTwoFactor: (code: string) => Promise<void>;
+  // Reset the 2FA step (e.g. when the user edits email/password to switch accounts).
+  clearTwoFactorRequired: () => void;
 }
 
 interface AuthResponse {
@@ -291,6 +364,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     () => authStorage.getItem(PARTNER_RESTRICTION_KEY),
   );
   const [isLoading, setIsLoading] = useState(true);
+  // 2FA step gate — see AuthContextType.twoFactorRequired for why this must live
+  // on the provider (which stays mounted across the isLoading-driven LoginPage
+  // unmount/remount) rather than in LoginPage's local state.
+  const [twoFactorRequired, setTwoFactorRequired] = useState(false);
+  // Non-secret email mirror for the "Signing in as <email>" UX during 2FA.
+  const [twoFactorEmail, setTwoFactorEmail] = useState<string | null>(null);
+  // In-memory holder for the credentials captured at the password step. A ref
+  // (not state) so the password never lands in React state / devtools and so
+  // updates don't trigger re-renders. It lives on AuthProvider, which never
+  // unmounts, so it survives the LoginPage remount that App.tsx triggers while
+  // isLoading is true — that remount is exactly what wipes LoginPage's local
+  // formData, which is why the code step cannot rely on formData.
+  const pendingLoginRef = useRef<{ email: string; password: string; rememberMe?: boolean } | null>(null);
+  const clearTwoFactorRequired = () => {
+    setTwoFactorRequired(false);
+    setTwoFactorEmail(null);
+    pendingLoginRef.current = null;
+  };
 
   // Keep the switchable-accounts list in sync with storage so hard reloads
   // preserve the switcher UI. Anchor persistence on TOKEN_KEY (always
@@ -426,6 +517,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               avatar: meData.avatar,
               mustChangePassword: (meData as any).mustChangePassword ?? false,
               twoFactorEnabled: (meData as any).twoFactorEnabled ?? false,
+              // Spec §1.2/§11.2: partner_account_status must survive page reloads
+              partner_account_status: meData.partner_account_status,
             };
             setUser(verifiedUser);
 
@@ -451,6 +544,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               });
             } else {
               setImpersonation(null);
+            }
+
+            // Refresh partnerRestriction from /auth/me so a mid-session
+            // suspension or reinstatement is applied on the next page load
+            // without requiring a full logout/login cycle. (B4 fix)
+            const freshRestriction = (meData as any).partnerRestriction ?? null;
+            setPartnerRestriction(freshRestriction);
+            if (freshRestriction) {
+              authStorage.setItem(PARTNER_RESTRICTION_KEY, freshRestriction, authStorage.isPersistent(TOKEN_KEY));
+            } else {
+              authStorage.removeItem(PARTNER_RESTRICTION_KEY);
             }
 
             // Refresh the switchable-accounts list so the UI reflects any
@@ -540,6 +644,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw new Error('No authentication token received');
         }
 
+        // Spec §1.2 / §12 Rule 1 — defense-in-depth: block Archived partner login
+        // at the frontend entry point before any tokens are written. PartnerStatusRoute
+        // provides the runtime gate, but if the backend ever returns a valid JWT for
+        // an Archived partner (regression or misconfiguration), this early-exit prevents
+        // a full session from being established.
+        const incomingStatus =
+          (userPayload as any).partner_account_status ??
+          (responseData as any).partner_account_status ??
+          (rawResponse as any).partner_account_status;
+        if (normalizeRole(userPayload.role) === 'partner' && incomingStatus === 'Archived') {
+          throw new Error('This account has been archived. Contact office@boomcard.bg for assistance.');
+        }
+
         // Store tokens — `persistent` routes every auth key to the matching
         // storage (local vs session) and wipes any stale copy in the other,
         // so toggling rememberMe across successive logins always honors the
@@ -567,6 +684,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           avatar: userPayload.avatar,
           mustChangePassword: (userPayload as any).mustChangePassword ?? false,
           twoFactorEnabled: (userPayload as any).twoFactorEnabled ?? false,
+          // Spec §1.2/§11.2: persist partner lifecycle status from login response.
+          // Probe both the nested user object and the top-level response envelope because
+          // some backend shapes return this field alongside the token rather than inside
+          // the user sub-object (mirrors the pattern used in loadUser()).
+          partner_account_status: incomingStatus,
         };
         setUser(user);
         authStorage.setItem(STORAGE_KEY, JSON.stringify(user), persistent);
@@ -586,6 +708,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         setPartnerRestriction(restriction);
 
+        // Successful login completes the 2FA flow — reset the step gate so a
+        // subsequent logout/login on the same provider instance starts clean.
+        // Also drop the captured credentials and the email mirror.
+        setTwoFactorRequired(false);
+        setTwoFactorEmail(null);
+        pendingLoginRef.current = null;
+
         toast.success(`Welcome back, ${user.firstName}!`);
         return;
       } catch (apiError) {
@@ -593,18 +722,89 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const nested = err?.response?.data?.error;
         const apiMessage = (typeof nested === 'object' ? nested?.message : nested)
           || err?.response?.data?.message;
+        const errMessageStr = typeof nested === 'string' ? nested : (apiMessage || '');
+        const detailCode = err?.response?.data?.details?.code;
+        const status = err?.response?.status;
+
+        // 2FA-required signal: an account has 2FA on but no code was supplied.
+        // Primary detection is the explicit details.code; fallback is a 403
+        // carrying a "Two-factor" message. This is a control-flow signal, not a
+        // failure — re-throw a distinguishable error WITHOUT toasting so
+        // LoginPage can reveal the code field. Guard against confusing it with a
+        // WRONG code (401 / TWO_FACTOR_INVALID), which must surface normally.
+        const isTwoFactorRequired =
+          detailCode === 'TWO_FACTOR_REQUIRED' ||
+          (status === 403 &&
+            detailCode !== 'TWO_FACTOR_INVALID' &&
+            /two[-\s]?factor/i.test(errMessageStr));
+        if (isTwoFactorRequired) {
+          // Flip the provider-level gate BEFORE throwing so the code field stays
+          // visible across the LoginPage unmount/remount that App.tsx triggers
+          // when isLoading goes true→false. The throw still happens so LoginPage
+          // knows not to navigate; the outer catch deliberately does not toast
+          // TwoFactorRequiredError. The wrong-code path (401 / TWO_FACTOR_INVALID)
+          // is NOT handled here, so it leaves this flag TRUE and the field shown.
+          // Capture the credentials so submitTwoFactor() can re-issue the login
+          // with a totpCode after LoginPage's local formData has been wiped by
+          // the remount. Stored in a ref (out of React state) — only the
+          // non-secret email is mirrored into state for the UX line. Skip the
+          // capture if a totpCode was already supplied (would mean the backend
+          // re-asked for 2FA despite a code, which is not the password step).
+          if (!credentials.totpCode) {
+            pendingLoginRef.current = {
+              email: credentials.email,
+              password: credentials.password,
+              rememberMe: credentials.rememberMe,
+            };
+            setTwoFactorEmail(credentials.email);
+          }
+          setTwoFactorRequired(true);
+          // Bubble straight to the outer caller.
+          throw new TwoFactorRequiredError(apiMessage || undefined);
+        }
+
         if (apiMessage) throw new Error(apiMessage);
         if (err?.response) throw new Error('Login failed. Please try again.');
         console.error('API unavailable:', err?.message || apiError);
         throw new Error('Server is currently unavailable. Please try again later.');
       }
     } catch (error) {
+      // The 2FA-required signal is an expected step, not a failure — let
+      // LoginPage handle it silently (reveal the code field). Toast everything
+      // else, including a WRONG code which arrives as a plain Error here.
+      if (error instanceof TwoFactorRequiredError) {
+        throw error;
+      }
       const message = (error as Error)?.message || 'Login failed';
       toast.error(message);
       throw error;
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Submit the second factor (TOTP or XXXXX-XXXXX recovery code) against the
+  // credentials captured at the password step. Reuses login() so all the
+  // success/token/user handling — and the success-path 2FA reset — run
+  // unchanged. On a wrong code login() throws a normal Error (already toasted)
+  // and leaves twoFactorRequired/pendingLoginRef intact so the user can retry.
+  const submitTwoFactor = async (code: string): Promise<void> => {
+    const pending = pendingLoginRef.current;
+    if (!pending) {
+      // Defensive: the pending credentials are gone (e.g. provider re-mounted
+      // from a hard reload, or the step was cancelled). Reset the gate so the
+      // user is returned to the normal email/password form rather than stuck on
+      // a code field that can never succeed.
+      setTwoFactorRequired(false);
+      setTwoFactorEmail(null);
+      throw new Error('Your sign-in session expired. Please enter your email and password again.');
+    }
+    // totpCode is present, so login()'s 2FA-required detection (which only fires
+    // when no code is supplied) is bypassed: a valid code logs in (success path
+    // clears the ref + gate); a wrong code yields a 401 that login() toasts and
+    // re-throws as a plain Error, leaving the ref + gate intact for a retry.
+    await login({ ...pending, totpCode: code });
+    // login()'s success path already cleared the ref + gate; nothing else to do.
   };
 
   const register = async (data: RegisterData): Promise<void> => {
@@ -614,6 +814,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Validate terms acceptance
       if (!data.acceptTerms) {
         throw new Error('You must accept the terms and conditions');
+      }
+      // Spec §2.3 — Privacy Policy consent is required for partner registrations.
+      // Regular user registration does not present a separate Privacy Policy checkbox
+      // so acceptPrivacy is only enforced when accountType is 'partner'.
+      if (data.accountType === 'partner' && !data.acceptPrivacy) {
+        throw new Error('You must accept the Privacy Policy');
       }
 
       // Call real API endpoint
@@ -718,6 +924,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSwitchableAccounts([]);
     setImpersonation(null);
     setPartnerRestriction(null);
+    // Reset the 2FA step gate so the next login on this provider starts clean,
+    // and drop any captured pending credentials.
+    setTwoFactorRequired(false);
+    setTwoFactorEmail(null);
+    pendingLoginRef.current = null;
 
     // Clear persistent AND ephemeral storage. authStorage.removeItem wipes
     // both local and session, so an ephemeral (remember-me=off) session is
@@ -776,6 +987,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Invalid switch response');
       }
 
+      // Spec §1.2 / §12 Rule 1 — defense-in-depth: block switching to an Archived partner
+      // account BEFORE writing any tokens to storage or setting them on apiService.
+      // login() and loginWithOAuth() already follow this pattern. Previously this check
+      // was placed AFTER the four storage/header writes; if the guard threw, the catch
+      // block re-threw without rolling back, leaving the Archived partner's token as the
+      // active API credential despite user React state still pointing to the previous account.
+      // Probe both the nested user object and the top-level response envelope for
+      // partner_account_status — mirrors login()'s more robust extraction so the
+      // Archived guard fires regardless of which backend response shape is returned.
+      const switchIncomingStatus =
+        (userPayload as any).partner_account_status ??
+        (responseData as any).partner_account_status ??
+        (rawResponse as any).partner_account_status;
+      if (normalizeRole(userPayload.role) === 'partner' && switchIncomingStatus === 'Archived') {
+        throw new Error('This account has been archived. Contact office@boomcard.bg for assistance.');
+      }
+
       authStorage.setItem(TOKEN_KEY, newToken, inheritPersistent);
       setToken(newToken);
       if (newRefreshToken) {
@@ -796,10 +1024,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         avatar: userPayload.avatar,
         mustChangePassword: (userPayload as any).mustChangePassword ?? false,
         twoFactorEnabled: (userPayload as any).twoFactorEnabled ?? false,
+        // Spec §1.2/§11.2: preserve partner lifecycle status across account switches.
+        // Use the same multi-shape probe as the Archived guard above.
+        partner_account_status: switchIncomingStatus,
       };
       setUser(nextUser);
       authStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser), inheritPersistent);
       if (Array.isArray(switchable)) setSwitchableAccounts(switchable);
+
+      // LOW-2 fix (review r2ab): update partnerRestriction for the switched-to account
+      // so PartnerStatusBanner accurately reflects the new session's restriction state.
+      // All other auth flows (login, loadUser, reloadUser) already do this — account
+      // switch was the only path that carried the stale restriction forward.
+      const switchRestriction = responseData?.partnerRestriction ?? null;
+      if (switchRestriction) {
+        authStorage.setItem(PARTNER_RESTRICTION_KEY, switchRestriction, inheritPersistent);
+      } else {
+        authStorage.removeItem(PARTNER_RESTRICTION_KEY);
+      }
+      setPartnerRestriction(switchRestriction);
 
       const label = nextUser.role === 'admin'
         ? 'admin account'
@@ -812,64 +1055,111 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Admin-only: assume a PARTNER session. Swaps tokens and user state in
-  // place (same mechanism as switchAccount), and records impersonation
-  // metadata so the banner + stop button render across reloads.
-  const impersonate = async (targetPartnerUserId: string): Promise<void> => {
-    // Read the admin's current refresh token from its authoritative location
-    // (cookie first, because the 401-interceptor writes here on rotation;
-    // localStorage only holds whatever login() originally persisted). Sent
-    // so the backend can revoke the pre-impersonation admin session — closes
-    // the window where a leaked admin refresh token could silently resurrect
-    // the admin session in parallel with the impersonation one.
+  // Read the admin's current refresh token from its authoritative location
+  // (cookie first, because the 401-interceptor writes here on rotation;
+  // localStorage only holds whatever login() originally persisted). Sent so
+  // the backend can revoke the pre-impersonation admin session — closes the
+  // window where a leaked admin refresh token could silently resurrect the
+  // admin session in parallel with the impersonation one. Shared by both the
+  // partner- and user-impersonation entry points.
+  const readAdminRefreshToken = (): string | null => {
     const cookieRefresh = (() => {
       if (typeof document === 'undefined') return null;
       const parts = `; ${document.cookie}`.split('; boomcard_refresh=');
       return parts.length === 2 ? parts.pop()?.split(';').shift() || null : null;
     })();
-    const adminRefreshToken = cookieRefresh || authStorage.getItem(REFRESH_TOKEN_KEY);
-    const inheritPersistent = authStorage.isPersistent(TOKEN_KEY);
+    return cookieRefresh || authStorage.getItem(REFRESH_TOKEN_KEY);
+  };
 
+  // Shared post-success handling for both impersonation entry points. Applies
+  // the impersonation token, swaps user state in place (same mechanism as
+  // switchAccount), clears the account switcher, and records impersonation
+  // metadata so the banner + stop button render across reloads. Identical for
+  // partner and end-user targets — the only difference is which id field the
+  // caller sends to /auth/impersonate.
+  const applyImpersonationResponse = (rawResponse: Envelope<AuthSuccessPayload>): User => {
+    const inheritPersistent = authStorage.isPersistent(TOKEN_KEY);
+    const responseData: AuthSuccessPayload = rawResponse?.data || rawResponse;
+    const newToken = responseData?.accessToken || responseData?.token;
+    const newRefreshToken = responseData?.refreshToken;
+    const userPayload = responseData?.user;
+    const impersonationMeta = responseData?.impersonation;
+
+    if (!newToken || !userPayload || !impersonationMeta) {
+      throw new Error('Invalid impersonation response');
+    }
+
+    authStorage.setItem(TOKEN_KEY, newToken, inheritPersistent);
+    setToken(newToken);
+    if (newRefreshToken) persistRefreshToken(newRefreshToken, inheritPersistent);
+    apiService.setAuthToken(newToken);
+
+    const nextUser: User = {
+      id: userPayload.id,
+      email: userPayload.email,
+      firstName: userPayload.firstName || '',
+      lastName: userPayload.lastName || '',
+      role: normalizeRole(userPayload.role),
+      rawRole: typeof userPayload.role === 'string' ? userPayload.role.toUpperCase() : undefined,
+      permissions: (userPayload as any).permissions,
+      createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
+      emailVerified: userPayload.emailVerified ?? true,
+      avatar: userPayload.avatar,
+      // Spec §1.2/§11.2: carry partner lifecycle status into impersonation session
+      // (undefined for end-user targets, which is fine — no partner status gate).
+      partner_account_status: userPayload.partner_account_status,
+    };
+    setUser(nextUser);
+    authStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser), inheritPersistent);
+    // Impersonation tokens intentionally carry no `ag`; clear any stale
+    // sibling list from the admin session so the switcher hides.
+    setSwitchableAccounts([]);
+    setImpersonation(impersonationMeta);
+
+    // LOW-2 fix (review r2ab): update partnerRestriction from the impersonated
+    // account's response so PartnerStatusBanner shows the correct restriction state.
+    // Admins bypass the status gate (isImpersonating check in PartnerStatusRoute),
+    // but the banner still reads partnerRestriction to show the restriction notice.
+    // End-user targets carry no restriction, so this clears any stale value.
+    const impersonateRestriction = responseData?.partnerRestriction ?? null;
+    if (impersonateRestriction) {
+      authStorage.setItem(PARTNER_RESTRICTION_KEY, impersonateRestriction, inheritPersistent);
+    } else {
+      authStorage.removeItem(PARTNER_RESTRICTION_KEY);
+    }
+    setPartnerRestriction(impersonateRestriction);
+
+    toast.success(`Impersonating ${nextUser.firstName} ${nextUser.lastName}`.trim() || `Impersonating ${nextUser.email}`);
+    return nextUser;
+  };
+
+  // Admin-only: assume a PARTNER session. Sends the legacy targetPartnerUserId
+  // field; the backend keeps accepting it for the partner picker.
+  const impersonate = async (targetPartnerUserId: string): Promise<void> => {
     try {
       const rawResponse = await apiService.post<Envelope<AuthSuccessPayload>>('/auth/impersonate', {
         targetPartnerUserId,
-        refreshToken: adminRefreshToken,
+        refreshToken: readAdminRefreshToken(),
       });
-      const responseData: AuthSuccessPayload = rawResponse?.data || rawResponse;
-      const newToken = responseData?.accessToken || responseData?.token;
-      const newRefreshToken = responseData?.refreshToken;
-      const userPayload = responseData?.user;
-      const impersonationMeta = responseData?.impersonation;
+      applyImpersonationResponse(rawResponse);
+    } catch (error) {
+      const message = extractErrorMessage(error, 'Failed to start impersonation');
+      toast.error(message);
+      throw error;
+    }
+  };
 
-      if (!newToken || !userPayload || !impersonationMeta) {
-        throw new Error('Invalid impersonation response');
-      }
-
-      authStorage.setItem(TOKEN_KEY, newToken, inheritPersistent);
-      setToken(newToken);
-      if (newRefreshToken) persistRefreshToken(newRefreshToken, inheritPersistent);
-      apiService.setAuthToken(newToken);
-
-      const nextUser: User = {
-        id: userPayload.id,
-        email: userPayload.email,
-        firstName: userPayload.firstName || '',
-        lastName: userPayload.lastName || '',
-        role: normalizeRole(userPayload.role),
-        rawRole: typeof userPayload.role === 'string' ? userPayload.role.toUpperCase() : undefined,
-        permissions: (userPayload as any).permissions,
-        createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
-        emailVerified: userPayload.emailVerified ?? true,
-        avatar: userPayload.avatar,
-      };
-      setUser(nextUser);
-      authStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser), inheritPersistent);
-      // Impersonation tokens intentionally carry no `ag`; clear any stale
-      // sibling list from the admin session so the switcher hides.
-      setSwitchableAccounts([]);
-      setImpersonation(impersonationMeta);
-
-      toast.success(`Impersonating ${nextUser.firstName} ${nextUser.lastName}`.trim() || `Impersonating ${nextUser.email}`);
+  // SUPER_ADMIN-only: assume an end-USER session. Sends the generic
+  // targetUserId field to the same /auth/impersonate endpoint and runs the
+  // exact same post-success handling as impersonate() — the banner +
+  // stopImpersonating machinery treat partner and user sessions identically.
+  const impersonateUser = async (targetUserId: string): Promise<void> => {
+    try {
+      const rawResponse = await apiService.post<Envelope<AuthSuccessPayload>>('/auth/impersonate', {
+        targetUserId,
+        refreshToken: readAdminRefreshToken(),
+      });
+      applyImpersonationResponse(rawResponse);
     } catch (error) {
       const message = extractErrorMessage(error, 'Failed to start impersonation');
       toast.error(message);
@@ -920,11 +1210,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         avatar: userPayload.avatar,
         mustChangePassword: (userPayload as any).mustChangePassword ?? false,
         twoFactorEnabled: (userPayload as any).twoFactorEnabled ?? false,
+        // Admin accounts do not have partner_account_status; restored session is admin-role
+        partner_account_status: userPayload.partner_account_status,
       };
       setUser(adminUser);
       authStorage.setItem(STORAGE_KEY, JSON.stringify(adminUser), inheritPersistent);
       setSwitchableAccounts(Array.isArray(switchable) ? switchable : []);
       setImpersonation(null);
+
+      // MEDIUM-1 fix (review r2ab): clear partnerRestriction when stopping impersonation.
+      // impersonate() writes the partner's restriction to state and storage; without
+      // this clear the restored admin session carries the impersonated partner's
+      // restriction value until the next page reload, potentially showing a stale
+      // partner-suspended banner to an admin. Mirrors what logout() already does.
+      setPartnerRestriction(null);
+      authStorage.removeItem(PARTNER_RESTRICTION_KEY);
 
       toast.success(t('auth.stoppedImpersonating'));
     } catch (error) {
@@ -945,11 +1245,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const rawResponse = await apiService.put<any>('/auth/profile', data);
       const payload = rawResponse?.data || rawResponse;
 
+      // SUGGESTION-2 fix (review r2aa): allowlist which fields the /auth/profile response
+      // can update instead of spreading the entire raw payload. Security-sensitive fields
+      // (rawRole, permissions, mustChangePassword, twoFactorEnabled, partner_account_status)
+      // are preserved from the in-memory user object so a compromised or misconfigured
+      // profile endpoint cannot silently overwrite admin security gate fields.
       setUser({
         ...user,
-        ...payload,
-        role: normalizeRole(payload.role),
+        // Allowed profile fields from the API response:
+        firstName: payload.firstName ?? user.firstName,
+        lastName: payload.lastName ?? user.lastName,
+        phone: payload.phone !== undefined ? payload.phone : user.phone,
+        city: payload.city !== undefined ? payload.city : user.city,
+        country: payload.country !== undefined ? payload.country : user.country,
+        avatar: payload.avatar !== undefined ? payload.avatar : user.avatar,
+        email: payload.email ?? user.email,
+        emailVerified: payload.emailVerified !== undefined ? payload.emailVerified : user.emailVerified,
         createdAt: payload.createdAt ? new Date(payload.createdAt).getTime() : user.createdAt,
+        // Security-sensitive fields: always preserved from in-memory state.
+        role: user.role,
+        rawRole: user.rawRole,
+        permissions: user.permissions,
+        mustChangePassword: user.mustChangePassword,
+        twoFactorEnabled: user.twoFactorEnabled,
+        // Explicitly guard partner_account_status: if the /auth/profile response omits
+        // or nulls this field (expected for profile updates), preserve the in-memory value.
+        // Prevents a backend regression from silently erasing the partner's access tier.
+        partner_account_status: user.partner_account_status,
       });
 
       toast.success(t('profile.savedSuccessfully'));
@@ -973,7 +1295,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
 
     try {
-      // Validate new password
+      // Validate new password against the change-password endpoint's real contract.
+      // changePasswordValidation (backend auth.validator.ts) enforces min 8 + uppercase
+      // + lowercase + digit + special char. The /reset-password flow now shares the
+      // SAME canonical policy (validatePasswordPolicy, min 8 + complexity) — there is
+      // no longer a separate min-10 rule anywhere. Keeping this in lockstep with the
+      // backend and with SettingsPage's inline validator (also min 8) avoids values
+      // that pass one gate and are rejected by another.
       if (newPassword.length < 8) {
         throw new Error('Password must be at least 8 characters');
       }
@@ -1049,11 +1377,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(null);
       setSwitchableAccounts([]);
       setImpersonation(null);
+      setPartnerRestriction(null);
       authStorage.removeItem(STORAGE_KEY);
       authStorage.removeItem(TOKEN_KEY);
       authStorage.removeItem(REFRESH_TOKEN_KEY);
       authStorage.removeItem(SWITCHABLE_ACCOUNTS_KEY);
       authStorage.removeItem(IMPERSONATION_KEY);
+      authStorage.removeItem(PARTNER_RESTRICTION_KEY);
       if (typeof document !== 'undefined') {
         document.cookie = 'boomcard_session=; path=/; max-age=0; SameSite=Strict';
         document.cookie = 'boomcard_refresh=; path=/; max-age=0; SameSite=Strict';
@@ -1082,6 +1412,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw new Error('No authentication token received');
         }
 
+        // Spec §1.2 / §12 Rule 1 — defense-in-depth: block Archived partner OAuth login
+        // before any tokens are written to storage.
+        const oauthIncomingStatus = (response.user as any).partner_account_status as 'Active' | 'Inactive' | 'Archived' | undefined;
+        if (normalizeRole((response.user as any).role) === 'partner' && oauthIncomingStatus === 'Archived') {
+          throw new Error('This account has been archived. Contact office@boomcard.bg for assistance.');
+        }
+
         // Store tokens — OAuth has no rememberMe toggle, default persistent.
         authStorage.setItem(TOKEN_KEY, token, true);
         setToken(token);
@@ -1101,6 +1438,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ? (response.user as any).role.toUpperCase()
               : undefined,
           permissions: (response.user as any).permissions,
+          // Spec §1.2/§11.2: persist partner lifecycle status from OAuth login response
+          partner_account_status: oauthIncomingStatus,
         };
         setUser(oauthUser);
 
@@ -1182,7 +1521,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         permissions: meData.permissions ?? prev.permissions,
         mustChangePassword: (meData as any).mustChangePassword ?? prev.mustChangePassword,
         twoFactorEnabled: (meData as any).twoFactorEnabled ?? prev.twoFactorEnabled,
+        // Spec §1.2/§11.2: refresh partner lifecycle status so mid-session changes are reflected
+        partner_account_status: meData.partner_account_status ?? prev.partner_account_status,
       } : prev);
+      // Refresh partnerRestriction from /auth/me so a suspension or reinstatement
+      // that happens mid-session is picked up the next time reloadUser() is called.
+      const restriction = (meData as any).partnerRestriction ?? null;
+      setPartnerRestriction(restriction);
+      if (restriction) {
+        authStorage.setItem(PARTNER_RESTRICTION_KEY, restriction, authStorage.isPersistent(TOKEN_KEY));
+      } else {
+        authStorage.removeItem(PARTNER_RESTRICTION_KEY);
+      }
     } catch {
       // Non-fatal — stale state is fine if the reload fails
     }
@@ -1227,8 +1577,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     removeAvatar,
     switchAccount,
     impersonate,
+    impersonateUser,
     stopImpersonating,
     reloadUser,
+    twoFactorRequired,
+    twoFactorEmail,
+    submitTwoFactor,
+    clearTwoFactorRequired,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

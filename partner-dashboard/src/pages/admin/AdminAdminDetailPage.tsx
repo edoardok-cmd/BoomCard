@@ -4,6 +4,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { palette } from '../../styles/adminTheme';
 import {
   adminAdminsService,
   AdminUserDetail,
@@ -35,28 +36,6 @@ const STATUS_LABEL: Record<string, string> = {
   PENDING_PAYMENT:      'Чака плащане',
 };
 
-const palette = {
-  bg: '#faf9f5',
-  surface: '#ffffff',
-  border: '#e8e5dc',
-  text: '#141413',
-  textMuted: '#605a50',
-  textSubtle: '#8c8678',
-  accent: '#c96442',
-  accentSoft: '#f3e8de',
-  success: '#4a7c59',
-  successSoft: '#e6efe3',
-  warning: '#b5803a',
-  warningSoft: '#f5ead2',
-  danger: '#b54327',
-  dangerSoft: '#f4dcd2',
-  info: '#2563eb',
-  infoSoft: '#dbeafe',
-  purple: '#7c3aed',
-  purpleSoft: '#ede9fe',
-  teal: '#0f766e',
-  tealSoft: '#ccfbf1',
-};
 
 const PageShell = styled.div`
   background: ${palette.bg};
@@ -160,7 +139,7 @@ const RoleBadge = styled(BadgeBase)<{ $key: string }>`
       case 'SUPPORT':         return `background: ${palette.infoSoft}; color: ${palette.info};`;
       case 'RISK_REVIEW':     return `background: ${palette.warningSoft}; color: ${palette.warning};`;
       case 'PARTNER_MANAGER': return `background: ${palette.tealSoft}; color: ${palette.teal};`;
-      default:                return `background: #f3f4f6; color: #374151;`;
+      default:                return `background: ${palette.surfaceAlt}; color: ${palette.text};`;
     }
   }}
 `;
@@ -171,14 +150,14 @@ const StatusBadge = styled(BadgeBase)<{ $status: string }>`
       ? `background: ${palette.successSoft}; color: ${palette.success};`
       : $status === 'SUSPENDED'
       ? `background: ${palette.dangerSoft}; color: ${palette.danger};`
-      : `background: #f3f4f6; color: #374151;`}
+      : `background: ${palette.surfaceAlt}; color: ${palette.text};`}
 `;
 
 const TfaBadge = styled(BadgeBase)<{ $enabled: boolean }>`
   ${({ $enabled }) =>
     $enabled
       ? `background: ${palette.successSoft}; color: ${palette.success};`
-      : `background: #f3f4f6; color: #6b7280;`}
+      : `background: ${palette.surfaceAlt}; color: ${palette.textMuted};`}
 `;
 
 const RoleRow = styled.div`
@@ -210,9 +189,9 @@ const Btn = styled.button<{ $variant?: 'danger' | 'success' | 'ghost' }>`
   transition: all 100ms;
   ${({ $variant = 'ghost' }) => {
     if ($variant === 'danger')
-      return `background: ${palette.dangerSoft}; color: ${palette.danger}; border-color: ${palette.danger}; &:hover { background: #ebb8a8; }`;
+      return `background: ${palette.dangerSoft}; color: ${palette.danger}; border-color: ${palette.danger}; &:hover { background: ${palette.dangerBorder}; }`;
     if ($variant === 'success')
-      return `background: ${palette.successSoft}; color: ${palette.success}; border-color: ${palette.success}; &:hover { background: #c8e0c8; }`;
+      return `background: ${palette.successSoft}; color: ${palette.success}; border-color: ${palette.success}; &:hover { background: ${palette.successBorder}; }`;
     return `background: ${palette.surface}; color: ${palette.textMuted}; border-color: ${palette.border}; &:hover { background: ${palette.bg}; }`;
   }}
 `;
@@ -322,7 +301,7 @@ const PrimaryBtn2 = styled.button<{ $loading?: boolean }>`
   flex: 1;
   padding: 0.625rem;
   background: ${palette.accent};
-  color: #fff;
+  color: ${palette.onAccent};
   font-size: 0.9375rem;
   font-weight: 700;
   border: none;

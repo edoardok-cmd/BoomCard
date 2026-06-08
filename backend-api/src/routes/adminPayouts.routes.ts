@@ -8,15 +8,23 @@ import { walletService } from '../services/wallet.service';
 import { notificationService } from '../services/notification.service';
 import { logger } from '../utils/logger';
 import { runWithConcurrency } from '../utils/concurrency';
+import { parsePagination } from '../utils/pagination';
+import { detach } from '../utils/detach';
+import { reasonIndicatesIbanProblem } from '../utils/payoutFailureReason';
+import { buildDualCurrencyMap } from '../utils/currencyDisplay';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
 router.use(auditMiddleware);
 
-// v1.1 §6.1 subscription gate — payout requires an ACTIVE or TRIALING subscription
-// at the moment of approval. Subscribers in PAST_DUE / UNPAID ("failed payment")
-// are held until the subscription is restored.
-const PAYOUT_ELIGIBLE_SUB_STATUSES: SubscriptionStatus[] = ['ACTIVE', 'TRIALING'];
+// Spec §3.7 / §4.1 / Clash 4.1 — payout eligibility for NEW payouts:
+//   Allowed: Active subscription OR Cancelled-within-paid-period (currentPeriodEnd still in the future).
+//   Blocked: Cancelled post-period, Failed Payment, Expired.
+//   In-flight payouts: always continue regardless of subscription status (earned-rights model).
+//
+// Note: TRIALING is included as an operationally-Active equivalent so trial-period
+// subscribers can also receive payouts (not in the spec source but consistent with
+// the TRIALING subscription representing an active billing relationship).
 
 type SubGateResult =
   | { eligible: true }
@@ -28,10 +36,14 @@ async function checkSubscriptionGate(userId: string): Promise<SubGateResult> {
   const sub = await prisma.subscription.findFirst({
     where: { userId },
     orderBy: { createdAt: 'desc' },
-    select: { status: true },
+    select: { status: true, currentPeriodEnd: true },
   });
   if (!sub) return { eligible: false, reason: 'NO_SUBSCRIPTION' };
-  if (PAYOUT_ELIGIBLE_SUB_STATUSES.includes(sub.status)) return { eligible: true };
+  // Spec §4.1 Clash 4.1 — Active and Trialing subscriptions allow new payouts.
+  if (sub.status === 'ACTIVE' || sub.status === 'TRIALING') return { eligible: true };
+  // Spec §4.1 Clash 4.1 — Cancelled-within-paid-period also allows new payouts
+  // (access continues through last paid day; earned-rights model).
+  if (sub.status === 'CANCELLED' && sub.currentPeriodEnd > new Date()) return { eligible: true };
   return { eligible: false, reason: 'INELIGIBLE_STATUS', status: sub.status };
 }
 
@@ -66,9 +78,13 @@ function subGateMessage(gate: SubGateResult): string {
 // concurrency tolerates batches up to ~300 payouts before the proxy intervenes.
 const BULK_APPROVE_CONCURRENCY = 5;
 
+// L1 — `reasonIndicatesIbanProblem` now lives in ../utils/payoutFailureReason
+// so the admin /fail path and the Paysera auto-fail path (wallet.service.ts)
+// classify failure reasons identically (single source of truth).
+
 async function notifySubscriber(
   payoutId: string,
-  event: 'approved' | 'completed' | 'rejected' | 'held' | 'released' | 'failed',
+  event: 'approved' | 'completed' | 'rejected' | 'held' | 'released' | 'failed' | 'failed_other',
   note?: string,
 ) {
   try {
@@ -90,9 +106,10 @@ async function notifySubscriber(
       approved:  `Плащането ви от ${amt} ${currency} е одобрено`,
       completed: `Плащането ви от ${amt} ${currency} е изпратено`,
       rejected:  `Плащането ви от ${amt} ${currency} е отхвърлено`,
-      held:      `Плащането ви от ${amt} ${currency} е задържано за проверка`,
-      released:  `Плащането ви от ${amt} ${currency} е освободено`,
-      failed:    `Плащането ви от ${amt} ${currency} не беше успешно`,
+      held:        `Плащането ви от ${amt} ${currency} е задържано за проверка`,
+      released:    `Плащането ви от ${amt} ${currency} е освободено`,
+      failed:      `Плащането ви от ${amt} ${currency} не беше успешно`,
+      failed_other: `Плащането ви от ${amt} ${currency} не беше успешно`,
     };
 
     const bodyMap: Record<typeof event, string> = {
@@ -100,8 +117,12 @@ async function notifySubscriber(
       completed: 'Паричният превод беше изпратен успешно. Средствата ще постъпят по сметката ви в рамките на 1–3 работни дни.',
       rejected:  `Заявката ви за плащане беше отхвърлена и балансът ви е възстановен.${note ? ` Причина: ${note}` : ''}`,
       held:      'Заявката ви за плащане е задържана за допълнителна проверка съгласно нашата политика за сигурност. Ще се свържем с вас при необходимост.',
-      released:  'Заявката ви за плащане беше освободена от задържане и ще бъде обработена нормално.',
-      failed:    `Плащането не беше успешно поради технически проблем. Балансът ви е възстановен.${note ? ` Причина: ${note}` : ''}`,
+      released:    'Заявката ви за плащане беше освободена от задържане и ще бъде обработена нормално.',
+      // §3.7 first-failure "(invalid IBAN)" wording — used only when the failure
+      // reason indicates a bank-account / IBAN problem.
+      failed:      `Плащането не беше успешно. Моля, проверете и коригирайте своя IBAN / банкова сметка в профила си, за да може следващото изплащане да бъде обработено успешно. Балансът ви е възстановен.${note ? ` Причина: ${note}` : ''}`,
+      // Neutral first-failure wording — used when the reason is not IBAN-related.
+      failed_other: `Плащането не беше успешно и може да се наложи действие от ваша страна. Балансът ви е възстановен.${note ? ` Причина: ${note}` : ''}`,
     };
 
     await emailService.sendEmail({
@@ -121,15 +142,18 @@ async function notifySubscriber(
     // §11 — in-app notification + push alongside the email.
     // Non-fatal: run fire-and-forget so an in-app failure never rolls back the
     // status transition or prevents the email from being sent first.
-    notificationService
-      .notifyPayoutEvent({
+    detach(
+      notificationService.notifyPayoutEvent({
         userId: tx.wallet.userId,
         payoutId,
-        event,
+        // The in-app payout-event tier has no separate "failed_other" variant —
+        // both IBAN and non-IBAN first failures map to the single 'failed' event.
+        event: event === 'failed_other' ? 'failed' : event,
         amount: Math.abs(tx.amount),
         currency: tx.currency,
-      })
-      .catch((err) => logger.error(`[adminPayouts] notifyPayoutEvent failed for ${payoutId}:`, err));
+      }),
+      (err) => logger.error(`[adminPayouts] notifyPayoutEvent failed for ${payoutId}:`, err),
+    );
   } catch (err) {
     // Non-fatal — log and continue
     console.error('[adminPayouts] email notification failed', err);
@@ -142,11 +166,9 @@ router.get(
   requirePermission('finance.payouts.read'),
   async (req, res, next) => {
     try {
-      const { search, status, page = '1', limit = '20', dateFrom, dateTo } = req.query as Record<string, string>;
+      const { search, status, dateFrom, dateTo } = req.query as Record<string, string>;
 
-      const pageNum   = Math.max(1, parseInt(page) || 1);
-      const limitNum  = Math.min(Math.max(1, parseInt(limit) || 20), 100);
-      const skip      = (pageNum - 1) * limitNum;
+      const { skip, page: pageNum, limit: limitNum } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
       // Base filter (search + date only) — used for filter-aware summary cards
       const whereBase: Parameters<typeof prisma.walletTransaction.findMany>[0]['where'] = {
@@ -253,6 +275,20 @@ router.get(
         totalCount:      filteredGroupBy.reduce((acc, g) => acc + g._count._all, 0),
       };
 
+      const pendingTotalBgn    = Math.abs(pendingTotal._sum.amount    ?? 0);
+      const processingTotalBgn = Math.abs(processingTotal._sum.amount ?? 0);
+      const completedTotalBgn  = Math.abs(completedTotal._sum.amount  ?? 0);
+      const failedTotalBgn     = Math.abs(failedTotal._sum.amount     ?? 0);
+
+      // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for payout totals
+      // (stored BGN). Added alongside the existing scalar BGN totals (backward-compat).
+      const summaryDisplay = await buildDualCurrencyMap({
+        pendingTotal:    pendingTotalBgn,
+        processingTotal: processingTotalBgn,
+        completedTotal:  completedTotalBgn,
+        failedTotal:     failedTotalBgn,
+      });
+
       res.json({
         payouts,
         total,
@@ -260,15 +296,17 @@ router.get(
         limit: limitNum,
         summary: {
           pendingCount,
-          pendingTotal:    Math.abs(pendingTotal._sum.amount    ?? 0),
+          pendingTotal:    pendingTotalBgn,
           processingCount,
-          processingTotal: Math.abs(processingTotal._sum.amount ?? 0),
+          processingTotal: processingTotalBgn,
           completedCount,
-          completedTotal:  Math.abs(completedTotal._sum.amount  ?? 0),
+          completedTotal:  completedTotalBgn,
           riskHoldCount,
           failedCount,
-          failedTotal:     Math.abs(failedTotal._sum.amount     ?? 0),
+          failedTotal:     failedTotalBgn,
           totalCount,
+          // M7 — dual-currency {bgn, eur} pairs (BGN null after transition window).
+          display: summaryDisplay,
         },
         filteredSummary,
       });
@@ -324,14 +362,14 @@ router.patch(
             alreadyProcessed++;
           } else {
             approved++;
-            notifySubscriber(payout.id, 'approved');
+            detach(notifySubscriber(payout.id, 'approved'), () => {});
           }
         } else {
           failed++;
           const reason = result.reason as any;
           logger.error(`[bulk-approve] transfer for payout ${payout.id} failed: ${reason?.message ?? reason}`);
           // executePayoutTransfer has already reverted balance + marked FAILED.
-          notifySubscriber(payout.id, 'failed', reason?.message);
+          detach(notifySubscriber(payout.id, 'failed', reason?.message), () => {});
         }
       }
 
@@ -411,7 +449,7 @@ router.patch(
         return;
       }
 
-      notifySubscriber(id, 'approved');
+      detach(notifySubscriber(id, 'approved'), () => {});
       res.json(updated);
     } catch (error) {
       next(error);
@@ -445,22 +483,40 @@ router.patch(
 
       const restoreAmount = -payout.amount; // amounts stored as negative debits
 
-      await prisma.$transaction([
-        prisma.walletTransaction.update({
-          where: { id },
+      // The PENDING|RISK_HOLD precondition above was read outside the write, so a
+      // second admin action (/reject, /complete, /fail) could race between the
+      // findFirst and the balance restore and double-credit the wallet. Guard the
+      // status transition with a conditional updateMany (mirrors /reset-stuck):
+      // the wallet increment only runs when this call is the one that flipped the
+      // row to CANCELLED. count === 0 means another transition won the race.
+      const rejected = await prisma.$transaction(async (tx) => {
+        const upd = await tx.walletTransaction.updateMany({
+          where: { id, status: { in: ['PENDING', 'RISK_HOLD'] } },
           data: {
             status: 'CANCELLED',
             description: reason ? `Отхвърлено от администратор: ${reason}` : 'Отхвърлено от администратор',
           },
-        }),
-        prisma.wallet.update({
+        });
+        if (upd.count === 0) {
+          return false;
+        }
+        await tx.wallet.update({
           where: { id: payout.walletId },
           data: {
             balance:          { increment: restoreAmount },
             availableBalance: { increment: restoreAmount },
           },
-        }),
-      ]);
+        });
+        return true;
+      });
+
+      if (!rejected) {
+        res.status(409).json({
+          message: 'Payout state changed concurrently — reload and retry.',
+          reason: 'CONCURRENT_TRANSITION',
+        });
+        return;
+      }
 
       // Spec §4.4 v1.1 — revert the cashback entries from LOCKED back to
       // CLEARED so they're eligible for a future payout.
@@ -470,7 +526,7 @@ router.patch(
         reason ?? 'admin rejection',
       );
 
-      notifySubscriber(id, 'rejected', reason);
+      detach(notifySubscriber(id, 'rejected', reason), () => {});
       res.json({ ok: true });
     } catch (error) {
       next(error);
@@ -512,7 +568,7 @@ router.patch(
         (req as AuthRequest).user?.id ?? null,
       );
 
-      notifySubscriber(id, 'completed');
+      detach(notifySubscriber(id, 'completed'), () => {});
       res.json(updated);
     } catch (error) {
       next(error);
@@ -549,7 +605,7 @@ router.patch(
         },
       });
 
-      notifySubscriber(id, 'held', reason);
+      detach(notifySubscriber(id, 'held', reason), () => {});
       res.json(updated);
     } catch (error) {
       next(error);
@@ -585,7 +641,7 @@ router.patch(
         data: { status: 'PENDING', description: releasedDesc },
       });
 
-      notifySubscriber(id, 'released');
+      detach(notifySubscriber(id, 'released'), () => {});
       res.json(updated);
     } catch (error) {
       next(error);
@@ -615,28 +671,153 @@ router.patch(
         return;
       }
 
-      const restoreAmount = -payout.amount;
+      // Spec §3.7 — payout failure escalation:
+      //   First failure → restore wallet balance, revert cashback LOCKED→CLEARED
+      //                   so user can retry, then notify user to correct IBAN.
+      //   Second failure → route to RISK_HOLD for manual review + mark HIGH risk.
+      //                    Do NOT restore wallet balance here: /reject already does
+      //                    the restore when admin resolves the RISK_HOLD, so restoring
+      //                    here would credit the user twice.
+      //                    Do NOT revert cashback: leave it LOCKED while the payout
+      //                    is in manual review (reverting here would show cashback as
+      //                    Available while RISK_HOLD is still open — a contradiction).
+      //                    User is NOT notified of manual review status (spec §3.7).
+      //
+      // Two-strike model: the spec counts PAYOUT RECORDS, not /fail calls on the same
+      // record. The status guard above ensures /fail can only be called once per payout
+      // (while it is PROCESSING). So "first failure" = this wallet has 0 previous FAILED
+      // withdrawals; "second failure" = this wallet already has ≥1 FAILED withdrawal.
+      // The current payout is still PROCESSING at this point, so it is not yet in the
+      // FAILED count — no exclusion filter is needed.
+      // Fix B (TOCTOU): move previousFailedCount inside the transaction so the
+      // count and the subsequent writes share Serializable semantics on PostgreSQL.
+      // Two concurrent /fail calls can no longer both read count=0 and both take
+      // the first-failure path.
+      //
+      // Fix A (riskScore): read the user's current riskScore inside the transaction
+      // and write Math.max(currentRiskScore, 61) so a higher pre-existing score is
+      // never silently downgraded to 61.
+      //
+      // Side-effectful calls (revertCashbackLockForWithdrawal, notifySubscriber) are
+      // DB-independent and remain outside the transaction callback after the branch
+      // decision is captured.
+      // Fix B — return branch decision from the callback instead of mutating outer scope,
+      // so any future retry wrapper starts with fresh state rather than stale captured state.
+      let txResult: { isSecondFailure: boolean };
+      try {
+        txResult = await prisma.$transaction(async (tx) => {
+          // Fix B — count inside the transaction.
+          // M4 — count BOTH FAILED and RISK_HOLD prior withdrawals so the strike
+          // count stays consistent with the Paysera auto-fail path (a prior
+          // second-strike produces a RISK_HOLD row, not a FAILED one).
+          const previousFailedCount = await tx.walletTransaction.count({
+            where: {
+              walletId: payout.walletId,
+              type: 'WITHDRAWAL',
+              status: { in: ['FAILED', 'RISK_HOLD'] as WalletTransactionStatus[] },
+            },
+          });
 
-      await prisma.$transaction([
-        prisma.walletTransaction.update({
-          where: { id },
-          data: {
-            status: 'FAILED',
-            description: reason
-              ? `Неуспешен банков превод: ${reason}`
-              : 'Неуспешен банков превод',
-          },
-        }),
-        prisma.wallet.update({
-          where: { id: payout.walletId },
-          data: {
-            balance:          { increment: restoreAmount },
-            availableBalance: { increment: restoreAmount },
-          },
-        }),
-      ]);
+          if (previousFailedCount >= 1) {
+            // Second (or subsequent) failure: escalate to manual review + mark HIGH risk.
+            // Wallet balance is NOT restored here — /reject will restore it when the admin
+            // resolves the RISK_HOLD, preventing a double-credit.
+            // Cashback stays LOCKED — it will be released or consumed when an admin
+            // resolves the RISK_HOLD via /reject (revert) or /complete (mark PAID).
 
-      notifySubscriber(id, 'failed', reason);
+            await tx.walletTransaction.update({
+              where: { id },
+              data: {
+                status: 'RISK_HOLD',
+                description: reason
+                  ? `Ескалирано за ръчен преглед след повторен неуспех: ${reason}`
+                  : 'Ескалирано за ръчен преглед след повторен неуспех на банков превод',
+              },
+            });
+            // Mark the user as HIGH risk per spec §3.7 / §2.1. Shared two-strike
+            // helper floors riskScore at 61 (never downgrades a higher score) and
+            // uses updateMany so a user soft-deleted between the outer findFirst
+            // and this transaction body is a no-op rather than a P2025 that would
+            // roll back the whole transaction and leave the payout stuck. Runs on
+            // the transaction client so it shares this Serializable transaction.
+            await walletService.escalateRiskAfterRepeatedPayoutFailure(payout.wallet.userId, tx);
+
+            return { isSecondFailure: true };
+          } else {
+            // First failure: record FAILED status and restore wallet balance.
+            const restoreAmount = -payout.amount;
+            await tx.walletTransaction.update({
+              where: { id },
+              data: {
+                status: 'FAILED',
+                description: reason
+                  ? `Неуспешен банков превод: ${reason}`
+                  : 'Неуспешен банков превод',
+              },
+            });
+            await tx.wallet.update({
+              where: { id: payout.walletId },
+              data: {
+                balance:          { increment: restoreAmount },
+                availableBalance: { increment: restoreAmount },
+              },
+            });
+
+            return { isSecondFailure: false };
+          }
+        }, { isolationLevel: 'Serializable' });
+      } catch (txErr: any) {
+        // Fix A (P2034) — Serializable isolation can produce a serialization failure
+        // when two concurrent /fail calls race. Return 409 so the caller can retry
+        // rather than leaving the payout stuck in PROCESSING with an unhandled 500.
+        if (txErr?.code === 'P2034') {
+          res.status(409).json({
+            message: 'Concurrent modification — please retry.',
+            reason: 'CONCURRENT_TRANSITION',
+          });
+          return;
+        }
+        throw txErr;
+      }
+
+      const { isSecondFailure } = txResult;
+
+      if (isSecondFailure) {
+        logger.warn(
+          `[adminPayouts] Second payout failure for wallet ${payout.walletId} — ` +
+          `escalated to RISK_HOLD and user marked HIGH risk (spec §3.7). ` +
+          `Wallet balance NOT restored (will be restored by /reject when admin resolves RISK_HOLD).`,
+        );
+        // M4 / MEDIUM-1 — notification parity with the Paysera auto-fail path
+        // (wallet.service.ts executePayoutTransfer second-failure branch): fire the
+        // same admin-ops alert so a RISK_HOLD escalated via the admin /fail route is
+        // visible to ops and not missed indefinitely. Same payload shape + severity.
+        const escalatedUserId = payout.wallet.userId;
+        detach(notificationService
+          .notifyAdminOps({
+            opsType: 'payout_failure_high_risk',
+            title: 'User flagged high-risk after repeated payout failures',
+            message: `User ${escalatedUserId} had a repeated payout failure. Payout escalated to RISK_HOLD and flagged for manual admin review per spec §3.7.`,
+            severity: 'warning',
+            fields: [
+              { label: 'User ID', value: escalatedUserId },
+              { label: 'Last error', value: (reason ?? 'bank transfer failure').slice(0, 200) },
+            ],
+          }), (err) => logger.error(`[adminPayouts] admin notification failed for user ${escalatedUserId}:`, err));
+      } else {
+        // Spec §4.4 v1.1 — mirrors the /reject handler for the first-failure path.
+        // These side effects run outside the transaction (DB-independent).
+        await walletService.revertCashbackLockForWithdrawal(
+          id,
+          (req as AuthRequest).user?.id ?? null,
+          reason ?? 'bank transfer failure',
+        );
+        // L1 — use IBAN-correction wording only when the reason points at an IBAN /
+        // bank-account problem; otherwise neutral "action may be required" wording.
+        const failEvent = reasonIndicatesIbanProblem(reason) ? 'failed' : 'failed_other';
+        detach(notifySubscriber(id, failEvent, reason), () => {});
+      }
+
       res.json({ ok: true });
     } catch (error) {
       next(error);

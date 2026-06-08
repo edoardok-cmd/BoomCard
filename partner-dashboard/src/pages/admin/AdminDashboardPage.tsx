@@ -16,6 +16,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { adminDashboardService, AdminDashboardStats } from '../../services/adminDashboard.service';
 import { adminAlertsService, AdminAlertsResult, AlertTier } from '../../services/adminAlerts.service';
+import { palette } from '../../styles/adminTheme';
 import {
   ALERT_ICON_BY_ID,
   ALERT_FALLBACK_ICON,
@@ -51,24 +52,6 @@ const TILE_PERMS = {
 } as const;
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
-const palette = {
-  bg: '#faf9f5',
-  surface: '#ffffff',
-  surfaceAlt: '#f5f4ee',
-  border: '#e8e5dc',
-  borderStrong: '#d6d2c4',
-  text: '#141413',
-  textMuted: '#605a50',
-  textSubtle: '#8c8678',
-  accent: '#c96442',
-  accentSoft: '#f3e8de',
-  success: '#4a7c59',
-  successSoft: '#e6efe3',
-  warning: '#b5803a',
-  warningSoft: '#f5ead2',
-  danger: '#b54327',
-  dangerSoft: '#f4dcd2',
-};
 
 /* ─── Layout ───────────────────────────────────────────────────────────────── */
 const PageShell = styled.div`

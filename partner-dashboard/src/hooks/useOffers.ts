@@ -9,6 +9,16 @@ export function useOffers(filters?: OfferFilters) {
   return useQuery({
     queryKey: ['offers', filters],
     queryFn: () => offersService.getOffers(filters),
+    // When filters include partnerId, do not fire the query until partnerId
+    // is resolved. This prevents a request with an empty/undefined partnerId
+    // that would either return all partners' offers (information disclosure)
+    // or a backend 400/403 error. If no partnerId filter is required the
+    // query is always enabled (spec §11.3 guard).
+    // S2 fix (DashboardPage): also respect the caller-supplied `enabled`
+    // override so non-partner users never trigger this query even when the
+    // partnerId key is absent from filters.
+    enabled: (filters?.enabled !== false) &&
+      (filters?.partnerId !== undefined ? !!filters.partnerId : true),
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: 1,
     retryDelay: 1000,
@@ -141,8 +151,10 @@ export function useDeleteOffer() {
   return useMutation({
     mutationFn: offersService.deleteOffer,
     onSuccess: () => {
+      // LOW-3 fix (r2w): toast removed from hook — the component handler calls
+      // toast.success(t.deleted) after mutateAsync resolves, so firing it here
+      // too produces a double toast on every delete.
       queryClient.invalidateQueries({ queryKey: ['offers'] });
-      toast.success('Offer deleted successfully!');
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to delete offer');
@@ -256,9 +268,11 @@ export function useToggleOfferStatus() {
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       offersService.toggleOfferStatus(id, isActive),
     onSuccess: (_, variables) => {
+      // LOW-3 fix (r2w): toast removed from hook — the component handler calls
+      // toast.success(offer.isActive ? t.deactivated : t.activated) after
+      // mutateAsync resolves, so firing it here too produces a double toast.
       queryClient.invalidateQueries({ queryKey: ['offers'] });
       queryClient.invalidateQueries({ queryKey: ['offer', variables.id] });
-      toast.success(`Offer ${variables.isActive ? 'activated' : 'deactivated'} successfully!`);
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to update offer status');

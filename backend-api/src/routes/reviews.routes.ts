@@ -13,6 +13,7 @@ import {
   adminResponseValidation
 } from '../validators/review.validator';
 import { asyncHandler } from '../middleware/error.middleware';
+import { parsePagination } from '../utils/pagination';
 
 const router = Router();
 
@@ -40,13 +41,16 @@ router.get(
   '/',
   validate(getReviewsValidation),
   asyncHandler(async (req: Request, res: Response) => {
+    // parsePagination clamps page/limit so a non-numeric/negative/zero/over-max
+    // value can never reach the service → Prisma malformed (preserves default 10).
+    const { page, limit } = parsePagination(req.query, { defaultLimit: 10, maxLimit: 100 });
     const result = await reviewsService.getReviews({
       partnerId: req.query.partnerId as string,
       userId: req.query.userId as string,
-      status: req.query.status as any,
+      status: 'APPROVED' as any,
       rating: req.query.rating ? parseInt(req.query.rating as string) : undefined,
-      page: req.query.page ? parseInt(req.query.page as string) : 1,
-      limit: req.query.limit ? parseInt(req.query.limit as string) : 10,
+      page,
+      limit,
       sortBy: req.query.sortBy as any,
       sortOrder: req.query.sortOrder as any
     });
@@ -76,8 +80,9 @@ router.get(
   '/partner/:partnerId',
   validate(getPartnerReviewsValidation),
   asyncHandler(async (req: Request, res: Response) => {
-    const page = req.query.page ? parseInt(req.query.page as string) : 1;
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+    // parsePagination clamps page/limit (preserves default 10) so untrusted input
+    // can never reach the service → Prisma malformed.
+    const { page, limit } = parsePagination(req.query, { defaultLimit: 10, maxLimit: 100 });
 
     const result = await reviewsService.getPartnerReviews(req.params.partnerId, page, limit);
     res.json(result);
@@ -152,7 +157,7 @@ router.patch(
   authenticate,
   validate(markHelpfulValidation),
   asyncHandler(async (req: Request, res: Response) => {
-    const result = await reviewsService.markHelpful(req.params.id, req.body.helpful);
+    const result = await reviewsService.markHelpful(req.params.id, req.body.helpful, (req as any).user?.id);
     res.json(result);
   })
 );

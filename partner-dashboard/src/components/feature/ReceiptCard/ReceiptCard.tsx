@@ -1,12 +1,17 @@
 import React from 'react';
 import styled from 'styled-components';
 import { useLanguage } from '../../../contexts/LanguageContext';
-import { Receipt, ReceiptStatus } from '../../../types/receipt.types';
+import { PartnerReceipt, ReceiptStatus } from '../../../types/receipt.types';
 import { CheckCircle, XCircle, Clock, Store, Calendar, Eye, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useCurrencyDisplay, formatWithCurrency } from '../../../utils/currencyDisplay';
 
+// LOW-3 fix: accept PartnerReceipt (the partner-safe type) instead of the
+// admin-only Receipt type. This enforces the type-system guardrail so
+// internal fields (fraudScore, cashbackPercent, etc.) cannot be accessed
+// from this component even if the backend ever returns them.
 interface ReceiptCardProps {
-  receipt: Receipt;
+  receipt: PartnerReceipt;
   onDelete?: (id: string) => void;
   showActions?: boolean;
 }
@@ -190,6 +195,8 @@ export const ReceiptCard: React.FC<ReceiptCardProps> = ({
 }) => {
   const { language } = useLanguage();
   const navigate = useNavigate();
+  // MEDIUM-2 fix: currency-aware formatting (Clash 12.1 / §7.3).
+  const currencyMode = useCurrencyDisplay();
 
   const t = {
     en: {
@@ -293,7 +300,9 @@ export const ReceiptCard: React.FC<ReceiptCardProps> = ({
         {receipt.totalAmount !== null && receipt.totalAmount !== undefined && (
           <InfoItem>
             <InfoLabel>{content.totalAmount}</InfoLabel>
-            <AmountValue>{receipt.totalAmount.toFixed(2)} лв</AmountValue>
+            <AmountValue>
+              {formatWithCurrency(receipt.totalAmount, currencyMode, language === 'bg' ? 'bg' : 'en')}
+            </AmountValue>
           </InfoItem>
         )}
 
@@ -301,7 +310,9 @@ export const ReceiptCard: React.FC<ReceiptCardProps> = ({
         <InfoItem>
           <InfoLabel>{content.cashbackAmount}</InfoLabel>
           <AmountValue style={{ color: receipt.cashbackAmount > 0 ? '#059669' : '#6b7280' }}>
-            {receipt.cashbackAmount > 0 ? `+${receipt.cashbackAmount.toFixed(2)} лв` : '—'}
+            {receipt.cashbackAmount > 0
+              ? `+${formatWithCurrency(receipt.cashbackAmount, currencyMode, language === 'bg' ? 'bg' : 'en')}`
+              : '—'}
           </AmountValue>
         </InfoItem>
 

@@ -4,21 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { adminProfileService } from '../../services/adminProfile.service';
 
-const palette = {
-  bg: '#faf9f5',
-  surface: '#ffffff',
-  border: '#e8e5dc',
-  text: '#141413',
-  textMuted: '#605a50',
-  textSubtle: '#8c8678',
-  accent: '#c96442',
-  accentSoft: '#f3e8de',
-  success: '#4a7c59',
-  successSoft: '#e6efe3',
-  danger: '#b54327',
-  dangerSoft: '#f4dcd2',
-};
 
+import { palette } from '../../styles/adminTheme';
 const ROLE_LABEL: Record<string, string> = {
   ADMIN:           'Администратор',
   SUPPORT:         'Поддръжка',
@@ -314,7 +301,7 @@ const AvatarOverlay = styled.span`
   border-radius: 50%;
   background: rgba(0,0,0,0.4);
   display: flex; align-items: center; justify-content: center;
-  color: #fff; font-size: 1rem;
+  color: ${palette.onAccent}; font-size: 1rem;
   opacity: 0;
   transition: opacity 150ms;
 `;
@@ -382,7 +369,7 @@ const Meta = styled.div`
 `;
 const Button = styled.button`
   background: ${palette.accent};
-  color: white;
+  color: ${palette.onAccent};
   border: 0;
   padding: 0.625rem 1.25rem;
   border-radius: 0.5rem;

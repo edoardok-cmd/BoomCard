@@ -5,8 +5,12 @@ import { authenticate, authorize, requirePermission } from '../middleware/auth.m
 import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { stripeService } from '../services/stripe.service';
+import { notificationService } from '../services/notification.service';
 import { planDisplayName } from '../utils/planDisplayName';
+import { parsePagination } from '../utils/pagination';
 import { emailService } from '../services/email.service';
+import { logger } from '../utils/logger';
+import { detach } from '../utils/detach';
 
 const APP_URL = process.env.APP_URL || 'https://mobile.boomcard.bg';
 
@@ -250,10 +254,8 @@ function parseFilters(query: Record<string, string | undefined>): ListFilters {
 // GET /api/admin/subscriptions
 router.get('/', requirePermission('subscriptions.read'), async (req, res, next) => {
   try {
-    const { page = '1', limit = '20', ...rest } = req.query as Record<string, string>;
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(Math.max(1, parseInt(limit) || 20), 100);
-    const skip = (pageNum - 1) * limitNum;
+    const { page: _page, limit: _limit, ...rest } = req.query as Record<string, string>;
+    const { skip, page: pageNum, limit: limitNum } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     const filters = parseFilters(rest);
     const where = await buildSubscriptionWhere(filters);
@@ -440,6 +442,15 @@ router.post('/:id/cancel', requirePermission('subscriptions.write'), async (req,
         throw stripeErr;
       }
     }
+
+    // Spec §11.1/§11.2: cancellation-confirmed is a mandatory Payment
+    // notification with no opt-out, and §11.3 does NOT exempt subscription
+    // cancellation. Fire-and-forget once on the genuine cancel path (the
+    // result.count===0 early-return above gates this to a real transition).
+    // canceledAt is stamped here, so the Stripe webhook M2 branch suppresses
+    // on the already-cancelled guard — no double-fire.
+    detach(notificationService.notifySubscriptionCancelledInApp(subscription.userId),
+      (err) => logger.error(`[admin /subscriptions/:id/cancel] notify failed for sub ${subscription.id}:`, err));
 
     res.json({ ok: true });
   } catch (error) {
@@ -729,10 +740,8 @@ router.patch('/:id/auto-renewal', requirePermission('subscriptions.write'), asyn
  */
 router.get('/pending', requirePermission('subscriptions.read'), async (req, res, next) => {
   try {
-    const { email, orderId, status, page = '1', limit = '20' } = req.query as Record<string, string>;
-    const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
-    const skip = (pageNum - 1) * limitNum;
+    const { email, orderId, status } = req.query as Record<string, string>;
+    const { skip, page: pageNum, limit: limitNum } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 50 });
 
     const where: Prisma.PendingSubscriptionWhereInput = {};
     if (email) where.email = { contains: email, mode: 'insensitive' };

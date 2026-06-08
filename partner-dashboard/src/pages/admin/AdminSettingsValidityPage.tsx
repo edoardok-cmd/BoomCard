@@ -5,14 +5,8 @@ import { toast } from 'react-hot-toast';
 import { adminSettingsService } from '../../services/adminSettings.service';
 import { latestMeta, formatAuditStamp } from '../../utils/systemSettingsAudit';
 
-const palette = {
-  bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
-  text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
-  accent: '#c96442', accentSoft: '#f3e8de',
-  info: '#2563eb', infoSoft: '#dbeafe',
-  amber: '#92400e', amberSoft: '#fef3c7',
-};
 
+import { palette } from '../../styles/adminTheme';
 const PageShell = styled.div`background: ${palette.bg}; min-height: calc(100vh - 4rem); padding: 2rem 2.5rem;`;
 const PageHeader = styled.div`margin-bottom: 2rem;`;
 const Eyebrow = styled.p`font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: ${palette.textSubtle}; margin-bottom: 0.25rem;`;
@@ -52,7 +46,7 @@ const NotesInput = styled.input`
   &::placeholder { color: ${palette.textSubtle}; }
 `;
 const SaveBtn = styled.button`
-  padding: 0.5625rem 1.25rem; background: ${palette.accent}; color: #fff; border: none;
+  padding: 0.5625rem 1.25rem; background: ${palette.accent}; color: ${palette.onAccent}; border: none;
   border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer;
   &:hover { opacity: 0.9; }
   &:disabled { opacity: 0.5; cursor: default; }

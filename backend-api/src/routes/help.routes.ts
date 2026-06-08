@@ -9,11 +9,13 @@ import { logger } from '../utils/logger';
 import { getSystemSettingStr } from '../utils/systemSettings';
 import { DisputeSubjectType } from '@prisma/client';
 import { z } from 'zod';
+import { parsePagination } from '../utils/pagination';
+import { detach } from '../utils/detach';
 
 const router = Router();
 
 // Spec §11.3 — valid requestTypes for subscribers (DISPUTE per §7.3 link)
-const USER_REQUEST_TYPES = ['SUPPORT', 'DISPUTE', 'OTHER'] as const;
+const USER_REQUEST_TYPES = ['SUPPORT', 'DISPUTE', 'OTHER', 'CHANGE'] as const;
 
 const submitTicketSchema = z.object({
   subject: z.string().min(5).max(200),
@@ -60,16 +62,16 @@ router.post(
 
     // Spec §11.6: auto-link to Dispute model when type=DISPUTE.
     if (ticket.requestType === 'DISPUTE') {
-      prisma.dispute.create({
+      detach(prisma.dispute.create({
         data: {
           userId,
           ticketId: ticket.id,
           subjectType: DisputeSubjectType.RECEIPT, // default; admin updates as needed
         },
-      }).catch((err) => logger.error('[help] failed to create linked Dispute for DISPUTE ticket:', err));
+      }), (err) => logger.error('[help] failed to create linked Dispute for DISPUTE ticket:', err));
     }
 
-    notificationService
+    detach(notificationService
       .notifyAdminOps({
         opsType: 'help_ticket_created',
         title: `New support ticket: ${category}`,
@@ -81,14 +83,15 @@ router.post(
           { label: 'User', value: userId },
           { label: 'Ticket ID', value: ticket.id },
         ],
-      })
-      .catch((err) => logger.error('[help] Failed to notify admin of new ticket:', err));
+      }), (err) => logger.error('[help] Failed to notify admin of new ticket:', err));
 
     // Fire-and-forget: set rootMessageId + send confirmation email + persist reply row.
     // IMPORTANT: call buildTicketHeaders() once and use threading.messageId for
     // rootMessageId. Two separate newMessageId() calls produce different IDs,
     // which breaks Priority-2 In-Reply-To threading for any subsequent email reply.
-    (async () => {
+    // Routed through detach() so the detached DB writes settle inside this suite
+    // under test (no cross-suite mock-queue leak); no-op .catch in prod.
+    detach((async () => {
       try {
         const threading = buildTicketHeaders({ ticketId: ticket.id });
         await prisma.helpTicket.update({
@@ -118,7 +121,7 @@ router.post(
             to: user.email,
             subject: emailSubject,
             headers: threading.headers,
-            replyTo: buildPlusReplyTo(ticket.id, 'subscriber'),
+            ...(process.env.ENABLE_PLUS_ADDRESS_ROUTING === 'true' ? { replyTo: buildPlusReplyTo(ticket.id, 'subscriber') } : {}),
             html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:'Helvetica Neue',Arial,sans-serif;background:#f5f5f5;margin:0;padding:0"><table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px"><table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.06)"><tr><td style="padding:28px"><p style="margin:0 0 16px;color:#111;font-size:16px">Здравейте${user.firstName ? ', ' + user.firstName : ''},</p><p style="margin:0 0 16px;color:#444;font-size:15px;line-height:1.6">Получихме вашата заявка и тя е регистрирана с референция <strong style="font-family:monospace">${ref}</strong>.</p><p style="margin:0 0 16px;color:#444;font-size:15px;line-height:1.6">Ще се свържем с вас възможно най-скоро. За допълнителна информация напишете ни на <a href="mailto:${supportEmail}">${supportEmail}</a>.</p><p style="margin:24px 0 0;color:#999;font-size:13px">— Екипът на BoomCard</p></td></tr></table></td></tr></table></body></html>`,
             text: `Здравейте${user.firstName ? ', ' + user.firstName : ''},\n\nПолучихме вашата заявка с референция ${ref}.\n\nЩе се свържем с вас възможно най-скоро.\n\nПри нужда: ${supportEmail}\n\n— Екипът на BoomCard`,
           });
@@ -126,7 +129,7 @@ router.post(
       } catch (err) {
         logger.error('[help] failed to send ticket confirmation email:', err);
       }
-    })();
+    })(), () => {});
 
     return res.status(201).json({ success: true, data: ticket });
   })
@@ -141,9 +144,7 @@ router.get(
   '/tickets',
   authenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const page = Math.max(1, parseInt((req.query.page as string) || '1') || 1);
-    const limit = Math.min(50, Math.max(1, parseInt((req.query.limit as string) || '20') || 20));
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 50 });
 
     const [tickets, total] = await Promise.all([
       prisma.helpTicket.findMany({
@@ -151,7 +152,7 @@ router.get(
         select: {
           id: true, subject: true, category: true, status: true,
           requestType: true, createdAt: true, updatedAt: true,
-          assignee: { select: { id: true, firstName: true, lastName: true } },
+          // Spec §13.3: admin identity never visible to users — assignee omitted.
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -175,10 +176,12 @@ router.get(
     const ticket = await prisma.helpTicket.findFirst({
       where: { id: req.params.id, userId: req.user!.id },
       select: {
+        // Spec §11.3 / §13.3: priority, source, assignee, internalNote and
+        // externalEmail are internal admin-only fields and must NOT be returned
+        // to subscribers — mirrors the partner-side projection in partnerHelp.routes.ts.
         id: true, subject: true, body: true, category: true,
-        status: true, priority: true, requestType: true, source: true,
+        status: true, requestType: true,
         reopenedAt: true, resolvedAt: true, createdAt: true, updatedAt: true,
-        assignee: { select: { id: true, firstName: true, lastName: true } },
       },
     });
     if (!ticket) {
@@ -209,7 +212,7 @@ router.get(
       orderBy: { createdAt: 'asc' },
       select: {
         id: true, body: true, isAdmin: true, createdAt: true,
-        author: { select: { id: true, firstName: true, lastName: true } },
+        // Spec §13.3: admin identity never visible to users — author omitted for admin replies.
       },
     });
 
@@ -241,7 +244,7 @@ router.post(
     if (!ticket) {
       return res.status(404).json({ error: 'Заявката не е намерена или нямате достъп' });
     }
-    if (ticket.status === 'CLOSED' || ticket.status === 'REJECTED') {
+    if (ticket.status === 'CLOSED' || ticket.status === 'REJECTED' || ticket.status === 'CANCELLED') {
       return res.status(400).json({ error: 'Не може да се отговаря на заявка в крайно състояние' });
     }
 
@@ -292,7 +295,7 @@ router.post(
     const replyHeaders = threading.headers;
 
     if (ticket.assignee?.email) {
-      emailService
+      detach(emailService
         .sendEmail({
           to: ticket.assignee.email,
           subject: buildTicketSubject(ticket.id, `[Отговор от потребител] ${ticket.subject}`),
@@ -302,11 +305,10 @@ router.post(
 <p>${esc(replyBodyText).replace(/\n/g, '<br/>')}</p>
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id}</p>`,
           text: `Потребителят изпрати отговор на заявка, назначена на вас.\n\n${replyBodyText}\n\nTicket ID: ${ticket.id}`,
-        })
-        .catch((err) => logger.error('[help] failed to notify assignee of user reply:', err));
+        }), (err) => logger.error('[help] failed to notify assignee of user reply:', err));
     } else {
       // Unassigned — alert support inbox so the reply isn't silently missed.
-      getSystemSettingStr('support_email', 'support@boomcard.bg')
+      detach(getSystemSettingStr('support_email', 'support@boomcard.bg')
         .then((supportEmail) =>
           emailService.sendEmail({
             to: supportEmail,
@@ -318,8 +320,7 @@ router.post(
 <p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id}</p>`,
             text: `Потребител изпрати отговор на заявка без назначен отговорник.\n\n${replyBodyText}\n\nTicket ID: ${ticket.id}`,
           })
-        )
-        .catch((err) => logger.error('[help] failed to alert support of unassigned user reply:', err));
+        ), (err) => logger.error('[help] failed to alert support of unassigned user reply:', err));
     }
 
     return res.status(201).json({ success: true, data: reply });

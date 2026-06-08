@@ -12,8 +12,16 @@ import { useLanguage } from '../contexts/LanguageContext';
 
 interface StickerRow {
   id: string;
-  stickerId: string;
-  status: string;
+  // stickerId intentionally omitted — spec §4.3 / §11.3: raw QR token value
+  // must NEVER be shown to the partner. The backend should not transmit it
+  // either, but the frontend type omits it as a defence-in-depth measure.
+  //
+  // LOW-1 fix: `status` (raw internal StickerStatus enum) also omitted.
+  // Spec §4.1 defines 4 canonical QR statuses; the raw backend enum adds
+  // DAMAGED / RETIRED sub-classifications not in the spec and not safe to
+  // expose (§11.3). Only `displayStatus` (the 4-value canonical enum) is
+  // used for display. Removing `status` from the type ensures no future code
+  // accidentally renders the internal value.
   displayStatus: string;
   locationType: string;
   location: { name: string; locationNumber: string } | null;
@@ -130,9 +138,13 @@ function statusLabel(s: string, isBg: boolean): string {
   switch (s) {
     case 'ACTIVE':      return isBg ? 'Активен' : 'Active';
     case 'INACTIVE':    return isBg ? 'Неактивен' : 'Inactive';
-    case 'PROCESSING':  return isBg ? 'В обработка' : 'In progress';
+    // S4 fix (review r2ae): spec §4.1 labels this status "In Processing", not "In progress".
+    case 'PROCESSING':  return isBg ? 'В обработка' : 'In Processing';
     case 'REPLACED':    return isBg ? 'Заменен' : 'Replaced';
-    default: return s;
+    // S3 fix (review r2ae): safe fallback instead of rendering raw enum string.
+    // toDisplayStatus() on the backend bounds output to the four values above,
+    // so this branch fires only during backend schema migrations or mismatches.
+    default: return isBg ? 'Неактивен' : 'Inactive';
   }
 }
 
@@ -153,7 +165,12 @@ export default function PartnerStickersPage() {
     return <Page><Subtitle>{isBg ? 'Грешка при зареждане.' : 'Failed to load.'}</Subtitle></Page>;
   }
   const { partnerStatus, partnerActivated, readonlyNotice, venues } = data.data;
-  const partnerOnline = partnerStatus === 'ACTIVE' && partnerActivated;
+  // MEDIUM-3 fix: normalise the status comparison to uppercase so it works
+  // regardless of whether the backend serialises 'ACTIVE' or 'Active'.
+  // Spec §1.1 canonical value is 'Active' (title-case) but the backend
+  // partnerStatus.middleware.ts uses uppercase enum values. Uppercasing both
+  // sides removes the brittle string-equality dependency on casing.
+  const partnerOnline = partnerStatus?.toUpperCase() === 'ACTIVE' && partnerActivated;
 
   return (
     <Page>

@@ -8,25 +8,8 @@ import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable
 import { adminAdminsService, AuditLogEntry } from '../../services/adminAdmins.service';
 import { labelForAction } from '../../utils/auditActionLabel';
 
-const palette = {
-  bg: '#faf9f5',
-  surface: '#ffffff',
-  border: '#e8e5dc',
-  text: '#141413',
-  textMuted: '#605a50',
-  textSubtle: '#8c8678',
-  accent: '#c96442',
-  accentSoft: '#f3e8de',
-  info: '#2563eb',
-  infoSoft: '#dbeafe',
-  success: '#4a7c59',
-  successSoft: '#e6efe3',
-  warning: '#b5803a',
-  warningSoft: '#f5ead2',
-  danger: '#b54327',
-  dangerSoft: '#f4dcd2',
-};
 
+import { palette } from '../../styles/adminTheme';
 // ─── Label maps ──────────────────────────────────────────────────────────────
 
 
@@ -195,7 +178,7 @@ const SelectFilter = styled.select`
 const SearchBtn = styled.button`
   padding: 0.5rem 1rem;
   background: ${palette.accent};
-  color: #fff;
+  color: ${palette.onAccent};
   font-size: 0.875rem;
   font-weight: 600;
   border: none;
@@ -315,7 +298,7 @@ const DiffGrid = styled.div`
 `;
 
 const DiffPanel = styled.div`
-  background: #f8f7f3;
+  background: ${palette.surfaceAlt};
   border: 1px solid ${palette.border};
   border-radius: 0.5rem;
   padding: 0.75rem;

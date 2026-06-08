@@ -2,8 +2,25 @@ import { Router, Request, Response } from 'express';
 import { receiptService } from '../services/receipt.service';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
+import { parsePagination } from '../utils/pagination';
 
 const router = Router();
+
+// Whitelist sort params before they reach the service → Prisma orderBy.
+// An invalid value (e.g. sortOrder=banana, sortBy=bogus) would otherwise throw
+// a Prisma error surfaced as HTTP 500. Mirrors the service's ALLOWED_SORT_FIELDS.
+const ALLOWED_SORT_BY = ['createdAt', 'totalAmount', 'date', 'status'] as const;
+type SafeSortBy = typeof ALLOWED_SORT_BY[number];
+
+function safeSortBy(value: unknown): SafeSortBy {
+  return (ALLOWED_SORT_BY as readonly string[]).includes(value as string)
+    ? (value as SafeSortBy)
+    : 'createdAt';
+}
+
+function safeSortOrder(value: unknown): 'asc' | 'desc' {
+  return value === 'asc' || value === 'desc' ? value : 'desc';
+}
 
 // ============================================
 // PROTECTED ROUTES (Authentication Required)
@@ -45,6 +62,10 @@ router.get(
       endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
     }
 
+    // Clamp untrusted pagination before it reaches the service → Prisma.
+    // Default page size 10, hard cap 100.
+    const { page, limit } = parsePagination(req.query, { defaultLimit: 10, maxLimit: 100 });
+
     const result = await receiptService.getReceipts({
       userId: req.user!.id,
       status: req.query.status as any,
@@ -53,10 +74,10 @@ router.get(
       maxAmount: req.query.maxAmount ? parseFloat(req.query.maxAmount as string) : undefined,
       startDate,
       endDate,
-      page: req.query.page ? parseInt(req.query.page as string) : 1,
-      limit: req.query.limit ? parseInt(req.query.limit as string) : 10,
-      sortBy: req.query.sortBy as any,
-      sortOrder: req.query.sortOrder as any
+      page,
+      limit,
+      sortBy: safeSortBy(req.query.sortBy),
+      sortOrder: safeSortOrder(req.query.sortOrder)
     });
 
     res.json(result);
@@ -85,6 +106,46 @@ router.get(
   authenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const result = await receiptService.getUserReceiptStats(req.user!.id);
+    res.json(result);
+  })
+);
+
+// ============================================
+// ADMIN ROUTES
+// ============================================
+
+/**
+ * GET /api/receipts/admin/all
+ * Get all receipts (admin only)
+ *
+ * B2 (r2m): This route MUST be registered before GET /:id. Express matches
+ * routes in registration order; if /:id came first, a request for
+ * /admin/all would be captured by /:id with id="admin" and return 404.
+ * The /:id route is defined below this block.
+ */
+router.get(
+  '/admin/all',
+  authenticate,
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(async (req: Request, res: Response) => {
+    // Clamp untrusted pagination before it reaches the service → Prisma.
+    // Default page size 10, hard cap 100.
+    const { page, limit } = parsePagination(req.query, { defaultLimit: 10, maxLimit: 100 });
+
+    const result = await receiptService.getReceipts({
+      status: req.query.status as any,
+      merchantName: req.query.merchantName as string,
+      minAmount: req.query.minAmount ? parseFloat(req.query.minAmount as string) : undefined,
+      maxAmount: req.query.maxAmount ? parseFloat(req.query.maxAmount as string) : undefined,
+      startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,
+      endDate: req.query.endDate ? new Date(req.query.endDate as string) : undefined,
+      page,
+      limit,
+      sortBy: safeSortBy(req.query.sortBy),
+      sortOrder: safeSortOrder(req.query.sortOrder),
+      includeInternal: true,
+    });
+
     res.json(result);
   })
 );
@@ -124,37 +185,6 @@ router.delete(
   authenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const result = await receiptService.deleteReceipt(req.user!.id, req.params.id);
-    res.json(result);
-  })
-);
-
-// ============================================
-// ADMIN ROUTES
-// ============================================
-
-/**
- * GET /api/receipts/admin/all
- * Get all receipts (admin only)
- */
-router.get(
-  '/admin/all',
-  authenticate,
-  authorize('ADMIN', 'SUPER_ADMIN'),
-  asyncHandler(async (req: Request, res: Response) => {
-    const result = await receiptService.getReceipts({
-      status: req.query.status as any,
-      merchantName: req.query.merchantName as string,
-      minAmount: req.query.minAmount ? parseFloat(req.query.minAmount as string) : undefined,
-      maxAmount: req.query.maxAmount ? parseFloat(req.query.maxAmount as string) : undefined,
-      startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,
-      endDate: req.query.endDate ? new Date(req.query.endDate as string) : undefined,
-      page: req.query.page ? parseInt(req.query.page as string) : 1,
-      limit: req.query.limit ? parseInt(req.query.limit as string) : 10,
-      sortBy: req.query.sortBy as any,
-      sortOrder: req.query.sortOrder as any,
-      includeInternal: true,
-    });
-
     res.json(result);
   })
 );

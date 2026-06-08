@@ -245,17 +245,21 @@ describe('BUG-2 — partnerHelp GET /tickets/:id exposes resolvedAt', () => {
   });
 
   it('consistency: all three ticket-detail endpoints surface both reopenedAt and resolvedAt', () => {
-    // help.routes.ts GET /tickets/:id
+    // help.routes.ts GET /tickets/:id — bound the slice to the handler (up to the
+    // next route) rather than a fixed char window, so added doc comments inside the
+    // handler cannot push the select fields out of view (brittle-window guard).
     const helpSrc    = readSource('../../src/routes/help.routes.ts');
     const helpStart  = helpSrc.indexOf('GET /api/help/tickets/:id');
-    const helpBlock  = helpSrc.slice(helpStart, helpStart + 600);
+    const helpEnd    = helpSrc.indexOf('GET /api/help/tickets/:id/replies', helpStart + 1);
+    const helpBlock  = helpSrc.slice(helpStart, helpEnd > helpStart ? helpEnd : helpSrc.length);
     expect(helpBlock).toMatch(/reopenedAt:\s*true/);
     expect(helpBlock).toMatch(/resolvedAt:\s*true/);
 
-    // adminHelp.routes.ts GET /:id
+    // adminHelp.routes.ts GET /:id — same handler-bounded slice (up to the next route).
     const adminSrc   = readSource('../../src/routes/adminHelp.routes.ts');
     const adminStart = adminSrc.indexOf('// GET /api/admin/help/:id — full ticket');
-    const adminBlock = adminSrc.slice(adminStart, adminStart + 800);
+    const adminEnd   = adminSrc.indexOf('// PATCH /api/admin/help/:id', adminStart + 1);
+    const adminBlock = adminSrc.slice(adminStart, adminEnd > adminStart ? adminEnd : adminSrc.length);
     expect(adminBlock).toMatch(/reopenedAt:\s*true/);
     expect(adminBlock).toMatch(/resolvedAt:\s*true/);
 

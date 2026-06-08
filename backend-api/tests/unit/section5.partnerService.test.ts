@@ -20,6 +20,16 @@ const mockTx: any = {
 
 const mockPrisma: any = {
   $transaction: jest.fn(async (fn) => fn(mockTx)),
+  // setPartnerStatus() reads the partner (post-commit) to fire the §9.1/Clash 6.6
+  // status-change notification. Returning null leaves notifyPartnerStatusChange unfired,
+  // which is correct for these tests (they assert the DB transition + audit row, not
+  // the notification). syncQrCodesForPartner's sticker.updateMany is non-fatal (retry+catch).
+  partner: {
+    findUnique: jest.fn(async () => null),
+  },
+  sticker: {
+    updateMany: jest.fn(async () => ({ count: 0 })),
+  },
 };
 
 jest.mock('../../src/lib/prisma', () => ({
@@ -89,9 +99,12 @@ describe('partnerService.setPartnerStatus', () => {
       changedById: 'admin-1',
     });
 
+    // M3 (§1.4): SUSPENDED now also stamps the canonical Inactive sub_type marker
+    // (ADMIN_SUSPENSION = Спрян) into statusReason, with the free-text reason
+    // appended after the marker.
     expect(mockTx.partner.update).toHaveBeenCalledWith({
       where: { id: 'p-1' },
-      data: { status: PartnerStatus.SUSPENDED },
+      data: { status: PartnerStatus.SUSPENDED, statusReason: 'ADMIN_SUSPENSION: Fraud investigation' },
     });
     expect(mockTx.partnerStatusChange.create).toHaveBeenCalledWith({
       data: {

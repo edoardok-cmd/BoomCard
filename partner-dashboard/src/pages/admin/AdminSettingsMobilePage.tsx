@@ -11,16 +11,8 @@ import {
 } from '../../services/adminSettings.service';
 import { describeApiError } from '../../utils/systemSettingsAudit';
 
-const palette = {
-  bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
-  text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
-  accent: '#c96442', accentSoft: '#f3e8de',
-  danger: '#b54327', dangerSoft: '#f4dcd2',
-  warning: '#b5803a', warningSoft: '#f5ead2',
-  success: '#4a7c59', successSoft: '#e6efe3',
-  info: '#2563eb', infoSoft: '#dbeafe',
-};
 
+import { palette } from '../../styles/adminTheme';
 const PageShell = styled.div`background: ${palette.bg}; min-height: calc(100vh - 4rem); padding: 2rem 2.5rem;`;
 const PageHeader = styled.div`margin-bottom: 2rem;`;
 const Eyebrow = styled.p`font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: ${palette.textSubtle}; margin-bottom: 0.25rem;`;
@@ -109,7 +101,7 @@ const ToggleSlider = styled.span`
     width: 1rem;
     left: 0.1875rem;
     bottom: 0.1875rem;
-    background: white;
+    background: ${palette.surface};
     border-radius: 50%;
     transition: transform 0.2s;
   }
@@ -129,7 +121,7 @@ const WarningBox = styled.div<{ $visible: boolean }>`
 const SaveBtn = styled.button`
   padding: 0.5625rem 1.25rem;
   background: ${palette.accent};
-  color: #fff;
+  color: ${palette.onAccent};
   border: none;
   border-radius: 0.5rem;
   font-size: 0.875rem;
@@ -231,7 +223,7 @@ const ErrorPanelDetail = styled.p`margin: 0; font-size: 0.8125rem; opacity: 0.85
 const RetryBtn = styled.button`
   padding: 0.5rem 1rem;
   background: ${palette.danger};
-  color: #fff;
+  color: ${palette.onAccent};
   border: none;
   border-radius: 0.5rem;
   font-size: 0.8125rem;
@@ -276,7 +268,7 @@ const CloseBtn = styled.button`
   padding: 0.5rem 1rem; background: ${palette.border}; border: none;
   border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600;
   cursor: pointer; color: ${palette.textMuted};
-  &:hover { background: #ddd; }
+  &:hover { background: ${palette.borderStrong}; }
 `;
 
 // ── History panel styles ─────────────────────────────────────────────────────

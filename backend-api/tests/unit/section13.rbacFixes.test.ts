@@ -111,6 +111,9 @@ jest.mock('../../src/services/ticketEmail.service', () => ({
   buildTicketHeaders: jest.fn(() => ({ messageId: '<mid@test>', headers: {} })),
   buildPlusReplyTo: jest.fn(() => 'support+abc1234@boomcard.bg'),
   computeShortRef: jest.fn(() => '#abc1234'),
+  // M6 (§1.7): the help list/detail routes map results through this to attach the
+  // canonical requestStatus. Pass-through is sufficient for these RBAC tests.
+  withCanonicalRequestStatus: jest.fn((t) => t),
 }));
 
 // Stub for adminAlerts.routes.ts
@@ -285,6 +288,16 @@ describe('§13 Fix 1 — Role default permission matrix', () => {
 
   it('RISK_REVIEW does NOT have control.rules.write (cannot change thresholds)', () => {
     expect(ROLE_DEFAULT_ALLOWS['RISK_REVIEW']).not.toContain('control.rules.write');
+  });
+
+  it('U3 — RISK_REVIEW HAS control.rules.write.bounded (bounded fraud-rule write)', () => {
+    expect(ROLE_DEFAULT_ALLOWS['RISK_REVIEW']).toContain('control.rules.write.bounded');
+  });
+
+  it('U3 — control.rules.write.bounded is in the PERMISSION_CATALOG (control category)', () => {
+    const perm = PERMISSION_CATALOG.find((p) => p.key === 'control.rules.write.bounded');
+    expect(perm).toBeDefined();
+    expect(perm!.category).toBe('control');
   });
 
   it('SUPPORT has no finance, settings, or cashback.write permissions', () => {
@@ -482,6 +495,50 @@ describe('§13 Fix 2 — fraud-rules HTTP permission gates', () => {
     m.fraudRule.findUnique.mockResolvedValueOnce({ id: 'rule-1', isActive: true });
     const res = await api.delete('/settings/fraud-rules/rule-1');
     expect(res.status).toBe(200);
+  });
+
+  // ── U3 — control.rules.write.bounded (RISK_REVIEW bounded write) ──────────────
+  // Bounded actors may create/edit within FRAUD_RULE_BOUNDS only, may not exceed
+  // bounds, and may not deactivate (DELETE) a rule.
+
+  it('U3 — POST /fraud-rules: 201 for bounded actor with an in-bounds value', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['control.rules.write.bounded'] });
+    const res = await api.post('/settings/fraud-rules').send({ tier: 'SYSTEM', dailyScanLimit: 50 });
+    expect(res.status).toBe(201);
+  });
+
+  it('U3 — POST /fraud-rules: 422 for bounded actor with an out-of-bounds value', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['control.rules.write.bounded'] });
+    // dailyScanLimit bound is 1–500; 999 exceeds it.
+    const res = await api.post('/settings/fraud-rules').send({ tier: 'SYSTEM', dailyScanLimit: 999 });
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatch(/outside the permitted bounds/i);
+  });
+
+  it('U3 — POST /fraud-rules: full control.rules.write MAY exceed bounds (201)', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['control.rules.write'] });
+    const res = await api.post('/settings/fraud-rules').send({ tier: 'SYSTEM', dailyScanLimit: 999 });
+    expect(res.status).toBe(201);
+  });
+
+  it('U3 — PATCH /fraud-rules/:id: 422 for bounded actor with an out-of-bounds value', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['control.rules.write.bounded'] });
+    m.fraudRule.findUnique.mockResolvedValueOnce({ id: 'rule-1', isActive: true });
+    const res = await api.patch('/settings/fraud-rules/rule-1').send({ autoApproveThreshold: 999 });
+    expect(res.status).toBe(422);
+  });
+
+  it('U3 — PATCH /fraud-rules/:id: 200 for bounded actor within bounds', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['control.rules.write.bounded'] });
+    m.fraudRule.findUnique.mockResolvedValueOnce({ id: 'rule-1', isActive: true });
+    const res = await api.patch('/settings/fraud-rules/rule-1').send({ autoApproveThreshold: 80 });
+    expect(res.status).toBe(200);
+  });
+
+  it('U3 — DELETE /fraud-rules/:id: 403 for bounded actor (cannot deactivate a rule)', async () => {
+    setMockUser({ role: 'ADMIN', permissions: ['control.rules.write.bounded'] });
+    const res = await api.delete('/settings/fraud-rules/rule-1');
+    expect(res.status).toBe(403);
   });
 
   it('GET /fraud-rules/:id/overrides — 403 for ADMIN with control.rules.read (override list is SUPER_ADMIN-only)', async () => {

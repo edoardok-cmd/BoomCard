@@ -4,6 +4,7 @@ import { isReviewCommentAppropriate } from '../utils/profanity-filter';
 import { logger } from '../utils/logger';
 import { prisma } from '../lib/prisma';
 import { notificationService } from './notification.service';
+import { detach } from '../utils/detach';
 
 export interface CreateReviewDTO {
   partnerId: string;
@@ -118,7 +119,7 @@ class ReviewsService {
   async getReviewById(id: string) {
     try {
       const review = await prisma.review.findUnique({
-        where: { id },
+        where: { id, status: ReviewStatus.APPROVED },
         include: {
           user: {
             select: {
@@ -462,12 +463,12 @@ class ReviewsService {
             .filter(Boolean)
             .join(' ')
             .trim() || undefined;
-          notificationService.notifyReviewReceived({
+          detach(notificationService.notifyReviewReceived({
             partnerUserId: review.partner.userId,
             reviewId: review.id,
             rating: review.rating,
             reviewerName,
-          }).catch((err) => logger.error('Failed to send review notification:', err));
+          }), (err) => logger.error('Failed to send review notification:', err));
         }
       }
 
@@ -550,7 +551,7 @@ class ReviewsService {
   /**
    * Mark review as helpful/not helpful
    */
-  async markHelpful(id: string, helpful: boolean) {
+  async markHelpful(id: string, helpful: boolean, voterUserId?: string) {
     try {
       const review = await prisma.review.findUnique({
         where: { id }
@@ -558,6 +559,11 @@ class ReviewsService {
 
       if (!review) {
         throw new AppError('Review not found', 404);
+      }
+
+      // Block self-voting.
+      if (voterUserId && review.userId === voterUserId) {
+        throw new AppError('You cannot vote on your own review', 400);
       }
 
       const updatedReview = await prisma.review.update({

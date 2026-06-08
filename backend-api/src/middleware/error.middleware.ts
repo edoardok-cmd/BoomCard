@@ -27,6 +27,9 @@ export const errorHandler = (
   let statusCode = 500;
   let message = 'Internal Server Error';
   let isOperational = false;
+  // Populated by the ZodError branch with per-field validation issues. AppError
+  // carries its own `details`; this local handles non-AppError validation errors.
+  let details: any;
 
   if (err instanceof AppError) {
     statusCode = err.statusCode;
@@ -43,6 +46,58 @@ export const errorHandler = (
     // Malformed multipart request (e.g. Content-Type without boundary)
     statusCode = 400;
     message = 'Malformed multipart request';
+    isOperational = true;
+  } else if (
+    (err as any).name === 'ZodError' && Array.isArray((err as any).issues)
+  ) {
+    // Zod validation failure from a bare schema.parse() call. Without this branch
+    // it falls through to the default 500 (+ stack in dev). A failed body/params
+    // validation is a client mistake → map to 400 with a clean message and the
+    // per-field issues in `details` (no stack leaked, since stack is 5xx-only below).
+    statusCode = 400;
+    message = 'Validation Error';
+    isOperational = true;
+    const issues = (err as any).issues as Array<{ path?: (string | number)[]; message?: string }>;
+    details = issues.map((i) => ({
+      field: Array.isArray(i.path) ? i.path.join('.') : undefined,
+      message: i.message,
+    }));
+  } else if ((err as any).name === 'PrismaClientValidationError') {
+    // Unvalidated/ill-typed input reached Prisma (e.g. NaN take/skip, wrong
+    // field type, unknown arg). Prisma throws PrismaClientValidationError, which
+    // is a CLIENT mistake, not a server fault — without this branch it falls
+    // through to the default 500 (+ stack in dev, which leaks the query shape).
+    // Map the whole class to a clean 400 with no stack and no Prisma internals.
+    statusCode = 400;
+    message = 'Invalid request parameters';
+    isOperational = true;
+  } else if ((err as any).name === 'PrismaClientKnownRequestError') {
+    // Known, coded Prisma faults. A subset are client-attributable and map to
+    // precise 4xx; everything else stays a 500 server fault (default below).
+    const code = (err as any).code;
+    if (code === 'P2025') {
+      // Record required for the operation was not found.
+      statusCode = 404;
+      message = 'Resource not found';
+      isOperational = true;
+    } else if (code === 'P2002') {
+      // Unique constraint violation — caller tried to create a duplicate.
+      statusCode = 409;
+      message = 'Resource already exists';
+      isOperational = true;
+    }
+    // Other P-codes (P2003 FK, connection errors, etc.) are not mapped here and
+    // remain 500 so they still get tracked/alerted as genuine faults.
+  } else if (
+    err instanceof SyntaxError &&
+    ('body' in err || (err as any).type === 'entity.parse.failed')
+  ) {
+    // Malformed JSON request body — body-parser throws a SyntaxError with a
+    // `body` property / type 'entity.parse.failed'. This is a client mistake,
+    // not a server fault, so map it to a clean 400 (no stack leak below since
+    // the stack is only attached for 5xx).
+    statusCode = 400;
+    message = 'Validation Error: Invalid JSON in request body';
     isOperational = true;
   }
 
@@ -65,7 +120,11 @@ export const errorHandler = (
   res.status(statusCode).json({
     error: message,
     ...(err instanceof AppError && err.details && { details: err.details }),
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+    ...(details && { details }),
+    // Only attach a stack trace for genuine server faults (5xx), and only in dev.
+    // 4xx client errors (validation/auth) must never leak absolute server paths,
+    // even in development — they are routine and the stack is noise + disclosure.
+    ...(process.env.NODE_ENV === 'development' && statusCode >= 500 && { stack: err.stack }),
   });
 };
 

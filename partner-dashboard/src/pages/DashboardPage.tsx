@@ -9,6 +9,14 @@ import { useCurrentPartner, usePartnerStats } from '../hooks/usePartners';
 import { useOffers } from '../hooks/useOffers';
 import { apiService } from '../services/api.service';
 
+// B3 fix (r2q): gate the "Manage Offers" Quick Action card behind the same
+// feature flag that controls the offer write routes (spec §8a — unspecified
+// feature). Without this gate, the card always appears for Active partners
+// regardless of whether the routes are registered, surfacing an unspecified
+// feature to end-users.
+const OFFER_MANAGEMENT_ENABLED = import.meta.env.VITE_OFFER_MANAGEMENT_ENABLED === 'true';
+import { useCurrencyDisplay, formatWithCurrency } from '../utils/currencyDisplay';
+
 const PageContainer = styled.div`
   max-width: 72rem;
   margin: 0 auto;
@@ -317,39 +325,9 @@ const ActivityList = styled.div`
   gap: 1rem;
 `;
 
-const ActivityItem = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem;
-  background: #f9fafb;
-  border-radius: 0.5rem;
-
-  [data-theme="dark"] & {
-    background: #111827;
-  }
-`;
-
-const ActivityContent = styled.div``;
-
-const ActivityTitle = styled.div`
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 0.25rem;
-
-  [data-theme="dark"] & {
-    color: #f9fafb;
-  }
-`;
-
-const ActivityMeta = styled.div`
-  font-size: 0.875rem;
-  color: #6b7280;
-
-  [data-theme="dark"] & {
-    color: #9ca3af;
-  }
-`;
+/* ActivityItem, ActivityContent, ActivityTitle, ActivityMeta removed —
+   the hardcoded-data partner activity section was replaced with a
+   spec-compliant empty state pending real API integration (MEDIUM-1 fix). */
 
 /* ── Consumer-only styled components ── */
 
@@ -446,48 +424,6 @@ const SubscriptionMetaValue = styled.span`
   }
 `;
 
-const GracePeriodBanner = styled(motion.div)`
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
-  border-radius: 1rem;
-  padding: 1rem 1.5rem;
-  margin-bottom: 2.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-
-  [data-theme="dark"] & {
-    background: rgba(234, 88, 12, 0.12);
-    border-color: rgba(234, 88, 12, 0.3);
-  }
-`;
-
-const GracePeriodText = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-`;
-
-const GracePeriodTitle = styled.span`
-  font-size: 0.9375rem;
-  font-weight: 700;
-  color: #c2410c;
-
-  [data-theme="dark"] & {
-    color: #fb923c;
-  }
-`;
-
-const GracePeriodDesc = styled.span`
-  font-size: 0.8125rem;
-  color: #92400e;
-
-  [data-theme="dark"] & {
-    color: #fdba74;
-  }
-`;
-
 const PlanBadge = styled.span<{ $plan: string }>`
   display: inline-flex;
   align-items: center;
@@ -497,7 +433,10 @@ const PlanBadge = styled.span<{ $plan: string }>`
   font-weight: 700;
   letter-spacing: 0.03em;
   background: ${({ $plan }) => {
-    if ($plan === 'PREMIUM') return 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)';
+    // Canonical SubscriptionPlan tokens: PREMIUM_MONTHLY (purple, top tier),
+    // PREMIUM_WEEKLY (violet), BASIC (blue). Anything else falls back to grey.
+    if ($plan === 'PREMIUM_MONTHLY') return 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)';
+    if ($plan === 'PREMIUM_WEEKLY') return 'linear-gradient(135deg, #6d28d9 0%, #8b5cf6 100%)';
     if ($plan === 'BASIC') return 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)';
     return 'linear-gradient(135deg, #374151 0%, #6b7280 100%)';
   }};
@@ -641,6 +580,56 @@ const EmptyMessage = styled.p`
   }
 `;
 
+/* ── Partner status banners (spec §5.1, §11.2, §14.1) ── */
+
+const BlockedBanner = styled(motion.div)`
+  background: #fff1f2;
+  border: 1.5px solid #fca5a5;
+  border-radius: 1rem;
+  padding: 2rem;
+  text-align: center;
+  margin-bottom: 2rem;
+`;
+
+const BlockedTitle = styled.h2`
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #991b1b;
+  margin-bottom: 0.5rem;
+`;
+
+const BlockedDesc = styled.p`
+  font-size: 0.9375rem;
+  color: #7f1d1d;
+`;
+
+const ErrorBanner = styled(motion.div)`
+  background: #fffbeb;
+  border: 1.5px solid #fcd34d;
+  border-radius: 0.75rem;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+`;
+
+const ErrorMessage = styled.p`
+  font-size: 0.9375rem;
+  color: #78350f;
+`;
+
+const ReadOnlyBanner = styled(motion.div)`
+  background: #fef3c7;
+  border: 1.5px solid #f59e0b;
+  border-radius: 0.75rem;
+  padding: 0.875rem 1.25rem;
+  margin-bottom: 1.5rem;
+`;
+
+const ReadOnlyBannerText = styled.p`
+  font-size: 0.875rem;
+  color: #92400e;
+  margin: 0;
+`;
+
 /* ── Types ── */
 
 interface DashboardReceipt {
@@ -656,7 +645,10 @@ interface DashboardSubscription {
   plan: string;
   status: string;
   currentPeriodEnd?: string;
-  gracePeriodEndsAt?: string | null;
+  // `gracePeriodEndsAt` removed: it is a phantom field — /dashboard/me never
+  // returns it and the Subscription schema has no such column (SubscriptionPage
+  // already documented this). The PAST_DUE grace banner that depended on it has
+  // been removed accordingly.
   retryAttempt?: number;
 }
 
@@ -677,27 +669,38 @@ interface DashboardData {
 const DashboardPage: React.FC = () => {
   const { user } = useAuth();
   const { language, t } = useLanguage();
+  // MEDIUM-4: currency display mode — resolves to EUR_ONLY post-2026-01-01 (Clash 12.1).
+  const currencyMode = useCurrencyDisplay();
 
-  const isPartner = user?.role === 'partner' || user?.role === 'admin';
+  // MEDIUM-1: Admin users see a different dashboard view and must NOT trigger /partners/me.
+  // Only users with role === 'partner' are actual partner accounts.
+  const isPartner = user?.role === 'partner';
 
-  // Partner data
-  const { data: partnerData, isLoading: isLoadingPartner, isError: isPartnerError } = useCurrentPartner();
+  // MEDIUM-1 fix: guard useCurrentPartner with isPartner so the query never fires
+  // for consumer or admin users (prevents spurious /partners/me requests).
+  const { data: partnerData, isLoading: isLoadingPartner, isError: isPartnerError } = useCurrentPartner(isPartner);
   const { data: stats, isLoading: isLoadingStats, isError: isStatsError } = usePartnerStats(partnerData?.id);
+  // S2 fix: add enabled guard so the query never fires for consumer/admin users.
+  // Without it, partnerData is null for non-partners and the query fires with
+  // partnerId=undefined, sending spurious API requests on every consumer load.
   const { isLoading: isLoadingOffers, isError: isOffersError } = useOffers({
     partnerId: partnerData?.id,
     limit: 10,
-    active: true
+    active: true,
+    enabled: isPartner && !!partnerData?.id,
   });
 
+  // INFO-1 fix (r2q): removed non-spec fields (activeOffers, totalOffers,
+  // averageRating, totalReviews) — spec §5.3 KPIs are visits, transactions,
+  // turnover, commission %, and expected amounts only.
   const fallbackStats = {
-    activeOffers: 0,
-    totalOffers: 0,
     totalRedemptions: 0,
     monthlyRedemptions: 0,
     revenue: 0,
-    averageRating: 0,
-    totalReviews: 0,
     totalVenues: 0,
+    // §5.3 extended KPIs (BC-PARTNER-PORTAL-SCOPE-B). Undefined → render "—".
+    expectedAmount: undefined as number | undefined,
+    totalVisits: undefined as number | undefined,
   };
 
   const displayStats = stats || (isStatsError || isPartnerError ? fallbackStats : null);
@@ -705,6 +708,39 @@ const DashboardPage: React.FC = () => {
   const isLoading = (isLoadingPartner && !isPartnerError) ||
                     (isLoadingStats && !isStatsError && !!partnerData?.id) ||
                     (isLoadingOffers && !isOffersError && !!partnerData?.id);
+
+  // MEDIUM-2: when partner fetch fails and no data is available, we cannot
+  // determine the actual partner status. Never fall through to the full
+  // dashboard layout in this state — show only an error/retry message.
+  const isStatusUnknown = isPartner && !isLoading && isPartnerError && !partnerData;
+
+  // MEDIUM-3: partner account status (§14.1).
+  // The canonical partner_account_status collapses PAUSED, SUSPENDED and INACTIVE
+  // all to a single 'Inactive' state in the /partners/me response. The frontend
+  // genuinely cannot distinguish a voluntary pause (Пауза) from an admin-imposed
+  // suspension (Спрян): the backend only ever sets partnerRestriction = 'SUSPENDED'
+  // (for SUSPENDED), and never emits a PAUSED sub-status. Asserting 'Спрян' here
+  // would mislabel a voluntarily-paused partner, so we use the canonical neutral
+  // 'Inactive/Неактивен' wording instead of guessing. If the backend ever provides
+  // an explicit sub-status, this is the place to surface it — until then, stay
+  // accurate and read-only.
+  const partnerStatusRaw = (partnerData as { status?: string } | undefined)?.status?.toUpperCase();
+  const isInactivePartner = isPartner && (partnerStatusRaw === 'INACTIVE' || partnerStatusRaw === 'PAUSED' || partnerStatusRaw === 'SUSPENDED');
+  const isArchivedPartner = isPartner && partnerStatusRaw === 'ARCHIVED';
+  const partnerStatusLabel = (): string => {
+    if (!partnerStatusRaw) return '—';
+    if (partnerStatusRaw === 'ACTIVE') return 'Активен';
+    if (partnerStatusRaw === 'ARCHIVED') return 'Архивиран';
+    // PAUSED, SUSPENDED and INACTIVE are indistinguishable at the FE (the backend
+    // collapses them to 'Inactive' and never emits a PAUSED sub-status). Do NOT
+    // guess 'Спрян' vs 'Пауза' — surface the canonical neutral label.
+    if (partnerStatusRaw === 'SUSPENDED' || partnerStatusRaw === 'PAUSED' || partnerStatusRaw === 'INACTIVE') {
+      return language === 'bg' ? 'Неактивен' : 'Inactive';
+    }
+    // Any other raw value (e.g. REJECTED/PENDING) canonicalizes to Inactive for
+    // display — never surface a raw uppercase enum token to the partner.
+    return language === 'bg' ? 'Неактивен' : 'Inactive';
+  };
 
   // Consumer dashboard data
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -728,8 +764,13 @@ const DashboardPage: React.FC = () => {
     });
   };
 
+  /**
+   * MEDIUM-4 fix: currency display (§7.3, Clash 12.1).
+   * Uses the currency mode resolved from `useCurrencyDisplay()` above.
+   * Post-transition (2026-01-01) this returns EUR_ONLY.
+   */
   const formatCurrency = (amount: number) =>
-    `${amount.toFixed(2)} лв`;
+    formatWithCurrency(amount, currencyMode, language === 'bg' ? 'bg' : 'en');
 
   const statusLabel = (status: string) => {
     const map: Record<string, { en: string; bg: string }> = {
@@ -745,12 +786,18 @@ const DashboardPage: React.FC = () => {
     return map[status]?.[language === 'bg' ? 'bg' : 'en'] ?? status;
   };
 
-  const graceDaysLeft = (() => {
-    const ends = dashboardData?.subscription.gracePeriodEndsAt;
-    if (!ends) return null;
-    const diff = new Date(ends).getTime() - Date.now();
-    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-  })();
+  // Canonical SubscriptionPlan enum (PREMIUM_WEEKLY | BASIC | PREMIUM_MONTHLY)
+  // → customer-facing display name. Cross-checked against the backend Plans
+  // table displayName (getPlanBenefits maps PREMIUM_WEEKLY→LIGHT='Premium
+  // Weekly', PREMIUM_MONTHLY→PREMIUM='Premium Monthly'). No legacy LIGHT/PREMIUM.
+  const planLabel = (plan: string) => {
+    const map: Record<string, { en: string; bg: string }> = {
+      PREMIUM_WEEKLY:  { en: 'Premium Weekly',  bg: 'Premium седмичен' },
+      BASIC:           { en: 'Basic',           bg: 'Basic' },
+      PREMIUM_MONTHLY: { en: 'Premium Monthly', bg: 'Premium месечен' },
+    };
+    return map[plan]?.[language === 'bg' ? 'bg' : 'en'] ?? plan;
+  };
 
   const showUpgradeBanner = dashboardData?.showUpgradePrompt ?? false;
 
@@ -765,143 +812,282 @@ const DashboardPage: React.FC = () => {
         </Subtitle>
       </PageHeader>
 
-      {/* Partner Dashboard */}
+      {/* Partner Dashboard — spec §5.3 */}
       {isPartner ? (
         <>
-          <StatsGrid>
-            <StatCard
-              initial={{ opacity: 0, y: 20 }}
+          {/* LOW-1 fix (r2q): show a loading indicator first so an Archived partner
+              does not see the KPI skeleton before BlockedBanner replaces it. */}
+          {isLoading ? (
+            <EmptyMessage>...</EmptyMessage>
+          ) : /* MEDIUM-2: Archived partner — zero portal access (§1.2, §5.1, §11.2). */
+          isArchivedPartner ? (
+            <BlockedBanner
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35 }}
+            >
+              <BlockedTitle>Акаунтът е архивиран</BlockedTitle>
+              <BlockedDesc>
+                Достъпът до партньорския портал е прекратен. За повече информация се свържете с BoomCard на office@boomcard.bg.
+              </BlockedDesc>
+            </BlockedBanner>
+          ) : isStatusUnknown ? (
+            /* MEDIUM-2: partner data fetch failed — show only the error banner, never fall
+               through to the KPI/Quick Actions layout (partner could be Inactive/Archived). */
+            <ErrorBanner
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3 }}
             >
-              <StatLabel>Active Offers</StatLabel>
-              <StatValue>{isLoading ? '...' : displayStats?.activeOffers || 0}</StatValue>
-              <StatChange $positive>
-                {displayStats?.totalOffers || 0} total
-              </StatChange>
-            </StatCard>
+              <ErrorMessage>
+                Данните за профила не можаха да се заредят. Моля, опреснете страницата.
+              </ErrorMessage>
+            </ErrorBanner>
+          ) : (
+            <>
+              {/* MEDIUM-3: Partner account status badge (§5.3, §14.1).
+                  Distinguishes SUSPENDED ('Спрян') from PAUSED ('Пауза'). */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#6b7280' }}>
+                  Статус на акаунта:
+                </span>
+                <span style={{
+                  padding: '0.25rem 0.75rem',
+                  borderRadius: '9999px',
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  background: partnerStatusRaw === 'ACTIVE' ? '#d1fae5' : '#fee2e2',
+                  color: partnerStatusRaw === 'ACTIVE' ? '#065f46' : '#991b1b',
+                }}>
+                  {partnerStatusLabel()}
+                </span>
+              </div>
 
-            <StatCard
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.1 }}
-            >
-              <StatLabel>Total Redemptions</StatLabel>
-              <StatValue>{isLoading ? '...' : (displayStats?.totalRedemptions || 0).toLocaleString()}</StatValue>
-              <StatChange $positive>
-                {displayStats?.monthlyRedemptions || 0} this month
-              </StatChange>
-            </StatCard>
+              {/* Inactive (Пауза/Спрян) read-only notice (§5.1, §11.2) */}
+              {isInactivePartner && (
+                <ReadOnlyBanner
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <ReadOnlyBannerText>
+                    Акаунтът е в режим само за четене. Нови транзакции не се приемат. За съдействие се свържете с BoomCard.
+                  </ReadOnlyBannerText>
+                </ReadOnlyBanner>
+              )}
 
-            <StatCard
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.2 }}
-            >
-              <StatLabel>Revenue Generated</StatLabel>
-              <StatValue>{isLoading ? '...' : `${(displayStats?.revenue || 0).toLocaleString()} лв`}</StatValue>
-              <StatChange $positive>
-                From all offers
-              </StatChange>
-            </StatCard>
+              {/* KPI Cards — spec §5.3: visits, transactions, turnover,
+                  contracted commission %, expected amounts.
+                  HIGH-2 fix (r2q): replaced non-spec KPIs (Active Offers,
+                  Customer Rating) with the spec-mandated fields.
+                  Fields not yet exposed by /partners/stats API are shown as
+                  "—" until the backend endpoint is extended. */}
+              <StatsGrid>
+                {/* §5.3 KPI 1: Number of visits */}
+                <StatCard
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <StatLabel>
+                    {language === 'bg' ? 'Брой посещения' : 'Visits'}
+                  </StatLabel>
+                  <StatValue>
+                    {isLoading ? '...' : (
+                      displayStats?.totalVisits !== undefined
+                        ? displayStats.totalVisits.toLocaleString()
+                        : '—'
+                    )}
+                  </StatValue>
+                  <StatChange $positive>
+                    {language === 'bg' ? 'Общо посещения' : 'Total visits'}
+                  </StatChange>
+                </StatCard>
 
-            <StatCard
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.3 }}
-            >
-              <StatLabel>Customer Rating</StatLabel>
-              <StatValue>{isLoading ? '...' : `${displayStats?.averageRating || 0} ⭐`}</StatValue>
-              <StatChange>
-                Based on {displayStats?.totalReviews || 0} reviews
-              </StatChange>
-            </StatCard>
-          </StatsGrid>
+                {/* §5.3 KPI 2: Number of transactions */}
+                <StatCard
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.1 }}
+                >
+                  <StatLabel>
+                    {language === 'bg' ? 'Брой транзакции' : 'Transactions'}
+                  </StatLabel>
+                  <StatValue>
+                    {isLoading ? '...' : (displayStats?.totalRedemptions || 0).toLocaleString()}
+                  </StatValue>
+                  <StatChange $positive>
+                    {displayStats?.monthlyRedemptions || 0} {language === 'bg' ? 'този месец' : 'this month'}
+                  </StatChange>
+                </StatCard>
 
-          <SectionHeader>
-            <SectionTitle>Quick Actions</SectionTitle>
-          </SectionHeader>
+                {/* §5.3 KPI 3: Cashback paid.
+                    MEDIUM fix (re-audit): this card was labelled "Оборот / Turnover"
+                    but the value (displayStats.revenue) is the sum of cashbackAmount
+                    (cashback paid out), NOT gross transaction volume. Spec §5.3 defines
+                    turnover as gross volume, which the backend does not provide here.
+                    Relabelled to describe what the figure actually is; no turnover
+                    value is invented. */}
+                <StatCard
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.2 }}
+                >
+                  <StatLabel>
+                    {language === 'bg' ? 'Изплатен кешбек' : 'Cashback paid'}
+                  </StatLabel>
+                  <StatValue>
+                    {isLoading ? '...' : formatCurrency(displayStats?.revenue || 0)}
+                  </StatValue>
+                  <StatChange $positive>
+                    {language === 'bg' ? 'От всички транзакции' : 'From all transactions'}
+                  </StatChange>
+                </StatCard>
 
-          <CardsGrid>
-            <BoomCardItem
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-              onClick={() => window.location.href = '/partners/offers'}
-              style={{ cursor: 'pointer' }}
-            >
-              <ActionCardImage $imageUrl="https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=400&h=400&fit=crop" />
-              <CardBody>
-                <div style={{ textAlign: 'center', padding: '2rem 0' }}>
-                  <VenueName>Manage Offers</VenueName>
-                  <VenueCategory>View, edit, and create new offers</VenueCategory>
-                  <div style={{ marginTop: '1rem' }}>
-                    <Button variant="primary" size="medium">Go to Offers</Button>
-                  </div>
-                </div>
-              </CardBody>
-            </BoomCardItem>
+                {/* §5.3 KPI 4: Contracted commission % */}
+                <StatCard
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.3 }}
+                >
+                  <StatLabel>
+                    {language === 'bg' ? 'Договорена комисионна' : 'Contracted Commission'}
+                  </StatLabel>
+                  <StatValue>
+                    {isLoading ? '...' : (() => {
+                      // /partners/me returns the contracted rate in `discountRate`,
+                      // but for most partners that column is null and the backend
+                      // exposes the resolved value as `effectiveDiscountRate`
+                      // (= discountRate ?? partnerType.maxDiscountRate). Prefer the
+                      // contracted rate when set, otherwise fall back to the
+                      // effective rate so the KPI is not perpetually "—".
+                      const pd = partnerData as { discountRate?: number | null; effectiveDiscountRate?: number | null } | undefined;
+                      const rate = pd?.discountRate ?? pd?.effectiveDiscountRate;
+                      return rate !== undefined && rate !== null ? `${rate}%` : '—';
+                    })()}
+                  </StatValue>
+                  <StatChange>
+                    {language === 'bg' ? 'Договорен процент' : 'Agreed rate'}
+                  </StatChange>
+                </StatCard>
 
-            <BoomCardItem
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.1 }}
-              onClick={() => window.location.href = '/analytics'}
-              style={{ cursor: 'pointer' }}
-            >
-              <ActionCardImage $imageUrl="https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=400&fit=crop" />
-              <CardBody>
-                <div style={{ textAlign: 'center', padding: '2rem 0' }}>
-                  <VenueName>View Analytics</VenueName>
-                  <VenueCategory>Track performance and insights</VenueCategory>
-                  <div style={{ marginTop: '1rem' }}>
-                    <Button variant="primary" size="medium">View Analytics</Button>
-                  </div>
-                </div>
-              </CardBody>
-            </BoomCardItem>
+                {/* §5.3 KPI 5: Expected amounts */}
+                <StatCard
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.4 }}
+                >
+                  <StatLabel>
+                    {language === 'bg' ? 'Очаквани суми' : 'Expected Amounts'}
+                  </StatLabel>
+                  <StatValue>
+                    {isLoading ? '...' : (
+                      displayStats?.expectedAmount !== undefined
+                        ? formatCurrency(displayStats.expectedAmount)
+                        : '—'
+                    )}
+                  </StatValue>
+                  <StatChange>
+                    {language === 'bg' ? 'Очаквана фактура' : 'Expected invoice'}
+                  </StatChange>
+                </StatCard>
+              </StatsGrid>
 
-            <BoomCardItem
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.2 }}
-              onClick={() => window.location.href = '/profile'}
-              style={{ cursor: 'pointer' }}
-            >
-              <ActionCardImage $imageUrl="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=400&h=400&fit=crop" />
-              <CardBody>
-                <div style={{ textAlign: 'center', padding: '2rem 0' }}>
-                  <VenueName>Business Profile</VenueName>
-                  <VenueCategory>Update your business information</VenueCategory>
-                  <div style={{ marginTop: '1rem' }}>
-                    <Button variant="primary" size="medium">Edit Profile</Button>
-                  </div>
-                </div>
-              </CardBody>
-            </BoomCardItem>
-          </CardsGrid>
+              {/* Quick Actions — hidden for Inactive partners (§5.1, §11.2). */}
+              {!isInactivePartner && (
+                <>
+                  <SectionHeader>
+                    <SectionTitle>{t('dashboard.quickActions') || (language === 'bg' ? 'Бързи действия' : 'Quick Actions')}</SectionTitle>
+                  </SectionHeader>
 
-          <SectionHeader style={{ marginTop: '2rem' }}>
-            <SectionTitle>Recent Offer Activity</SectionTitle>
-          </SectionHeader>
+                  <CardsGrid>
+                    {/* B3 fix (r2q): spec §8a prohibits surfacing offer management to
+                        partners without an approved product spec. Gate this card behind
+                        the same feature flag that controls the /partners/offers/* routes.
+                        When the flag is false (the default in all envs), neither the card
+                        nor the routes exist from the partner's perspective. */}
+                    {OFFER_MANAGEMENT_ENABLED && (
+                      <BoomCardItem
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3 }}
+                        onClick={() => window.location.href = '/partners/offers'}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <ActionCardImage $imageUrl="https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=400&h=400&fit=crop" />
+                        <CardBody>
+                          <div style={{ textAlign: 'center', padding: '2rem 0' }}>
+                            <VenueName>{t('dashboard.manageOffers') || (language === 'bg' ? 'Управление на оферти' : 'Manage Offers')}</VenueName>
+                            <VenueCategory>View, edit, and create new offers</VenueCategory>
+                            <div style={{ marginTop: '1rem' }}>
+                              <Button variant="primary" size="medium">Go to Offers</Button>
+                            </div>
+                          </div>
+                        </CardBody>
+                      </BoomCardItem>
+                    )}
 
-          <ActivityContainer>
-            <ActivityList>
-              {[
-                { offer: '20% Off All Main Courses', redemptions: 45, time: '2 hours ago' },
-                { offer: 'Free Dessert with Any Meal', redemptions: 23, time: '5 hours ago' },
-                { offer: 'Summer Special - 30% Off', redemptions: 67, time: 'Yesterday' },
-              ].map((activity, index) => (
-                <ActivityItem key={index}>
-                  <ActivityContent>
-                    <ActivityTitle>{activity.offer}</ActivityTitle>
-                    <ActivityMeta>{activity.redemptions} redemptions • {activity.time}</ActivityMeta>
-                  </ActivityContent>
-                  <Button variant="ghost" size="small">View Details</Button>
-                </ActivityItem>
-              ))}
-            </ActivityList>
-          </ActivityContainer>
+                    <BoomCardItem
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, delay: 0.1 }}
+                      onClick={() => window.location.href = '/analytics'}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <ActionCardImage $imageUrl="https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=400&fit=crop" />
+                      <CardBody>
+                        <div style={{ textAlign: 'center', padding: '2rem 0' }}>
+                          <VenueName>{t('dashboard.viewAnalytics') || (language === 'bg' ? 'Анализи' : 'View Analytics')}</VenueName>
+                          <VenueCategory>{t('dashboard.analyticsSubtitle') || (language === 'bg' ? 'Проследявайте резултати и анализи' : 'Track performance and insights')}</VenueCategory>
+                          <div style={{ marginTop: '1rem' }}>
+                            <Button variant="primary" size="medium">{t('dashboard.viewAnalytics') || (language === 'bg' ? 'Анализи' : 'View Analytics')}</Button>
+                          </div>
+                        </div>
+                      </CardBody>
+                    </BoomCardItem>
+
+                    {/* Profile navigation — view only. Critical fields require a Change Request (§5.4). */}
+                    <BoomCardItem
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, delay: 0.2 }}
+                      onClick={() => window.location.href = '/profile'}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <ActionCardImage $imageUrl="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=400&h=400&fit=crop" />
+                      <CardBody>
+                        <div style={{ textAlign: 'center', padding: '2rem 0' }}>
+                          <VenueName>{t('dashboard.businessProfile') || (language === 'bg' ? 'Бизнес профил' : 'Business Profile')}</VenueName>
+                          {/* "Business Profile" — edits require a Change Request (§5.4) */}
+                          <VenueCategory>{t('dashboard.businessProfileSubtitle') || (language === 'bg' ? 'Преглед на бизнес информацията' : 'View business information')}</VenueCategory>
+                          <div style={{ marginTop: '1rem' }}>
+                            <Button variant="primary" size="medium">{t('dashboard.viewProfile') || (language === 'bg' ? 'Преглед на профил' : 'View Profile')}</Button>
+                          </div>
+                        </div>
+                      </CardBody>
+                    </BoomCardItem>
+                  </CardsGrid>
+                </>
+              )}
+
+              <SectionHeader style={{ marginTop: isInactivePartner ? 0 : '2rem' }}>
+                <SectionTitle>
+                  {language === 'bg' ? 'Последна активност' : 'Recent Activity'}
+                </SectionTitle>
+              </SectionHeader>
+
+              {/* MEDIUM-1 fix (r2q): removed hardcoded placeholder entries.
+                  Spec §5.3 requires "most recent transactions or most recent
+                  report changes." Real data integration is pending. */}
+              <ActivityContainer>
+                <EmptyMessage>
+                  {language === 'bg'
+                    ? 'Последните транзакции ще се покажат тук след интеграция.'
+                    : 'Recent transactions will appear here once the integration is complete.'}
+                </EmptyMessage>
+              </ActivityContainer>
+            </>
+          )}
         </>
       ) : (
         <>
@@ -960,8 +1146,8 @@ const DashboardPage: React.FC = () => {
             transition={{ duration: 0.3, delay: 0.15 }}
           >
             <SubscriptionHeader>
-              <PlanBadge $plan={dashboardData?.subscription.plan ?? 'LIGHT'}>
-                {isLoadingDashboard ? '...' : (dashboardData?.subscription.plan ?? 'LIGHT')}
+              <PlanBadge $plan={dashboardData?.subscription.plan ?? 'BASIC'}>
+                {isLoadingDashboard ? '...' : planLabel(dashboardData?.subscription.plan ?? 'BASIC')}
               </PlanBadge>
               <StatusBadge $status={dashboardData?.subscription.status ?? 'ACTIVE'}>
                 {isLoadingDashboard ? '...' : statusLabel(dashboardData?.subscription.status ?? 'ACTIVE')}
@@ -980,25 +1166,9 @@ const DashboardPage: React.FC = () => {
             )}
           </SubscriptionCard>
 
-          {dashboardData?.subscription.status === 'PAST_DUE' && graceDaysLeft !== null && (
-            <GracePeriodBanner
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <GracePeriodText>
-                <GracePeriodTitle>⚠ {t('dashboard.gracePeriodTitle')}</GracePeriodTitle>
-                <GracePeriodDesc>
-                  {graceDaysLeft > 0
-                    ? t('dashboard.gracePeriodDays').replace('{days}', String(graceDaysLeft))
-                    : t('dashboard.gracePeriodExpired')}
-                </GracePeriodDesc>
-              </GracePeriodText>
-              <Link to="/subscription">
-                <Button variant="primary" size="small">{t('dashboard.gracePeriodCta')}</Button>
-              </Link>
-            </GracePeriodBanner>
-          )}
+          {/* PAST_DUE grace banner removed: it depended on the phantom
+              `gracePeriodEndsAt` field that /dashboard/me never returns, so the
+              countdown could never be computed and the banner never rendered. */}
 
           {/* Recent Transactions */}
           <SectionHeader>

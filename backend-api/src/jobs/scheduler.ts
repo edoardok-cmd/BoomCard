@@ -13,6 +13,7 @@
  *   pending-subscription-cleanup     — 30 3 * * *   (3:30 AM daily)
  *   menu-expiry                      — 0 5 * * *    (5:00 AM daily)
  *   trial-pending-cashback           — 30 5 * * *   (5:30 AM daily)
+ *   auto-payout                      — 0 6 * * *    (6:00 AM daily — §7.1 nightly threshold payout initiation)
  *   paysera-renewal                  — 0 6 * * *    (6:00 AM UTC daily)
  *   renewal-reminders                — 0 7 * * *    (7:00 AM daily — auto-renew OFF 3d/1d/0d cadence)
  *   stale-session-cleanup            — 15 7 * * *   (7:15 AM daily)
@@ -27,12 +28,14 @@
  *   inactive-user-nudge              — 30 4 * * *   (4:30 AM daily — 30-day inactivity automations)
  *   activation-link-expiry-reminder  — 30 10 * * *  (10:30 AM daily — §8.3 email + admin alert 24h before expiry)
  *   partner-sla-escalation           — 0 * * * *    (every hour — §5.1 admin alert for partner applications past 24h SLA)
+ *   auto-approve-sweep               — 0 * * * *    (every hour — §2.2/§3.4/§8.1 re-attempt Low/Medium auto-approval for stranded MANUAL_REVIEW scans)
  *   ticket-auto-close                — 0 23 * * *   (11:00 PM daily — §11.4 auto-close RESOLVED tickets after 7 days)
  */
 
 import cron from 'node-cron';
-import { WalletTransactionType, WalletTransactionStatus, SubscriptionStatus, SubscriptionPlan, CashbackEntryStatus } from '@prisma/client';
+import { WalletTransactionType, WalletTransactionStatus, SubscriptionStatus, SubscriptionPlan, CashbackEntryStatus, PartnerRequestStatus, ScanStatus, StickerStatus, PartnerStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { stickerService } from '../services/sticker.service';
 import { logger } from '../utils/logger';
 import { emailService } from '../services/email.service';
 import { notificationService } from '../services/notification.service';
@@ -47,6 +50,7 @@ import { CASHBACK_VALIDITY_DAYS } from '../constants/receipt.constants';
 import { writeAudit } from '../middleware/audit.middleware';
 import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo } from '../services/ticketEmail.service';
 import { expireStalePendingCashback } from '../services/cashbackLifecycle.service';
+import { detach } from '../utils/detach';
 
 const CASHBACK_EXPIRY_BATCH = 10;
 
@@ -270,12 +274,11 @@ async function runCashbackExpiry(): Promise<void> {
     processedWallets >= CASHBACK_EXPIRY_ANOMALY_WALLETS ||
     totalExpiredBGN >= CASHBACK_EXPIRY_ANOMALY_BGN
   ) {
-    notificationService
+    detach(notificationService
       .notifyAdminCashbackExpiryAnomaly({
         walletsAffected: processedWallets,
         totalExpiredBGN,
-      })
-      .catch((err) => logger.error('[cashback-expiry] Failed to notify admin anomaly:', err));
+      }), (err) => logger.error('[cashback-expiry] Failed to notify admin anomaly:', err));
   }
 }
 
@@ -399,6 +402,119 @@ async function expireCancelledSubscriptions(): Promise<void> {
   logger.info(
     `[subscription-expiry] Done — expired ${processed} subscription(s)` +
     (failed > 0 ? `, ${failed} failed` : '')
+  );
+
+  // M2 / Spec §1.2 + Clash 2.1/2.2: "Cancelled (post period end) → Auto-transitions
+  // to Expired." A subscription stored as CANCELLED whose paid period has now elapsed
+  // must auto-transition to EXPIRED — for ALL providers (Stripe handleSubscriptionDeleted
+  // stores user-cancels as CANCELLED with a future currentPeriodEnd; the Paysera sweep
+  // above also lands subs in CANCELLED). Previously nothing flipped these stored CANCELLED
+  // rows to EXPIRED, so post-period cancellations lingered as CANCELLED in reports and the
+  // stored-status payout gate. The scan gate already keys on currentPeriodEnd (sticker
+  // .service.ts) so this does not change scan behavior; it only reconciles the persisted
+  // status. In-flight payouts are unaffected (earned-rights model operates on cashback
+  // entries, not subscription_status).
+  const postPeriodCancelled = await prisma.subscription.findMany({
+    where: {
+      status: SubscriptionStatus.CANCELLED,
+      currentPeriodEnd: { lt: now },
+    },
+    select: { id: true, userId: true },
+  });
+  if (postPeriodCancelled.length > 0) {
+    logger.info(
+      `[subscription-expiry] ${postPeriodCancelled.length} post-period CANCELLED subscription(s) → EXPIRED (§1.2)`
+    );
+    let expiredCount = 0;
+    for (const sub of postPeriodCancelled) {
+      try {
+        // Guard the transition on the row still being CANCELLED + past period to
+        // avoid racing a concurrent webhook that already moved it.
+        const result = await prisma.subscription.updateMany({
+          where: {
+            id: sub.id,
+            status: SubscriptionStatus.CANCELLED,
+            currentPeriodEnd: { lt: new Date() },
+          },
+          data: { status: SubscriptionStatus.EXPIRED },
+        });
+        if (result.count > 0) expiredCount++;
+      } catch (err) {
+        logger.error(`[subscription-expiry] Failed to expire post-period CANCELLED sub ${sub.id}:`, err);
+      }
+    }
+    logger.info(`[subscription-expiry] Transitioned ${expiredCount} CANCELLED → EXPIRED`);
+  }
+}
+
+// ── QR code reconciliation ────────────────────────────────────────────────────
+// H3 / Spec §1.4 / §3.6 / §8.1 rule 5: "Partner status change to Inactive or Archived
+// → ALL QR codes automatically deactivate (backend-enforced)." The per-transition
+// sync (partner.service.syncQrCodesForPartner) runs OUTSIDE the status-change
+// transaction and fails soft after a bounded retry, so a transient DB fault can leave
+// a sticker stale-ACTIVE on a non-operational partner. The scan-time gate
+// (isPartnerOperationallyActive in sticker.service) is the authoritative protection —
+// a stale-ACTIVE sticker on a non-active partner STILL cannot be scanned — but the
+// sticker.status column drifts from the partner state for display/reporting purposes.
+//
+// This is the reconciliation job promised in partner.service.ts: it sweeps every
+// non-terminal sticker (ACTIVE / PROCESSING / PENDING) whose owning partner is NOT
+// operationally active and flips it to INACTIVE, restoring column consistency.
+// It is idempotent and self-correcting; it does NOT reactivate anything (reactivation
+// stays an explicit per-transition / admin action per §2.4).
+
+const QR_DEACTIVATING_PARTNER_STATUSES: PartnerStatus[] = [
+  PartnerStatus.INACTIVE,
+  PartnerStatus.PAUSED,
+  PartnerStatus.SUSPENDED,
+  PartnerStatus.ARCHIVED,
+];
+
+async function reconcileQrCodes(): Promise<void> {
+  logger.info('[qr-reconcile] Starting QR code reconciliation run');
+
+  // Stale = a non-terminal sticker on a partner that is NOT operationally active.
+  // Match the deactivation set used at transition time (ACTIVE/PROCESSING/PENDING);
+  // terminal/non-scannable statuses (INACTIVE/REPLACED/RETIRED/DAMAGED) are left alone.
+  const stale = await prisma.sticker.findMany({
+    where: {
+      status: { in: [StickerStatus.ACTIVE, StickerStatus.PROCESSING, StickerStatus.PENDING] },
+      venue: { partner: { status: { in: QR_DEACTIVATING_PARTNER_STATUSES } } },
+    },
+    select: { id: true, status: true },
+  });
+
+  if (stale.length === 0) {
+    logger.info('[qr-reconcile] No stale stickers — all QR codes consistent with partner state');
+    return;
+  }
+
+  // Stamp autoDeactivatedAt only on the ones that were ACTIVE, mirroring the
+  // transition-time policy so a later Inactive→Active reactivation only restores
+  // genuinely-active stickers (PROCESSING/PENDING stay INACTIVE until admin acts).
+  const activeIds = stale.filter((s) => s.status === StickerStatus.ACTIVE).map((s) => s.id);
+  const otherIds = stale.filter((s) => s.status !== StickerStatus.ACTIVE).map((s) => s.id);
+
+  let fixed = 0;
+  if (activeIds.length > 0) {
+    const r = await prisma.sticker.updateMany({
+      where: { id: { in: activeIds }, status: StickerStatus.ACTIVE },
+      data: { status: StickerStatus.INACTIVE, autoDeactivatedAt: new Date() },
+    });
+    fixed += r.count;
+  }
+  if (otherIds.length > 0) {
+    const r = await prisma.sticker.updateMany({
+      where: { id: { in: otherIds }, status: { in: [StickerStatus.PROCESSING, StickerStatus.PENDING] } },
+      data: { status: StickerStatus.INACTIVE },
+    });
+    fixed += r.count;
+  }
+
+  logger.warn(
+    `[qr-reconcile] Reconciled ${fixed} stale sticker(s) to INACTIVE ` +
+    `(${activeIds.length} active + ${otherIds.length} processing/pending) — ` +
+    `partner-status QR auto-deactivation had drifted (§8.1 rule 5).`
   );
 }
 
@@ -679,8 +795,7 @@ async function sendPartnerMonthlyStatements(): Promise<void> {
         cashbackOwedBGN,
       });
       if (partner.userId) {
-        fireAutomation('billing.month_end', { userId: partner.userId })
-          .catch((err) => logger.error(`[partner-monthly-statement] billing.month_end automation failed for partner ${partner.id}:`, err));
+        detach(fireAutomation('billing.month_end', { userId: partner.userId }), (err) => logger.error(`[partner-monthly-statement] billing.month_end automation failed for partner ${partner.id}:`, err));
       }
       sent++;
     } catch (err) {
@@ -833,11 +948,19 @@ async function resolveTrialPendingCashback(): Promise<void> {
         const threshold = await getPayoutThresholdBGN(plan);
         const preBal = updatedWallet.availableBalance - totalAmount;
         if (preBal < threshold && updatedWallet.availableBalance >= threshold) {
-          notificationService
-            .notifyPayoutReady({ userId: wallet.userId, availableBalance: updatedWallet.availableBalance, threshold })
-            .catch((err) => logger.error(`[trial-pending-cashback] payout-ready notify failed for ${wallet.userId}:`, err));
-          fireAutomation('cashback.threshold_reached', { userId: wallet.userId })
-            .catch((err) => logger.error(`[trial-pending-cashback] cashback.threshold_reached automation failed for ${wallet.userId}:`, err));
+          // Spec §3.7 / §7.3 / §11.2 — if no IBAN on file when the threshold is
+          // crossed, hold the payout and prompt the user to add bank details
+          // instead of telling them they can cash out (auto-payout cron filters
+          // out null-IBAN wallets). Mirrors wallet.service credit path.
+          const hasIban = !!updatedWallet.payoutIban && updatedWallet.payoutIban.trim().length > 0;
+          if (!hasIban) {
+            detach(notificationService
+              .notifyPayoutHeldNoIban({ userId: wallet.userId, availableBalance: updatedWallet.availableBalance, threshold }), (err) => logger.error(`[trial-pending-cashback] payout-held-no-iban notify failed for ${wallet.userId}:`, err));
+          } else {
+            detach(notificationService
+              .notifyPayoutReady({ userId: wallet.userId, availableBalance: updatedWallet.availableBalance, threshold }), (err) => logger.error(`[trial-pending-cashback] payout-ready notify failed for ${wallet.userId}:`, err));
+            detach(fireAutomation('cashback.threshold_reached', { userId: wallet.userId }), (err) => logger.error(`[trial-pending-cashback] cashback.threshold_reached automation failed for ${wallet.userId}:`, err));
+          }
         }
       } catch (err) {
         logger.error(`[trial-pending-cashback] payout threshold check failed for ${wallet.userId}:`, err);
@@ -848,6 +971,108 @@ async function resolveTrialPendingCashback(): Promise<void> {
   }
 
   logger.info(`[trial-pending-cashback] Done — released ${resolved} wallet(s), voided ${voided} (refund-used)`);
+}
+
+// ── Nightly auto-payout initiation (spec §7.1) ────────────────────────────────
+// Spec §7.1: "An automatic payout is triggered by the nightly scheduler when the
+// user's Cleared cashback balance reaches the plan-specific payout threshold."
+//
+// The IBAN-save path (wallet.service.updatePayoutAccount) only triggers a payout
+// for the user who has *just* saved an IBAN while already over threshold. The
+// common case — a user with an IBAN already on file who accrues past threshold
+// through normal cashback clearing — was never auto-initiated; the scheduler only
+// sent a notifyPayoutReady notification. This job closes that gap.
+//
+// Idempotency: requestPayout() itself enforces a single in-flight payout per
+// wallet (it throws if a PENDING/PROCESSING WITHDRAWAL exists, and an in-flight
+// payout is exactly what holds cashback in LOCKED). We additionally pre-filter on
+// availableBalance >= threshold and !isLocked, and swallow the "already pending"
+// / "below threshold" races so a concurrent IBAN-save or balance change can never
+// double-initiate. All eligibility (subscription, FAILED_PAYMENT, IBAN presence)
+// is delegated to requestPayout() — we do not reimplement it.
+
+async function runAutoPayouts(): Promise<void> {
+  const now = new Date();
+  logger.info(`[auto-payout] Starting run at ${now.toISOString()}`);
+
+  // Candidate wallets: not locked, an IBAN on file, and a positive available
+  // balance. The precise plan-specific threshold + subscription eligibility are
+  // resolved per-wallet (and re-checked atomically inside requestPayout()).
+  const candidates = await prisma.wallet.findMany({
+    where: {
+      isLocked: false,
+      availableBalance: { gt: 0 },
+      payoutIban: { not: null },
+    },
+    select: { id: true, userId: true, availableBalance: true },
+  });
+
+  if (candidates.length === 0) {
+    logger.info('[auto-payout] No candidate wallets — done');
+    return;
+  }
+
+  const { walletService } = await import('../services/wallet.service');
+
+  let initiated = 0;
+  let skipped = 0;
+  for (const wallet of candidates) {
+    try {
+      // IBAN may be an empty/whitespace string even when non-null.
+      // requestPayout() re-validates, but skip obvious non-candidates cheaply.
+
+      // Resolve the eligible subscription + plan threshold the same way
+      // requestPayout() does. ACTIVE / TRIALING, or CANCELLED-within-paid-period.
+      const subscription = await prisma.subscription.findFirst({
+        where: {
+          userId: wallet.userId,
+          OR: [
+            { status: { in: ['ACTIVE', 'TRIALING'] } },
+            { status: 'CANCELLED', currentPeriodEnd: { gt: now } },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { plan: true },
+      });
+      if (!subscription) {
+        skipped++;
+        continue;
+      }
+
+      const threshold = await getPayoutThresholdBGN(subscription.plan);
+      if (wallet.availableBalance < threshold) {
+        skipped++;
+        continue;
+      }
+
+      // Idempotency guard: skip if an in-flight payout already exists for this
+      // wallet (requestPayout would throw otherwise — this avoids the noisy log).
+      const inFlight = await prisma.walletTransaction.findFirst({
+        where: {
+          walletId: wallet.id,
+          type: WalletTransactionType.WITHDRAWAL,
+          status: { in: [WalletTransactionStatus.PENDING, WalletTransactionStatus.PROCESSING] },
+        },
+        select: { id: true },
+      });
+      if (inFlight) {
+        skipped++;
+        continue;
+      }
+
+      await walletService.requestPayout(wallet.userId);
+      initiated++;
+      logger.info(`[auto-payout] Initiated payout for user ${wallet.userId} (threshold ${threshold.toFixed(2)} BGN, balance ${wallet.availableBalance.toFixed(2)} BGN)`);
+    } catch (err: any) {
+      // Eligibility / race errors (already pending, below threshold after prune,
+      // INACTIVE, FAILED_PAYMENT, missing IBAN) are expected and non-fatal — they
+      // mean the wallet simply isn't payout-eligible this run.
+      skipped++;
+      logger.warn(`[auto-payout] Skipped user ${wallet.userId}: ${err?.message ?? err}`);
+    }
+  }
+
+  logger.info(`[auto-payout] Done — initiated ${initiated} payout(s), skipped ${skipped}`);
 }
 
 async function checkPaymentFailureSpike(): Promise<void> {
@@ -944,7 +1169,7 @@ export async function syncMarketingListSizes(): Promise<void> {
         where: {
           marketingConsentEmail: true,
           status: { not: 'DELETED' as any },
-          subscriptions: { some: { status: { in: ['ACTIVE', 'TRIALING'] }, plan: { in: ['PREMIUM', 'PREMIUM_WEEKLY'] } } },
+          subscriptions: { some: { status: { in: ['ACTIVE', 'TRIALING'] }, plan: { in: ['PREMIUM_MONTHLY', 'PREMIUM_WEEKLY'] as any } } },
         },
       }),
     basic_holders: () =>
@@ -1009,9 +1234,8 @@ export async function syncMarketingListSizes(): Promise<void> {
 function alertSchedulerFailure(jobName: string, err: unknown): void {
   const message = err instanceof Error ? err.message : String(err);
   logger.error(`[${jobName}] Unhandled error in scheduled run:`, err);
-  notificationService
-    .notifyAdminSchedulerFailure({ jobName, errorMessage: message })
-    .catch((notifyErr) => logger.error(`[${jobName}] Failed to post scheduler-failure alert:`, notifyErr));
+  detach(notificationService
+    .notifyAdminSchedulerFailure({ jobName, errorMessage: message }), (notifyErr) => logger.error(`[${jobName}] Failed to post scheduler-failure alert:`, notifyErr));
 }
 
 // ── Cashback expiry warning ────────────────────────────────────────────────────
@@ -1068,6 +1292,26 @@ async function notifyCashbackExpiring(): Promise<void> {
     try {
       const wallet = await prisma.wallet.findUnique({ where: { id: walletId }, select: { userId: true } });
       if (!wallet) continue;
+
+      // F-019: Direct notification via notificationService — mandatory per spec.
+      // The spec requires cashback expiry warnings to reach the user regardless of
+      // automation config. This direct call ensures delivery even when the automation
+      // system is unconfigured or inactive. The automation call below is belt-and-suspenders.
+      const expiringTx = await prisma.walletTransaction.findFirst({
+        where: {
+          walletId,
+          cashbackStatus: { in: ['CLEARED', null] } as any,
+          cashbackExpiresAt: { gte: warnFrom, lte: warnUntil },
+        },
+        select: { cashbackExpiresAt: true },
+        orderBy: { cashbackExpiresAt: 'asc' },
+      });
+      if (expiringTx?.cashbackExpiresAt) {
+        detach(notificationService
+          .notifyCashbackExpiringSoon(wallet.userId, expiringTx.cashbackExpiresAt), (err) => logger.error(`[cashback-expiring-warning] notifyCashbackExpiringSoon failed for user ${wallet.userId}:`, err));
+      }
+
+      // Keep automation dispatch as secondary channel (belt-and-suspenders).
       await fireAutomation('cashback.expiring', { userId: wallet.userId });
       fired++;
     } catch (err) {
@@ -1201,36 +1445,49 @@ async function remindExpiringActivationLinks(): Promise<void> {
 // ── Partner SLA overdue escalation (Spec §5.1) ───────────────────────────────
 // Hourly scan: find partner applications stuck in a non-terminal request status
 // for more than 24 h. Posts an admin-ops alert per overdue partner (with a 20 h
-// cooldown so we don't spam on every tick).
+// cooldown so we don't spam on every tick). U2: also fires an "approaching"
+// warning once an unassigned application crosses the 18h (75% of 24h) mark.
+
+// U2 — warning threshold for the "deadline approaching" alert: 18h = 75% of the
+// 24h internal assignment SLA (matches computePartnerSla's 'warning' boundary).
+const SLA_HOURS_INTERNAL_WARN = 18;
 
 async function escalateOverduePartnerSla(): Promise<void> {
+  // Spec §1.6 (L201): the 24h internal SLA is an ASSIGNMENT deadline — "24 hours
+  // from creation for admin assignment; an alert is triggered if the deadline is
+  // approaching." L6 fix: the alert must fire on applications that are still
+  // UNASSIGNED past 24h (assignedAdminId is null), not merely "still open in a
+  // non-terminal status". An application that has been claimed by an admin
+  // (assignedAdminId set) has met the assignment SLA even if it is still mid-pipeline.
+  //
+  // SLA clock starts at application submission (createdAt), not at partner
+  // activation (joinedAt). We still exclude terminal request statuses (a rejected
+  // application that was never assigned should not alert forever). We compare via the
+  // Prisma enum constants (PartnerRequestStatus.APPROVED / .REJECTED): the generated
+  // client exposes the TypeScript enum keys (APPROVED/REJECTED), while the Bulgarian
+  // values (ODOBRENA/OTKAZANA) are only the @map'd DB storage strings.
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const overduePartners = await prisma.partner.findMany({
     where: {
-      joinedAt: { lte: cutoff },
+      createdAt: { lte: cutoff },
+      // L6 — fire only on UNASSIGNED applications (assignment SLA breach).
+      assignedAdminId: null,
       requestStatus: {
-        notIn: ['ODOBRENA', 'OTKAZANA'],
+        notIn: [PartnerRequestStatus.APPROVED, PartnerRequestStatus.REJECTED],
         not: null,
       },
     },
-    select: { id: true, businessName: true, joinedAt: true, requestStatus: true },
+    select: { id: true, businessName: true, createdAt: true, requestStatus: true },
   });
 
-  if (overduePartners.length === 0) {
-    logger.info('[partner-sla-escalation] No overdue partner applications');
-    return;
-  }
-
-  logger.info(`[partner-sla-escalation] ${overduePartners.length} overdue partner application(s)`);
-
   for (const partner of overduePartners) {
-    const hoursElapsed = Math.round((Date.now() - partner.joinedAt.getTime()) / 36e5 * 10) / 10;
+    const hoursElapsed = Math.round((Date.now() - partner.createdAt.getTime()) / 36e5 * 10) / 10;
     try {
       await notificationService.notifyAdminOps({
         opsType: `partner-sla-overdue-${partner.id}`,
         title: 'Partner SLA Overdue',
-        message: `Application "${partner.businessName}" (status: ${partner.requestStatus}) has been open for ${hoursElapsed}h — past the 24h internal SLA.`,
+        message: `Application "${partner.businessName}" (status: ${partner.requestStatus}) has been UNASSIGNED for ${hoursElapsed}h — past the 24h internal assignment SLA (§1.6).`,
         severity: 'critical',
         actionUrl: `/admin/partners?id=${partner.id}`,
         relatedEntityType: 'Partner',
@@ -1242,7 +1499,111 @@ async function escalateOverduePartnerSla(): Promise<void> {
     }
   }
 
-  logger.info(`[partner-sla-escalation] Alerted on ${overduePartners.length} overdue application(s)`);
+  // U2 (Spec §1.6 / §3.5) — "an alert is triggered if the deadline is APPROACHING."
+  // The overdue scan above fires only AFTER the 24h deadline has passed. The spec
+  // requires a separate proactive alert as the deadline nears. We fire a warning
+  // for unassigned applications between the 75% mark (18h) and the deadline (24h) —
+  // the same threshold the computePartnerSla helper uses for its 'warning' state —
+  // so an admin can claim the application before the SLA is breached. A 6h cooldown
+  // keeps this to roughly one nudge inside the warning window (hourly tick).
+  const warnFrom = new Date(Date.now() - 24 * 60 * 60 * 1000);          // 24h ago (deadline)
+  const warnUntil = new Date(Date.now() - SLA_HOURS_INTERNAL_WARN * 60 * 60 * 1000); // 18h ago
+  const approachingPartners = await prisma.partner.findMany({
+    where: {
+      // Older than 18h but not yet past 24h (the overdue scan owns >24h).
+      createdAt: { gt: warnFrom, lte: warnUntil },
+      assignedAdminId: null,
+      requestStatus: {
+        notIn: [PartnerRequestStatus.APPROVED, PartnerRequestStatus.REJECTED],
+        not: null,
+      },
+    },
+    select: { id: true, businessName: true, createdAt: true, requestStatus: true },
+  });
+
+  for (const partner of approachingPartners) {
+    const hoursElapsed = Math.round((Date.now() - partner.createdAt.getTime()) / 36e5 * 10) / 10;
+    const hoursRemaining = Math.max(0, Math.round((24 - hoursElapsed) * 10) / 10);
+    try {
+      await notificationService.notifyAdminOps({
+        opsType: `partner-sla-approaching-${partner.id}`,
+        title: 'Partner SLA Approaching',
+        message: `Application "${partner.businessName}" (status: ${partner.requestStatus}) is still UNASSIGNED — the 24h internal assignment SLA is approaching (~${hoursRemaining}h remaining, §1.6). Claim it to avoid a breach.`,
+        severity: 'warning',
+        actionUrl: `/admin/partners?id=${partner.id}`,
+        relatedEntityType: 'Partner',
+        relatedEntityId: partner.id,
+        cooldownHours: 6,
+      });
+    } catch (err) {
+      logger.error(`[partner-sla-escalation] Failed to send approaching-SLA alert for partner ${partner.id}:`, err);
+    }
+  }
+
+  if (overduePartners.length === 0 && approachingPartners.length === 0) {
+    logger.info('[partner-sla-escalation] No unassigned partner applications approaching or past SLA');
+    return;
+  }
+  logger.info(
+    `[partner-sla-escalation] Alerted on ${overduePartners.length} overdue + ` +
+    `${approachingPartners.length} approaching application(s)`
+  );
+}
+
+// ── Low/Medium-risk auto-approve sweep (Spec §2.2 / §3.4 / §8.1) ─────────────
+// Auto-approval is performed synchronously at scan time (sticker.service.uploadReceipt):
+// Low (0–20) and Medium (21–50) risk scans are immediately promoted PENDING→Cleared
+// (Medium auto-approves per the §9.4 amendment 2026-06-04). If that inline promote
+// throws, the scan is left stranded in MANUAL_REVIEW with a PENDING cashback row and
+// nothing ever retries it. §3.4/§8.1 require Low/Medium Pending records to clear
+// within the 24h auto-approval window.
+//
+// This hourly sweep finds scans still in MANUAL_REVIEW whose stored specRiskLevel is
+// Low or Medium and re-attempts the auto-approval by calling the SAME service method
+// the inline path uses (stickerService.approveScan with adminUserId=null). No
+// credit/wallet logic is duplicated here. High-risk scans are intentionally skipped —
+// they require a human decision and must stay in the queue.
+const AUTO_APPROVE_SWEEP_BATCH = 50;
+
+async function sweepAutoApprovePendingScans(): Promise<void> {
+  // Only sweep scans that have aged at least a few minutes, so we never race the
+  // inline auto-approve still in flight for a just-uploaded receipt. The 24h window
+  // in §3.4/§8.1 is the deadline, not a delay — retrying earlier is fine and desirable
+  // for stranded rows, but a small floor avoids double-processing fresh uploads.
+  const minAge = new Date(Date.now() - 10 * 60 * 1000); // 10 minutes
+
+  const strandedScans = await prisma.stickerScan.findMany({
+    where: {
+      status: ScanStatus.MANUAL_REVIEW,
+      specRiskLevel: { in: ['Low', 'Medium'] },
+      updatedAt: { lte: minAge },
+      cashbackAmount: { gt: 0 },
+    },
+    select: { id: true, specRiskLevel: true, createdAt: true },
+    take: AUTO_APPROVE_SWEEP_BATCH,
+    orderBy: { createdAt: 'asc' },
+  });
+
+  if (strandedScans.length === 0) {
+    logger.info('[auto-approve-sweep] No stranded Low/Medium-risk scans to auto-approve');
+    return;
+  }
+
+  logger.info(`[auto-approve-sweep] Re-attempting auto-approval for ${strandedScans.length} stranded Low/Medium-risk scan(s)`);
+
+  let approved = 0;
+  for (const scan of strandedScans) {
+    try {
+      // Reuse the canonical promote path (credit + wallet + audit + notifications).
+      await stickerService.approveScan(scan.id, { adminUserId: null });
+      approved += 1;
+    } catch (err) {
+      // Leave it in MANUAL_REVIEW for the next sweep / admin action.
+      logger.error(`[auto-approve-sweep] auto-approve still failing for scan ${scan.id} (risk ${scan.specRiskLevel}):`, err);
+    }
+  }
+
+  logger.info(`[auto-approve-sweep] Auto-approved ${approved}/${strandedScans.length} stranded scan(s)`);
 }
 
 // ── Ticket auto-close (Spec §11.4) ────────────────────────────────────────────
@@ -1317,14 +1678,14 @@ export async function autoCloseResolvedTickets(): Promise<void> {
 
     // Audit one row per actually-closed ticket only.
     for (const t of closedTickets) {
-      writeAudit({
+      detach(writeAudit({
         actorUserId: null,
         action: 'ticket.auto_close',
         objectType: 'ticket',
         objectId: t.id,
         before: { status: 'RESOLVED' },
         after: { status: 'CLOSED', reason: 'auto-close: 7 days without reply after RESOLVED' },
-      }).catch(() => {});
+      }), () => {});
     }
 
     // Notify each creator — all notifications in the batch start concurrently and
@@ -1402,11 +1763,12 @@ export function registerScheduledJobs(): void {
 
   logger.info('[scheduler] Registered: cashback-expiry (0 2 * * *)');
 
-  // 2:05 AM every day — expire PENDING cashback entries older than 60 days.
-  // Spec §4.4: Pending cashback stays pending until subscription recovery OR
-  // natural expiry by the 60-day rule. Because PENDING entries have no clearedAt,
-  // we age them from createdAt. Runs 5 minutes after cashback-expiry to avoid
-  // contention on the wallet_transactions table.
+  // 2:05 AM every day — stale-pending-cashback-expiry job slot.
+  // Spec §8.2 / §1.3: Pending cashback NEVER expires — only Cleared cashback has
+  // a 60-day countdown (from clearedAt). expireStalePendingCashback() intentionally
+  // throws so this cron is a safe no-op. The cron registration is kept in case
+  // the spec position changes; alertSchedulerFailure records the throw for ops
+  // visibility. No Pending entries are modified by this run.
   cron.schedule('5 2 * * *', () => {
     expireStalePendingCashback(null).catch((err) => alertSchedulerFailure('stale-pending-cashback-expiry', err));
   }, { timezone: 'Europe/Sofia' });
@@ -1444,6 +1806,16 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: subscription-expiry (30 1 * * *)');
+
+  // H3 / Spec §8.1 rule 5 — 4:00 AM every day: reconcile QR codes against partner
+  // operational status. Catches stale-ACTIVE/PROCESSING/PENDING stickers left behind
+  // when the per-transition QR sync failed soft, flipping them to INACTIVE so the
+  // sticker.status column stays consistent with the partner state.
+  cron.schedule('0 4 * * *', () => {
+    reconcileQrCodes().catch((err) => alertSchedulerFailure('qr-reconcile', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: qr-reconcile (0 4 * * *)');
 
   // 6:00 AM UTC every day — Paysera auto-renewal: pause expired active subs,
   // send renewal reminder email, cancel subs past the 7-day grace period.
@@ -1497,6 +1869,16 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: trial-pending-cashback (30 5 * * *)');
+
+  // 6:00 AM every day — auto-initiate payouts for wallets that have crossed the
+  // plan-specific payout threshold with an IBAN on file (spec §7.1). Runs after
+  // cashback-expiry (2 AM) and trial-pending promotion (5:30 AM) so the cleared
+  // balance is final for the day. Idempotent against in-flight payouts.
+  cron.schedule('0 6 * * *', () => {
+    runAutoPayouts().catch((err) => alertSchedulerFailure('auto-payout', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: auto-payout (0 6 * * *)');
 
   // Every hour — scan for payment failure rate spikes
   cron.schedule('0 * * * *', () => {
@@ -1562,6 +1944,15 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: partner-sla-escalation (0 * * * *)');
+
+  // Every hour — re-attempt auto-approval for Low/Medium-risk scans stranded in
+  // MANUAL_REVIEW (inline auto-approve failed). Spec §2.2/§3.4/§8.1: Low/Medium
+  // Pending records must clear within the 24h auto-approval window.
+  cron.schedule('0 * * * *', () => {
+    sweepAutoApprovePendingScans().catch((err) => alertSchedulerFailure('auto-approve-sweep', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: auto-approve-sweep (0 * * * *)');
 
   // 11 PM every day — auto-close RESOLVED tickets with no activity for 7+ days.
   // Spec §11.4: "Затворена: Заявителят е потвърдил или 7 дни без отговор след 'Решена'."

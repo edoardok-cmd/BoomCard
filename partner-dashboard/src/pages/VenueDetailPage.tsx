@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, Link, Navigate } from 'react-router-dom';
+import { useParams, Link, Navigate, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import ImageGallery from '../components/common/ImageGallery/ImageGallery';
 import Button from '../components/common/Button/Button';
 import Badge from '../components/common/Badge/Badge';
@@ -12,7 +13,7 @@ import ShareButton from '../components/common/ShareButton/ShareButton';
 import { useOffer } from '../hooks/useOffers';
 import { offersService } from '../services/offers.service';
 import toast from 'react-hot-toast';
-import { convertBGNToEUR } from '../utils/helpers';
+import { useCurrencyDisplay, formatWithCurrency } from '../utils/currencyDisplay';
 
 // ─── Menu Modal Styles ─────────────────────────────────────────────────────────
 
@@ -664,6 +665,11 @@ const MenuModal: React.FC<MenuModalProps> = ({ images, title, onClose }) => {
 const VenueDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { language, t } = useLanguage();
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  // MEDIUM-1 fix: use the spec-mandated currency display mode (§7.3, Clash 12.1).
+  // Post-transition (2026-01-01) this resolves to EUR_ONLY.
+  const currencyMode = useCurrencyDisplay();
   const [isActivating, setIsActivating] = useState(false);
   const [activationCode, setActivationCode] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -686,11 +692,28 @@ const VenueDetailPage: React.FC = () => {
     return <Navigate to="/offers" replace />;
   }
 
-  // Access gating is handled server-side; if the offer is returned it's redeemable
-  const isLocked = false;
+  // LOW-1 fix: source isLocked from offer data if the backend provides it; otherwise
+  // default to false. The dead `isLocked = true` UI branch (showing "Upgrade to unlock")
+  // is now reachable if the API ever returns an offer with isLocked:true. The old
+  // hardcoded `false` made that branch permanently unreachable, hiding tier-gating bugs.
+  // LOW-3 fix: isLocked is now a declared optional field on OfferDetails, so it is
+  // read through the proper type instead of an `as unknown` double-cast.
+  const isLocked = !!offerDetails.isLocked;
 
   const handleActivate = async () => {
     if (!id || isLocked) return;
+    // LOW-3 fix: require authentication before requesting GPS. Without this,
+    // unauthenticated users get a GPS permission dialog followed by a silent
+    // 401 error with no "please log in" guidance.
+    if (!isAuthenticated) {
+      toast.error(
+        language === 'bg'
+          ? 'Моля, влезте в профила си, за да активирате офертата'
+          : 'Please sign in to activate this offer',
+      );
+      navigate('/login', { state: { from: { pathname: `/offers/${id}` } } });
+      return;
+    }
     setIsActivating(true);
     try {
       // Require GPS location — user must be at the venue
@@ -731,20 +754,22 @@ const VenueDetailPage: React.FC = () => {
     }
   };
 
-  // Parse menu images from offer's partner venue data
+  // Parse menu URLs from the offer's partner venues.
+  // LOW fix: the backend returns `partner.venues` (plural array) where each entry
+  // is { id, name, city, menuUrl } and only APPROVED menus with a non-null
+  // menuUrl are included (offers.service.ts partner select). The previous code
+  // read `partner.venue.menuImages` — a singular relation and a field that do
+  // not exist on the response — so 'View Menu' was always dead. We collect the
+  // menuUrl from each venue; when none exist the button is hidden (see below).
   const menuImages: string[] = (() => {
-    try {
-      const offerWithMenu = offerDetails as (typeof offerDetails & {
-        partner?: { venue?: { menuImages?: string | string[] } };
-        menuImages?: string | string[];
-      }) | null | undefined;
-      const raw = offerWithMenu?.partner?.venue?.menuImages || offerWithMenu?.menuImages;
-      if (!raw) return [];
-      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
+    const offerWithMenu = offerDetails as (typeof offerDetails & {
+      partner?: { venues?: Array<{ menuUrl?: string | null }> };
+    }) | null | undefined;
+    const venues = offerWithMenu?.partner?.venues;
+    if (!Array.isArray(venues)) return [];
+    return venues
+      .map(v => v?.menuUrl)
+      .filter((url): url is string => typeof url === 'string' && url.length > 0);
   })();
 
   // Map offer data to venue format for display
@@ -758,9 +783,12 @@ const VenueDetailPage: React.FC = () => {
     reviewCount: offerDetails.reviewCount,
     partnerName: offerDetails.partnerName || offerDetails.partner?.businessName || '',
     discount: offerDetails.discount || offerDetails.discountPercent || 0,
-    originalPrice: offerDetails.originalPrice || 0,
-    discountedPrice: offerDetails.discountedPrice || 0,
-    savings: (offerDetails.originalPrice || 0) - (offerDetails.discountedPrice || 0),
+    // MEDIUM fix (re-audit): the backend has no price model, so absolute BGN amounts
+    // were fabricated upstream (mapOffer) and rendered here as real money. Only the
+    // discount PERCENTAGE is genuine. Pass prices through ONLY when the backend
+    // actually provides them; the price card now presents the discount % otherwise.
+    originalPrice: offerDetails.originalPrice,
+    discountedPrice: offerDetails.discountedPrice,
     description: language === 'bg' ? (offerDetails.descriptionBg || offerDetails.description) : offerDetails.description,
     features: [
       { icon: '✓', text: language === 'bg' ? `${offerDetails.discount || offerDetails.discountPercent || 0}% отстъпка` : `${offerDetails.discount || offerDetails.discountPercent || 0}% discount` },
@@ -768,13 +796,23 @@ const VenueDetailPage: React.FC = () => {
       { icon: '✓', text: language === 'bg' ? 'Лесно активиране' : 'Easy activation' },
       { icon: '✓', text: language === 'bg' ? 'Моментална валидация' : 'Instant validation' },
     ],
-    images: offerDetails.imageUrl ? [offerDetails.imageUrl, offerDetails.imageUrl, offerDetails.imageUrl] : [],
+    // LOW-2 fix: do not triplicate the same image URL into the gallery. A single
+    // imageUrl becomes a one-element array; a future multi-image API can replace
+    // this with `offerDetails.images ?? (offerDetails.imageUrl ? [offerDetails.imageUrl] : [])`.
+    images: offerDetails.imageUrl ? [offerDetails.imageUrl] : [],
+    // MEDIUM-2 fix: replace the hardcoded "December 31, 2025" fallback (now an
+    // expired date — today is 2026-06-02) with a locale-appropriate no-expiry label
+    // so offers without validUntil don't mislead users into thinking they've expired.
     validUntil: offerDetails.validUntil
       ? new Date(offerDetails.validUntil).toLocaleDateString(language === 'bg' ? 'bg-BG' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-      : (language === 'bg' ? '31 Декември 2025' : 'December 31, 2025'),
-    phone: offerDetails.partner?.['phone' as keyof typeof offerDetails.partner] as string || '+359 88 123 4567',
-    email: offerDetails.partner?.['email' as keyof typeof offerDetails.partner] as string || 'contact@boomcard.bg',
-    website: offerDetails.partner?.['website' as keyof typeof offerDetails.partner] as string || 'www.boomcard.bg',
+      : (language === 'bg' ? 'Без краен срок' : 'No expiry date'),
+    // LOW-1 fix: do NOT fall back to hardcoded placeholder contact details
+    // (+359 88 123 4567 / contact@boomcard.bg / www.boomcard.bg). Fabricated
+    // contact info misleads users. When the backend omits these fields we
+    // render nothing for them (see conditional InfoItems below).
+    phone: (offerDetails.partner?.['phone' as keyof typeof offerDetails.partner] as string) || '',
+    email: (offerDetails.partner?.['email' as keyof typeof offerDetails.partner] as string) || '',
+    website: (offerDetails.partner?.['website' as keyof typeof offerDetails.partner] as string) || '',
     address: offerDetails.location || offerDetails.partner?.city || 'Bulgaria',
   };
 
@@ -881,17 +919,26 @@ const VenueDetailPage: React.FC = () => {
             <PriceCard>
               <DiscountBadge>-{venue.discount}%</DiscountBadge>
 
+              {/* MEDIUM fix (re-audit): the backend has no price model, so absolute
+                  BGN amounts were fabricated (mapOffer hardcoded ~200 BGN) and shown
+                  here as real money ("200 → 160, save 40"). Only the discount
+                  PERCENTAGE is genuine, so present the offer by its percentage. If a
+                  future backend genuinely provides both prices, the optional block
+                  below renders them via formatWithCurrency (§7.3, Clash 12.1). */}
               <PriceSection>
-                <OriginalPrice>
-                  {venue.originalPrice} {language === 'bg' ? 'лв.' : 'BGN'} / €{convertBGNToEUR(venue.originalPrice)}
-                </OriginalPrice>
                 <DiscountedPrice>
-                  {venue.discountedPrice}
-                  <span>{language === 'bg' ? 'лв.' : 'BGN'} / €{convertBGNToEUR(venue.discountedPrice)}</span>
+                  {venue.discount}% {language === 'bg' ? 'отстъпка' : 'discount'}
                 </DiscountedPrice>
-                <Savings>
-                  {t('venueDetail.youSave')} {venue.savings} {language === 'bg' ? 'лв.' : 'BGN'} / €{convertBGNToEUR(venue.savings)}
-                </Savings>
+                {typeof venue.originalPrice === 'number' && typeof venue.discountedPrice === 'number' && (
+                  <>
+                    <OriginalPrice>
+                      {formatWithCurrency(venue.originalPrice, currencyMode, language === 'bg' ? 'bg' : 'en')}
+                    </OriginalPrice>
+                    <Savings>
+                      {t('venueDetail.youSave')} {formatWithCurrency(venue.originalPrice - venue.discountedPrice, currencyMode, language === 'bg' ? 'bg' : 'en')}
+                    </Savings>
+                  </>
+                )}
               </PriceSection>
 
               <ValidityInfo>
@@ -934,8 +981,11 @@ const VenueDetailPage: React.FC = () => {
                       categoryBg: venue.category,
                       location: venue.location,
                       discount: venue.discount,
-                      originalPrice: venue.originalPrice,
-                      discountedPrice: venue.discountedPrice,
+                      // No backend price model — use 0 as the established "no price"
+                      // sentinel (OfferCard / FavoritesContext already treat 0 as
+                      // "hide price"). Do not fabricate absolute BGN amounts.
+                      originalPrice: venue.originalPrice ?? 0,
+                      discountedPrice: venue.discountedPrice ?? 0,
                       imageUrl: venue.images[0],
                       path: `/offers/${venue.id}`
                     }}
@@ -951,22 +1001,41 @@ const VenueDetailPage: React.FC = () => {
                 </div>
               </ActionButtons>
 
-              <InfoList>
-                <InfoItem>
-                  <strong>{t('venueDetail.phone')}</strong> {venue.phone}
-                </InfoItem>
-                <InfoItem>
-                  <strong>{t('venueDetail.email')}</strong> {venue.email}
-                </InfoItem>
-                <InfoItem>
-                  <strong>{t('venueDetail.website')}</strong> {venue.website}
-                </InfoItem>
-              </InfoList>
+              {/* LOW-1 fix: only render contact rows the partner actually
+                  provides. No hardcoded placeholder fallbacks. */}
+              {(venue.phone || venue.email || venue.website) && (
+                <InfoList>
+                  {venue.phone && (
+                    <InfoItem>
+                      <strong>{t('venueDetail.phone')}</strong> {venue.phone}
+                    </InfoItem>
+                  )}
+                  {venue.email && (
+                    <InfoItem>
+                      <strong>{t('venueDetail.email')}</strong> {venue.email}
+                    </InfoItem>
+                  )}
+                  {venue.website && (
+                    <InfoItem>
+                      <strong>{t('venueDetail.website')}</strong> {venue.website}
+                    </InfoItem>
+                  )}
+                </InfoList>
+              )}
             </PriceCard>
 
+            {/*
+              LOW-2 fix: this QR is a DISPLAY/SHARE placeholder only — it links
+              to the public offer detail page so a user can reopen or share the
+              offer. It is NOT a redemption token. The previous `?code=SAVE{discount}`
+              param implied a guessable, redeemable code; it has been removed so the
+              QR cannot be mistaken for a real redemption credential. Actual
+              redemption happens via handleActivate() -> offersService.activateOffer(),
+              which returns a server-issued single-use code (`activationCode`).
+            */}
             <div style={{ marginTop: '2rem' }}>
               <QRCode
-                data={`https://boomcard.bg/offers/${venue.id}?code=SAVE${venue.discount}`}
+                data={`https://boomcard.bg/offers/${venue.id}`}
                 size={200}
                 title={t('venueDetail.offerQRCode')}
                 description={t('venueDetail.scanToRedeem')}

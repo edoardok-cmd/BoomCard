@@ -1,29 +1,39 @@
+/**
+ * ReceiptDetailPage — partner-facing receipt detail view.
+ *
+ * Spec §6, §11.3, §11.4, §12 rule 3:
+ * - Partners have READ-ONLY access to receipts. Editing is reserved for admin.
+ * - Internal fields (OCR confidence, raw OCR text, fraud score, cashback %)
+ *   must never be rendered or exported. Uses PartnerReceipt type exclusively.
+ * - Export functions operate on PartnerReceipt — no internal fields leak to the
+ *   partner's filesystem.
+ */
+
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigate, useParams } from 'react-router-dom';
 import { receiptsApiService } from '../services/receipts-api.service';
-import { Receipt, ReceiptStatus } from '../types/receipt.types';
+import { PartnerReceipt, ReceiptStatus } from '../types/receipt.types';
 import {
   ArrowLeft,
-  Save,
-  Edit2,
-  X,
   CheckCircle,
   XCircle,
   Clock,
   Store,
-  FileText,
   Package,
   Download,
   Mail,
   FileDown,
 } from 'lucide-react';
 import {
-  exportReceiptToPDF,
-  exportReceiptToJSON,
-  shareReceiptViaEmail,
+  exportPartnerReceiptToPDF,
+  exportPartnerReceiptToJSON,
+  sharePartnerReceiptViaEmail,
 } from '../utils/receiptExport';
+// MEDIUM-2 fix (r2t): use the shared currency formatter so amounts are displayed
+// correctly during the BGN→EUR transition window and after it (spec §7.3 / Clash 12.1).
+import { useCurrencyDisplay, formatWithCurrency } from '../utils/currencyDisplay';
 
 const PageContainer = styled.div`
   max-width: 1000px;
@@ -199,23 +209,9 @@ const ItemPrice = styled.div`
   color: #059669;
 `;
 
-const RawTextSection = styled.div`
-  padding: 1.5rem;
-  background: #f9fafb;
-  border-radius: 0.75rem;
-  border: 1px solid #e5e7eb;
-`;
-
-const RawText = styled.pre`
-  font-family: 'Courier New', monospace;
-  font-size: 0.875rem;
-  color: #374151;
-  white-space: pre-wrap;
-  word-break: break-word;
-  margin: 0;
-  line-height: 1.6;
-  max-height: 300px;
-  overflow-y: auto;
+const NoItemsText = styled.p`
+  font-size: 0.9375rem;
+  color: #6b7280;
 `;
 
 const ActionsBar = styled.div`
@@ -224,6 +220,7 @@ const ActionsBar = styled.div`
   padding: 1.5rem 2rem;
   border-top: 2px solid #f3f4f6;
   background: #fafafa;
+  flex-wrap: wrap;
 `;
 
 const ActionButton = styled.button<{ $variant?: 'primary' | 'secondary' | 'danger' }>`
@@ -266,35 +263,6 @@ const ActionButton = styled.button<{ $variant?: 'primary' | 'secondary' | 'dange
   }
 `;
 
-const FormInput = styled.input`
-  padding: 0.75rem;
-  border: 2px solid #e5e7eb;
-  border-radius: 0.5rem;
-  font-size: 0.9375rem;
-  color: #111827;
-
-  &:focus {
-    outline: none;
-    border-color: #000000;
-  }
-`;
-
-const FormTextarea = styled.textarea`
-  padding: 0.75rem;
-  border: 2px solid #e5e7eb;
-  border-radius: 0.5rem;
-  font-size: 0.9375rem;
-  color: #111827;
-  min-height: 100px;
-  font-family: 'Courier New', monospace;
-  resize: vertical;
-
-  &:focus {
-    outline: none;
-    border-color: #000000;
-  }
-`;
-
 const LoadingSpinner = styled.div`
   text-align: center;
   padding: 4rem 2rem;
@@ -302,44 +270,24 @@ const LoadingSpinner = styled.div`
   color: #6b7280;
 `;
 
-const ConfidenceBadge = styled.div<{ $confidence: number }>`
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  background: ${props => props.$confidence >= 70 ? 'rgba(209, 250, 229, 0.9)' : 'rgba(254, 243, 199, 0.9)'};
-  color: ${props => props.$confidence >= 70 ? '#065f46' : '#92400e'};
-  border-radius: 9999px;
-  font-size: 0.875rem;
-  font-weight: 600;
-`;
-
 export const ReceiptDetailPage: React.FC = () => {
   const { language } = useLanguage();
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const [receipt, setReceipt] = useState<Receipt | null>(null);
+  // F1: use PartnerReceipt type — no internal fields in state
+  const [receipt, setReceipt] = useState<PartnerReceipt | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState({
-    totalAmount: '',
-    merchantName: '',
-    date: '',
-    rawText: '',
-  });
+  // MEDIUM-2 fix (r2t): resolve currency mode for correct amount formatting
+  // (spec §7.3 / Clash 12.1 — BGN shown during transition, EUR after closure).
+  const currencyMode = useCurrencyDisplay();
 
   const t = {
     en: {
       back: 'Back to Receipts',
-      edit: 'Edit Receipt',
-      save: 'Save Changes',
-      cancel: 'Cancel',
       totalAmount: 'Total Amount',
       date: 'Date',
-      confidence: 'OCR Confidence',
       items: 'Receipt Items',
-      rawText: 'Raw OCR Text',
-      merchantName: 'Merchant Name',
+      merchantName: 'Merchant',
       status: {
         [ReceiptStatus.PENDING]: 'Pending Review',
         [ReceiptStatus.PROCESSING]: 'Processing',
@@ -355,24 +303,15 @@ export const ReceiptDetailPage: React.FC = () => {
       noItems: 'No items detected',
       loading: 'Loading receipt...',
       notFound: 'Receipt not found',
-      editMode: 'Edit Mode',
-      viewMode: 'View Mode',
-      saveSuccess: 'Receipt updated successfully!',
-      saveError: 'Failed to update receipt',
       exportPDF: 'Export PDF',
       exportJSON: 'Export JSON',
       shareEmail: 'Share via Email',
     },
     bg: {
       back: 'Назад към бележките',
-      edit: 'Редактирай',
-      save: 'Запази промените',
-      cancel: 'Отказ',
       totalAmount: 'Обща сума',
       date: 'Дата',
-      confidence: 'Точност на OCR',
       items: 'Артикули',
-      rawText: 'Извлечен текст',
       merchantName: 'Търговец',
       status: {
         [ReceiptStatus.PENDING]: 'Очаква преглед',
@@ -389,10 +328,6 @@ export const ReceiptDetailPage: React.FC = () => {
       noItems: 'Няма открити артикули',
       loading: 'Зареждане на бележка...',
       notFound: 'Бележката не е намерена',
-      editMode: 'Режим на редактиране',
-      viewMode: 'Режим на преглед',
-      saveSuccess: 'Бележката е обновена успешно!',
-      saveError: 'Неуспешно обновяване на бележката',
       exportPDF: 'Експорт PDF',
       exportJSON: 'Експорт JSON',
       shareEmail: 'Сподели по имейл',
@@ -410,59 +345,33 @@ export const ReceiptDetailPage: React.FC = () => {
   const fetchReceipt = async () => {
     setLoading(true);
     try {
+      // F1: cast the response data to PartnerReceipt — partner-safe fields only.
+      // The API endpoint should return only PartnerReceipt fields; the cast
+      // ensures our component state never binds internal-only fields.
       const response = await receiptsApiService.getReceiptById(id!);
       if (response.success) {
-        setReceipt(response.data);
-        setFormData({
-          totalAmount: response.data.totalAmount?.toString() || '',
-          merchantName: response.data.merchantName || '',
-          date: response.data.date ? new Date(response.data.date).toISOString().split('T')[0] : '',
-          rawText: response.data.rawText || '',
+        // LOW-1 fix (r2t): use typed destructuring instead of `as unknown as
+        // Record<string,unknown>`.  response.data is already typed PartnerReceipt
+        // by the service call, so the cast was defeating the compile-time guarantee
+        // and silently dropping any PartnerReceipt field added in the future.
+        // Destructuring the typed value lets the compiler flag shape mismatches.
+        const {
+          id, transactionId, venueId, totalAmount, merchantName,
+          receiptDate, date, items, imageUrl, cashbackAmount,
+          status, rejectionReason, createdAt, updatedAt,
+        } = response.data;
+        setReceipt({
+          id, transactionId, venueId, totalAmount, merchantName,
+          receiptDate, date, items,
+          imageUrl: imageUrl ?? '',
+          cashbackAmount: cashbackAmount ?? 0,
+          status, rejectionReason, createdAt, updatedAt,
         });
       }
     } catch (error) {
       console.error('Failed to fetch receipt:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleEdit = () => {
-    setIsEditing(true);
-  };
-
-  const handleCancel = () => {
-    setIsEditing(false);
-    if (receipt) {
-      setFormData({
-        totalAmount: receipt.totalAmount?.toString() || '',
-        merchantName: receipt.merchantName || '',
-        date: receipt.date ? new Date(receipt.date).toISOString().split('T')[0] : '',
-        rawText: receipt.rawText || '',
-      });
-    }
-  };
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!id) return;
-
-    try {
-      const response = await receiptsApiService.updateReceipt(id, {
-        totalAmount: formData.totalAmount ? parseFloat(formData.totalAmount) : undefined,
-        merchantName: formData.merchantName,
-        date: formData.date,
-        rawText: formData.rawText,
-      });
-
-      if (response.success) {
-        setReceipt(response.data);
-        setIsEditing(false);
-        alert(content.saveSuccess);
-      }
-    } catch (error) {
-      console.error('Failed to update receipt:', error);
-      alert(content.saveError);
     }
   };
 
@@ -518,16 +427,7 @@ export const ReceiptDetailPage: React.FC = () => {
           <HeaderTop>
             <MerchantName>
               <Store />
-              {isEditing ? (
-                <FormInput
-                  type="text"
-                  value={formData.merchantName}
-                  onChange={(e) => setFormData({ ...formData, merchantName: e.target.value })}
-                  style={{ color: 'white', background: 'rgba(255,255,255,0.2)', border: '2px solid rgba(255,255,255,0.3)' }}
-                />
-              ) : (
-                receipt.merchantName || content.unknownMerchant
-              )}
+              {receipt.merchantName || content.unknownMerchant}
             </MerchantName>
             <StatusBadge $status={receipt.status}>
               {getStatusIcon()}
@@ -539,123 +439,68 @@ export const ReceiptDetailPage: React.FC = () => {
             <InfoItem>
               <InfoLabel>{content.totalAmount}</InfoLabel>
               <InfoValue>
-                {isEditing ? (
-                  <FormInput
-                    type="number"
-                    step="0.01"
-                    value={formData.totalAmount}
-                    onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })}
-                    style={{ color: 'white', background: 'rgba(255,255,255,0.2)', border: '2px solid rgba(255,255,255,0.3)' }}
-                  />
-                ) : (
-                  receipt.totalAmount !== null && receipt.totalAmount !== undefined
-                    ? `${receipt.totalAmount.toFixed(2)} лв`
-                    : '-'
-                )}
+                {receipt.totalAmount !== null && receipt.totalAmount !== undefined
+                  ? formatWithCurrency(receipt.totalAmount, currencyMode)
+                  : '-'}
               </InfoValue>
             </InfoItem>
 
             <InfoItem>
               <InfoLabel>{content.date}</InfoLabel>
               <InfoValue style={{ fontSize: '1.125rem' }}>
-                {isEditing ? (
-                  <FormInput
-                    type="date"
-                    value={formData.date}
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    style={{ color: 'white', background: 'rgba(255,255,255,0.2)', border: '2px solid rgba(255,255,255,0.3)' }}
-                  />
-                ) : (
-                  formatDate(receipt.date)
-                )}
+                {formatDate(receipt.date ?? receipt.receiptDate)}
               </InfoValue>
             </InfoItem>
-
-            <InfoItem>
-              <InfoLabel>{content.confidence}</InfoLabel>
-              <ConfidenceBadge $confidence={receipt.confidence ?? receipt.ocrConfidence}>
-                {(receipt.confidence ?? receipt.ocrConfidence).toFixed(0)}%
-              </ConfidenceBadge>
-            </InfoItem>
+            {/* F2: OCR confidence field intentionally absent — internal-only per spec §11.3 */}
           </HeaderInfo>
         </ReceiptHeader>
 
         <ReceiptBody>
-          {receipt.items && receipt.items.length > 0 && (
-            <Section>
-              <SectionTitle>
-                <Package />
-                {content.items}
-              </SectionTitle>
+          {/* Receipt items — partner-visible representation of receipt contents */}
+          <Section>
+            <SectionTitle>
+              <Package />
+              {content.items}
+            </SectionTitle>
+            {receipt.items && receipt.items.length > 0 ? (
               <ItemsList>
                 {receipt.items.map((item, index) => (
                   <ItemRow key={index}>
                     <ItemName>{item.name}</ItemName>
-                    {item.price !== undefined && <ItemPrice>{item.price.toFixed(2)} лв</ItemPrice>}
+                    {item.price !== undefined && <ItemPrice>{formatWithCurrency(item.price, currencyMode)}</ItemPrice>}
                   </ItemRow>
                 ))}
               </ItemsList>
-            </Section>
-          )}
-
-          <Section>
-            <SectionTitle>
-              <FileText />
-              {content.rawText}
-            </SectionTitle>
-            <RawTextSection>
-              {isEditing ? (
-                <FormTextarea
-                  value={formData.rawText}
-                  onChange={(e) => setFormData({ ...formData, rawText: e.target.value })}
-                />
-              ) : (
-                <RawText>{receipt.rawText}</RawText>
-              )}
-            </RawTextSection>
+            ) : (
+              <NoItemsText>{content.noItems}</NoItemsText>
+            )}
           </Section>
+          {/*
+           * F3: Raw OCR text section intentionally removed.
+           * ocrRawText / rawText is internal-only per spec §11.3.
+           * The items list above is the appropriate partner-visible receipt content.
+           */}
         </ReceiptBody>
 
+        {/*
+         * F6: Edit/save pathway intentionally absent.
+         * Spec §6, §11.4, §12 rule 3: partners have read-only access to receipts.
+         * Any correction must go through a Change Request via the Help system.
+         * Export functions use PartnerReceipt — no internal fields exposed.
+         */}
         <ActionsBar>
-          {receipt.status === ReceiptStatus.PENDING && (
-            <>
-              {isEditing ? (
-                <>
-                  <ActionButton $variant="primary" onClick={handleSave}>
-                    <Save />
-                    {content.save}
-                  </ActionButton>
-                  <ActionButton $variant="secondary" onClick={handleCancel}>
-                    <X />
-                    {content.cancel}
-                  </ActionButton>
-                </>
-              ) : (
-                <ActionButton $variant="primary" onClick={handleEdit}>
-                  <Edit2 />
-                  {content.edit}
-                </ActionButton>
-              )}
-            </>
-          )}
-
-          {/* Export buttons available for all receipts */}
-          {!isEditing && (
-            <>
-              <ActionButton $variant="secondary" onClick={() => exportReceiptToPDF(receipt)}>
-                <FileDown />
-                {content.exportPDF}
-              </ActionButton>
-              <ActionButton $variant="secondary" onClick={() => exportReceiptToJSON(receipt, `receipt-${receipt.id}.json`)}>
-                <Download />
-                {content.exportJSON}
-              </ActionButton>
-              <ActionButton $variant="secondary" onClick={() => shareReceiptViaEmail(receipt)}>
-                <Mail />
-                {content.shareEmail}
-              </ActionButton>
-            </>
-          )}
+          <ActionButton $variant="secondary" onClick={() => exportPartnerReceiptToPDF(receipt)}>
+            <FileDown />
+            {content.exportPDF}
+          </ActionButton>
+          <ActionButton $variant="secondary" onClick={() => exportPartnerReceiptToJSON(receipt, `receipt-${receipt.id}.json`)}>
+            <Download />
+            {content.exportJSON}
+          </ActionButton>
+          <ActionButton $variant="secondary" onClick={() => sharePartnerReceiptViaEmail(receipt)}>
+            <Mail />
+            {content.shareEmail}
+          </ActionButton>
         </ActionsBar>
       </ReceiptContainer>
     </PageContainer>

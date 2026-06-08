@@ -148,8 +148,16 @@ class PartnerTypeService {
     });
     const visibleIds = visibleRows.map(r => r.partnerTypeId);
 
-    if (visibleIds.length >= allTypes.length) return null; // all visible — no filter needed
-    return visibleIds;
+    // LOW-1 (r2n): planTypeAccess may contain entries for inactive partner types.
+    // If we compare raw visibleIds.length against allTypes.length, an entry for an
+    // inactive type inflates the count and can falsely trigger the "all visible"
+    // fast-path — returning null (no filter) when only a subset of active types
+    // should be visible to this plan. Restrict the comparison to active types only.
+    const activeTypeIdSet = new Set(allTypes.map(t => t.id));
+    const visibleActiveIds = visibleIds.filter(id => activeTypeIdSet.has(id));
+
+    if (visibleActiveIds.length >= allTypes.length) return null; // all active types visible — no filter needed
+    return visibleActiveIds;
   }
 
   /**

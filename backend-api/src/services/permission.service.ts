@@ -43,6 +43,12 @@ export const PERMISSION_CATALOG: Array<{ key: string; label: string; category: s
   { key: 'control.disputes.write', label: 'Manage disputes', category: 'control' },
   { key: 'control.rules.read', label: 'View fraud rules', category: 'control' },
   { key: 'control.rules.write', label: 'Edit fraud rules & limits', category: 'control' },
+  // U3 (spec §2.1 / Clash 5.4): bounded fraud-rule write. Holders may create/edit
+  // fraud rules but only within the engineering FRAUD_RULE_BOUNDS; values outside
+  // the bounds are rejected (422). Distinct from `control.rules.write` (full,
+  // may exceed bounds). Granted to RISK_REVIEW so risk reviewers can tune limits
+  // within safe ranges without being able to disable protections.
+  { key: 'control.rules.write.bounded', label: 'Edit fraud rules within bounds', category: 'control' },
   { key: 'control.receipts.read', label: 'View receipt review queue', category: 'control' },
   { key: 'control.receipts.write', label: 'Approve/reject receipts', category: 'control' },
 
@@ -83,9 +89,13 @@ export const ROLE_DEFAULT_ALLOWS: Record<string, string[]> = {
   // payouts and resolving invoice disputes (GET /admin/subscriptions/user/:id/history).
   FINANCE: ['dashboard.read', 'subscribers.read', 'subscriptions.read', 'transactions.read', 'cashback.read', 'finance.payouts.read', 'finance.payouts.write', 'finance.invoices.read', 'finance.invoices.write', 'finance.periods.read', 'finance.periods.write', 'finance.reports.read'],
   // control.rules.read gives read-only visibility into fraud rules (GET /admin/settings/fraud-rules).
+  // control.rules.write.bounded (U3, spec §2.1 / Clash 5.4) lets RISK_REVIEW create/edit fraud rules
+  // within the engineering bounds only — out-of-bounds values are rejected (422); exceeding bounds
+  // stays a SUPER_ADMIN / full control.rules.write privilege. RISK_REVIEW deliberately does NOT get the
+  // unbounded control.rules.write key.
   // cashback.read is required to see cashback entry state (PENDING/LOCKED/EXPIRED) when investigating
   // a flagged scan — without it the risk reviewer cannot correlate the transaction with its cashback entry.
-  RISK_REVIEW: ['dashboard.read', 'subscribers.read', 'transactions.read', 'cashback.read', 'control.risk.read', 'control.risk.write', 'control.disputes.read', 'control.disputes.write', 'control.rules.read', 'control.receipts.read', 'control.receipts.write'],
+  RISK_REVIEW: ['dashboard.read', 'subscribers.read', 'transactions.read', 'cashback.read', 'control.risk.read', 'control.risk.write', 'control.disputes.read', 'control.disputes.write', 'control.rules.read', 'control.rules.write.bounded', 'control.receipts.read', 'control.receipts.write'],
   // partners.write (live-partner status changes) is intentionally excluded: PARTNER_MANAGER works the
   // application pipeline and onboarding only; suspending/archiving live partners requires ADMIN.
   // admins.actions.read grants read access to GET /admin/admins/critical-actions so

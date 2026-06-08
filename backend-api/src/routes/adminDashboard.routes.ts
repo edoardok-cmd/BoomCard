@@ -9,6 +9,7 @@ import { Router, Response } from 'express';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
+import { buildDualCurrencyMap } from '../utils/currencyDisplay';
 
 const router = Router();
 
@@ -52,11 +53,18 @@ router.get(
       approvedCashback,
       pendingCashback,
       expiringCashback,
+      // Кешбек §3.1 — per-status breakdown across all 7 CashbackEntryStatus values
+      // (PENDING, TRIAL_PENDING, CLEARED, LOCKED, PAID, EXPIRED, VOIDED). Single
+      // groupBy over cashbackStatus; the value tiles above stay as-is for back-compat.
+      cashbackStatusGroups,
 
       // Партньори
       activePartners,
       partnerRequests,
       activeLocations,
+
+      // L9 — active user accounts (distinct from active subscribers).
+      activeUserAccounts,
 
       // Финанси — subscriber payouts (§6.1) + partner receivables (§6.2) come from
       // DIFFERENT tables; previous implementation pulled both from PartnerCashbackPayment
@@ -158,12 +166,29 @@ router.get(
         _sum: { amount: true },
       }),
 
+      // Кешбек §3.1 — count + amount per cashbackStatus. Scoped to CASHBACK_CREDIT
+      // (the cashback-bearing wallet rows that carry a cashbackStatus). One query.
+      prisma.walletTransaction.groupBy({
+        by: ['cashbackStatus'],
+        where: { type: 'CASHBACK_CREDIT', cashbackStatus: { not: null } },
+        _count: { _all: true },
+        _sum: { amount: true },
+      }),
+
       // Партньори
       prisma.partner.count({ where: { status: 'ACTIVE' } }),
       prisma.partner.count({ where: { status: 'PENDING' } }),
       // spec §3.1 "активни локации" — only venues with venueStatus=ACTIVE qualify;
       // SUSPENDED/REPLACED venues under an active partner are not operationally active.
       prisma.venue.count({ where: { partner: { status: 'ACTIVE' }, venueStatus: 'ACTIVE' } }),
+
+      // L9 / Spec §3.1 — "active user ACCOUNTS" is a distinct metric from the
+      // subscription-status breakdown. The `subscribers.active` tile counts users
+      // whose LATEST SUBSCRIPTION is ACTIVE; this counts active USER ACCOUNTS
+      // (user_account_status = ACTIVE) regardless of subscription state. A user can
+      // have an active account with an expired/cancelled subscription, so the two
+      // numbers are legitimately different and §3.1 lists them separately.
+      prisma.user.count({ where: { status: 'ACTIVE', role: 'USER', deletedAt: null } }),
 
       // Финанси §6.1 — subscriber payout queue.
       // WITHDRAWAL amounts are stored negative (wallet.service.ts:436), so we negate
@@ -194,7 +219,11 @@ router.get(
         .reduce((sum, r) => sum + Number(r.cnt), 0);
 
     const activeSubscribers      = Number(activeSubscribersRaw[0]?.cnt ?? 0n);
-    const expiredSubscribers     = countByStatuses(['CANCELLED', 'EXPIRED', 'INCOMPLETE_EXPIRED']);
+    // Spec §1.2/§7.1 treat Cancelled and Expired as distinct subscription_status
+    // values with different scanning/payout gates, so surface them separately.
+    // `expired` keeps EXPIRED + INCOMPLETE_EXPIRED; CANCELLED moves to its own tile.
+    const expiredSubscribers     = countByStatuses(['EXPIRED', 'INCOMPLETE_EXPIRED']);
+    const cancelledSubscribers   = countByStatuses(['CANCELLED']);
     const pausedSubscribers      = countByStatuses(['PAUSED']);
     // Spec §4.2 v1.1 — FAILED_PAYMENT is the canonical no-grace failed state
     // written by the Paysera renewal cron. PAST_DUE / UNPAID are the legacy
@@ -207,6 +236,38 @@ router.get(
       : 0;
     const payoutsDue = Math.abs(payoutsDueAgg._sum.amount ?? 0);
 
+    // §3.1 cashback status breakdown — zero-fill all 7 canonical statuses so the
+    // tile always renders every state even when no rows exist for it.
+    const CASHBACK_STATUSES = [
+      'PENDING',
+      'TRIAL_PENDING',
+      'CLEARED',
+      'LOCKED',
+      'PAID',
+      'EXPIRED',
+      'VOIDED',
+    ] as const;
+    const cashbackStatusBreakdown = CASHBACK_STATUSES.map((status) => {
+      const row = cashbackStatusGroups.find((g) => g.cashbackStatus === status);
+      return {
+        status,
+        count: row?._count?._all ?? 0,
+        amount: row?._sum?.amount ?? 0,
+      };
+    });
+
+    // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for the dashboard's
+    // financial figures (all stored amounts are BGN). Emitted ALONGSIDE the existing
+    // scalar BGN fields (backward-compat) under `financeDisplay`. `payoutsDue` is
+    // already computed above.
+    const partnerReceivablesAmt = partnerReceivables._sum.totalCashbackOwed ?? 0;
+    const marginAmt = totalMargin._sum.marginAmount ?? 0;
+    const financeDisplay = await buildDualCurrencyMap({
+      payoutsDue,
+      partnerReceivables: partnerReceivablesAmt,
+      margin: marginAmt,
+    });
+
     res.json({
       success: true,
       data: {
@@ -214,8 +275,13 @@ router.get(
           active: activeSubscribers,
           newLast30Days: newSubscribers,
           expired: expiredSubscribers,
+          cancelled: cancelledSubscribers,
           paused: pausedSubscribers,
           failedPayment: failedPaymentSubscribers,
+        },
+        // L9 — active user ACCOUNTS metric, distinct from active subscribers above.
+        users: {
+          activeAccounts: activeUserAccounts,
         },
         transactions: {
           todayCount: todayTxCount,
@@ -228,6 +294,7 @@ router.get(
           approved: approvedCashback._sum.amount ?? 0,
           pending: pendingCashback._sum.amount ?? 0,
           expiringSoon: expiringCashback._sum.amount ?? 0,
+          statusBreakdown: cashbackStatusBreakdown,
         },
         partners: {
           active: activePartners,
@@ -237,8 +304,10 @@ router.get(
         finance: {
           payoutsDue,
           payoutsDueCount,
-          partnerReceivables: partnerReceivables._sum.totalCashbackOwed ?? 0,
-          margin: totalMargin._sum.marginAmount ?? 0,
+          partnerReceivables: partnerReceivablesAmt,
+          margin: marginAmt,
+          // M7 — dual-currency {bgn, eur} pairs (BGN null after the transition window).
+          display: financeDisplay,
         },
       },
       generatedAt: now.toISOString(),

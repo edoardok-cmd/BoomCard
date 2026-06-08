@@ -19,6 +19,7 @@ import {
   FRAUD_ALERT_SCORE_THRESHOLD,
 } from '../constants/receipt.constants';
 import { getSystemSettingInt, getSystemSettingFloat } from '../utils/systemSettings';
+import { detach } from '../utils/detach';
 
 /**
  * Receipt Item structure (parsed from OCR)
@@ -78,18 +79,26 @@ export interface ReceiptFilters {
   userId?: string;
   status?: ReceiptStatus;
   merchantName?: string;
+  venueId?: string;
   minAmount?: number;
   maxAmount?: number;
   startDate?: Date;
   endDate?: Date;
   page?: number;
   limit?: number;
-  sortBy?: 'createdAt' | 'totalAmount' | 'date';
+  sortBy?: 'createdAt' | 'totalAmount' | 'date' | 'status';
   sortOrder?: 'asc' | 'desc';
   // Admin-only: include fraudScore/fraudReasons/ipAddress/userAgent/ocrRawText.
   // Default false — formatReceipt strips these so user-facing endpoints never leak.
   includeInternal?: boolean;
 }
+
+// Runtime allowlist for sortBy — enforced inside getReceipts() so any caller
+// (route layer, test, or internal service) that passes an out-of-spec field
+// is corrected to 'createdAt' rather than constructing a Prisma orderBy with
+// an internal column like fraudScore.
+const ALLOWED_SORT_FIELDS = ['createdAt', 'totalAmount', 'date', 'status'] as const;
+type AllowedSortField = typeof ALLOWED_SORT_FIELDS[number];
 
 /**
  * Receipt Service
@@ -102,14 +111,22 @@ class ReceiptService {
    * Returns null when no active subscription → cashback must be 0 (Finding #1+#2).
    * Mirrors sticker.service.ts resolveCashbackTier so both flows share the same gate.
    */
-  private async resolveCashbackTier(userId: string): Promise<'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' | null> {
+  private async resolveCashbackTier(userId: string): Promise<'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY' | null> {
+    const now = new Date();
     const sub = await prisma.subscription.findFirst({
-      where: { userId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAUSED] } },
+      where: {
+        userId,
+        OR: [
+          { status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAUSED, 'TRIALING' as any] } },
+          { status: SubscriptionStatus.CANCELLED, currentPeriodEnd: { gt: now } },
+        ],
+      },
       orderBy: { currentPeriodEnd: 'desc' },
     });
     if (!sub) return null;
-    const plan = sub.plan as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM';
-    return plan === 'PREMIUM_WEEKLY' || plan === 'BASIC' || plan === 'PREMIUM' ? plan : null;
+    const plan = sub.plan as string;
+    if (plan === 'PREMIUM_WEEKLY' || plan === 'BASIC' || plan === 'PREMIUM_MONTHLY') return plan as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY';
+    return null;
   }
 
   /**
@@ -228,10 +245,18 @@ class ReceiptService {
         endDate,
         page = 1,
         limit = 10,
-        sortBy = 'createdAt',
         sortOrder = 'desc',
         includeInternal = false,
       } = filters;
+
+      // Spec §11.3 / Clash 5.1: enforce sortBy allowlist at the service boundary.
+      // Rejects any column not in the safe set (e.g. fraudScore) — the route layer
+      // also guards via safeSortBy(), but defence-in-depth here means internal
+      // callers are protected too.
+      const rawSortBy = filters.sortBy ?? 'createdAt';
+      const sortBy: AllowedSortField = (ALLOWED_SORT_FIELDS as readonly string[]).includes(rawSortBy)
+        ? (rawSortBy as AllowedSortField)
+        : 'createdAt';
 
       const skip = (page - 1) * limit;
 
@@ -377,9 +402,12 @@ class ReceiptService {
         data: {
           ...(data.totalAmount !== undefined && { totalAmount: data.totalAmount }),
           ...(data.merchantName !== undefined && { merchantName: data.merchantName }),
-          ...(receiptDate && { date: receiptDate }),
+          ...(receiptDate && { receiptDate }),
           ...(data.items && { items: JSON.stringify(data.items) }),
-          ...(data.rawText && { rawText: data.rawText }),
+          // Finding #7: data.rawText maps to the ocrRawText column (was previously
+          // incorrectly mapped to rawText which does not exist on the Receipt model,
+          // causing Prisma to silently discard the update).
+          ...(data.rawText && { ocrRawText: data.rawText }),
           ...(data.metadata && { metadata: JSON.stringify(data.metadata) })
         },
         include: {
@@ -447,6 +475,29 @@ class ReceiptService {
 
       logger.info(`Receipt ${newStatus.toLowerCase()}: ${id} by validator: ${validatorId}`);
 
+      // Credit cashback on approval, mirroring reviewReceipt behaviour.
+      if (newStatus === ReceiptStatus.APPROVED) {
+        const cashbackAmount = (updatedReceipt as any).cashbackAmount ?? 0;
+        if (cashbackAmount > 0) {
+          try {
+            await walletService.credit({
+              userId: updatedReceipt.user.id,
+              amount: cashbackAmount,
+              type: WalletTransactionType.CASHBACK_CREDIT,
+              description: `Кешбек от бележка в ${(updatedReceipt as any).merchantName || 'търговец'}`,
+              receiptId: updatedReceipt.id,
+              metadata: {
+                merchantName: (updatedReceipt as any).merchantName,
+                totalAmount: (updatedReceipt as any).totalAmount,
+              },
+            });
+            logger.info(`validateReceipt: credited ${cashbackAmount} BGN cashback for receipt ${id}`);
+          } catch (creditError) {
+            logger.error(`validateReceipt: failed to credit cashback for receipt ${id}:`, creditError);
+          }
+        }
+      }
+
       // Admin-only call site (PATCH /:id/validate is gated by authorize('ADMIN','SUPER_ADMIN')).
       return { success: true, data: this.formatReceipt(updatedReceipt, { includeInternal: true }) };
     } catch (error) {
@@ -497,21 +548,25 @@ class ReceiptService {
 
   /**
    * Get receipt statistics for a user
+   *
+   * S2 (r2f): replaced unbounded findMany() with targeted count/aggregate calls so
+   * a user with thousands of receipts does not load every row into memory.
    */
   async getUserReceiptStats(userId: string) {
     try {
-      const receipts = await prisma.receipt.findMany({
-        where: { userId }
-      });
+      const [totalReceipts, validatedReceipts, rejectedReceipts, pendingReceipts, amountAgg] =
+        await Promise.all([
+          prisma.receipt.count({ where: { userId } }),
+          prisma.receipt.count({ where: { userId, status: ReceiptStatus.APPROVED } }),
+          prisma.receipt.count({ where: { userId, status: ReceiptStatus.REJECTED } }),
+          prisma.receipt.count({ where: { userId, status: ReceiptStatus.PENDING } }),
+          prisma.receipt.aggregate({
+            where: { userId, totalAmount: { not: null } },
+            _sum: { totalAmount: true },
+          }),
+        ]);
 
-      const totalReceipts = receipts.length;
-      const validatedReceipts = receipts.filter(r => r.status === ReceiptStatus.APPROVED).length;
-      const rejectedReceipts = receipts.filter(r => r.status === ReceiptStatus.REJECTED).length;
-      const pendingReceipts = receipts.filter(r => r.status === ReceiptStatus.PENDING).length;
-
-      const totalAmount = receipts
-        .filter(r => r.totalAmount)
-        .reduce((sum, r) => sum + (r.totalAmount || 0), 0);
+      const totalAmount = amountAgg._sum.totalAmount ?? 0;
 
       return {
         success: true,
@@ -523,8 +578,8 @@ class ReceiptService {
           totalAmount: Math.round(totalAmount * 100) / 100,
           averageAmount: totalReceipts > 0
             ? Math.round((totalAmount / totalReceipts) * 100) / 100
-            : 0
-        }
+            : 0,
+        },
       };
     } catch (error) {
       logger.error('Error fetching receipt stats:', error);
@@ -544,9 +599,11 @@ class ReceiptService {
 
   /**
    * Format receipt for response. By default strips server-internal fields
-   * (fraudScore, fraudReasons, ipAddress, userAgent, raw OCR text) that would leak
-   * fraud-detection signals to the owner — telling a fraudster which rule tripped
-   * makes the next forgery easier. Admin endpoints must pass { includeInternal: true }.
+   * (fraudScore, fraudReasons, ipAddress, userAgent, raw OCR text, raw GPS
+   * latitude/longitude, imageKey storage key, ocrConfidence, ocrData) that would
+   * leak fraud-detection signals / internal verification data to the owner —
+   * telling a fraudster which rule tripped makes the next forgery easier.
+   * Admin endpoints must pass { includeInternal: true }.
    */
   private formatReceipt(receipt: any, opts: { includeInternal?: boolean } = {}) {
     const base = {
@@ -564,6 +621,54 @@ class ReceiptService {
       ipAddress: _ip,
       userAgent: _ua,
       ocrRawText: _ocr,
+      // Spec §11.3 / Clash 10.6: internal cashback formula and fraud-detection
+      // fields must never reach partner-facing or user-facing responses.
+      cashbackPercent: _cp,
+      deviceFingerprint: _df,
+      deviceFingerprintRaw: _dfr,
+      perceptualHash: _ph,
+      reviewNotes: _rn,
+      // receipt.types.ts documents reviewedBy/reviewedAt as internal-only.
+      // reviewedBy leaks the admin user-id who actioned the receipt; reviewedAt
+      // is internal moderation metadata. Neither belongs in user/partner responses.
+      reviewedBy: _rb,
+      reviewedAt: _rat,
+      internalNote: _in,
+      // Spec §11.3 / §7.4 (receipt.types.ts lines 11-16): these are INTERNAL-ONLY
+      // and must never reach the receipt owner or partner-facing responses.
+      // - latitude/longitude: raw GPS verification data
+      // - imageKey: internal storage key (only the public imageUrl is user-facing)
+      // - ocrConfidence: internal OCR quality metric
+      // - ocrData: raw OCR payload
+      latitude: _lat,
+      longitude: _lon,
+      imageKey: _ik,
+      ocrConfidence: _oc,
+      ocrData: _od,
+      // receipt.types.ts documents userId and imageHash as internal-only.
+      // - userId: the owner id is implied by the authenticated request; exposing it
+      //   on the payload leaks an internal identifier with no client use.
+      // - imageHash: the dedup/forgery-detection fingerprint — disclosing it tells a
+      //   fraudster exactly how duplicate detection keys their image.
+      userId: _uid,
+      imageHash: _ih,
+      // submissionCount is an internal anti-abuse / resubmission counter — it
+      // must not leak to the receipt owner (it reveals how the platform tracks
+      // re-submissions). Strip from all non-admin responses.
+      submissionCount: _sc,
+      // verifiedAmount is the admin-corrected version of totalAmount — internal
+      // moderation data. totalAmount (user-facing) stays; verifiedAmount is stripped
+      // from non-admin responses for minimal exposure.
+      verifiedAmount: _va,
+      // The nested `user` relation (id/email) is the caller's OWN data — redundant
+      // with the authenticated identity and needless to echo back. Strip it from
+      // non-admin responses (harmless no-op when the include didn't add it).
+      user: _user,
+      // offerId and cardId are internal references (the offer/card the receipt was
+      // matched against). They have no partner-facing or user-facing UI use and only
+      // leak internal relation ids — strip them from non-admin responses.
+      offerId: _oid,
+      cardId: _cid,
       ...safe
     } = base;
     return safe;
@@ -665,8 +770,25 @@ class ReceiptService {
         userId: request.userId,
       });
 
-      // All receipts require admin approval — no auto-approve or auto-reject
-      const status: ReceiptStatus = 'MANUAL_REVIEW' as any;
+      // F-016: Use computeSpecRiskLevel() to determine requiresManualReview instead of
+      // hardcoding to true. F-010 / BC-USER-SPEC-FIX-010: only High-risk requires manual
+      // review per spec §9.4 amendment (2026-06-04). Low and Medium auto-process (auto-
+      // approval within 24h); only High routes to the manual review queue.
+      // ibanChangedRecently and locationMismatch need context not always available at
+      // receipt submission time — we use conservative defaults (false) so the spec's
+      // auto-approve path can engage for clearly low- and medium-risk receipts.
+      const specRisk = await fraudDetectionService.computeSpecRiskLevel({
+        userId: request.userId,
+        ibanChangedRecently: false, // conservative default; sticker scan path checks this directly
+        ocrConfidence: request.ocrData?.confidence || 0,
+        locationMismatch: false, // receipt flow has no QR location check
+      });
+      const requiresManualReview = specRisk.riskLevel === 'High';
+
+      // F-010 / BC-USER-SPEC-FIX-010: only High-risk routes to MANUAL_REVIEW per spec §9.4
+      // amendment (2026-06-04). Low and Medium auto-process via the PENDING (auto-approval
+      // within 24h) path.
+      const status: ReceiptStatus = requiresManualReview ? ('MANUAL_REVIEW' as any) : ('PENDING' as any);
       const cashbackAmount = 0;
 
       // Get card ID (refresh to get newly created card if needed)
@@ -713,12 +835,18 @@ class ReceiptService {
         totalAmount: amount,
       });
 
-      // Notify user that receipt is pending admin review
-      await notificationService.notifyManualReviewRequired({
-        userId: request.userId,
-        receiptId: receipt.id,
-        merchantName: request.ocrData?.merchantName || 'Unknown Merchant',
-      });
+      // Notify user that receipt is pending admin review — only for High-risk
+      // submissions that actually route to MANUAL_REVIEW. Per spec §9.5 the
+      // "In Review / Pending verification" state (and its 24-48h notification)
+      // is shown for High-risk submissions only; Medium/Low auto-process to
+      // PENDING and must not receive a manual-verification notification.
+      if (requiresManualReview) {
+        await notificationService.notifyManualReviewRequired({
+          userId: request.userId,
+          receiptId: receipt.id,
+          merchantName: request.ocrData?.merchantName || 'Unknown Merchant',
+        });
+      }
 
       // Send fraud alert to admins if high score (threshold is DB-configurable via max_fraud_score)
       const fraudAlertThreshold = await getSystemSettingInt('max_fraud_score', FRAUD_ALERT_SCORE_THRESHOLD);
@@ -733,17 +861,22 @@ class ReceiptService {
         // submission occurred at their venue so they can corroborate in person.
         // Customer identity is intentionally NOT exposed to the partner here.
         if (receipt.venueId) {
+          // fraudScore/reasons are internal-only (spec §11.3) — logged here but
+          // NOT passed to notifyPartnerFraudFlag (signature accepts only venueId
+          // and receiptId to prevent accidental exposure to partners).
+          logger.info(`Receipt ${receipt.id} fraud flag: score=${fraudCheck.fraudScore}, reasons=${(fraudCheck.fraudReasons || []).join(',')}`);
           await notificationService.notifyPartnerFraudFlag({
             venueId: receipt.venueId,
             receiptId: receipt.id,
-            fraudScore: fraudCheck.fraudScore,
-            reasons: fraudCheck.fraudReasons,
           }).catch((err) => logger.error('Failed to notify partner of fraud flag:', err));
         }
       }
 
       logger.info(`Receipt ${receipt.id} submitted: ${status} (fraud score: ${fraudCheck.fraudScore})`);
 
+      // Finding #2 (spec §11.3 / Clash 5.1): fraudAnalysis block removed.
+      // score, riskLevel, and flagsTriggered are internal-only. The only
+      // caller-visible signal is requiresManualReview (boolean).
       return {
         success: true,
         message: this.getStatusMessage(status as string, cashbackAmount),
@@ -755,21 +888,10 @@ class ReceiptService {
           receiptDate: receipt.receiptDate,
           imageUrl: receipt.imageUrl,
           createdAt: receipt.createdAt,
-        },
-        fraudAnalysis: {
-          score: fraudCheck.fraudScore,
-          decision: 'MANUAL_REVIEW',
-          riskLevel: fraudCheck.fraudScore <= 30 ? 'LOW' : fraudCheck.fraudScore <= 60 ? 'MEDIUM' : 'HIGH',
-          flagsTriggered: fraudCheck.fraudReasons?.map(reason => ({
-            indicator: reason,
-            description: this.getFraudReasonDescription(reason),
-            score: this.getFraudReasonScore(reason),
-          })) || [],
           requiresManualReview: status === 'MANUAL_REVIEW',
         },
         cashback: {
           amount: cashbackCalc.cashbackAmount,
-          percentage: cashbackCalc.cashbackPercent,
           // Cashback is credited only when an admin explicitly approves the receipt.
           // The amount shown here is an estimate — admin may adjust on approval.
           status: cashbackCalc.cashbackAmount > 0 ? 'PENDING_REVIEW' : 'NOT_APPLICABLE',
@@ -849,9 +971,16 @@ class ReceiptService {
 
   /**
    * Get receipts pending manual review (admin only)
+   *
+   * LOW-1 (r2g): Wrap results in formatReceipt({ includeInternal: true }) for
+   * consistency with every other list/read path. The endpoint is gated by
+   * authorize('ADMIN','SUPER_ADMIN'), so internal fields are appropriate here,
+   * but applying the wrapper ensures defence-in-depth: any future access-control
+   * change cannot accidentally bypass the field-stripping layer by reusing this
+   * method from a less-privileged context.
    */
   async getPendingReviews(limit: number = 50) {
-    return prisma.receipt.findMany({
+    const receipts = await prisma.receipt.findMany({
       where: {
         status: 'MANUAL_REVIEW' as any,
       },
@@ -870,6 +999,7 @@ class ReceiptService {
         },
       },
     });
+    return receipts.map((r) => this.formatReceipt(r, { includeInternal: true }));
   }
 
   /**
@@ -1142,20 +1272,20 @@ class ReceiptService {
         });
         if (user?.email) {
           if (newStatus === 'APPROVED') {
-            emailService.sendReceiptApprovedEmail(user.email, {
+            detach(emailService.sendReceiptApprovedEmail(user.email, {
               customerName: user.firstName || user.email.split('@')[0],
               merchantName: receipt.merchantName || 'Unknown Merchant',
               amount: updated.totalAmount || 0,
               cashbackAmount,
               receiptDate: receipt.receiptDate || undefined,
-            }).catch((err) => logger.error('Failed to send receipt approved email:', err));
+            }), (err) => logger.error('Failed to send receipt approved email:', err));
           } else {
-            emailService.sendReceiptRejectedEmail(user.email, {
+            detach(emailService.sendReceiptRejectedEmail(user.email, {
               customerName: user.firstName || user.email.split('@')[0],
               merchantName: receipt.merchantName || 'Unknown Merchant',
               amount: receipt.totalAmount || 0,
               reason: params.rejectionReason || 'Receipt did not pass verification',
-            }).catch((err) => logger.error('Failed to send receipt rejected email:', err));
+            }), (err) => logger.error('Failed to send receipt rejected email:', err));
           }
         }
       } catch (emailError) {
@@ -1259,44 +1389,10 @@ class ReceiptService {
     }
   }
 
-  /**
-   * Get human-readable description for fraud reason
-   */
-  private getFraudReasonDescription(reason: string): string {
-    const descriptions: Record<string, string> = {
-      DUPLICATE_IMAGE: 'This receipt has been submitted before',
-      BLACKLISTED_MERCHANT: 'Merchant is not eligible for cashback',
-      EDITED_IMAGE: 'Receipt image appears to have been edited or manipulated',
-      SUSPICIOUS_MERCHANT: 'Merchant name does not match known establishments',
-      AMOUNT_MISMATCH: 'Receipt amount does not match OCR data',
-      LOCATION_MISMATCH: 'GPS location does not match venue location',
-      FREQUENT_SUBMISSIONS: 'Too many submissions in a short time period',
-      INVALID_GPS: 'GPS location data is missing or invalid',
-      LOW_OCR_CONFIDENCE: 'Receipt text could not be read clearly',
-      UNUSUAL_TIME: 'Receipt submitted at an unusual time',
-    };
-    return descriptions[reason] || reason;
-  }
-
-  /**
-   * Get fraud score value for a specific reason
-   */
-  private getFraudReasonScore(reason: string): number {
-    const scores: Record<string, number> = {
-      BLACKLISTED_MERCHANT: 100,
-      DUPLICATE_IMAGE: 40,
-      EDITED_IMAGE: 35,
-      SUSPICIOUS_MERCHANT: 30,
-      AMOUNT_MISMATCH: 25,
-      LOCATION_MISMATCH: 25,
-      TEMPLATE_MISMATCH: 35,
-      FREQUENT_SUBMISSIONS: 20,
-      INVALID_GPS: 20,
-      LOW_OCR_CONFIDENCE: 15,
-      UNUSUAL_TIME: 10,
-    };
-    return scores[reason] || 0;
-  }
 }
+// S3 (r2f): getFraudReasonDescription and getFraudReasonScore were dead code —
+// defined but never called. Removed to avoid misleading readers into thinking
+// fraud reason descriptions are surfaced to users. If fraud reason descriptions
+// are needed in future, re-add them where the output is actually consumed.
 
 export const receiptService = new ReceiptService();

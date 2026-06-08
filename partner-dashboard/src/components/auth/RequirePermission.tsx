@@ -19,10 +19,12 @@ export const RequirePermission: React.FC<RequirePermissionProps> = ({
 
   if (!user) return <>{fallback}</>;
 
-  const isSuperAdmin = (user as any).rawRole === 'SUPER_ADMIN';
+  // rawRole and permissions are both declared on the User interface; remove
+  // the `as any` casts that bypass TypeScript type checking unnecessarily.
+  const isSuperAdmin = user.rawRole === 'SUPER_ADMIN';
   if (isSuperAdmin) return <>{children}</>;
 
-  const permissions: string[] = (user as any).permissions ?? [];
+  const permissions: string[] = user.permissions ?? [];
   if (permissions.includes(permissionKey)) return <>{children}</>;
 
   return <>{fallback}</>;

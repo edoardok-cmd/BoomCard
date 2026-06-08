@@ -22,6 +22,8 @@ import { prisma } from '../lib/prisma';
 import * as XLSX from 'xlsx';
 import { Prisma, ReportingPeriodStatus, ScanStatus } from '@prisma/client';
 import { adminCashbackService } from '../services/adminCashback.service';
+import { parsePagination } from '../utils/pagination';
+import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 const router = Router();
 
@@ -37,7 +39,7 @@ const VALID_PAYOUT_STATUSES = ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', '
 // scan-side classification (users without an active sub at scan time) even though it
 // isn't a real Prisma SubscriptionPlan enum value — wallet/payout queries treat it as
 // "no subscribers" rather than issuing an invalid enum query.
-const VALID_PLANS = ['PREMIUM_WEEKLY', 'BASIC', 'PREMIUM', 'UNKNOWN'] as const;
+const VALID_PLANS = ['PREMIUM_WEEKLY', 'BASIC', 'PREMIUM_MONTHLY', 'UNKNOWN'] as const;
 
 /* ─── Invoices ────────────────────────────────────────────────────────────── */
 
@@ -49,9 +51,7 @@ router.get(
   '/invoices',
   requirePermission('finance.invoices.read'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 25));
-    const skip = (page - 1) * limit;
+    const { skip, page, limit } = parsePagination(req.query, { defaultLimit: 25, maxLimit: 100 });
     const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
     const month = typeof req.query.month === 'string' ? req.query.month.trim() : '';
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
@@ -99,9 +99,19 @@ router.get(
       : [];
     const periodStatusByMonth = new Map(reportingPeriods.map(p => [p.month, p.status]));
 
+    // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for invoice amounts
+    // (stored BGN). Added alongside the existing scalar fields (backward-compat).
+    const windowOpen = await isCurrencyTransitionWindowOpen();
     const enriched = invoices.map(inv => ({
       ...inv,
       reportingPeriodStatus: periodStatusByMonth.get(inv.month) ?? null,
+      display: {
+        totalCashbackOwed: toDualCurrency(inv.totalCashbackOwed ?? 0, windowOpen),
+        turnoverAmount: toDualCurrency(inv.turnoverAmount ?? 0, windowOpen),
+        // N2 (spec §3.7 + §8.1 rule 4) — margin dual-denominated to match the
+        // CSV/xlsx export, which already emits BGN+EUR for margin.
+        marginAmount: toDualCurrency(inv.marginAmount ?? 0, windowOpen),
+      },
     }));
 
     res.json({
@@ -655,7 +665,7 @@ router.get(
         : planParam
           ? prisma.subscription
               .findMany({
-                where: { plan: planParam as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' },
+                where: { plan: planParam as any },
                 select: { userId: true },
                 distinct: ['userId'],
               })
@@ -939,9 +949,34 @@ router.get(
     const [light, basic, premium] = await Promise.all([
       getPayoutThresholdBGN('PREMIUM_WEEKLY'),
       getPayoutThresholdBGN('BASIC'),
-      getPayoutThresholdBGN('PREMIUM'),
+      getPayoutThresholdBGN('PREMIUM_MONTHLY' as any),
     ]);
-    res.json({ success: true, data: { PREMIUM_WEEKLY: light, BASIC: basic, PREMIUM: premium } });
+    // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for payout thresholds
+    // (stored BGN). Added alongside the scalar BGN values (backward-compat).
+    // N1 (spec §3.7) — the spec-canonical plan key set is `BASIC, PREMIUM_WEEKLY,
+    // PREMIUM`. The SubscriptionPlan enum stores the third plan as `PREMIUM_MONTHLY`;
+    // we read the threshold by the enum key but emit it under the spec key `PREMIUM`
+    // so the response shape matches §3.7 and the sibling cashback endpoint exactly.
+    // `PREMIUM_MONTHLY` is retained as a backward-compat alias (additive — no key
+    // removed) because some enum-native callers reference it.
+    const windowOpen = await isCurrencyTransitionWindowOpen();
+    res.json({
+      success: true,
+      data: {
+        BASIC: basic,
+        PREMIUM_WEEKLY: light,
+        PREMIUM: premium,
+        // Backward-compat alias for enum-native consumers (spec key is PREMIUM).
+        PREMIUM_MONTHLY: premium,
+      },
+      display: {
+        BASIC: toDualCurrency(basic, windowOpen),
+        PREMIUM_WEEKLY: toDualCurrency(light, windowOpen),
+        PREMIUM: toDualCurrency(premium, windowOpen),
+        // Backward-compat alias for enum-native consumers (spec key is PREMIUM).
+        PREMIUM_MONTHLY: toDualCurrency(premium, windowOpen),
+      },
+    });
   })
 );
 
@@ -1253,23 +1288,40 @@ router.get(
       // Resolve paidBy UUIDs → admin display names for accounting readability.
       const invoiceNameMap = await resolveAdminNames(invoices.map(i => i.paidBy));
 
-      rows = invoices.map(i => ({
-        invoiceNumber: i.invoiceNumber ?? '',
-        id: i.id,
-        partner: i.partner.businessName,
-        city: i.partner.city ?? '',
-        month: i.month,
-        turnoverAmount: i.turnoverAmount,
-        contractedRate: i.contractedRate ?? '',
-        totalCashbackOwed: i.totalCashbackOwed,
-        marginAmount: i.marginAmount,
-        obligation: Math.round((i.totalCashbackOwed + i.marginAmount) * 100) / 100,
-        status: i.status,
-        paidAt: i.paidAt?.toISOString() ?? '',
-        paidBy: i.paidBy ? (invoiceNameMap.get(i.paidBy) ?? i.paidBy) : '',
-        notes: i.notes ?? '',
-        createdAt: i.createdAt.toISOString(),
-      }));
+      // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency CSV/xlsx export. EUR columns
+      // are always emitted; BGN columns are blanked once the transition window closes
+      // (EUR-only display). During the window BOTH currencies appear side by side.
+      const invWindowOpen = await isCurrencyTransitionWindowOpen();
+      const bgnCell = (n: number): number | string => (invWindowOpen ? n : '');
+
+      rows = invoices.map(i => {
+        const obligationBgn = Math.round((i.totalCashbackOwed + i.marginAmount) * 100) / 100;
+        const turnoverEur = toDualCurrency(i.turnoverAmount, invWindowOpen).eur;
+        const cashbackEur = toDualCurrency(i.totalCashbackOwed, invWindowOpen).eur;
+        const marginEur = toDualCurrency(i.marginAmount, invWindowOpen).eur;
+        const obligationEur = toDualCurrency(obligationBgn, invWindowOpen).eur;
+        return {
+          invoiceNumber: i.invoiceNumber ?? '',
+          id: i.id,
+          partner: i.partner.businessName,
+          city: i.partner.city ?? '',
+          month: i.month,
+          turnoverAmount: bgnCell(i.turnoverAmount),
+          turnoverAmountEur: turnoverEur,
+          contractedRate: i.contractedRate ?? '',
+          totalCashbackOwed: bgnCell(i.totalCashbackOwed),
+          totalCashbackOwedEur: cashbackEur,
+          marginAmount: bgnCell(i.marginAmount),
+          marginAmountEur: marginEur,
+          obligation: bgnCell(obligationBgn),
+          obligationEur,
+          status: i.status,
+          paidAt: i.paidAt?.toISOString() ?? '',
+          paidBy: i.paidBy ? (invoiceNameMap.get(i.paidBy) ?? i.paidBy) : '',
+          notes: i.notes ?? '',
+          createdAt: i.createdAt.toISOString(),
+        };
+      });
 
     } else if (type === 'periods') {
       const where: Parameters<typeof prisma.reportingPeriod.findMany>[0]['where'] = {};
@@ -1405,7 +1457,7 @@ router.get(
           : expPlanFilter
             ? prisma.subscription
                 .findMany({
-                  where: { plan: expPlanFilter as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' },
+                  where: { plan: expPlanFilter as any },
                   select: { userId: true },
                   distinct: ['userId'],
                 })
@@ -1519,7 +1571,7 @@ router.get(
 
       // Section 2 — plan breakdown rows: one row per subscription plan (plan + cashback + turnover)
       const PLAN_LABELS_BG: Record<string, string> = {
-        PREMIUM_WEEKLY: 'Premium Weekly', BASIC: 'Basic', PREMIUM: 'Premium', UNKNOWN: 'Без абонамент',
+        PREMIUM_WEEKLY: 'Premium Weekly', BASIC: 'Basic', PREMIUM: 'Premium Monthly', PREMIUM_MONTHLY: 'Premium Monthly', UNKNOWN: 'Без абонамент',
       };
       const planSection = Object.entries(expPlanAccum)
         .sort((a, b) => b[1].cashback - a[1].cashback)
@@ -1546,7 +1598,7 @@ router.get(
       const WALLET_TYPE_BG: Record<string, string> = {
         CASHBACK_CREDIT: 'Кешбек кредит', WITHDRAWAL: 'Плащане към абонат', TOP_UP: 'Зареждане',
       };
-      const EXP_PLAN_LABELS: Record<string, string> = { PREMIUM_WEEKLY: 'Premium Weekly', BASIC: 'Basic', PREMIUM: 'Premium', UNKNOWN: 'Без абонамент' };
+      const EXP_PLAN_LABELS: Record<string, string> = { PREMIUM_WEEKLY: 'Premium Weekly', BASIC: 'Basic', PREMIUM: 'Premium Monthly', PREMIUM_MONTHLY: 'Premium Monthly', UNKNOWN: 'Без абонамент' };
       // Wallet stats are subscriber-side, so the partnerId filter does not apply here.
       // Lead the parenthetical with the plan scope (always shown when any filter is active
       // so the partner-only branch isn't ambiguous), then append the partner caveat as
@@ -1629,7 +1681,7 @@ router.get(
         payoutPlanUserIds = [];
       } else if (payoutPlanParam) {
         const planSubs = await prisma.subscription.findMany({
-          where: { plan: payoutPlanParam as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' },
+          where: { plan: payoutPlanParam as any },
           select: { userId: true },
           distinct: ['userId'],
         });
@@ -1717,7 +1769,7 @@ router.get(
     // because wallet rows and cashback rows have different keys — the first
     // row alone does not represent the full schema.
     const HEADERS: Record<string, string[]> = {
-      invoices:          ['invoiceNumber', 'id', 'partner', 'city', 'month', 'turnoverAmount', 'contractedRate', 'totalCashbackOwed', 'marginAmount', 'obligation', 'status', 'paidAt', 'paidBy', 'notes', 'createdAt'],
+      invoices:          ['invoiceNumber', 'id', 'partner', 'city', 'month', 'turnoverAmount', 'turnoverAmountEur', 'contractedRate', 'totalCashbackOwed', 'totalCashbackOwedEur', 'marginAmount', 'marginAmountEur', 'obligation', 'obligationEur', 'status', 'paidAt', 'paidBy', 'notes', 'createdAt'],
       periods:           ['month', 'status', 'partners', 'cashback', 'margin', 'total', 'paid', 'pending', 'overdue', 'openedAt', 'openedBy', 'reviewedAt', 'reviewedBy', 'lockedAt', 'lockedBy', 'invoicedAt', 'invoicedBy', 'notes'],
       reports:           ['section', 'period', 'partnerName', 'partnerId', 'plan', 'scanCount', 'cashback', 'margin', 'turnover', 'invoiceStatus', 'walletType', 'walletTotal', 'walletCount'],
       payouts:           ['id', 'subscriberName', 'email', 'phone', 'iban', 'beneficiaryName', 'amount', 'currency', 'status', 'description', 'requestedAt', 'completedAt'],
@@ -1731,10 +1783,14 @@ router.get(
       city: 'Град',
       month: 'Месец',
       turnoverAmount: 'Оборот (лв.)',
+      turnoverAmountEur: 'Оборот (€)',
       contractedRate: 'Договорена ставка (%)',
       totalCashbackOwed: 'Кешбек (лв.)',
+      totalCashbackOwedEur: 'Кешбек (€)',
       marginAmount: 'Марджин (лв.)',
+      marginAmountEur: 'Марджин (€)',
       obligation: 'Задължение общо (лв.)',
+      obligationEur: 'Задължение общо (€)',
       status: 'Статус',
       paidAt: 'Платено на',
       paidBy: 'Платено от',
@@ -1814,13 +1870,24 @@ router.get(
     const displayHeaders = fieldKeys.map(k => labelMap[k] ?? k);
 
     if (format === 'csv') {
+      // RFC-4180 quoting + spreadsheet formula-injection neutralization.
+      // Partner-controlled values (businessName, notes, \u2026) flow into these cells
+      // verbatim, so we must (1) wrap every cell in double quotes and double any
+      // internal quote, and (2) prefix a leading =/+/-/@/tab/CR with a single quote
+      // so Excel/Sheets treats it as text rather than a formula.
+      const csvCell = (value: unknown): string => {
+        let s = value === null || value === undefined ? '' : String(value);
+        if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+        return `"${s.replace(/"/g, '""')}"`;
+      };
       const csvLines = [
-        displayHeaders.map(h => JSON.stringify(h)).join(','),
-        ...rows.map(r => fieldKeys.map(h => JSON.stringify(r[h] ?? '')).join(',')),
+        displayHeaders.map(csvCell).join(','),
+        ...rows.map(r => fieldKeys.map(h => csvCell(r[h])).join(',')),
       ];
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
-      return res.send('\uFEFF' + csvLines.join('\n'));
+      // RFC-4180 records are CRLF-delimited.
+      return res.send('\uFEFF' + csvLines.join('\r\n'));
     }
 
     // xlsx — rename columns to Bulgarian display headers then write sheet

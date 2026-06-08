@@ -31,6 +31,12 @@ const mockPrisma: any = {
   venue: {
     findUnique: jest.fn(async () => null),
   },
+  // Spec §1.3 / §8.2 — assertSubscriptionAllowsScanning() reads user_account_status
+  // before the venueId/version pre-DB guards. The scanning subscriber is ACTIVE here so
+  // the early-validation tests still reach the guards they assert on.
+  user: {
+    findUnique: jest.fn(async () => ({ status: 'ACTIVE' })),
+  },
   subscription: {
     findFirst: jest.fn(async () => null),
   },
@@ -105,6 +111,14 @@ jest.mock('../../src/services/partner.service', () => ({
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
 import { stickerService } from '../../src/services/sticker.service';
+import { isPartnerOperationallyActive } from '../../src/services/partner.service';
+
+// Typed handle to the mocked operational-active gate (mocked above to return true
+// by default). Individual tests flip it to false to exercise the §8.1 rule 5
+// manual-activation guard.
+const mockIsPartnerOperationallyActive = isPartnerOperationallyActive as jest.MockedFunction<
+  typeof isPartnerOperationallyActive
+>;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -175,7 +189,17 @@ beforeEach(() => {
     ...makePendingSticker(),
     ...args.data,
   }));
-  mockPrisma.subscription.findFirst.mockResolvedValue(null);
+  // Spec §1.3/§8.2: assertSubscriptionAllowsScanning() now requires an active
+  // subscription before reaching the createSession pre-DB guards. Default to an
+  // ACTIVE sub so the venueId/version validation tests exercise the guards they
+  // assert on. The §18.1 sticker-lifecycle tests do not call createSession, so
+  // this default is inert for them.
+  mockPrisma.subscription.findFirst.mockResolvedValue({
+    status: 'ACTIVE',
+    cancelAtPeriodEnd: false,
+    currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+  });
+  mockPrisma.user.findUnique.mockResolvedValue({ status: 'ACTIVE' });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -305,6 +329,47 @@ describe('§18.1 activateSticker() — state transitions', () => {
 
     await expect(stickerService.activateSticker('NONEXISTENT')).rejects.toThrow();
   });
+
+  // §8.1 rule 5 / §1.5 rule 4 / Clash 2.4 — QR codes CANNOT be manually
+  // activated while the owning partner is Inactive or Archived. activateSticker()
+  // resolves venue → partner and refuses the transition when the partner is not
+  // operationally active. isPartnerOperationallyActive is the single source of
+  // truth (status===ACTIVE && verifiedAt!=null) — it is mocked here, so we drive
+  // it to false to assert the guard fires and no status write happens.
+  it('§8.1 rule 5: refuses manual activation when owning partner is Inactive', async () => {
+    mockIsPartnerOperationallyActive.mockReturnValue(false);
+    mockPrisma.sticker.findUnique.mockResolvedValueOnce(
+      makePendingSticker({
+        status: 'PENDING',
+        venue: { partner: { status: 'INACTIVE', verifiedAt: new Date() } },
+      }),
+    );
+
+    await expect(stickerService.activateSticker(EXPECTED_STICKER_ID)).rejects.toThrow(
+      /partner status is not Active/i,
+    );
+    // Guard must short-circuit before any status write.
+    expect(mockPrisma.sticker.update).not.toHaveBeenCalled();
+
+    mockIsPartnerOperationallyActive.mockReturnValue(true); // restore default for sibling tests
+  });
+
+  it('§8.1 rule 5: refuses manual activation when owning partner is Archived', async () => {
+    mockIsPartnerOperationallyActive.mockReturnValue(false);
+    mockPrisma.sticker.findUnique.mockResolvedValueOnce(
+      makePendingSticker({
+        status: 'PENDING',
+        venue: { partner: { status: 'ARCHIVED', verifiedAt: null } },
+      }),
+    );
+
+    await expect(stickerService.activateSticker(EXPECTED_STICKER_ID)).rejects.toThrow(
+      /partner status is not Active/i,
+    );
+    expect(mockPrisma.sticker.update).not.toHaveBeenCalled();
+
+    mockIsPartnerOperationallyActive.mockReturnValue(true);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -403,8 +468,7 @@ describe('§18.2 createSession() — early field validation (pre-DB guards)', ()
   });
 
   it('accepts version "1.0" — proceeds past early validation to sticker lookup', async () => {
-    // Version '1.0' is valid — the error will come from subscription check or sticker lookup
-    // (subscription findFirst returns null → no FAILED_PAYMENT block),
+    // Version '1.0' is valid — the active-subscription gate (default ACTIVE sub) passes,
     // then sticker.findUnique returns null → throws 'Invalid sticker code'
     mockPrisma.sticker.findUnique.mockResolvedValueOnce(null);
 

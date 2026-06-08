@@ -11,11 +11,14 @@ import { emailService } from '../services/email.service';
 import { cardService } from '../services/card.service';
 import { TransactionType, TransactionStatus, SubscriptionStatus, SubscriptionPlan, UserStatus, WalletTransactionType, WalletTransactionStatus } from '@prisma/client';
 import { walletService } from '../services/wallet.service';
+import { notificationService } from '../services/notification.service';
 import prisma from '../lib/prisma';
 import { logger } from '../utils/logger';
 import crypto from 'crypto';
 import { z } from 'zod';
 import { paymentRateLimiter } from '../middleware/security.middleware';
+import { parsePagination } from '../utils/pagination';
+import { detach } from '../utils/detach';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production'
   ? (() => { throw new Error('FRONTEND_URL must be set in production'); })()
@@ -333,29 +336,37 @@ async function handlePaymentCallback(req: Request, res: Response) {
 
         logger.info(`Payment successful: ${result.orderId} - ${transaction.amount} ${transaction.currency}`);
 
+        // Notify user of successful wallet top-up.
+        detach(notificationService.notifyPaymentSuccess({
+          userId: transaction.userId,
+          amount: transaction.amount,
+          currency: transaction.currency,
+          context: 'WALLET_TOPUP',
+        }), (err) => logger.error('Failed to send wallet top-up success notification:', err));
+
         // Send payment confirmation email
         if (transaction.user?.email) {
           const txFullName = `${transaction.user.firstName || ''} ${transaction.user.lastName || ''}`.trim();
           const txLang: 'bg' | 'en' = transaction.user.preferredLanguage === 'en' ? 'en' : 'bg';
-          emailService.sendPaymentConfirmation(transaction.user.email, {
+          detach(emailService.sendPaymentConfirmation(transaction.user.email, {
             customerName: txFullName || transaction.user.email.split('@')[0],
             orderId: result.orderId,
             amount: transaction.amount,
             currency: transaction.currency,
             date: new Date(),
-          }, txLang).catch((error) => {
+          }, txLang), (error) => {
             logger.error('Failed to send payment confirmation email:', error);
           });
 
           // Send wallet update notification
-          emailService.sendWalletUpdate(transaction.user.email, {
+          detach(emailService.sendWalletUpdate(transaction.user.email, {
             customerName: txFullName || transaction.user.email.split('@')[0],
             newBalance: wallet.balance,
             changeAmount: transaction.amount,
             transactionType: 'credit',
             description: `Портфейлът ви е зареден с ${transaction.amount.toFixed(2)} ${transaction.currency}`,
             date: new Date(),
-          }, txLang).catch((error) => {
+          }, txLang), (error) => {
             logger.error('Failed to send wallet update email:', error);
           });
         }
@@ -479,18 +490,26 @@ async function handlePaymentCallback(req: Request, res: Response) {
         if (transaction.user?.email) {
           const txFailedName = `${transaction.user.firstName || ''} ${transaction.user.lastName || ''}`.trim();
           const txFailedLang: 'bg' | 'en' = transaction.user.preferredLanguage === 'en' ? 'en' : 'bg';
-          emailService.sendPaymentFailedEmail(transaction.user.email, {
+          detach(emailService.sendPaymentFailedEmail(transaction.user.email, {
             customerName: txFailedName || transaction.user.email.split('@')[0],
             orderId: result.orderId,
             amount: transaction.amount,
             currency: transaction.currency,
             reason: result.status as 'failed' | 'cancelled',
-          }, txFailedLang).catch((error) => {
+          }, txFailedLang), (error) => {
             logger.error('Failed to send payment failed email:', error);
           });
         }
 
         logger.warn(`Payment ${result.status}: ${result.orderId}`);
+
+        // Notify user of failed/cancelled wallet top-up.
+        detach(notificationService.notifyPaymentFailed({
+          userId: transaction.userId,
+          paymentIntentId: result.orderId,
+          amount: transaction.amount,
+          currency: transaction.currency,
+        }), (err) => logger.error('Failed to send wallet top-up failure notification:', err));
       }
       // For 'pending' status (0, 2, 3), we don't update - wait for final callback
 
@@ -576,9 +595,7 @@ router.get(
   authenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const user = req.user!;
-    const { limit = '20', offset = '0' } = req.query;
-    const limitVal = Math.min(Math.max(parseInt(limit as string) || 20, 1), 100);
-    const offsetVal = Math.max(parseInt(offset as string) || 0, 0);
+    const { take: limitVal, skip: offsetVal } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     try {
       const transactions = await prisma.transaction.findMany({
@@ -813,7 +830,7 @@ router.post(
     const subscriptionPlanMap: Record<string, SubscriptionPlan> = {
       'PREMIUM_WEEKLY': SubscriptionPlan.PREMIUM_WEEKLY,
       'BASIC': SubscriptionPlan.BASIC,
-      'PREMIUM': SubscriptionPlan.PREMIUM,
+      'PREMIUM': SubscriptionPlan.PREMIUM_MONTHLY,
     };
 
     const subscriptionPlan = subscriptionPlanMap[plan.planCode];
@@ -1108,13 +1125,13 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
 
             if (cardUpdateSub.user?.email) {
               const cuLang: 'bg' | 'en' = cardUpdateSub.user.preferredLanguage === 'en' ? 'en' : 'bg';
-              emailService.sendPaymentConfirmation(cardUpdateSub.user.email, {
+              detach(emailService.sendPaymentConfirmation(cardUpdateSub.user.email, {
                 customerName: cardUpdateSub.user.firstName || cardUpdateSub.user.email.split('@')[0],
                 orderId: result.orderId,
                 amount: result.amount / 100,
                 currency: 'EUR',
                 date: new Date(),
-              }, cuLang).catch((err) => logger.error('Failed to send card-update confirmation email:', err));
+              }, cuLang), (err) => logger.error('Failed to send card-update confirmation email:', err));
             }
           } else if (result.status === 'failed' || result.status === 'cancelled') {
             // Clear the pending card-update order so the user can retry.
@@ -1155,19 +1172,19 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
           if (updated.count > 0) {
             const pendingLanguage: 'bg' | 'en' = pending.language === 'en' ? 'en' : 'bg';
             // §7.2: payment receipt first, then profile-setup invite
-            emailService.sendPaymentReceiptEmail(pending.email, {
+            detach(emailService.sendPaymentReceiptEmail(pending.email, {
               planName: pending.plan.displayName,
               planNameBg: pending.plan.displayNameBg ?? undefined,
               orderId: result.orderId,
               amount: result.amount ? result.amount / 100 : undefined,
               currency: 'EUR',
-            }, pendingLanguage).catch(err => logger.error('Failed to send payment receipt email:', err));
-            emailService.sendCompleteProfileEmail(pending.email, {
+            }, pendingLanguage), err => logger.error('Failed to send payment receipt email:', err));
+            detach(emailService.sendCompleteProfileEmail(pending.email, {
               planName: pending.plan.displayName,
               planNameBg: pending.plan.displayNameBg ?? undefined,
               completeProfileUrl: `${FRONTEND_URL}/complete-profile?token=${token}`,
               language: pendingLanguage,
-            }).catch(err => logger.error('Failed to send complete-profile email:', err));
+            }), err => logger.error('Failed to send complete-profile email:', err));
             logger.info(`PendingSubscription ${pending.id} marked PAID, token issued`);
           } else {
             logger.info(`PendingSubscription ${pending.id} already PAID — skipping`);
@@ -1235,18 +1252,26 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
           logger.error(`Failed to sync card type for user ${subscription.userId}:`, err);
         });
 
+        // Notify user of successful subscription activation.
+        detach(notificationService.notifyPaymentSuccess({
+          userId: subscription.userId,
+          amount: result.amount / 100,
+          currency: 'EUR',
+          context: 'SUBSCRIPTION',
+        }), (err) => logger.error('Failed to send subscription success notification:', err));
+
         // Send confirmation + activation emails
         if (subscription.user?.email) {
           const planDisplayName = subscription.plan.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
           const fullName = `${subscription.user.firstName || ''} ${subscription.user.lastName || ''}`.trim();
           const subLang: 'bg' | 'en' = subscription.user.preferredLanguage === 'en' ? 'en' : 'bg';
-          emailService.sendPaymentConfirmation(subscription.user.email, {
+          detach(emailService.sendPaymentConfirmation(subscription.user.email, {
             customerName: fullName || subscription.user.email.split('@')[0],
             orderId: result.orderId,
             amount: result.amount / 100,
             currency: 'EUR',
             date: new Date(),
-          }, subLang).catch((error) => {
+          }, subLang), (error) => {
             logger.error('Failed to send subscription confirmation email:', error);
           });
 
@@ -1288,13 +1313,13 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
         if (subscription.user?.email) {
           const fullNameFailed = `${subscription.user.firstName || ''} ${subscription.user.lastName || ''}`.trim();
           const subFailedLang: 'bg' | 'en' = subscription.user.preferredLanguage === 'en' ? 'en' : 'bg';
-          emailService.sendPaymentFailedEmail(subscription.user.email, {
+          detach(emailService.sendPaymentFailedEmail(subscription.user.email, {
             customerName: fullNameFailed || subscription.user.email.split('@')[0],
             orderId: result.orderId,
             amount: result.amount / 100,
             currency: 'EUR',
             reason: result.status as 'failed' | 'cancelled',
-          }, subFailedLang).catch((error) => {
+          }, subFailedLang), (error) => {
             logger.error('Failed to send subscription payment failed email:', error);
           });
         }
@@ -1430,94 +1455,162 @@ router.post('/transfer-callback', asyncHandler(async (req: Request, res: Respons
 
     // Spec §4.4 v1.1 — terminal LOCKED → PAID transition for the cashback
     // entries that funded this payout. Best-effort.
-    walletService
-      .markCashbackPaidForWithdrawal(walletTx.id, null)
-      .catch((err) => logger.error('[paysera-callback] markCashbackPaid failed:', err));
+    detach(walletService
+      .markCashbackPaidForWithdrawal(walletTx.id, null), (err) => logger.error('[paysera-callback] markCashbackPaid failed:', err));
 
     // Notify user via email
     if (walletTx.wallet.user?.email) {
       const amountBGN = Math.abs(walletTx.amount);
-      emailService.sendWalletUpdate(walletTx.wallet.user.email, {
+      detach(emailService.sendWalletUpdate(walletTx.wallet.user.email, {
         customerName: walletTx.wallet.user.firstName || 'Клиент',
         newBalance: walletTx.balanceAfter,
         changeAmount: amountBGN,
         transactionType: 'debit',
         description: `Вашето изплащане от ${amountBGN.toFixed(2)} BGN е изпратено по банкова сметка (IBAN: ${metadata.beneficiaryIban || 'в профила ви'}). Средствата обикновено пристигат до 1–2 работни дни.`,
         date: new Date(),
-      }).catch((err) => logger.error('Failed to send payout completion email:', err));
+      }), (err) => logger.error('Failed to send payout completion email:', err));
     }
 
   } else if (status === 'failed' || status === 'rejected') {
-    // ── Transfer failed — reverse the debit and mark WITHDRAWAL as FAILED ─
+    // ── Transfer failed — apply the §7.4 two-strike escalation ────────────
     const payoutAmount = Math.abs(walletTx.amount);
 
+    // Mirror wallet.service.executePayoutTransfer: count prior FAILED + RISK_HOLD
+    // WITHDRAWAL rows for this wallet so the async callback and the synchronous
+    // path agree on strike counting. The CURRENT row is still PROCESSING here,
+    // so it is not yet in either bucket — but exclude it explicitly by id as a
+    // safety net in case a prior callback already stamped it.
+    let isSecondFailure = false;
     try {
-      await prisma.$transaction(async (tx) => {
-        // Read the ACTUAL current balance inside the transaction — the wallet may have
-        // received cashback credits since the WITHDRAWAL was created (hours/days ago).
-        const currentWallet = await tx.wallet.update({
-          where: { userId },
-          data: {
-            balance: { increment: payoutAmount },
-            availableBalance: { increment: payoutAmount },
-          },
-        });
+      const priorFailureCount = await prisma.walletTransaction.count({
+        where: {
+          walletId: walletTx.walletId,
+          type: WalletTransactionType.WITHDRAWAL,
+          status: { in: [WalletTransactionStatus.FAILED, WalletTransactionStatus.RISK_HOLD] },
+          id: { not: walletTx.id },
+        },
+      });
+      isSecondFailure = priorFailureCount >= 1;
+    } catch (countErr) {
+      logger.error(`[paysera-callback] failed to count prior payout failures for user ${userId}:`, countErr);
+    }
 
-        // Mark original WITHDRAWAL as FAILED
-        await tx.walletTransaction.update({
+    if (isSecondFailure) {
+      // ── Second failure (§7.4 + §11.3 + §19 rule 9): RISK_HOLD ──────────
+      // Do NOT restore balance, do NOT revert cashback (leave it LOCKED), mark
+      // RISK_HOLD (NOT FAILED), flag user HIGH risk, notify admin ops ONLY. The
+      // user is NOT emailed; the entry stays visible to them as "Sent to payout".
+      try {
+        await prisma.walletTransaction.update({
           where: { id: walletTx.id },
           data: {
-            status: WalletTransactionStatus.FAILED,
-            description: `Изплащането е неуспешно (Paysera превод ${status})`,
-            metadata: JSON.stringify({ ...metadata, failedAt: new Date().toISOString(), failureStatus: status }),
+            status: WalletTransactionStatus.RISK_HOLD,
+            description: `Ескалирано за ръчен преглед след повторен неуспех (Paysera превод ${status})`,
+            metadata: JSON.stringify({ ...metadata, riskHoldAt: new Date().toISOString(), failureStatus: status }),
           },
         });
-
-        // Record the reversal credit for the audit trail with accurate balance figures
-        await tx.walletTransaction.create({
+        // Flag user HIGH risk (floors riskScore at 61, never downgrades).
+        await walletService.escalateRiskAfterRepeatedPayoutFailure(userId)
+          .catch((err) => logger.error(`[paysera-callback] risk flag update failed for user ${userId}:`, err));
+      } catch (holdErr: any) {
+        logger.error(`CRITICAL: payout RISK_HOLD escalation failed for user ${userId}: ${holdErr.message}`);
+        await prisma.wallet.update({
+          where: { userId },
           data: {
-            walletId: walletTx.walletId,
-            type: WalletTransactionType.ADJUSTMENT,
-            amount: payoutAmount,
-            balanceBefore: currentWallet.balance - payoutAmount, // post-increment minus amount = pre-increment
-            balanceAfter: currentWallet.balance,
-            status: WalletTransactionStatus.COMPLETED,
-            description: `Payout reversal (Paysera transfer ${status})`,
-            metadata: JSON.stringify({ payseraTransferId: transferId, reversedWithdrawalId: walletTx.id }),
+            isLocked: true,
+            lockedReason: `Payout RISK_HOLD escalation failed after transfer ${status}: ${holdErr.message}. Manual review required.`,
+            lockedAt: new Date(),
           },
-        });
-      });
-
-      logger.warn(`Payout reversed for user ${userId}: transfer ${transferId} ${status}`);
-
-      // Spec §4.4 v1.1 — revert LOCKED → CLEARED so the entries are eligible
-      // for a future payout attempt. Best-effort.
-      walletService
-        .revertCashbackLockForWithdrawal(walletTx.id, null, `Paysera transfer ${status}`)
-        .catch((err) => logger.error('[paysera-callback] revertCashbackLock failed:', err));
-
-      // Notify user that payout failed and balance was restored
-      if (walletTx.wallet.user?.email) {
-        emailService.sendWalletUpdate(walletTx.wallet.user.email, {
-          customerName: walletTx.wallet.user.firstName || 'Клиент',
-          newBalance: walletTx.balanceAfter + payoutAmount,
-          changeAmount: payoutAmount,
-          transactionType: 'credit',
-          description: `Изплащането ви от ${payoutAmount.toFixed(2)} BGN не може да бъде обработено и е върнато в портфейла ви. Моля, проверете IBAN-а си и опитайте отново.`,
-          date: new Date(),
-        }).catch((err) => logger.error('Failed to send payout failure email:', err));
+        }).catch(() => {});
       }
-    } catch (reversalError: any) {
-      logger.error(`CRITICAL: payout reversal failed for transfer ${transferId}: ${reversalError.message}`);
-      // Lock wallet for manual review
-      await prisma.wallet.update({
-        where: { userId },
-        data: {
-          isLocked: true,
-          lockedReason: `Payout reversal failed after transfer ${status}: ${reversalError.message}`,
-          lockedAt: new Date(),
-        },
-      }).catch(() => {});
+
+      logger.warn(`Payout escalated to RISK_HOLD for user ${userId}: transfer ${transferId} ${status} (second failure)`);
+
+      // User is NOT notified on second failure per spec §7.4. Notify admin ops.
+      detach(notificationService
+        .notifyAdminOps({
+          opsType: 'payout_failure_high_risk',
+          title: 'User flagged high-risk after repeated payout failures',
+          message: `User ${userId} had a repeated payout failure via the Paysera async callback. Payout escalated to RISK_HOLD and flagged for manual admin review per spec §7.4.`,
+          severity: 'warning',
+          fields: [
+            { label: 'User ID', value: userId },
+            { label: 'Transfer ID', value: String(transferId) },
+            { label: 'Failure status', value: status },
+          ],
+        }), (err) => logger.error(`[paysera-callback] admin notification failed for user ${userId}:`, err));
+    } else {
+      // ── First failure (§7.4): restore + revert + notify user ──────────
+      try {
+        const restoredBalance = await prisma.$transaction(async (tx) => {
+          // Read the ACTUAL current balance inside the transaction — the wallet may have
+          // received cashback credits since the WITHDRAWAL was created (hours/days ago).
+          const currentWallet = await tx.wallet.update({
+            where: { userId },
+            data: {
+              balance: { increment: payoutAmount },
+              availableBalance: { increment: payoutAmount },
+            },
+          });
+
+          // Mark original WITHDRAWAL as FAILED
+          await tx.walletTransaction.update({
+            where: { id: walletTx.id },
+            data: {
+              status: WalletTransactionStatus.FAILED,
+              description: `Изплащането е неуспешно (Paysera превод ${status})`,
+              metadata: JSON.stringify({ ...metadata, failedAt: new Date().toISOString(), failureStatus: status }),
+            },
+          });
+
+          // Record the reversal credit for the audit trail with accurate balance figures
+          await tx.walletTransaction.create({
+            data: {
+              walletId: walletTx.walletId,
+              type: WalletTransactionType.ADJUSTMENT,
+              amount: payoutAmount,
+              balanceBefore: currentWallet.balance - payoutAmount, // post-increment minus amount = pre-increment
+              balanceAfter: currentWallet.balance,
+              status: WalletTransactionStatus.COMPLETED,
+              description: `Payout reversal (Paysera transfer ${status})`,
+              metadata: JSON.stringify({ payseraTransferId: transferId, reversedWithdrawalId: walletTx.id }),
+            },
+          });
+
+          // Return the live post-restore available balance for accurate user notification.
+          return currentWallet.availableBalance;
+        });
+
+        logger.warn(`Payout reversed for user ${userId}: transfer ${transferId} ${status}`);
+
+        // Spec §4.4 v1.1 — revert LOCKED → CLEARED so the entries are eligible
+        // for a future payout attempt. Best-effort.
+        detach(walletService
+          .revertCashbackLockForWithdrawal(walletTx.id, null, `Paysera transfer ${status}`), (err) => logger.error('[paysera-callback] revertCashbackLock failed:', err));
+
+        // Notify user that payout failed and balance was restored
+        if (walletTx.wallet.user?.email) {
+          detach(emailService.sendWalletUpdate(walletTx.wallet.user.email, {
+            customerName: walletTx.wallet.user.firstName || 'Клиент',
+            newBalance: restoredBalance,
+            changeAmount: payoutAmount,
+            transactionType: 'credit',
+            description: `Изплащането ви от ${payoutAmount.toFixed(2)} BGN не може да бъде обработено и е върнато в портфейла ви. Моля, проверете IBAN-а си и опитайте отново.`,
+            date: new Date(),
+          }), (err) => logger.error('Failed to send payout failure email:', err));
+        }
+      } catch (reversalError: any) {
+        logger.error(`CRITICAL: payout reversal failed for transfer ${transferId}: ${reversalError.message}`);
+        // Lock wallet for manual review
+        await prisma.wallet.update({
+          where: { userId },
+          data: {
+            isLocked: true,
+            lockedReason: `Payout reversal failed after transfer ${status}: ${reversalError.message}`,
+            lockedAt: new Date(),
+          },
+        }).catch(() => {});
+      }
     }
   }
 

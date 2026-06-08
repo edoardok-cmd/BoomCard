@@ -4,9 +4,10 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigate } from 'react-router-dom';
 import { receiptsApiService } from '../services/receipts-api.service';
 import { apiService } from '../services/api.service';
-import { Receipt, ReceiptStatus, ReceiptFilters } from '../types/receipt.types';
+import { PartnerReceipt, ReceiptStatus, ReceiptFilters } from '../types/receipt.types';
 import { ReceiptCard } from '../components/feature/ReceiptCard';
-import { FileText, Filter, Plus, X } from 'lucide-react';
+import { FileText, Filter, Smartphone, X } from 'lucide-react';
+import { useCurrencyDisplay, formatWithCurrency } from '../utils/currencyDisplay';
 
 const PageContainer = styled.div`
   max-width: 1400px;
@@ -310,7 +311,8 @@ interface CashbackSummaryData {
 export const ReceiptsPage: React.FC = () => {
   const { language } = useLanguage();
   const navigate = useNavigate();
-  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const currencyMode = useCurrencyDisplay();
+  const [receipts, setReceipts] = useState<PartnerReceipt[]>([]);
   const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [period, setPeriod] = useState<Period>('all');
@@ -333,7 +335,8 @@ export const ReceiptsPage: React.FC = () => {
       title: 'Cashback & Transactions',
       subtitle: 'View your cashback balance and transaction history',
       filters: 'Filters',
-      addNew: 'Upload Receipt',
+      addNew: 'Upload via mobile app',
+      addNewHint: 'Receipt uploads are available only through the BOOM mobile app',
       status: 'Status',
       allStatuses: 'All',
       pending: 'Pending',
@@ -357,7 +360,8 @@ export const ReceiptsPage: React.FC = () => {
       title: 'Кешбек и транзакции',
       subtitle: 'Преглед на наличен кешбек и история на транзакциите',
       filters: 'Филтри',
-      addNew: 'Качи бележка',
+      addNew: 'Качване през мобилното приложение',
+      addNewHint: 'Качването на бележки е достъпно само през мобилното приложение BOOM',
       status: 'Статус',
       allStatuses: 'Всички',
       pending: 'Чакащи',
@@ -464,11 +468,10 @@ export const ReceiptsPage: React.FC = () => {
     }
   };
 
+  // MEDIUM-2 fix: currency-aware formatting instead of BGN-only suffix.
+  // Post-transition (2026-01-01) the mode is EUR_ONLY per Clash 12.1 / §7.3.
   const formatCashback = (amount: number) =>
-    amount.toLocaleString(language === 'bg' ? 'bg-BG' : 'en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }) + ' лв';
+    formatWithCurrency(amount, currencyMode, language === 'bg' ? 'bg' : 'en');
 
   return (
     <PageContainer>
@@ -508,9 +511,10 @@ export const ReceiptsPage: React.FC = () => {
           <Filter />
           {content.filters}
         </FilterButton>
-        {/* §5.3 — button links to informational upload page, not live scanner */}
-        <AddButton onClick={() => navigate('/upload-receipt')}>
-          <Plus />
+        {/* §5.3 — web upload is disabled (POST /v2/upload → 403 WEB_UPLOAD_DISABLED).
+            Button routes to the informational mobile-app page, never the live upload. */}
+        <AddButton onClick={() => navigate('/upload-receipt')} title={content.addNewHint}>
+          <Smartphone />
           {content.addNew}
         </AddButton>
       </ActionsBar>
@@ -556,8 +560,8 @@ export const ReceiptsPage: React.FC = () => {
           <FileText />
           <h3>{content.emptyTitle}</h3>
           <p>{content.emptyDescription}</p>
-          <AddButton onClick={() => navigate('/upload-receipt')}>
-            <Plus />
+          <AddButton onClick={() => navigate('/upload-receipt')} title={content.addNewHint}>
+            <Smartphone />
             {content.addNew}
           </AddButton>
         </EmptyState>

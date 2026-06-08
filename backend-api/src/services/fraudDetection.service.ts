@@ -53,12 +53,15 @@ import { receiptTemplateService } from './receiptTemplate.service';
  * Fraud Score Scale:
  * - Internal multi-signal fraud score used for admin triage
  * - Spec §2.1 five-signal additive risk level drives the manual-review gate:
- *   Low (0–20) → auto-approve within 24h; Medium/High → manual review queue
+ *   Low (0–20) and Medium (21–50) → auto-approve within 24h; High (51+) → manual review queue
+ *   F-010 / BC-USER-SPEC-FIX-010: only High-risk requires manual review per spec §9.4
+ *   amendment (2026-06-04). Medium now auto-processes alongside Low.
  */
 
 // Spec §2.1 five-signal risk scoring constants (additive model, canonical set)
 const RISK_IBAN_CHANGE_POINTS   = 40;  // IBAN changed in last 24h
-const RISK_RECEIPT_MATCH_POINTS = 30;  // Receipt match confidence < 60%
+// F-016: Spec §9.3 requires +30 for confidence < 60% (was incorrectly 20 before this fix).
+const RISK_RECEIPT_MATCH_POINTS = 30;  // Receipt match confidence < 60% — spec §9.3
 const RISK_LOCATION_MISMATCH_POINTS = 20; // QR location mismatch
 const RISK_USER_VOIDED_POINTS   = 20;  // User has 3+ Voided cashback records
 const RISK_PARTNER_FLAG_POINTS  = 10;  // Partner has active risk flag
@@ -75,10 +78,11 @@ export interface SpecRiskResult {
   /** Spec §2.1 risk level derived from riskScore thresholds. */
   riskLevel: SpecRiskLevel;
   /**
-   * True when riskLevel is Medium or High — both require admin manual review.
-   * Spec §2.2: "Medium Risk → Manual Review triggered — all Medium-risk records
-   * enter the admin review queue (same workflow as High Risk)."
-   * False (Low) → eligible for automatic approval within 24h (spec §3.4).
+   * True when riskLevel is High only — High-risk submissions require admin manual review.
+   * F-010 / BC-USER-SPEC-FIX-010: only High-risk requires manual review per spec §9.4
+   * amendment (2026-06-04). The prior rule routing Medium to the same manual workflow as
+   * High is superseded.
+   * False (Low and Medium) → eligible for automatic approval within 24h (spec §9.4).
    */
   requiresManualReview: boolean;
   /** Human-readable reasons for each signal that fired. */
@@ -99,7 +103,7 @@ interface FraudCheckParams {
   perceptualHash?: string;  // dHash hex for visual template comparison
   userId: string;
   venueId?: string;
-  cardTier?: 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM';
+  cardTier?: 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY';
   deviceFingerprint?: string;  // SHA-256 hash of device properties
   /** When re-checking an existing receipt (e.g. admin amount correction), pass its ID
    *  so the duplicate-image check doesn't penalise the receipt against itself. */
@@ -213,6 +217,16 @@ class FraudDetectionService {
       }
 
       // 4. OCR confidence check (20 points)
+      // L4 (user-spec audit): the +20 here is INTENTIONALLY different from the
+      // spec-canonical computeSpecRiskLevel() weight of +30 (see Signal 2 below in
+      // this file). checkReceipt() is the LEGACY additive model used only for admin
+      // triage; it has its own internal weighting scale (GPS 25/15, OCR 20/10,
+      // rate-limit 30) that is calibrated independently of the spec five-signal model
+      // (40/30/20/20/10). The spec-canonical computeSpecRiskLevel() — which uses +30
+      // and is what gates the user flow / manual-review queue — is unchanged. Bumping
+      // this to +30 would silently re-weight legacy admin triage against its own scale,
+      // so the split is kept deliberately. Do NOT "unify" without re-calibrating the
+      // legacy thresholds.
       if (config?.ocrVerificationEnabled !== false) {
         if (params.ocrConfidence < OCR_LOW_CONFIDENCE_THRESHOLD) {
           score += 20;
@@ -308,7 +322,7 @@ class FraudDetectionService {
 
       // 9. Card tier verification (reduce score for premium users).
       // cardTier === null (no active subscription) gets no discount — intentional.
-      if (params.cardTier === 'PREMIUM') {
+      if (params.cardTier === 'PREMIUM_MONTHLY') {
         score = Math.max(0, score - 5);
       } else if (params.cardTier === 'BASIC') {
         score = Math.max(0, score - 3);
@@ -357,6 +371,14 @@ class FraudDetectionService {
       // NOTE: The legacy Receipt submission flow always sets requiresManualReview=true
       // here as a conservative default; the sticker scan flow (sticker.service.ts)
       // calls computeSpecRiskLevel() separately and uses that result to gate manual review.
+      //
+      // F-016 / BC-USER-SPEC-FIX-001: requiresManualReview=true is safe as dead code here.
+      // POST /api/receipts is 410 GONE (receipt upload is QR-session-gated). The two
+      // active callers in receipt.service.ts both ignore this field:
+      //   • submitReceipt() calls computeSpecRiskLevel() immediately after and derives
+      //     its own requiresManualReview from that result (line ~736).
+      //   • validateReceipt() only reads fraudScore from the returned object (line ~1024).
+      // Tracked BC-USER-SPEC-FIX-001 F-016.
       return {
         fraudScore: finalScore,
         fraudReasons: reasons,
@@ -698,7 +720,7 @@ class FraudDetectionService {
      * (see resolveCashbackTier). Pass `null` when the user has no active subscription —
      * in that case cashback is 0 regardless of Card.type (Finding #1 fix).
      */
-    cardTier: 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' | null;
+    cardTier: 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY' | null;
     /** When provided, rolling daily/monthly cashback caps are enforced. */
     userId?: string;
   }): Promise<{ cashbackAmount: number; cashbackPercent: number }> {
@@ -759,7 +781,7 @@ class FraudDetectionService {
     } catch {
       // Non-fatal: fall back to hardcoded constants if DB lookup fails
     }
-    const isPremium = params.cardTier === 'PREMIUM' || params.cardTier === 'PREMIUM_WEEKLY';
+    const isPremium = params.cardTier === 'PREMIUM_MONTHLY' || params.cardTier === 'PREMIUM_WEEKLY';
     const cashbackPercent = isPremium ? matrixRow.premium : matrixRow.basic;
 
     // Step 4: calculate amount and cap at max per scan
@@ -897,10 +919,11 @@ class FraudDetectionService {
    * level for a cashback/receipt record. This is separate from the broader
    * fraud score (checkReceipt) and is the authoritative gate for manual review.
    *
-   * Risk level drives the PENDING → review decision:
-   *   Low  (0–20)  → auto-approve within 24h (spec §3.4)
-   *   Medium (21–50) → manual review queue (spec §2.2)
-   *   High (51+)   → manual review queue (spec §2.2)
+   * Risk level drives the PENDING → review decision (F-010 / BC-USER-SPEC-FIX-010:
+   * only High-risk requires manual review per spec §9.4 amendment 2026-06-04):
+   *   Low  (0–20)    → auto-approve within 24h (spec §9.4)
+   *   Medium (21–50) → auto-approve within 24h (spec §9.4 amendment — no longer manual)
+   *   High (51+)     → manual review queue (spec §9.4)
    *
    * Signal 2 (receipt match confidence) maps to ocrConfidence: a value below
    * 60% triggers the +30 signal. Pass the OCR confidence as a percentage (0–100).
@@ -976,8 +999,9 @@ class FraudDetectionService {
       riskLevel = 'Low';
     }
 
-    // Spec §2.2: Medium AND High both trigger manual review
-    const requiresManualReview = riskLevel === 'Medium' || riskLevel === 'High';
+    // F-010 / BC-USER-SPEC-FIX-010: only High-risk requires manual review per spec §9.4
+    // amendment (2026-06-04). Low and Medium auto-process (auto-approval within 24h).
+    const requiresManualReview = riskLevel === 'High';
 
     return { riskScore, riskLevel, requiresManualReview, riskSignals };
   }

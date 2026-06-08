@@ -4,6 +4,7 @@ import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
+import { palette } from '../../styles/adminTheme';
 import {
   adminFinanceService,
   AdminInvoice,
@@ -15,16 +16,6 @@ import {
   CashbackSummaryEntry,
 } from '../../services/adminCashback.service';
 
-const palette = {
-  bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
-  text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
-  accent: '#c96442', accentSoft: '#f3e8de',
-  success: '#4a7c59', successSoft: '#e6efe3',
-  warning: '#b5803a', warningSoft: '#f5ead2',
-  danger: '#b54327', dangerSoft: '#f4dcd2',
-  info: '#2563eb', infoSoft: '#dbeafe',
-  purple: '#7c3aed', purpleSoft: '#ede9fe',
-};
 
 const PageShell = styled.div`
   background: ${palette.bg}; min-height: calc(100vh - 4rem); padding: 2rem 2.5rem;
@@ -46,7 +37,7 @@ const Select = styled.select`padding: 0.5rem 0.75rem; border: 1px solid ${palett
 const MonthInput = styled.input`padding: 0.5rem 0.75rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; outline: none; &:focus { border-color: ${palette.accent}; }`;
 const ClearMonthBtn = styled.button`padding: 0.4rem 0.6rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; line-height: 1; color: ${palette.textSubtle}; background: ${palette.bg}; cursor: pointer; &:hover { border-color: ${palette.danger}; color: ${palette.danger}; }`;
 const ExportBtn = styled.button`display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.5rem 1rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; color: ${palette.textMuted}; background: ${palette.surface}; cursor: pointer; white-space: nowrap; &:hover { border-color: ${palette.accent}; color: ${palette.accent}; } &:disabled { opacity: 0.5; cursor: default; }`;
-const GenerateBtn = styled.button`display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.5rem 1rem; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; color: #fff; background: ${palette.accent}; cursor: pointer; white-space: nowrap; &:hover { opacity: 0.88; } &:disabled { opacity: 0.5; cursor: default; }`;
+const GenerateBtn = styled.button`display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.5rem 1rem; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; color: ${palette.onAccent}; background: ${palette.accent}; cursor: pointer; white-space: nowrap; &:hover { opacity: 0.88; } &:disabled { opacity: 0.5; cursor: default; }`;
 const PrimaryLine = styled.div`font-weight: 600; color: ${palette.text};`;
 const MetaLine = styled.div`font-size: 0.75rem; color: ${palette.textSubtle}; margin-top: 0.125rem;`;
 
@@ -104,7 +95,7 @@ const ModalTitle = styled.h3`font-size: 1rem; font-weight: 700; color: ${palette
 const ModalSub = styled.p`font-size: 0.8125rem; color: ${palette.textMuted}; margin: 0 0 1rem;`;
 const Textarea = styled.textarea`width: 100%; box-sizing: border-box; padding: 0.625rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.text}; resize: vertical; min-height: 5rem; outline: none; &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }`;
 const ModalActions = styled.div`display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;`;
-const BtnPrimary = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: #fff; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:disabled { opacity: 0.5; }`;
+const BtnPrimary = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: ${palette.onAccent}; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:disabled { opacity: 0.5; }`;
 const BtnSecondary = styled.button`padding: 0.5rem 1.125rem; background: ${palette.bg}; color: ${palette.textMuted}; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:disabled { opacity: 0.45; cursor: default; }`;
 
 // Generate modal
@@ -122,7 +113,7 @@ const PrintOverlay = styled.div`
   }
 `;
 const PrintSheet = styled.div`
-  background: #fff; border-radius: 0.75rem; padding: 3rem;
+  background: ${palette.surface}; border-radius: 0.75rem; padding: 3rem;
   width: 100%; max-width: 44rem; max-height: 90vh; overflow-y: auto;
   box-shadow: 0 24px 80px rgba(0,0,0,0.2);
   @media print {
@@ -136,30 +127,30 @@ const PrintActions = styled.div`
   @media print { display: none; }
 `;
 const InvHeader = styled.div`display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2.5rem;`;
-const InvLogo = styled.div`font-size: 1.5rem; font-weight: 900; color: #c96442; letter-spacing: -0.02em;`;
+const InvLogo = styled.div`font-size: 1.5rem; font-weight: 900; color: ${palette.accent}; letter-spacing: -0.02em;`;
 const InvTitle = styled.div`text-align: right;`;
-const InvNum = styled.div`font-size: 1rem; font-weight: 700; color: #141413;`;
-const InvDate = styled.div`font-size: 0.8125rem; color: #605a50; margin-top: 0.25rem;`;
+const InvNum = styled.div`font-size: 1rem; font-weight: 700; color: ${palette.text};`;
+const InvDate = styled.div`font-size: 0.8125rem; color: ${palette.textMuted}; margin-top: 0.25rem;`;
 const InvParties = styled.div`display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2.5rem;`;
 const InvParty = styled.div``;
-const InvPartyLabel = styled.div`font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #8c8678; margin-bottom: 0.5rem;`;
-const InvPartyName = styled.div`font-size: 0.9375rem; font-weight: 700; color: #141413;`;
-const InvPartyMeta = styled.div`font-size: 0.8125rem; color: #605a50; margin-top: 0.25rem;`;
+const InvPartyLabel = styled.div`font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: ${palette.textSubtle}; margin-bottom: 0.5rem;`;
+const InvPartyName = styled.div`font-size: 0.9375rem; font-weight: 700; color: ${palette.text};`;
+const InvPartyMeta = styled.div`font-size: 0.8125rem; color: ${palette.textMuted}; margin-top: 0.25rem;`;
 const InvTable = styled.table`width: 100%; border-collapse: collapse; margin-bottom: 2rem;`;
-const InvTh = styled.th`text-align: left; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: #8c8678; padding: 0.625rem 0.75rem; border-bottom: 2px solid #e8e5dc;`;
+const InvTh = styled.th`text-align: left; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: ${palette.textSubtle}; padding: 0.625rem 0.75rem; border-bottom: 2px solid ${palette.border};`;
 const InvThRight = styled(InvTh)`text-align: right;`;
-const InvTd = styled.td`padding: 0.75rem 0.75rem; font-size: 0.875rem; color: #605a50; border-bottom: 1px solid #f0ede6;`;
+const InvTd = styled.td`padding: 0.75rem 0.75rem; font-size: 0.875rem; color: ${palette.textMuted}; border-bottom: 1px solid ${palette.border};`;
 const InvTdRight = styled(InvTd)`text-align: right; font-variant-numeric: tabular-nums;`;
-const InvTdBold = styled(InvTd)`font-weight: 700; color: #141413;`;
-const InvTotalRow = styled.tr`background: #faf9f5;`;
-const InvTotalLabel = styled.td`padding: 0.875rem 0.75rem; font-weight: 700; font-size: 0.9375rem; color: #141413;`;
-const InvTotalAmount = styled.td`padding: 0.875rem 0.75rem; font-weight: 800; font-size: 1.125rem; color: #141413; text-align: right; font-variant-numeric: tabular-nums;`;
-const InvFooter = styled.div`margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid #e8e5dc; font-size: 0.75rem; color: #8c8678; text-align: center;`;
+const InvTdBold = styled(InvTd)`font-weight: 700; color: ${palette.text};`;
+const InvTotalRow = styled.tr`background: ${palette.bg};`;
+const InvTotalLabel = styled.td`padding: 0.875rem 0.75rem; font-weight: 700; font-size: 0.9375rem; color: ${palette.text};`;
+const InvTotalAmount = styled.td`padding: 0.875rem 0.75rem; font-weight: 800; font-size: 1.125rem; color: ${palette.text}; text-align: right; font-variant-numeric: tabular-nums;`;
+const InvFooter = styled.div`margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid ${palette.border}; font-size: 0.75rem; color: ${palette.textSubtle}; text-align: center;`;
 const InvStatusBanner = styled.div<{ $paid: boolean }>`
   display: inline-flex; align-items: center; gap: 0.375rem;
   padding: 0.25rem 0.75rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 700;
-  background: ${(p) => p.$paid ? '#e6efe3' : '#f5ead2'};
-  color: ${(p) => p.$paid ? '#4a7c59' : '#b5803a'};
+  background: ${(p) => p.$paid ? palette.successSoft : palette.warningSoft};
+  color: ${(p) => p.$paid ? palette.success : palette.warning};
   margin-bottom: 2rem;
 `;
 
@@ -864,7 +855,7 @@ export default function AdminFinanceInvoicesPage() {
                 <BtnSecondary disabled={isPending} onClick={() => setInvoiceActionModal(null)}>Отказ</BtnSecondary>
                 <BtnPrimary
                   disabled={isPending}
-                  style={cfg.danger ? { background: '#b54327' } : undefined}
+                  style={cfg.danger ? { background: palette.danger } : undefined}
                   onClick={handleConfirm}
                 >
                   {isPending ? 'Запазване…' : cfg.confirm}
@@ -951,7 +942,7 @@ export default function AdminFinanceInvoicesPage() {
               </InvTable>
 
               {inv.notes && (
-                <div style={{ fontSize: '0.8125rem', color: '#605a50', marginBottom: '1rem' }}>
+                <div style={{ fontSize: '0.8125rem', color: palette.textMuted, marginBottom: '1rem' }}>
                   <strong>Бележки:</strong> {inv.notes}
                 </div>
               )}

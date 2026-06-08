@@ -196,11 +196,14 @@ describe('Fix 6 — expireEntry race-condition guard', () => {
     expect(walletUpdateCalls[0].data.balance.decrement).toBe(10);
   });
 
-  it('happy path — PENDING entry: wallet NOT decremented (no balance credited yet)', async () => {
+  it('PENDING entry: refuses to expire (spec §8.1) and never decrements the wallet', async () => {
+    // Pending cashback is never credited, so it must not be expirable by default;
+    // the guard throws rather than silently no-op'ing (force-expire requires an
+    // explicit override). Either way the wallet is never decremented.
     const entry = makeEntry({ cashbackStatus: 'PENDING', status: 'PENDING' });
     resetState(entry);
 
-    await expireEntry('wt-1', 'admin-1');
+    await expect(expireEntry('wt-1', 'admin-1')).rejects.toThrow(/Pending cashback never expires/i);
 
     expect(walletUpdateCalls).toHaveLength(0);
   });

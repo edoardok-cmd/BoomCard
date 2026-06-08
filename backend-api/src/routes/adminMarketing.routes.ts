@@ -8,6 +8,8 @@ import { sendWebPushToUser } from '../lib/webPush';
 import { logger } from '../utils/logger';
 import { syncMarketingListSizes } from '../jobs/scheduler';
 import { getOrCreateUnsubscribeToken, buildUnsubscribeUrl, addUnsubscribeFooter } from '../lib/unsubscribeToken';
+import { parsePagination } from '../utils/pagination';
+import { detach } from '../utils/detach';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -20,9 +22,8 @@ const WRITE = [requirePermission('marketing.write')];
 
 router.get('/templates', ...READ, async (req, res, next) => {
   try {
-    const { type, category, search, page = '1', limit = '25' } = req.query as Record<string, string>;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const take = parseInt(limit);
+    const { type, category, search } = req.query as Record<string, string>;
+    const { skip, take, page: pageNum, limit: limitNum } = parsePagination(req.query, { defaultLimit: 25, maxLimit: 100 });
 
     const where: Parameters<typeof prisma.marketingTemplate.findMany>[0]['where'] = {};
     if (type && Object.values(MarketingChannel).includes(type as MarketingChannel)) {
@@ -47,7 +48,7 @@ router.get('/templates', ...READ, async (req, res, next) => {
       prisma.marketingTemplate.count({ where }),
     ]);
 
-    res.json({ items, total, page: parseInt(page), limit: take });
+    res.json({ items, total, page: pageNum, limit: limitNum });
   } catch (error) {
     next(error);
   }
@@ -207,7 +208,7 @@ async function buildRecipientsFromSyncKey(syncKey: string): Promise<DispatchReci
     }
     case 'premium_holders': {
       const rows = await prisma.user.findMany({
-        where: { marketingConsentEmail: true, status: { not: UserStatus.DELETED }, subscriptions: { some: { status: { in: ['ACTIVE', 'TRIALING'] }, plan: { in: ['PREMIUM', 'PREMIUM_WEEKLY'] } } } },
+        where: { marketingConsentEmail: true, status: { not: UserStatus.DELETED }, subscriptions: { some: { status: { in: ['ACTIVE', 'TRIALING'] }, plan: { in: ['PREMIUM_MONTHLY', 'PREMIUM_WEEKLY'] as any } } } },
         select: userSel,
       });
       return rows.map(toUser);
@@ -419,9 +420,8 @@ router.get('/campaigns', ...READ, async (req, res, next) => {
     // and the in-process promise prevents duplicate work mid-startup.
     await selfHealLegacyScheduled();
 
-    const { status, type, search, dateFrom, dateTo, sortBy, sortDir, page = '1', limit = '25' } = req.query as Record<string, string>;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const take = parseInt(limit);
+    const { status, type, search, dateFrom, dateTo, sortBy, sortDir } = req.query as Record<string, string>;
+    const { skip, take, page: pageNum, limit: limitNum } = parsePagination(req.query, { defaultLimit: 25, maxLimit: 100 });
 
     const where: Parameters<typeof prisma.marketingCampaign.findMany>[0]['where'] = {};
     if (status && Object.values(CampaignStatus).includes(status as CampaignStatus)) {
@@ -448,7 +448,7 @@ router.get('/campaigns', ...READ, async (req, res, next) => {
       prisma.marketingCampaign.count({ where }),
     ]);
 
-    res.json({ items, total, page: parseInt(page), limit: take });
+    res.json({ items, total, page: pageNum, limit: limitNum });
   } catch (error) {
     next(error);
   }
@@ -630,20 +630,22 @@ router.patch('/campaigns/:id/status', ...WRITE, async (req, res, next) => {
     // On success: audience is updated to the actual dispatched count.
     // On failure: audience is set to 0 so the admin can see the discrepancy and retry.
     if (status === 'SENT' && existing.status !== 'SENT') {
-      dispatchCampaign(req.params.id)
+      detach(dispatchCampaign(req.params.id)
         .then((count) => {
           logger.info(`[marketing] campaign ${req.params.id} dispatched to ${count} recipients`);
           return prisma.marketingCampaign.update({
             where: { id: req.params.id },
             data: { audience: count, openRate: null, clickRate: null },
           });
-        })
-        .catch((err) => {
+        }), (err) => {
           logger.error('[marketing] dispatch error:', err);
-          return prisma.marketingCampaign.update({
+          // The audience-reset write is a fire-and-forget DB call in the error
+          // branch; register it through detach() so it settles inside this
+          // request's test boundary instead of a later, unrelated suite's.
+          detach(prisma.marketingCampaign.update({
             where: { id: req.params.id },
             data: { audience: 0 },
-          }).catch((dbErr) => logger.error('[marketing] failed to reset audience on dispatch error:', dbErr));
+          }), (dbErr) => logger.error('[marketing] failed to reset audience on dispatch error:', dbErr));
         });
     }
 
@@ -850,9 +852,8 @@ async function deriveAudienceKindMap(
 
 router.get('/lists', ...READ, async (req, res, next) => {
   try {
-    const { type, search, page = '1', limit = '25' } = req.query as Record<string, string>;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const take = parseInt(limit);
+    const { type, search } = req.query as Record<string, string>;
+    const { skip, take, page: pageNum, limit: limitNum } = parsePagination(req.query, { defaultLimit: 25, maxLimit: 100 });
 
     const where: Parameters<typeof prisma.marketingList.findMany>[0]['where'] = {};
     if (type && Object.values(MarketingListType).includes(type as MarketingListType)) {
@@ -877,7 +878,7 @@ router.get('/lists', ...READ, async (req, res, next) => {
     const audienceMap = await deriveAudienceKindMap(items);
     const itemsWithAudience = items.map((l) => ({ ...l, audienceKind: audienceMap[l.id] ?? 'EMPTY' }));
 
-    res.json({ items: itemsWithAudience, total, page: parseInt(page), limit: take });
+    res.json({ items: itemsWithAudience, total, page: pageNum, limit: limitNum });
   } catch (error) {
     next(error);
   }
@@ -1457,9 +1458,8 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
 
 router.get('/automations', ...READ, async (req, res, next) => {
   try {
-    const { status, search, trigger, page = '1', limit = '25' } = req.query as Record<string, string>;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const take = parseInt(limit);
+    const { status, search, trigger } = req.query as Record<string, string>;
+    const { skip, take, page: pageNum, limit: limitNum } = parsePagination(req.query, { defaultLimit: 25, maxLimit: 100 });
 
     const where: Parameters<typeof prisma.marketingAutomation.findMany>[0]['where'] = {};
     if (status && Object.values(AutomationStatus).includes(status as AutomationStatus)) {
@@ -1485,7 +1485,7 @@ router.get('/automations', ...READ, async (req, res, next) => {
       prisma.marketingAutomation.count({ where }),
     ]);
 
-    res.json({ items, total, page: parseInt(page), limit: take });
+    res.json({ items, total, page: pageNum, limit: limitNum });
   } catch (error) {
     next(error);
   }

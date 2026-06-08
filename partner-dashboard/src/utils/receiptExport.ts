@@ -6,9 +6,16 @@
  * - Export as CSV/Excel
  * - Email receipts
  * - Share via social media
+ *
+ * SECURITY NOTE (spec §11.3, Clash 5.1, Clash 10.6):
+ * All export and share functions accept PartnerReceipt — NOT the full Receipt
+ * type. This enforces at compile time that internal-only fields (fraudScore,
+ * cashbackPercent, ocrConfidence, ocrRawText, imageKey, imageHash, reviewedBy,
+ * reviewNotes, latitude, longitude, userId) can never be included in any
+ * partner-downloadable output.
  */
 
-import { Receipt } from '../services/receipt.service';
+import { PartnerReceipt } from '../types/receipt.types';
 
 export interface ExportOptions {
   format: 'pdf' | 'csv' | 'json';
@@ -20,34 +27,65 @@ export interface ExportOptions {
 }
 
 /**
- * Export receipts to CSV format
+ * Escape a value for safe interpolation into an HTML template string.
+ * Prevents XSS via merchant names or other user-controlled receipt data.
  */
-export function exportToCSV(receipts: Receipt[]): string {
-  // CSV Header
+function escapeHtml(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
+/**
+ * Escape a value for safe inclusion in a CSV field.
+ * Wraps in double-quotes and escapes internal quotes. Also guards against
+ * CSV formula injection by prefixing leading =, +, -, @ with a tab.
+ */
+function escapeCsv(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  const str = String(value);
+  // Guard against CSV formula injection
+  const safe = /^[=+\-@]/.test(str) ? '\t' + str : str;
+  // Wrap in quotes and escape internal double-quotes
+  return '"' + safe.replace(/"/g, '""') + '"';
+}
+
+/**
+ * Export receipts to CSV format.
+ * Only partner-visible columns are included (spec §11.3, §6).
+ *
+ * MEDIUM-1 fix (r2w / r2t):
+ * - cashbackAmount removed — it is the user's cashback reward, not partner
+ *   financial data, and spec §6 Transactions view does not include it.
+ * - LOW-2 fix (r2w / r2t): "Amount (EUR)" header renamed to "Amount" so the
+ *   label is correct during both the BGN transition window and post-transition
+ *   EUR-only phase (spec §7.3 / Clash 12.1).
+ */
+export function exportToCSV(receipts: PartnerReceipt[]): string {
+  // CSV Header — internal fields (Fraud Score, OCR Confidence, Cashback)
+  // intentionally omitted (spec §11.3, §6).
   const headers = [
     'Date',
     'Merchant',
-    'Amount (EUR)',
-    'Cashback (EUR)',
+    'Amount',
     'Status',
-    'OCR Confidence',
-    'Fraud Score',
   ];
 
   // CSV Rows
   const rows = receipts.map(receipt => [
-    receipt.receiptDate || receipt.createdAt,
-    receipt.merchantName || 'Unknown',
-    receipt.totalAmount?.toFixed(2) || '0.00',
-    receipt.cashbackAmount.toFixed(2),
-    receipt.status,
-    receipt.ocrConfidence.toFixed(0) + '%',
-    receipt.fraudScore.toFixed(0),
+    escapeCsv(receipt.receiptDate || receipt.createdAt),
+    escapeCsv(receipt.merchantName || 'Unknown'),
+    escapeCsv(receipt.totalAmount?.toFixed(2) || '0.00'),
+    escapeCsv(receipt.status),
   ]);
 
   // Combine headers and rows
   const csv = [
-    headers.join(','),
+    headers.map(h => escapeCsv(h)).join(','),
     ...rows.map(row => row.join(',')),
   ].join('\n');
 
@@ -57,7 +95,7 @@ export function exportToCSV(receipts: Receipt[]): string {
 /**
  * Download CSV file
  */
-export function downloadCSV(receipts: Receipt[], filename: string = 'receipts.csv'): void {
+export function downloadCSV(receipts: PartnerReceipt[], filename: string = 'receipts.csv'): void {
   const csv = exportToCSV(receipts);
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
@@ -70,19 +108,47 @@ export function downloadCSV(receipts: Receipt[], filename: string = 'receipts.cs
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+  // LOW-1 fix (review r2w): revoke the object URL after the click so the Blob
+  // is released from memory immediately rather than waiting until page unload.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 /**
- * Export receipts to JSON format
+ * Export receipts to JSON format.
+ * Only the safe partner-visible fields are serialised.
+ * Internal fields (fraudScore, cashbackPercent, ocrConfidence, ocrRawText,
+ * imageKey, imageHash, reviewedBy, reviewNotes, latitude, longitude, userId)
+ * are structurally absent because PartnerReceipt never declares them.
  */
-export function exportToJSON(receipts: Receipt[]): string {
-  return JSON.stringify(receipts, null, 2);
+export function exportToJSON(receipts: PartnerReceipt[]): string {
+  // Map explicitly to only the declared PartnerReceipt keys so any future
+  // field additions to PartnerReceipt are included, but stray properties
+  // that may exist at runtime are excluded.
+  // MEDIUM-1 fix (r2w): cashbackAmount removed from the explicit map.
+  // It is the user's cashback reward, not partner financial data, and spec §6
+  // Transactions view does not include it.
+  const safe = receipts.map(r => ({
+    id: r.id,
+    transactionId: r.transactionId,
+    venueId: r.venueId,
+    totalAmount: r.totalAmount,
+    merchantName: r.merchantName,
+    receiptDate: r.receiptDate,
+    date: r.date,
+    items: r.items,
+    imageUrl: r.imageUrl,
+    status: r.status,
+    rejectionReason: r.rejectionReason,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+  }));
+  return JSON.stringify(safe, null, 2);
 }
 
 /**
  * Download JSON file
  */
-export function downloadJSON(receipts: Receipt[], filename: string = 'receipts.json'): void {
+export function downloadJSON(receipts: PartnerReceipt[], filename: string = 'receipts.json'): void {
   const json = exportToJSON(receipts);
   const blob = new Blob([json], { type: 'application/json;charset=utf-8;' });
   const link = document.createElement('a');
@@ -95,15 +161,19 @@ export function downloadJSON(receipts: Receipt[], filename: string = 'receipts.j
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+  // LOW-1 fix (review r2w): revoke object URL to release Blob memory.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 /**
  * Generate PDF from receipts (simplified version)
  * For production, use a library like jsPDF or pdfmake
  */
-export async function generateReceiptsPDF(receipts: Receipt[]): Promise<Blob> {
+export async function generateReceiptsPDF(receipts: PartnerReceipt[]): Promise<Blob> {
   // This is a placeholder - in production, use jsPDF or similar
-  // For now, generate a simple HTML that can be printed to PDF
+  // For now, generate a simple HTML that can be printed to PDF.
+  // All field values are HTML-escaped to prevent XSS via merchant names or
+  // other user-controlled data (HIGH fix per audit r2w).
 
   const html = `
     <!DOCTYPE html>
@@ -177,7 +247,7 @@ export async function generateReceiptsPDF(receipts: Receipt[]): Promise<Blob> {
         }
         .summary-grid {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
+          grid-template-columns: repeat(3, 1fr);
           gap: 15px;
         }
         .summary-item {
@@ -200,60 +270,51 @@ export async function generateReceiptsPDF(receipts: Receipt[]): Promise<Blob> {
       </style>
     </head>
     <body>
-      <h1>Receipts Export - ${new Date().toLocaleDateString()}</h1>
+      <h1>Receipts Export - ${escapeHtml(new Date().toLocaleDateString())}</h1>
 
       <div class="summary">
         <div class="summary-grid">
           <div class="summary-item">
             <div class="summary-label">Total Receipts</div>
-            <div class="summary-value">${receipts.length}</div>
+            <div class="summary-value">${escapeHtml(receipts.length)}</div>
           </div>
           <div class="summary-item">
-            <div class="summary-label">Total Cashback</div>
-            <div class="summary-value">${receipts.reduce((sum, r) => sum + r.cashbackAmount, 0).toFixed(2)}</div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-label">Total Spent</div>
-            <div class="summary-value">${receipts.reduce((sum, r) => sum + (r.totalAmount || 0), 0).toFixed(2)}</div>
+            <div class="summary-label">Total Amount</div>
+            <div class="summary-value">${escapeHtml(receipts.reduce((sum, r) => sum + (r.totalAmount || 0), 0).toFixed(2))}</div>
           </div>
           <div class="summary-item">
             <div class="summary-label">Approved</div>
-            <div class="summary-value">${receipts.filter(r => r.status === 'APPROVED').length}</div>
+            <div class="summary-value">${escapeHtml(receipts.filter(r => r.status === 'APPROVED').length)}</div>
           </div>
         </div>
       </div>
+      <!-- MEDIUM-1 fix (r2w): Total Cashback summary removed — cashbackAmount is user
+           financial data; spec §6 Transactions view does not list it for partners.
+           MEDIUM-3 fix (r2t): summary-grid reduced from 4 to 3 columns; cashback column gone. -->
 
       ${receipts.map(receipt => `
         <div class="receipt">
           <div class="receipt-header">
-            <div class="merchant">${receipt.merchantName || 'Unknown Merchant'}</div>
-            <div class="status status-${receipt.status.toLowerCase()}">${receipt.status}</div>
+            <div class="merchant">${escapeHtml(receipt.merchantName || 'Unknown Merchant')}</div>
+            <div class="status status-${escapeHtml(receipt.status.toLowerCase())}">${escapeHtml(receipt.status)}</div>
           </div>
 
           <div class="receipt-info">
             <div class="info-item">
               <div class="info-label">Date</div>
-              <div class="info-value">${receipt.receiptDate || new Date(receipt.createdAt).toLocaleDateString()}</div>
+              <div class="info-value">${escapeHtml(receipt.receiptDate || new Date(receipt.createdAt).toLocaleDateString())}</div>
             </div>
             <div class="info-item">
               <div class="info-label">Amount</div>
-              <div class="info-value">€${receipt.totalAmount?.toFixed(2) || '0.00'}</div>
-            </div>
-            <div class="info-item">
-              <div class="info-label">Cashback</div>
-              <div class="info-value">${receipt.cashbackAmount.toFixed(2)}</div>
-            </div>
-            <div class="info-item">
-              <div class="info-label">OCR Confidence</div>
-              <div class="info-value">${receipt.ocrConfidence.toFixed(0)}%</div>
-            </div>
-            <div class="info-item">
-              <div class="info-label">Fraud Score</div>
-              <div class="info-value">${receipt.fraudScore.toFixed(0)}</div>
+              <!-- MEDIUM-3 fix (r2t): removed hardcoded &euro; — amount is in the
+                   system's active currency (BGN or EUR per spec §7.3 / Clash 12.1).
+                   MEDIUM-1 fix (r2w): Cashback info-item removed — cashbackAmount is
+                   user financial data; spec §6 Transactions view omits it for partners. -->
+              <div class="info-value">${escapeHtml(receipt.totalAmount?.toFixed(2) || '0.00')}</div>
             </div>
             <div class="info-item">
               <div class="info-label">Receipt ID</div>
-              <div class="info-value">${receipt.id.substring(0, 8)}...</div>
+              <div class="info-value">${escapeHtml(receipt.id.substring(0, 8))}...</div>
             </div>
           </div>
         </div>
@@ -273,7 +334,7 @@ export async function generateReceiptsPDF(receipts: Receipt[]): Promise<Blob> {
 /**
  * Open print dialog for PDF export
  */
-export async function printReceiptsPDF(receipts: Receipt[]): Promise<void> {
+export async function printReceiptsPDF(receipts: PartnerReceipt[]): Promise<void> {
   const blob = await generateReceiptsPDF(receipts);
   const url = URL.createObjectURL(blob);
 
@@ -282,27 +343,42 @@ export async function printReceiptsPDF(receipts: Receipt[]): Promise<void> {
   if (printWindow) {
     printWindow.addEventListener('load', () => {
       printWindow.print();
+      // LOW-1 fix (review r2w): revoke after the print dialog opens so the Blob
+      // is eligible for GC once the user closes the window.
+      URL.revokeObjectURL(url);
     });
+  } else {
+    // Window blocked — revoke immediately to avoid the leak.
+    URL.revokeObjectURL(url);
   }
 }
 
 /**
- * Email receipts (requires backend integration)
+ * Email receipts (requires backend integration).
+ *
+ * LOW fix: the backend `POST /api/receipts/email` route reads `{ receiptIds }`
+ * (receipts.enhanced.routes.ts ~L516) and intentionally ignores any
+ * client-supplied address — it always sends to the authenticated user's
+ * verified email (req.user.email) to prevent cross-user phishing. The previous
+ * payload `{ receipts, email }` therefore failed validation (the route expects
+ * a `receiptIds` array) and the `email` field was dead weight. The payload now
+ * sends `{ receiptIds }`; `emailAddress` is retained only for call-site
+ * compatibility and is no longer transmitted.
  */
 export async function emailReceipts(
-  receipts: Receipt[],
-  emailAddress: string
+  receipts: PartnerReceipt[],
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _emailAddress?: string
 ): Promise<{ success: boolean; message: string }> {
   // This would call your backend API to send email
   try {
-    const response = await fetch('/api/receipts/email', {
+    const response = await fetch('/api/receipts/v2/email', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        receipts: receipts.map(r => r.id),
-        email: emailAddress,
+        receiptIds: receipts.map(r => r.id),
       }),
     });
 
@@ -318,26 +394,36 @@ export async function emailReceipts(
 }
 
 /**
- * Share receipt via social media or messaging
+ * Share receipt via social media or messaging.
+ * Accepts PartnerReceipt to prevent accidental leakage of internal fields
+ * (spec §11.3, Clash 10.6).
  */
-export function shareReceipt(receipt: Receipt, platform: 'whatsapp' | 'facebook' | 'twitter' | 'email'): void {
-  const text = `Check out my receipt from ${receipt.merchantName || 'Unknown Merchant'}! Amount: €${receipt.totalAmount?.toFixed(2) || '0.00'}, Cashback: €${receipt.cashbackAmount.toFixed(2)}`;
-  const url = window.location.href;
+export function shareReceipt(receipt: PartnerReceipt, platform: 'whatsapp' | 'facebook' | 'twitter' | 'email'): void {
+  // H3 fix (review r2w): do NOT include cashbackAmount or window.location.href in
+  // outbound share URLs.  The cashback amount in the partner portal context (spec
+  // §11.3 / Clash 10.6) must not be transmitted to third-party social platforms.
+  // window.location.href may embed session identifiers or receipt IDs in the path —
+  // send a static canonical URL instead so no partner-internal parameters leak.
+  // LOW fix: drop the hardcoded € prefix — the system's active currency is BGN
+  // during the transition window and EUR after (spec §7.3 / Clash 12.1). The
+  // CSV/PDF paths already emit a bare amount; keep the share text consistent.
+  const text = `Receipt from ${receipt.merchantName || 'Unknown Merchant'}: ${receipt.totalAmount?.toFixed(2) || '0.00'}`;
+  const canonicalUrl = 'https://boomcard.bg/';
 
   let shareUrl: string;
 
   switch (platform) {
     case 'whatsapp':
-      shareUrl = `https://wa.me/?text=${encodeURIComponent(text + ' ' + url)}`;
+      shareUrl = `https://wa.me/?text=${encodeURIComponent(text + ' ' + canonicalUrl)}`;
       break;
     case 'facebook':
-      shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}&quote=${encodeURIComponent(text)}`;
+      shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(canonicalUrl)}&quote=${encodeURIComponent(text)}`;
       break;
     case 'twitter':
-      shareUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+      shareUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(canonicalUrl)}`;
       break;
     case 'email':
-      shareUrl = `mailto:?subject=${encodeURIComponent('My Receipt')}&body=${encodeURIComponent(text + '\n\n' + url)}`;
+      shareUrl = `mailto:?subject=${encodeURIComponent('My Receipt')}&body=${encodeURIComponent(text + '\n\n' + canonicalUrl)}`;
       break;
     default:
       return;
@@ -349,9 +435,15 @@ export function shareReceipt(receipt: Receipt, platform: 'whatsapp' | 'facebook'
 /**
  * Generate summary report
  */
+/**
+ * MEDIUM-1 fix (r2w / INFO-1 r2w):
+ * `totalCashback` removed from ReceiptsSummary — cashbackAmount is user
+ * financial data that spec §6 Transactions view does not expose to partners.
+ * Any partner-facing UI that previously rendered `totalCashback` from this
+ * summary must not be re-added.
+ */
 export interface ReceiptsSummary {
   totalReceipts: number;
-  totalCashback: number;
   totalSpent: number;
   averageAmount: number;
   approvedCount: number;
@@ -364,8 +456,7 @@ export interface ReceiptsSummary {
   };
 }
 
-export function generateSummary(receipts: Receipt[]): ReceiptsSummary {
-  const totalCashback = receipts.reduce((sum, r) => sum + r.cashbackAmount, 0);
+export function generateSummary(receipts: PartnerReceipt[]): ReceiptsSummary {
   const totalSpent = receipts.reduce((sum, r) => sum + (r.totalAmount || 0), 0);
   const approvedCount = receipts.filter(r => r.status === 'APPROVED').length;
   const rejectedCount = receipts.filter(r => r.status === 'REJECTED').length;
@@ -375,7 +466,6 @@ export function generateSummary(receipts: Receipt[]): ReceiptsSummary {
 
   return {
     totalReceipts: receipts.length,
-    totalCashback,
     totalSpent,
     averageAmount: receipts.length > 0 ? totalSpent / receipts.length : 0,
     approvedCount,
@@ -402,14 +492,25 @@ export interface AccountingSoftwareFormat {
   receiptUrl?: string;
 }
 
-export function formatForAccountingSoftware(receipts: Receipt[]): AccountingSoftwareFormat[] {
+/**
+ * LOW-1 fix (r2w / r2t): accept a `currency` parameter so callers can pass the
+ * active display currency (BGN during the transition window, EUR after it) per
+ * spec §7.3 / Clash 12.1.  Defaults to 'EUR' for post-transition environments.
+ *
+ * MEDIUM-1 fix (r2w): cashbackAmount removed from the description string — it is
+ * user financial data; spec §6 Transactions view does not expose it to partners.
+ */
+export function formatForAccountingSoftware(
+  receipts: PartnerReceipt[],
+  currency: string = 'EUR',
+): AccountingSoftwareFormat[] {
   return receipts.map(receipt => ({
     date: receipt.receiptDate || receipt.createdAt,
     vendor: receipt.merchantName || 'Unknown Merchant',
     category: 'Business Expense', // Could be categorized based on merchant
     amount: receipt.totalAmount || 0,
-    currency: 'EUR',
-    description: `Receipt scanned via BOOM Card - Cashback: €${receipt.cashbackAmount.toFixed(2)}`,
+    currency,
+    description: `Receipt scanned via BOOM Card`,
     receiptUrl: receipt.imageUrl,
   }));
 }
@@ -421,31 +522,46 @@ export function formatForAccountingSoftware(receipts: Receipt[]): AccountingSoft
 /**
  * Export a single receipt to PDF
  */
-export async function exportReceiptToPDF(receipt: Receipt): Promise<void> {
+export async function exportReceiptToPDF(receipt: PartnerReceipt): Promise<void> {
   await printReceiptsPDF([receipt]);
 }
 
 /**
  * Export a single receipt to JSON
  */
-export function exportReceiptToJSON(receipt: Receipt, filename: string = 'receipt.json'): void {
+export function exportReceiptToJSON(receipt: PartnerReceipt, filename: string = 'receipt.json'): void {
   downloadJSON([receipt], filename);
 }
 
 /**
  * Export receipts to CSV
  */
-export function exportReceiptsToCSV(receipts: Receipt[], filename: string = 'receipts.csv'): void {
+export function exportReceiptsToCSV(receipts: PartnerReceipt[], filename: string = 'receipts.csv'): void {
   downloadCSV(receipts, filename);
 }
 
 /**
- * Share a single receipt via email
+ * Share a single receipt via email.
+ * Accepts PartnerReceipt to prevent leakage of internal fields.
  */
-export function shareReceiptViaEmail(receipt: Receipt): void {
-  const text = `Check out my receipt from ${receipt.merchantName || 'Unknown Merchant'}! Amount: €${receipt.totalAmount?.toFixed(2) || '0.00'}, Cashback: €${receipt.cashbackAmount.toFixed(2)}`;
+export function shareReceiptViaEmail(receipt: PartnerReceipt): void {
+  // H3 fix (review r2w): strip cashbackAmount and dynamic window.location.href — same
+  // rationale as shareReceipt above (spec §11.3 / Clash 10.6).
+  // LOW fix: currency-neutral amount (no hardcoded €) — consistent with the
+  // CSV/PDF export paths and the BGN/EUR transition (spec §7.3 / Clash 12.1).
+  const text = `Receipt from ${receipt.merchantName || 'Unknown Merchant'}: ${receipt.totalAmount?.toFixed(2) || '0.00'}`;
   const subject = `Receipt from ${receipt.merchantName || 'Unknown Merchant'}`;
-  const body = `${text}\n\nReceipt ID: ${receipt.id}\nDate: ${receipt.receiptDate || receipt.createdAt}\n\nView receipt: ${window.location.href}`;
+  const body = `${text}\n\nReceipt ID: ${receipt.id}\nDate: ${receipt.receiptDate || receipt.createdAt}`;
 
   window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
+
+/**
+ * Partner-named aliases — preferred names for ReceiptDetailPage imports.
+ * These are semantically identical to the generic wrappers above but the
+ * explicit "Partner" prefix makes the spec compliance intent clear at the
+ * call site (F4 fix, r2t).
+ */
+export const exportPartnerReceiptToPDF = exportReceiptToPDF;
+export const exportPartnerReceiptToJSON = exportReceiptToJSON;
+export const sharePartnerReceiptViaEmail = shareReceiptViaEmail;

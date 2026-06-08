@@ -112,7 +112,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     prisma.systemSetting.findUnique({ where: { key: 'large_tx_threshold' } }),
     getPayoutThresholdBGN('BASIC'),
     getPayoutThresholdBGN('PREMIUM_WEEKLY'),
-    getPayoutThresholdBGN('PREMIUM'),
+    getPayoutThresholdBGN('PREMIUM_MONTHLY' as any),
   ]);
   const parseSetting = (raw: string | undefined, fallback: number): number => {
     if (!raw) return fallback;
@@ -150,9 +150,13 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     openDisputes,
     pastDueSubscriptions,
     unpaidSubscriptions,
-    // Spec risk tiers: 61+ = CRITICAL, 31-60 = OPERATIONAL.
-    // Both queries hit StickerScan (the live pipeline that AdminScanReviewPage
-    // shows) — counting Receipt rows produced an alert ↔ landing-page mismatch.
+    // M6 / Spec §2.1 + §3.1: alert tiers must use the spec-canonical additive
+    // risk LEVEL (specRiskLevel column written by sticker.service from the §2.1
+    // five-signal additive score: Low 0–20 / Medium 21–50 / High 51+), NOT the
+    // legacy fraudScore breakpoints (61 / 31). High → Critical alert, Medium →
+    // Operational alert. Both queries hit StickerScan (the live pipeline that
+    // AdminScanReviewPage shows) — counting Receipt rows produced an alert ↔
+    // landing-page mismatch.
     highRiskScans,
     mediumRiskScans,
     failedTransactions,
@@ -178,13 +182,15 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     prisma.subscription.count({ where: { status: 'UNPAID' } }),
     prisma.stickerScan.count({
       where: {
-        fraudScore: { gte: 61 },
+        // M6: spec-canonical High tier (additive score 51+).
+        specRiskLevel: 'High',
         status: { in: ACTIVE_SCAN_STATUSES },
       },
     }),
     prisma.stickerScan.count({
       where: {
-        fraudScore: { gte: 31, lt: 61 },
+        // M6: spec-canonical Medium tier (additive score 21–50).
+        specRiskLevel: 'Medium',
         status: { in: ACTIVE_SCAN_STATUSES },
       },
     }),
@@ -312,9 +318,9 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       id: 'risk_transactions',
       type: 'RISK_TRANSACTIONS',
       tier: 'critical',
-      title: 'Рискови транзакции (висок риск 61+)',
+      title: 'Рискови транзакции (висок риск 51+)',
       count: highRiskScans,
-      link: '/admin/control/risk?bucket=HIGH_61_PLUS&status=active',
+      link: '/admin/control/risk?bucket=HIGH_51_PLUS&status=active',
     });
   }
   // 31–60 is the review band — requires admin attention but not immediate action.
@@ -405,15 +411,20 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
   }
 
   // ── Operational ─────────────────────────────────────────────────────────────
-  // 31–60 review band: needs attention but not immediate action → OPERATIONAL (amber).
+  // Medium risk band (spec-canonical 21–50): needs attention but not immediate
+  // action → OPERATIONAL (amber).
+  // L8 / Spec §3.1: Control is reserved for CRITICAL alerts; Operational alerts must
+  // route to Partners / Users / Finance. This medium-risk-transactions alert is a
+  // financial-review surface, so it links to Finance (reports drill-down) rather than
+  // /admin/control/risk. The High-risk (51+) sibling above stays Critical → Control.
   if (mediumRiskScans > 0) {
     operational.push({
       id: 'medium_risk_transactions',
       type: 'MEDIUM_RISK_TRANSACTIONS',
       tier: 'operational',
-      title: 'Транзакции за преглед (31–60)',
+      title: 'Транзакции за преглед (среден риск 21–50)',
       count: mediumRiskScans,
-      link: '/admin/control/risk?bucket=REVIEW_31_60&status=active',
+      link: '/admin/finance/reports?focus=medium_risk_transactions',
     });
   }
   if (partnerRequests > 0) {

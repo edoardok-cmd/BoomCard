@@ -17,10 +17,11 @@ jest.mock('../../src/lib/prisma', () => {
   const qr = jest.fn();
   const agg = jest.fn();
   const cnt = jest.fn();
+  const grp = jest.fn();
   const client = {
     $queryRaw: qr,
     transaction: { count: cnt, aggregate: agg },
-    walletTransaction: { aggregate: agg, count: cnt },
+    walletTransaction: { aggregate: agg, count: cnt, groupBy: grp },
     partner: { count: cnt },
     venue: { count: cnt },
     partnerCashbackPayment: { aggregate: agg },
@@ -59,7 +60,7 @@ app.use('/admin/dashboard', dashboardRouter);
 const m = prisma as unknown as {
   $queryRaw: jest.Mock;
   transaction: { count: jest.Mock; aggregate: jest.Mock };
-  walletTransaction: { aggregate: jest.Mock; count: jest.Mock };
+  walletTransaction: { aggregate: jest.Mock; count: jest.Mock; groupBy: jest.Mock };
   partner: { count: jest.Mock };
   venue: { count: jest.Mock };
   partnerCashbackPayment: { aggregate: jest.Mock };
@@ -76,6 +77,7 @@ function resetMocks() {
   m.transaction.aggregate.mockReset();
   m.walletTransaction.aggregate.mockReset();
   m.walletTransaction.count.mockReset();
+  m.walletTransaction.groupBy.mockReset();
   m.partner.count.mockReset();
   m.venue.count.mockReset();
   m.partnerCashbackPayment.aggregate.mockReset();
@@ -90,6 +92,8 @@ function resetMocks() {
   m.partnerCashbackPayment.aggregate.mockResolvedValue(ZERO_AGGREGATE);
   m.transaction.count.mockResolvedValue(0);
   m.walletTransaction.count.mockResolvedValue(0);
+  // §3.1 cashback-status breakdown groupBy — default to no rows (route zero-fills).
+  m.walletTransaction.groupBy.mockResolvedValue([]);
   m.partner.count.mockResolvedValue(0);
   m.venue.count.mockResolvedValue(0);
   m.user.count.mockResolvedValue(0);

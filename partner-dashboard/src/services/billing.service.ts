@@ -51,10 +51,15 @@ export type SubscriptionStatus =
   | 'PAUSED'
   | 'EXPIRED';
 
+// Mirrors backend prisma SubscriptionPlan enum (canonical tokens). The legacy
+// 'LIGHT'/'PREMIUM' tokens are gone — the backend only ever emits and accepts
+// these three values via /subscriptions/* routes.
+export type SubscriptionPlanToken = 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY';
+
 export interface Subscription {
   id: string;
   userId: string;
-  plan: 'LIGHT' | 'BASIC' | 'PREMIUM';
+  plan: SubscriptionPlanToken;
   status: SubscriptionStatus;
   currentPeriodStart: string;
   currentPeriodEnd: string;
@@ -62,7 +67,9 @@ export interface Subscription {
   cancelAt: string | null;
   autoRenewal: boolean;
   retryAttempt: number;
-  gracePeriodEndsAt: string | null;
+  // gracePeriodEndsAt removed — phantom field not in Prisma schema and never
+  // returned by /subscriptions/current. PAST_DUE grace is computed from
+  // currentPeriodEnd in SubscriptionPage instead (review r2z S1).
   // 24h refund window (FR-007 / spec §2.2). Null after the window expires
   // or after the refund has been used.
   trialRefundEligibleUntil: string | null;
@@ -362,9 +369,10 @@ class BillingService {
 
   /**
    * Upgrade or downgrade a subscription plan. Backend applies any pro-rata
-   * upgrade credit to the user's wallet (LIGHT→PREMIUM, BASIC→PREMIUM).
+   * upgrade credit to the user's wallet (PREMIUM_WEEKLY→PREMIUM_MONTHLY,
+   * BASIC→PREMIUM_MONTHLY). Plan tokens are the canonical SubscriptionPlan enum.
    */
-  async updateSubscriptionPlan(subscriptionId: string, plan: 'LIGHT' | 'BASIC' | 'PREMIUM'): Promise<Subscription> {
+  async updateSubscriptionPlan(subscriptionId: string, plan: SubscriptionPlanToken): Promise<Subscription> {
     const response = await apiService.post<Subscription>(
       `/subscriptions/${subscriptionId}/update-plan`,
       { plan }

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import styled from 'styled-components';
@@ -113,7 +114,10 @@ const PlanBadge = styled.span<{ $plan: string }>`
   font-weight: 700;
   letter-spacing: 0.03em;
   background: ${({ $plan }) => {
-    if ($plan === 'PREMIUM') return 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)';
+    // Canonical SubscriptionPlan tokens: PREMIUM_MONTHLY (purple, top tier),
+    // PREMIUM_WEEKLY (violet), BASIC (blue). Anything else falls back to grey.
+    if ($plan === 'PREMIUM_MONTHLY') return 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)';
+    if ($plan === 'PREMIUM_WEEKLY') return 'linear-gradient(135deg, #6d28d9 0%, #8b5cf6 100%)';
     if ($plan === 'BASIC') return 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)';
     return 'linear-gradient(135deg, #374151 0%, #6b7280 100%)';
   }};
@@ -450,6 +454,7 @@ function formatDate(iso: string | null | undefined, locale?: string): string {
 export default function SubscriptionPage() {
   const { t, language } = useLanguage();
   const { data: subscription, isLoading } = useCurrentSubscription();
+  const queryClient = useQueryClient();
   const toggleAutoRenewal = useToggleAutoRenewal();
   const cancelSubscription = useCancelSubscriptionById();
   const reactivate = useReactivateSubscription();
@@ -473,16 +478,46 @@ export default function SubscriptionPage() {
     new Date(subscription.trialRefundEligibleUntil).getTime() > Date.now()
   );
 
-  const graceDaysLeft = (() => {
-    const ends = subscription?.gracePeriodEndsAt;
-    if (!ends) return null;
-    const diff = new Date(ends).getTime() - Date.now();
-    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-  })();
+  // LOW fix: trialRefundActive is computed at render time from Date.now(). If the
+  // component has been mounted and the user leaves the tab open past the 24h expiry
+  // boundary, the UI would continue to offer the refund path until the next render.
+  // Schedule a query invalidation at the exact expiry moment so the component
+  // re-renders with an up-to-date trialRefundActive = false.
+  useEffect(() => {
+    if (!subscription?.trialRefundEligibleUntil || subscription.trialRefundUsed) return;
+    const expiry = new Date(subscription.trialRefundEligibleUntil).getTime();
+    const msUntilExpiry = expiry - Date.now();
+    if (msUntilExpiry <= 0) return; // already expired
+    const timerId = window.setTimeout(() => {
+      queryClient.invalidateQueries({ queryKey: ['billing', 'subscription'] });
+    }, msUntilExpiry);
+    return () => window.clearTimeout(timerId);
+  }, [subscription?.trialRefundEligibleUntil, subscription?.trialRefundUsed, queryClient]);
 
   const isPastDue = subscription?.status === 'PAST_DUE';
   const isCancelled = subscription?.status === 'CANCELLED';
   const isScheduledForCancel = subscription?.cancelAtPeriodEnd && !isCancelled;
+
+  // FINDING-1 fix: gracePeriodEndsAt is a phantom field — it does not exist
+  // in the backend Prisma schema and is never returned by /api/subscriptions/current.
+  // The PAST_DUE grace countdown previously depended on this field, making the
+  // retry-payment button permanently unreachable for PAST_DUE users.
+  //
+  // Replacement: derive grace days remaining from currentPeriodEnd, which IS a
+  // real backend field. For PAST_DUE subscriptions the billing system continues
+  // to give a window beyond currentPeriodEnd before final cancellation. We
+  // compute days-remaining from currentPeriodEnd directly so the countdown still
+  // works without the phantom field.
+  const graceDaysLeft = (() => {
+    if (!isPastDue) return null;
+    const periodEnd = subscription?.currentPeriodEnd;
+    if (!periodEnd) return null;
+    const diff = new Date(periodEnd).getTime() - Date.now();
+    // For PAST_DUE subscriptions still within the current period (e.g. Stripe's
+    // built-in grace), show remaining days. If the period has already passed,
+    // return 0 — the alert still renders and the retry CTA remains reachable.
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  })();
   const isPaysera = !!subscription?.payseraOrderId;
   // Mirrors getActiveSubscription() status whitelist so the change-card CTA is
   // only shown when the backend can actually act on the subscription.
@@ -502,12 +537,19 @@ export default function SubscriptionPage() {
       // Within the 24h window — cancel + refund + void cashback in one shot.
       trialRefund.mutate(subscription.id, {
         onSuccess: () => setShowCancelConfirm(false),
+        // LOW fix: also dismiss the confirm dialog on failure so the user is not
+        // left staring at an open dialog with no actionable path forward.
+        onError: () => setShowCancelConfirm(false),
       });
       return;
     }
     cancelSubscription.mutate(
       { subscriptionId: subscription.id, cancelAtPeriodEnd: true },
-      { onSuccess: () => setShowCancelConfirm(false) }
+      {
+        onSuccess: () => setShowCancelConfirm(false),
+        // LOW fix: dismiss the confirm dialog on error too.
+        onError: () => setShowCancelConfirm(false),
+      }
     );
   };
 
@@ -523,15 +565,15 @@ export default function SubscriptionPage() {
 
   // Spec §5.6: dedicated "upgrade to Premium Monthly" CTA. The backend's
   // updateSubscriptionPlan applies a pro-rata wallet credit on the
-  // BASIC→PREMIUM and LIGHT→PREMIUM transitions. Premium-Weekly→Premium-
-  // Monthly is also called out by spec §5.1 but the backend rejects same-
-  // plan updates today (subscription.service.ts line ~236), so we hide the
-  // CTA for any PREMIUM user until the endpoint accepts a billingPeriod
-  // switch within the same plan.
-  const isOnPremium = subscription?.plan === 'PREMIUM';
+  // BASIC→PREMIUM_MONTHLY and PREMIUM_WEEKLY→PREMIUM_MONTHLY transitions.
+  // The backend rejects same-plan updates today (subscription.service.ts
+  // ~line 236), so we hide the CTA once the user is already on
+  // PREMIUM_MONTHLY. Plan token must match the canonical SubscriptionPlan
+  // enum (PREMIUM_WEEKLY | BASIC | PREMIUM_MONTHLY).
+  const isOnPremium = subscription?.plan === 'PREMIUM_MONTHLY';
   const handleUpgradeToPremium = () => {
     if (!subscription || isOnPremium) return;
-    updatePlan.mutate({ subscriptionId: subscription.id, plan: 'PREMIUM' });
+    updatePlan.mutate({ subscriptionId: subscription.id, plan: 'PREMIUM_MONTHLY' });
   };
 
   if (isLoading) {
@@ -577,9 +619,11 @@ export default function SubscriptionPage() {
         </PageHeader>
 
         <Stack>
-          {/* Grace period alert */}
+          {/* Grace period alert — FINDING-1 fix: render whenever isPastDue is
+               true, not only when graceDaysLeft is non-null. The retry and
+               update-payment CTAs must always be reachable for PAST_DUE users. */}
           <AnimatePresence>
-            {isPastDue && graceDaysLeft !== null && (
+            {isPastDue && (
               <GraceAlert
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -591,10 +635,10 @@ export default function SubscriptionPage() {
                   <GraceTitle>{t('subscriptionPage.gracePeriodAlert')}</GraceTitle>
                   <GraceDesc>
                     {isPaysera
-                      ? (graceDaysLeft > 0
+                      ? (graceDaysLeft !== null && graceDaysLeft > 0
                           ? t('subscriptionPage.gracePeriodPayseraMsg').replace('{days}', String(graceDaysLeft))
                           : t('subscriptionPage.gracePeriodPayseraExpired'))
-                      : (graceDaysLeft > 0
+                      : (graceDaysLeft !== null && graceDaysLeft > 0
                           ? t('subscriptionPage.gracePeriodMsg').replace('{days}', String(graceDaysLeft))
                           : t('subscriptionPage.gracePeriodExpired'))}
                   </GraceDesc>
@@ -619,12 +663,24 @@ export default function SubscriptionPage() {
                             ? t('subscriptionPage.retryPaymentPending')
                             : t('subscriptionPage.retryPayment')}
                         </Button>
-                        <Link to="/billing">
-                          <Button variant="ghost" size="small">
-                            <CreditCard size={14} style={{ marginRight: 6 }} />
-                            {t('subscriptionPage.updatePayment')}
-                          </Button>
-                        </Link>
+                        <Button
+                          variant="ghost"
+                          size="small"
+                          onClick={() => initiateCardUpdate.mutate(subscription.id, {
+                            onError: (err) => {
+                              const status: number | undefined = (err as any)?.response?.status;
+                              if (status === 409) {
+                                toast.error(t('subscriptionPage.changeCardConflict'));
+                              } else {
+                                toast.error(t('subscriptionPage.changeCardError'));
+                              }
+                            },
+                          })}
+                          disabled={initiateCardUpdate.isPending}
+                        >
+                          <CreditCard size={14} style={{ marginRight: 6 }} />
+                          {t('subscriptionPage.updatePayment')}
+                        </Button>
                       </>
                     )}
                   </div>
@@ -774,11 +830,23 @@ export default function SubscriptionPage() {
               </Row>
               <Divider />
               <Row>
-                <Link to="/billing">
-                  <Button variant="ghost" size="small">
-                    {t('subscriptionPage.changeCard')}
-                  </Button>
-                </Link>
+                <Button
+                  variant="ghost"
+                  size="small"
+                  onClick={() => initiateCardUpdate.mutate(subscription.id, {
+                    onError: (err) => {
+                      const status: number | undefined = (err as any)?.response?.status;
+                      if (status === 409) {
+                        toast.error(t('subscriptionPage.changeCardConflict'));
+                      } else {
+                        toast.error(t('subscriptionPage.changeCardError'));
+                      }
+                    },
+                  })}
+                  disabled={initiateCardUpdate.isPending}
+                >
+                  {t('subscriptionPage.changeCard')}
+                </Button>
               </Row>
             </Card>
           )}

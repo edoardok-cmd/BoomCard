@@ -3,18 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
+import { palette } from '../../styles/adminTheme';
 import {
   adminHelpService,
   TicketPriority,
   TicketCategory,
 } from '../../services/adminHelp.service';
 
-const palette = {
-  bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
-  text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
-  accent: '#c96442', accentSoft: '#f3e8de',
-  danger: '#b54327',
-};
 
 const PageShell = styled.div`background: ${palette.bg}; min-height: calc(100vh - 4rem); padding: 2rem 2.5rem;`;
 const PageHeader = styled.div`margin-bottom: 2rem;`;
@@ -42,7 +37,7 @@ const Counter = styled.span<{ $warn?: boolean }>`
 const Input = styled.input<{ $invalid?: boolean }>`
   padding: 0.5rem 0.875rem; border: 1px solid ${p => p.$invalid ? palette.danger : palette.border}; border-radius: 0.5rem;
   font-size: 0.9375rem; background: ${palette.bg}; color: ${palette.text}; outline: none;
-  &:focus { border-color: ${p => p.$invalid ? palette.danger : palette.accent}; box-shadow: 0 0 0 2px ${p => p.$invalid ? '#f3ddd8' : palette.accentSoft}; }
+  &:focus { border-color: ${p => p.$invalid ? palette.danger : palette.accent}; box-shadow: 0 0 0 2px ${p => p.$invalid ? palette.dangerSoft : palette.accentSoft}; }
   &::placeholder { color: ${palette.textSubtle}; }
 `;
 
@@ -56,14 +51,14 @@ const Textarea = styled.textarea<{ $invalid?: boolean }>`
   padding: 0.625rem 0.875rem; border: 1px solid ${p => p.$invalid ? palette.danger : palette.border}; border-radius: 0.5rem;
   font-size: 0.9375rem; font-family: inherit; background: ${palette.bg}; color: ${palette.text};
   outline: none; resize: vertical; min-height: 8rem;
-  &:focus { border-color: ${p => p.$invalid ? palette.danger : palette.accent}; box-shadow: 0 0 0 2px ${p => p.$invalid ? '#f3ddd8' : palette.accentSoft}; }
+  &:focus { border-color: ${p => p.$invalid ? palette.danger : palette.accent}; box-shadow: 0 0 0 2px ${p => p.$invalid ? palette.dangerSoft : palette.accentSoft}; }
   &::placeholder { color: ${palette.textSubtle}; }
   &:disabled { opacity: 0.6; }
 `;
 
 const SubmitBtn = styled.button`
   align-self: flex-start; padding: 0.625rem 1.5rem; border: none; border-radius: 0.5rem;
-  background: ${palette.accent}; color: #fff; font-size: 0.9375rem; font-weight: 600;
+  background: ${palette.accent}; color: ${palette.onAccent}; font-size: 0.9375rem; font-weight: 600;
   cursor: pointer;
   &:hover:not(:disabled) { background: #b5522e; }
   &:disabled { opacity: 0.5; cursor: not-allowed; }

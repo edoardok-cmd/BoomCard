@@ -4,11 +4,14 @@ import { authenticate, authorize, requirePermission, AuthRequest } from '../midd
 import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { stripeService } from '../services/stripe.service';
+import { notificationService } from '../services/notification.service';
 import { getSubscriberCashbackEntries } from '../services/adminCashback.service';
 import { computeRiskForUsers, persistRiskAssessments } from '../services/userRisk.service';
 import { planDisplayName } from '../utils/planDisplayName';
 import { logger } from '../utils/logger';
 import { getClientIp } from '../utils/requestIp';
+import { parsePagination } from '../utils/pagination';
+import { detach } from '../utils/detach';
 
 const router = Router();
 router.use(auditMiddleware);
@@ -26,6 +29,11 @@ const SUBSCRIBER_SELECT = {
   deletedAt: true,
   riskScore: true,
   riskBucket: true,
+  // §4.1 / M1 — when an admin manually edits a subscriber's risk profile we stamp
+  // riskOverriddenAt so the periodic behaviour recompute does NOT clobber it. The
+  // list GET must read this flag to decide whether to display the stored override
+  // value or the freshly computed one.
+  riskOverriddenAt: true,
   lastLoginAt: true,
   lastActivityAt: true,
   ibanLastChangedAt: true,
@@ -80,16 +88,35 @@ function buildSubscriberQuery(q: Record<string, string | undefined>) {
     where.createdAt = createdAt;
   }
 
-  if (accountStatus === 'ACTIVE' || accountStatus === 'SUSPENDED' || accountStatus === 'PENDING_VERIFICATION' || accountStatus === 'PENDING_PAYMENT' || accountStatus === 'INACTIVE') {
+  // Spec §1.1 — valid user_account_status values: Active, Inactive, Archived.
+  // ARCHIVED is included so admins can filter/view Archived users. Also accept
+  // SUSPENDED and PENDING_* as implementation extensions (see spec note).
+  if (accountStatus === 'ACTIVE' || accountStatus === 'SUSPENDED' || accountStatus === 'PENDING_VERIFICATION' || accountStatus === 'PENDING_PAYMENT' || accountStatus === 'INACTIVE' || accountStatus === 'ARCHIVED') {
     where.status = accountStatus as any;
     where.deletedAt = null;
   } else if (accountStatus === 'DELETED') {
     where.deletedAt = { not: null };
   }
 
-  if (riskLevel === 'low') where.riskScore = { lte: 30 };
-  else if (riskLevel === 'medium') where.riskScore = { gt: 30, lte: 60 };
-  else if (riskLevel === 'high') where.riskScore = { gt: 60 };
+  // Spec §2.1 Clash 5.1 — additive risk thresholds: 0–20 Low, 21–50 Medium, 51+ High.
+  //
+  // L3 — EVENTUAL-CONSISTENCY NOTE: this filter runs in Postgres against the
+  // *stored* User.riskScore, but the GET handler recomputes a fresh behaviour-
+  // based score for each visible row (non-overridden rows only) and may show a
+  // value that differs from the stored one. The recompute is page-scoped and
+  // post-query by design (cheap: one groupBy per rule over ≤ limit users), so we
+  // cannot filter on it at the DB level without recomputing the entire universe
+  // before pagination — which would defeat that design and the count/total math.
+  // Instead the handler persists the recomputed scores asynchronously
+  // (persistRiskAssessments) and the daily sweep (jobs/user-risk-sweep.ts) writes
+  // any rows missed, so the stored value the filter reads converges to the shown
+  // value. Until convergence a row can transiently appear in / drop out of a
+  // riskLevel filter relative to its displayed score. Overridden rows are exempt
+  // (their stored value is authoritative and is what is shown), so for them the
+  // filter and the display always agree.
+  if (riskLevel === 'low') where.riskScore = { lte: 20 };
+  else if (riskLevel === 'medium') where.riskScore = { gt: 20, lte: 50 };
+  else if (riskLevel === 'high') where.riskScore = { gt: 50 };
 
   // ibanChangedAfter: used by the suspicious_iban_changes alert deep-link to
   // filter the subscriber list to users who changed IBAN within the alert window.
@@ -210,10 +237,8 @@ function flattenSubscriber<T extends { subscriptions: Array<{ plan: Subscription
 // "Абонати" = user profile management: user-centric view with subscription summary
 router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.read'), async (req, res, next) => {
   try {
-    const { page = '1', limit = '20', sortBy, sortOrder, ...filters } = req.query as Record<string, string>;
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(Math.max(1, parseInt(limit) || 20), 100);
-    const skip = (pageNum - 1) * limitNum;
+    const { sortBy, sortOrder, ...filters } = req.query as Record<string, string>;
+    const { skip, page: pageNum, limit: limitNum } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     const { where, subFilter, hasSubFilter } = buildSubscriberQuery(filters);
 
@@ -256,12 +281,24 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
     // Spec §4.1 — Risk column must reflect a behaviour-based score, not the
     // never-updated DB default. Recompute for the visible page only (cheap; one
     // groupBy per rule across ≤ limit users) and persist so filters converge.
-    let subscribers = users.map(flattenSubscriber);
+    const flat = users.map(flattenSubscriber);
+    // M1 — surface the override as a boolean and drop the raw internal timestamp
+    // from the response shape (rows don't otherwise expose internal timestamps).
+    // For overridden rows we keep the stored DB risk values; non-overridden rows
+    // get the fresh behaviour-based score below.
+    let subscribers = flat.map((s) => {
+      const { riskOverriddenAt, ...rest } = s;
+      return { ...rest, riskOverridden: !!riskOverriddenAt };
+    });
     try {
       const assessments = await computeRiskForUsers(
         users.map((u) => ({ id: u.id, createdAt: u.createdAt, ibanLastChangedAt: u.ibanLastChangedAt })),
       );
       subscribers = subscribers.map((s) => {
+        // Admin manual risk edits are durable: for overridden rows KEEP the stored
+        // DB risk values (already carried through flattenSubscriber) and ignore the
+        // recomputed assessment. Only non-overridden rows get the fresh score.
+        if (s.riskOverridden) return s;
         const a = assessments.get(s.id);
         return a ? { ...s, riskScore: a.score, riskBucket: a.bucket } : s;
       });
@@ -271,7 +308,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
       // restart between chunks. The next admin GET (or the daily sweep in
       // jobs/user-risk-sweep.ts) recomputes the same assessments and writes
       // any users that were missed, so the failure mode self-heals.
-      void persistRiskAssessments(Array.from(assessments.values())).catch(() => {});
+      detach(persistRiskAssessments(Array.from(assessments.values())), () => {});
     } catch {
       // Computation failure must not break the list — fall back to stored values.
     }
@@ -308,7 +345,13 @@ router.get('/export', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePe
     if (truncatedCandidates) {
       res.setHeader('X-Truncated-Result', `candidates capped at ${MAX_CANDIDATES}`);
     }
-    res.json({ subscribers: users.map(flattenSubscriber), limit: EXPORT_MAX });
+    // Mirror the list GET convention: expose the override as a boolean and drop the
+    // raw internal riskOverriddenAt timestamp from the response shape.
+    const subscribers = users.map(flattenSubscriber).map((s) => {
+      const { riskOverriddenAt, ...rest } = s as typeof s & { riskOverriddenAt?: Date | null };
+      return { ...rest, riskOverridden: !!riskOverriddenAt };
+    });
+    res.json({ subscribers, limit: EXPORT_MAX });
   } catch (error) {
     next(error);
   }
@@ -320,19 +363,18 @@ router.get('/export', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePe
 router.get('/:userId/cashback', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.read'), async (req, res, next) => {
   try {
     const { userId } = req.params;
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 20), 100);
+    const { page, limit } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     const result = await getSubscriberCashbackEntries(userId, page, limit);
 
-    writeAudit({
+    detach(writeAudit({
       actorUserId: (req as AuthRequest).user?.id ?? null,
       action: 'subscriber.cashback.view',
       objectType: 'cashback',
       objectId: userId,
       ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
-    }).catch(() => {});
+    }), () => {});
 
     res.json({ success: true, ...result });
   } catch (error: any) {
@@ -357,6 +399,9 @@ router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
         lastName: true,
         email: true,
         phone: true,
+        // §3.2 — address is an admin-editable field and the profile PATCH writes
+        // it, so the detail GET must return it for the UI to prefill before edit.
+        address: true,
         iban: true,
         role: true,
         status: true,
@@ -409,14 +454,14 @@ router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
     };
 
     const actorReq = req as AuthRequest;
-    writeAudit({
+    detach(writeAudit({
       actorUserId: actorReq.user?.id ?? null,
       action: 'subscriber.view',
       objectType: 'subscriber',
       objectId: userId,
       ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
-    }).catch(() => {});
+    }), () => {});
 
     res.json(enriched);
   } catch (error) {
@@ -424,14 +469,20 @@ router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
   }
 });
 
-// PATCH /api/admin/subscribers/:userId/status — suspend or unsuspend a subscriber (#7)
+// PATCH /api/admin/subscribers/:userId/status — change a subscriber's account status.
+// Spec §1.1 — valid user_account_status values: Active, Inactive, Archived.
+//   ACTIVE   → Normal operation; scanning allowed.
+//   INACTIVE → Temporary pause; login allowed, scanning blocked.
+//   ARCHIVED → Terminal for operational purposes; no login, no scanning.
+// Spec §6.6 Clash 6.6 — users are NOT notified of account status changes (intentional).
 router.patch('/:userId/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.write'), async (req, res, next) => {
   try {
     const { userId } = req.params;
     const { status } = req.body as { status?: string };
 
-    if (status !== 'ACTIVE' && status !== 'SUSPENDED') {
-      return res.status(400).json({ error: 'status must be ACTIVE or SUSPENDED' });
+    // Spec §1.1 — only the three canonical statuses are allowed for new updates.
+    if (status !== 'ACTIVE' && status !== 'INACTIVE' && status !== 'ARCHIVED') {
+      return res.status(400).json({ error: 'status must be ACTIVE, INACTIVE, or ARCHIVED' });
     }
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -445,17 +496,267 @@ router.patch('/:userId/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
     const [updated] = await Promise.all([
       prisma.user.update({
         where: { id: userId },
-        data: { status },
+        data: { status: status as any },
         select: { id: true, status: true },
       }),
-      // Revoke all active sessions when suspending so the user is locked out
-      // immediately rather than remaining active until their JWT expires.
-      status === 'SUSPENDED'
+      // Spec §1.1: INACTIVE users can log in — do NOT revoke their sessions.
+      // Only ARCHIVED is a terminal no-login state that requires immediate session revocation.
+      status === 'ARCHIVED'
         ? prisma.refreshToken.deleteMany({ where: { userId } })
         : Promise.resolve(),
     ]);
 
     res.json({ ok: true, ...updated });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PATCH /api/admin/subscribers/:userId/profile — edit a subscriber's profile.
+// Spec §1.1 / §3.2 "Editable Fields": admin may edit profile (name, email, phone,
+// address, IBAN) and the risk profile (risk bucket/score). Account status has its
+// own endpoint (PATCH /status); subscription/cashback history is view-only here.
+//
+// Fields are all OPTIONAL — only the keys present in the body are updated (PATCH
+// semantics). Risk bucket and score are kept in sync: setting one without the
+// other re-derives the missing value from the spec §2.1 thresholds so the stored
+// riskScore/riskBucket pair never drifts.
+//
+// IBAN authority (schema note): Wallet.payoutIban is the authoritative payout IBAN;
+// User.iban is a legacy mirror. We write BOTH for consistency and stamp
+// User.ibanLastChangedAt (a §2.1 risk signal) when the IBAN value actually changes.
+const IBAN_RE = /^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/;
+const RISK_BUCKETS = ['LOW_0_20', 'MEDIUM_21_50', 'HIGH_51_PLUS'] as const;
+type RiskBucketValue = (typeof RISK_BUCKETS)[number];
+
+function bucketForScore(score: number): RiskBucketValue {
+  if (score <= 20) return 'LOW_0_20';
+  if (score <= 50) return 'MEDIUM_21_50';
+  return 'HIGH_51_PLUS';
+}
+
+router.patch('/:userId/profile', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.write'), async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const body = (req.body ?? {}) as {
+      firstName?: unknown;
+      lastName?: unknown;
+      email?: unknown;
+      phone?: unknown;
+      address?: unknown;
+      iban?: unknown;
+      riskBucket?: unknown;
+      riskScore?: unknown;
+      // M1 clear-override contract: `riskOverride: false` reverts the subscriber to
+      // automatic behaviour-based recompute (clears riskOverriddenAt/By) WITHOUT
+      // requiring a score/bucket. It must be a strict boolean; only `false` clears,
+      // `true` is a no-op (the override is set implicitly when a risk value is
+      // edited, not via this flag). Any non-boolean is rejected.
+      riskOverride?: unknown;
+    };
+
+    const user = await prisma.user.findUnique({ where: { id: userId }, include: { wallet: { select: { id: true } } } });
+    if (!user || user.role !== 'USER') {
+      return res.status(404).json({ error: 'Subscriber not found' });
+    }
+    if (user.deletedAt) {
+      return res.status(400).json({ error: 'Cannot edit a deleted account' });
+    }
+
+    const data: Record<string, unknown> = {};
+    const before: Record<string, unknown> = {};
+
+    // --- Name ---
+    const validateOptionalString = (v: unknown, field: string, max: number): string | null | undefined => {
+      if (v === undefined) return undefined;
+      if (v === null || v === '') return null;
+      if (typeof v !== 'string') throw { status: 400, msg: `${field} must be a string` };
+      const trimmed = v.trim();
+      if (trimmed.length > max) throw { status: 400, msg: `${field} is too long (max ${max})` };
+      return trimmed;
+    };
+
+    try {
+      const firstName = validateOptionalString(body.firstName, 'firstName', 100);
+      if (firstName !== undefined) { data.firstName = firstName; before.firstName = user.firstName; }
+      const lastName = validateOptionalString(body.lastName, 'lastName', 100);
+      if (lastName !== undefined) { data.lastName = lastName; before.lastName = user.lastName; }
+      const phone = validateOptionalString(body.phone, 'phone', 32);
+      if (phone !== undefined) { data.phone = phone; before.phone = user.phone; }
+      const address = validateOptionalString(body.address, 'address', 500);
+      if (address !== undefined) { data.address = address; before.address = user.address; }
+    } catch (e: any) {
+      return res.status(e.status ?? 400).json({ error: e.msg ?? 'Invalid field' });
+    }
+
+    // --- Email (unique on [email, role]) ---
+    if (body.email !== undefined) {
+      if (typeof body.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim())) {
+        return res.status(400).json({ error: 'email must be a valid email address' });
+      }
+      const normalizedEmail = body.email.trim().toLowerCase();
+      if (normalizedEmail !== (user.email ?? '').toLowerCase()) {
+        // Composite unique key is [email, role] — a USER email collides only with
+        // another USER row. Block to avoid a P2002 surfacing as a 500.
+        const collision = await prisma.user.findFirst({
+          where: { email: normalizedEmail, role: 'USER', id: { not: userId } },
+          select: { id: true },
+        });
+        if (collision) {
+          return res.status(409).json({ error: 'Another subscriber already uses this email' });
+        }
+        data.email = normalizedEmail;
+        before.email = user.email;
+        // Changing email invalidates prior verification state — the new address is
+        // unverified until re-confirmed. Mirrors the self-service email-change flow.
+        data.emailVerified = false;
+        data.emailVerifiedAt = null;
+      }
+    }
+
+    // --- IBAN (authoritative on Wallet.payoutIban; legacy mirror on User.iban) ---
+    let newIban: string | null | undefined;
+    if (body.iban !== undefined) {
+      if (body.iban === null || body.iban === '') {
+        newIban = null;
+      } else {
+        if (typeof body.iban !== 'string') {
+          return res.status(400).json({ error: 'iban must be a string' });
+        }
+        const normalized = body.iban.replace(/\s+/g, '').toUpperCase();
+        if (!IBAN_RE.test(normalized)) {
+          return res.status(400).json({ error: 'Invalid IBAN format' });
+        }
+        newIban = normalized;
+      }
+    }
+
+    // --- Risk profile ---
+    // M1 — track whether this request actually writes a risk value. If it does, we
+    // stamp riskOverriddenAt/By below so the periodic behaviour recompute
+    // (persistRiskAssessments) skips this user and the manual edit is durable.
+    let riskValueChanged = false;
+    if (body.riskScore !== undefined) {
+      const score = Number(body.riskScore);
+      if (!Number.isFinite(score) || !Number.isInteger(score) || score < 0 || score > 120) {
+        return res.status(400).json({ error: 'riskScore must be an integer between 0 and 120' });
+      }
+      data.riskScore = score;
+      before.riskScore = user.riskScore;
+      // Keep the bucket consistent with the score unless an explicit bucket is also
+      // supplied below (which overrides this derivation).
+      data.riskBucket = bucketForScore(score);
+      riskValueChanged = true;
+    }
+    if (body.riskBucket !== undefined) {
+      if (body.riskBucket === null) {
+        data.riskBucket = null;
+        before.riskBucket = user.riskBucket;
+      } else {
+        if (typeof body.riskBucket !== 'string' || !RISK_BUCKETS.includes(body.riskBucket as RiskBucketValue)) {
+          return res.status(400).json({ error: `riskBucket must be one of: ${RISK_BUCKETS.join(', ')}` });
+        }
+        data.riskBucket = body.riskBucket;
+        before.riskBucket = user.riskBucket;
+      }
+      riskValueChanged = true;
+    }
+
+    // M1 clear-override path: `riskOverride: false` reverts to auto-recompute by
+    // clearing the override stamp, independent of any score/bucket edit. Validate
+    // strictly (only a boolean is accepted) and record it in the audit before/after.
+    let clearRiskOverride = false;
+    if (body.riskOverride !== undefined) {
+      if (typeof body.riskOverride !== 'boolean') {
+        return res.status(400).json({ error: 'riskOverride must be a boolean' });
+      }
+      if (body.riskOverride === false) {
+        clearRiskOverride = true;
+      }
+    }
+
+    if (riskValueChanged) {
+      // An admin manually edited the risk profile — make it durable. The behaviour
+      // recompute in persistRiskAssessments skips users whose riskOverriddenAt is
+      // set, so the manual value survives the next list GET / daily sweep.
+      data.riskOverriddenAt = new Date();
+      data.riskOverriddenBy = (req as AuthRequest).user?.id ?? null;
+      before.riskOverriddenAt = user.riskOverriddenAt;
+      before.riskOverriddenBy = user.riskOverriddenBy;
+    } else if (clearRiskOverride) {
+      // Revert to automatic recompute. Don't also set it via riskValueChanged — the
+      // two paths are mutually exclusive (a value edit re-establishes the override).
+      data.riskOverriddenAt = null;
+      data.riskOverriddenBy = null;
+      before.riskOverriddenAt = user.riskOverriddenAt;
+      before.riskOverriddenBy = user.riskOverriddenBy;
+    }
+
+    const ibanChanged = newIban !== undefined && newIban !== (user.iban ?? null);
+    if (ibanChanged) {
+      data.iban = newIban;
+      // F1 — NEVER write the raw IBAN (old or new) to the audit log. `writeAudit`
+      // persists `before`/`after` verbatim with no redaction (redactSensitive runs
+      // only on the auto-middleware path, and `iban` is not a SENSITIVE_KEY). We
+      // therefore record only that the IBAN changed — mirroring the scrubbed
+      // `after` block — never the cleartext value.
+      before.ibanChanged = true;
+      data.ibanLastChangedAt = new Date();
+    }
+
+    if (Object.keys(data).length === 0 && newIban === undefined) {
+      return res.status(400).json({ error: 'No editable fields supplied' });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const u = Object.keys(data).length
+        ? await tx.user.update({
+            where: { id: userId },
+            data: data as any,
+            select: {
+              id: true, firstName: true, lastName: true, email: true, phone: true,
+              address: true, iban: true, riskScore: true, riskBucket: true,
+              emailVerified: true,
+            },
+          })
+        : await tx.user.findUniqueOrThrow({
+            where: { id: userId },
+            select: {
+              id: true, firstName: true, lastName: true, email: true, phone: true,
+              address: true, iban: true, riskScore: true, riskBucket: true,
+              emailVerified: true,
+            },
+          });
+      // Mirror the IBAN to the authoritative Wallet.payoutIban. Upsert so a
+      // subscriber without a wallet row still gets the IBAN saved.
+      if (ibanChanged) {
+        await tx.wallet.upsert({
+          where: { userId },
+          update: { payoutIban: newIban ?? null },
+          create: { userId, balance: 0, availableBalance: 0, pendingBalance: 0, payoutIban: newIban ?? null },
+        });
+      }
+      return u;
+    });
+
+    // Spec §10.4 — audit every admin profile mutation with before/after context.
+    // IBAN is recorded as changed/unchanged only — never log the raw IBAN value.
+    detach(writeAudit({
+      actorUserId: (req as AuthRequest).user?.id ?? null,
+      action: 'subscriber.profile.update',
+      objectType: 'subscriber',
+      objectId: userId,
+      before,
+      after: {
+        fields: Object.keys(data).filter((k) => k !== 'emailVerified' && k !== 'emailVerifiedAt' && k !== 'ibanLastChangedAt'),
+        ibanChanged,
+        emailReverified: data.emailVerified === false ? false : undefined,
+      },
+      ip: getClientIp(req) ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    }), () => {});
+
+    res.json({ ok: true, subscriber: updated });
   } catch (error) {
     next(error);
   }
@@ -484,13 +785,41 @@ router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
     // we set status = CANCELLED immediately rather than using the deferred
     // cancelAtPeriodEnd path (which would leave an abnormal FAILED_PAYMENT row
     // with cancelAt set to a past date until the renewal job next runs).
-    const subscription = await prisma.subscription.findFirst({
-      where: {
-        userId,
-        status: { notIn: ['CANCELLED', 'EXPIRED', 'INCOMPLETE_EXPIRED'] },
-      },
+    // L6 / spec-literal — disambiguate when a subscriber has MORE THAN ONE
+    // non-terminal subscription. Picking the latest by createdAt silently guesses
+    // which concurrent sub to cancel; that can cancel the wrong one. Return 409 with
+    // the candidate IDs so the caller re-issues with an explicit subscriptionId.
+    const NON_TERMINAL_SUB_STATUSES = ['CANCELLED', 'EXPIRED', 'INCOMPLETE_EXPIRED'] as const;
+    const explicitSubId = typeof (req.body as { subscriptionId?: unknown })?.subscriptionId === 'string'
+      ? (req.body as { subscriptionId: string }).subscriptionId
+      : undefined;
+    const candidateSubs = await prisma.subscription.findMany({
+      where: { userId, status: { notIn: [...NON_TERMINAL_SUB_STATUSES] } },
       orderBy: { createdAt: 'desc' },
+      select: { id: true, plan: true, status: true, createdAt: true, currentPeriodEnd: true },
     });
+    if (candidateSubs.length === 0) {
+      res.status(404).json({ error: 'No active subscription found for this subscriber' });
+      return;
+    }
+    if (candidateSubs.length > 1 && !explicitSubId) {
+      res.status(409).json({
+        error: 'Subscriber has multiple non-terminal subscriptions. Provide an explicit subscriptionId to disambiguate.',
+        candidates: candidateSubs.map((s) => ({
+          id: s.id, plan: s.plan, status: s.status,
+          createdAt: s.createdAt, currentPeriodEnd: s.currentPeriodEnd,
+        })),
+      });
+      return;
+    }
+    const chosen = explicitSubId
+      ? candidateSubs.find((s) => s.id === explicitSubId)
+      : candidateSubs[0];
+    if (!chosen) {
+      res.status(404).json({ error: 'Specified subscriptionId not found among this subscriber\'s active subscriptions' });
+      return;
+    }
+    const subscription = await prisma.subscription.findUnique({ where: { id: chosen.id } });
     if (!subscription) {
       res.status(404).json({ error: 'No active subscription found for this subscriber' });
       return;
@@ -515,6 +844,15 @@ router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
           canceledAt: now,
           cancelAt: now,
           autoRenewal: false,
+          // Reset retryAttempt so the resulting customer.subscription.deleted
+          // webhook does NOT classify this as wasPaymentFailure
+          // (stripe.service: retryAttempt > 0 → EXPIRED + PAYMENT_FAILED
+          // access-ended notification). Without this the user would receive
+          // both "cancellation confirmed" (this handler) and the contradictory
+          // "subscription ended — payment not received". This is an explicit
+          // admin cancel, not the renewal/invoice-failure flow the M3
+          // single-attempt guard governs, so resetting here is safe.
+          retryAttempt: 0,
           // Mark the payment failure as resolved-by-cancellation so that
           // list-view projections (which surface failedPaymentAt /
           // failedPaymentClearedAt) don't show an open failure on a subscription
@@ -549,7 +887,7 @@ router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
     }
 
     // Spec §10.4 — audit every admin subscription mutation.
-    writeAudit({
+    detach(writeAudit({
       actorUserId: (req as AuthRequest).user?.id ?? null,
       action: 'subscription.cancel',
       objectType: 'subscription',
@@ -561,7 +899,19 @@ router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
       },
       ip: getClientIp(req) ?? null,
       userAgent: req.headers['user-agent'] ?? null,
-    }).catch(() => {});
+    }), () => {});
+
+    // BC-USER-SPEC-FIX-002 (F-018): "Subscription cancellation confirmed" is a
+    // mandatory Payment notification (spec §11.1/§11.2) and is NOT exempted by the
+    // §11.3 intentional-asymmetry list. The admin-cancel handler stamps canceledAt,
+    // which makes every downstream path (Stripe webhook M2 branch, Paysera job,
+    // scheduler.expireCancelledSubscriptions) suppress on the already-cancelled
+    // guard — so the user is otherwise never notified. Fire the same in-app
+    // notification the user-initiated cancelSubscription path uses. The cancel
+    // succeeded (all three branches above committed without throwing) by the time
+    // we reach here, so this fires once, only on a genuine CANCELLED transition.
+    detach(notificationService
+      .notifySubscriptionCancelledInApp(userId), (err) => logger.error(`[admin cancelSubscription] notifySubscriptionCancelledInApp failed for sub ${subscription.id}:`, err));
 
     res.json({ ok: true });
   } catch (error) {
@@ -588,10 +938,42 @@ router.patch('/:userId/plan', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), r
       return;
     }
 
-    const subscription = await prisma.subscription.findFirst({
-      where: { userId, status: { not: 'CANCELLED' } },
+    // L6 / spec-literal — disambiguate when the subscriber has MORE THAN ONE
+    // non-terminal subscription. Silently picking the latest by createdAt can change
+    // the plan on the wrong concurrent sub. Return 409 with candidate IDs unless the
+    // caller pins an explicit subscriptionId. (Terminal CANCELLED/EXPIRED/
+    // INCOMPLETE_EXPIRED are excluded from the candidate set; FAILED_PAYMENT is
+    // included here and rejected by the state guard below, matching prior behavior.)
+    const planExplicitSubId = typeof (req.body as { subscriptionId?: unknown })?.subscriptionId === 'string'
+      ? (req.body as { subscriptionId: string }).subscriptionId
+      : undefined;
+    const planCandidates = await prisma.subscription.findMany({
+      where: { userId, status: { notIn: ['CANCELLED', 'EXPIRED', 'INCOMPLETE_EXPIRED'] } },
       orderBy: { createdAt: 'desc' },
+      select: { id: true, plan: true, status: true, createdAt: true, currentPeriodEnd: true },
     });
+    if (planCandidates.length === 0) {
+      res.status(404).json({ error: 'No active subscription found for this subscriber' });
+      return;
+    }
+    if (planCandidates.length > 1 && !planExplicitSubId) {
+      res.status(409).json({
+        error: 'Subscriber has multiple non-terminal subscriptions. Provide an explicit subscriptionId to disambiguate.',
+        candidates: planCandidates.map((s) => ({
+          id: s.id, plan: s.plan, status: s.status,
+          createdAt: s.createdAt, currentPeriodEnd: s.currentPeriodEnd,
+        })),
+      });
+      return;
+    }
+    const planChosen = planExplicitSubId
+      ? planCandidates.find((s) => s.id === planExplicitSubId)
+      : planCandidates[0];
+    if (!planChosen) {
+      res.status(404).json({ error: 'Specified subscriptionId not found among this subscriber\'s active subscriptions' });
+      return;
+    }
+    const subscription = await prisma.subscription.findUnique({ where: { id: planChosen.id } });
     if (!subscription) {
       res.status(404).json({ error: 'No active subscription found for this subscriber' });
       return;
@@ -632,9 +1014,10 @@ router.patch('/:userId/plan', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), r
         return;
       }
 
-      const priceIdMap: Partial<Record<SubscriptionPlan, string | undefined>> = {
+      const priceIdMap: Partial<Record<SubscriptionPlan | string, string | undefined>> = {
         BASIC: process.env.STRIPE_BASIC_PRICE_ID,
         PREMIUM: process.env.STRIPE_PREMIUM_PRICE_ID,
+        PREMIUM_MONTHLY: process.env.STRIPE_PREMIUM_PRICE_ID,
       };
       const newPriceId = priceIdMap[plan];
       if (!newPriceId) {
@@ -941,9 +1324,7 @@ router.post('/:userId/refund', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), 
 router.get('/:userId/login-history', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.read'), async (req, res, next) => {
   try {
     const { userId } = req.params;
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
-    const skip = (page - 1) * limit;
+    const { skip, page, limit } = parsePagination(req.query, { defaultLimit: 50, maxLimit: 100 });
 
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, role: true } });
     if (!user || user.role !== 'USER') {

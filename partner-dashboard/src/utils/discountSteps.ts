@@ -1,8 +1,15 @@
 /**
- * Valid discount rates. Mirrors CASHBACK_MATRIX_STEPS in
- * backend-api/src/constants/receipt.constants.ts — partner rate, partner-type
- * max, offer discount %, and cashback % must all snap to one of these values.
- * 25% is the program-wide cap.
+ * Valid offer discount % steps shown to partners in the portal UI. The same
+ * step list is used server-side for partner commission rate validation and as
+ * the row-key index into the cashback matrix.
+ *
+ * Cashback % is a SEPARATE internal value — it is derived from the matrix and
+ * must never be controlled by or shown to partners (spec §11.3, Clash 10.6).
+ * Do not conflate these steps with cashback percentages.
+ * 25% is the program-wide partner discount cap.
+ *
+ * LOW-2 fix (reviews r2v / r2u): removed misleading "cashback % must all snap
+ * to one of these values" phrasing from the original comment.
  */
 export const DISCOUNT_STEPS = [5, 10, 15, 20, 25] as const;
 

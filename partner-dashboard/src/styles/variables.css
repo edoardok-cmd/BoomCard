@@ -25,6 +25,56 @@
   --color-error: #ef4444;
   --color-info: #3b82f6;
 
+  /* ───────────────────────────────────────────────────────────────────────
+     Admin panel surface tokens (warm-paper design language).
+     Consumed via src/styles/adminTheme.ts -> palette object. These are
+     DISTINCT from the cool-slate --color-* tokens above because the admin
+     panel uses a warm "paper" look in light mode; reusing --color-* would
+     change the light-mode appearance. Light values below MUST equal the
+     historical hardcoded admin palette so light mode looks identical.
+     ─────────────────────────────────────────────────────────────────────── */
+  --admin-bg: #faf9f5;
+  --admin-surface: #ffffff;
+  --admin-surface-alt: #f5f4ee;
+  --admin-border: #e8e5dc;
+  --admin-border-strong: #d6d2c4;
+  --admin-text: #141413;
+  --admin-text-muted: #605a50;
+  --admin-text-subtle: #8c8678;
+  /* Text that sits on a colored fill (buttons/badges) — stays light in all modes */
+  --admin-on-accent: #ffffff;
+
+  --admin-accent: #c96442;
+  --admin-accent-soft: #f3e8de;
+  --admin-success: #4a7c59;
+  --admin-success-soft: #e6efe3;
+  --admin-success-border: #b8d8c0;
+  --admin-danger: #b54327;
+  --admin-danger-soft: #f4dcd2;
+  --admin-info: #2563eb;
+  --admin-info-soft: #dbeafe;
+  --admin-info-border: #bfdbfe;
+  --admin-danger-border: #f1c4b8;
+  --admin-warning: #b5803a;
+  --admin-warning-soft: #f5ead2;
+  --admin-warning-border: #e8d5a3;
+  /* Readable warning text on a warning-soft surface (e.g. guidance banners) */
+  --admin-warning-text: #7a5c1e;
+  --admin-purple: #7c3aed;
+  --admin-purple-soft: #ede9fe;
+  --admin-purple-border: #c4b5fd;
+  --admin-teal: #0f766e;
+  --admin-teal-soft: #ccfbf1;
+  --admin-amber: #92400e;
+  --admin-amber-soft: #fef3c7;
+  --admin-admin-bubble: #f0f4ff;
+  --admin-user-bubble: #f5f4f0;
+  --admin-test-tag-bg: #f1f5f9;
+  --admin-test-tag-fg: #475569;
+  /* Side-nav active highlight (orange) — CategoryShell */
+  --admin-nav-active: #f97316;
+  --admin-nav-active-soft: #fff7ed;
+
   /* Spacing */
   --spacing-xs: 0.25rem;
   --spacing-sm: 0.5rem;
@@ -95,6 +145,50 @@
   --shadow-soft: 0 2px 15px -3px rgba(0, 0, 0, 0.5), 0 10px 20px -2px rgba(0, 0, 0, 0.3);
   --shadow-hover: 0 10px 40px -10px rgba(59, 130, 246, 0.4);
   --shadow-lg: 0 20px 50px -15px rgba(0, 0, 0, 0.7);
+
+  /* Admin panel surface tokens — dark.
+     Aligned with the app dark surfaces (#1f2937 family). "Soft" tint
+     backgrounds become translucent so they read as subtle fills on dark,
+     and functional foreground colors are lightened for contrast. */
+  --admin-bg: #1a1917;
+  --admin-surface: #232220;
+  --admin-surface-alt: #2b2a27;
+  --admin-border: #3a3835;
+  --admin-border-strong: #4a4843;
+  --admin-text: #ece9e0;
+  --admin-text-muted: #b3ada1;
+  --admin-text-subtle: #8c8678;
+  --admin-on-accent: #ffffff;
+
+  --admin-accent: #e0805f;
+  --admin-accent-soft: rgba(201, 100, 66, 0.22);
+  --admin-success: #6bbd83;
+  --admin-success-soft: rgba(74, 124, 89, 0.25);
+  --admin-success-border: rgba(107, 189, 131, 0.35);
+  --admin-danger: #e08162;
+  --admin-danger-soft: rgba(181, 67, 39, 0.28);
+  --admin-info: #60a5fa;
+  --admin-info-soft: rgba(37, 99, 235, 0.25);
+  --admin-info-border: rgba(96, 165, 250, 0.35);
+  --admin-danger-border: rgba(224, 129, 98, 0.35);
+  --admin-warning: #d4a165;
+  --admin-warning-soft: rgba(181, 128, 58, 0.25);
+  --admin-warning-border: rgba(232, 213, 163, 0.35);
+  /* Readable warning text on a warning-soft surface (light warm tone on dark banner) */
+  --admin-warning-text: #e8c98a;
+  --admin-purple: #a78bfa;
+  --admin-purple-soft: rgba(124, 58, 237, 0.28);
+  --admin-purple-border: rgba(167, 139, 250, 0.4);
+  --admin-teal: #5eead4;
+  --admin-teal-soft: rgba(15, 118, 110, 0.3);
+  --admin-amber: #fbbf24;
+  --admin-amber-soft: rgba(146, 64, 14, 0.32);
+  --admin-admin-bubble: rgba(96, 132, 255, 0.18);
+  --admin-user-bubble: #2b2a27;
+  --admin-test-tag-bg: rgba(71, 85, 105, 0.3);
+  --admin-test-tag-fg: #cbd5e1;
+  --admin-nav-active: #fb923c;
+  --admin-nav-active-soft: rgba(249, 115, 22, 0.16);
 }
 
 /* Color Mode - Explosive Vibrant Color Burst */
@@ -153,6 +247,50 @@
     0 30px 75px -15px rgba(255, 0, 110, 0.5),
     0 20px 60px -15px rgba(0, 212, 255, 0.4),
     0 15px 55px -12px rgba(178, 75, 243, 0.4);
+
+  /* Admin panel surface tokens — color mode.
+     Admin surfaces are mostly solid `background:` fills, so we keep them as
+     light SOLID tints (not the page gradients) to stay legible, while
+     functional/accent foregrounds borrow the vibrant color-mode hues. */
+  --admin-bg: #fff7ef;
+  --admin-surface: #ffffff;
+  --admin-surface-alt: #fff0f8;
+  --admin-border: #ffd0e6;
+  --admin-border-strong: #ff94d6;
+  --admin-text: #1a0a2e;
+  --admin-text-muted: #6b2a8a;
+  --admin-text-subtle: #9a4fb8;
+  --admin-on-accent: #ffffff;
+
+  --admin-accent: #ff4500;
+  --admin-accent-soft: #ffe0d2;
+  --admin-success: #0a9d6a;
+  --admin-success-soft: #ccffe9;
+  --admin-success-border: #99e6c7;
+  --admin-danger: #ff0066;
+  --admin-danger-soft: #ffd6e6;
+  --admin-info: #008bd4;
+  --admin-info-soft: #d2f3ff;
+  --admin-info-border: #99ddff;
+  --admin-danger-border: #ffb3cc;
+  --admin-warning: #c77700;
+  --admin-warning-soft: #ffeecc;
+  --admin-warning-border: #ffd699;
+  /* Readable warning text on a warning-soft surface (dark warm tone on light banner) */
+  --admin-warning-text: #8a5a00;
+  --admin-purple: #b24bf3;
+  --admin-purple-soft: #f0dcff;
+  --admin-purple-border: #e0b3ff;
+  --admin-teal: #00a99d;
+  --admin-teal-soft: #ccfff9;
+  --admin-amber: #c77700;
+  --admin-amber-soft: #ffeecc;
+  --admin-admin-bubble: #e0ecff;
+  --admin-user-bubble: #fff0f8;
+  --admin-test-tag-bg: #f0dcff;
+  --admin-test-tag-fg: #6b2a8a;
+  --admin-nav-active: #ff4500;
+  --admin-nav-active-soft: #ffe0d2;
 }
 
 /* Specific color mode enhancements */
