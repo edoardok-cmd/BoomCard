@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { getAdminGateReason, isGateBypassPath } from './adminGate';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 
@@ -86,17 +87,15 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     }
 
     // For admin users: enforce password change and 2FA setup before allowing
-    // access to any page other than the security settings page.
-    if (user.role === 'admin') {
-      const onSecurityPage = location.pathname.startsWith('/admin/profile/security');
-      const onLogoutPage   = location.pathname.startsWith('/admin/profile/logout');
-      const bypass = onSecurityPage || onLogoutPage;
-
-      if (!bypass && user.mustChangePassword) {
-        return <Navigate to="/admin/profile/security" state={{ reason: 'mustChangePassword' }} replace />;
-      }
-      if (!bypass && user.twoFactorEnabled === false && import.meta.env.PROD) {
-        return <Navigate to="/admin/profile/security" state={{ reason: 'setup2FA' }} replace />;
+    // access to any page other than the security settings page. The gating
+    // decision is derived from the SAME helper the sidebar nav uses
+    // (adminGate.ts) so the redirect and the nav lock styling can never
+    // disagree. The security/logout routes are always reachable so the admin
+    // can complete the required step.
+    if (user.role === 'admin' && !isGateBypassPath(location.pathname)) {
+      const reason = getAdminGateReason(user);
+      if (reason) {
+        return <Navigate to="/admin/profile/security" state={{ reason }} replace />;
       }
     }
   }

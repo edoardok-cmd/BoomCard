@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { apiService } from '../../services/api.service';
 
+import { palette } from '../../styles/adminTheme';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type PendingStatus = 'CREATED' | 'PAID' | 'COMPLETED' | 'EXPIRED' | 'FAILED';
@@ -30,23 +31,6 @@ interface ListResponse {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const palette = {
-  bg: '#faf9f5',
-  surface: '#ffffff',
-  border: '#e8e5dc',
-  text: '#141413',
-  textMuted: '#605a50',
-  accent: '#c96442',
-  accentSoft: '#f3e8de',
-  success: '#4a7c59',
-  successSoft: '#e6efe3',
-  warning: '#b5803a',
-  warningSoft: '#f5ead2',
-  danger: '#b54327',
-  dangerSoft: '#f4dcd2',
-  info: '#2563eb',
-  infoSoft: '#dbeafe',
-};
 
 const Page = styled.div`
   min-height: 100vh;
@@ -186,7 +170,7 @@ const ActionBtn = styled.button<{ $loading?: boolean }>`
   white-space: nowrap;
   opacity: ${({ $loading }) => $loading ? 0.6 : 1};
   pointer-events: ${({ $loading }) => $loading ? 'none' : 'auto'};
-  &:hover { background: ${palette.accent}; color: #fff; }
+  &:hover { background: ${palette.accent}; color: ${palette.onAccent}; }
   &:disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
 `;
 
@@ -204,7 +188,7 @@ const ConfirmText = styled.span`
 
 const ConfirmBtn = styled(ActionBtn)`
   background: ${palette.accent};
-  color: #fff;
+  color: ${palette.onAccent};
   border-color: ${palette.accent};
 `;
 

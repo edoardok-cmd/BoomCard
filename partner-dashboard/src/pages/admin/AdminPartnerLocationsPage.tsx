@@ -6,6 +6,7 @@ import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
+import { palette } from '../../styles/adminTheme';
 import {
   adminLocationsService,
   AdminVenue,
@@ -15,26 +16,6 @@ import {
 } from '../../services/adminLocations.service';
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
-const palette = {
-  bg: '#faf9f5',
-  surface: '#ffffff',
-  border: '#e8e5dc',
-  text: '#141413',
-  textMuted: '#605a50',
-  textSubtle: '#8c8678',
-  accent: '#c96442',
-  accentSoft: '#f3e8de',
-  success: '#4a7c59',
-  successSoft: '#e6efe3',
-  warning: '#b5803a',
-  warningSoft: '#f5ead2',
-  danger: '#b54327',
-  dangerSoft: '#f4dcd2',
-  info: '#2563eb',
-  infoSoft: '#dbeafe',
-  teal: '#0f766e',
-  tealSoft: '#ccfbf1',
-};
 
 /* ─── Layout ───────────────────────────────────────────────────────────────── */
 const PageShell = styled.div`
@@ -151,7 +132,7 @@ const MenuStatusBadge = styled.span<{ $status: MenuStatus }>`
       case 'APPROVED': return `background: ${palette.successSoft}; color: ${palette.success};`;
       case 'PENDING':  return `background: ${palette.warningSoft}; color: ${palette.warning};`;
       case 'REJECTED': return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
-      default:         return `background: #f3f4f6; color: #6b7280;`;
+      default:         return `background: ${palette.surfaceAlt}; color: ${palette.textMuted};`;
     }
   }}
 `;
@@ -164,8 +145,8 @@ const VenueStatusBadge = styled.span<{ $status: VenueStatus }>`
     switch ($status) {
       case 'ACTIVE':    return `background: ${palette.successSoft}; color: ${palette.success};`;
       case 'SUSPENDED': return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
-      case 'REPLACED':  return `background: #f3f4f6; color: #6b7280;`;
-      default:          return `background: #f3f4f6; color: #6b7280;`;
+      case 'REPLACED':  return `background: ${palette.surfaceAlt}; color: ${palette.textMuted};`;
+      default:          return `background: ${palette.surfaceAlt}; color: ${palette.textMuted};`;
     }
   }}
 `;
@@ -285,7 +266,7 @@ const NoQrWarning = styled.div`
   gap: 0.5rem;
   padding: 0.625rem 0.875rem;
   background: ${palette.warningSoft};
-  border: 1px solid ${palette.warning}44;
+  border: 1px solid ${palette.warningBorder};
   border-radius: 0.5rem;
   font-size: 0.8125rem;
   color: ${palette.warning};
@@ -356,9 +337,9 @@ const Btn = styled.button<{ $variant?: 'danger' | 'primary' | 'ghost' }>`
   ${({ $variant }) => {
     switch ($variant) {
       case 'danger':
-        return `background: ${palette.danger}; color: #fff; &:hover { opacity: 0.9; }`;
+        return `background: ${palette.danger}; color: ${palette.onAccent}; &:hover { opacity: 0.9; }`;
       case 'primary':
-        return `background: ${palette.accent}; color: #fff; &:hover { opacity: 0.9; }`;
+        return `background: ${palette.accent}; color: ${palette.onAccent}; &:hover { opacity: 0.9; }`;
       default:
         return `background: transparent; color: ${palette.textMuted}; border-color: ${palette.border}; &:hover { background: ${palette.bg}; }`;
     }

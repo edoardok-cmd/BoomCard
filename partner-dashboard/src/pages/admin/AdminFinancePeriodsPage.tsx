@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
+import { palette } from '../../styles/adminTheme';
 import {
   adminFinanceService,
   PeriodRow,
@@ -10,15 +11,6 @@ import {
   ReportingPeriodStatus,
 } from '../../services/adminFinance.service';
 
-const palette = {
-  bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
-  text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
-  accent: '#c96442', accentSoft: '#f3e8de',
-  success: '#4a7c59', successSoft: '#e6efe3',
-  warning: '#b5803a', warningSoft: '#f5ead2',
-  danger: '#b54327', dangerSoft: '#f4dcd2',
-  info: '#2563eb', infoSoft: '#dbeafe',
-};
 
 const PageShell = styled.div`background: ${palette.bg}; min-height: calc(100vh - 4rem); padding: 2rem 2.5rem;`;
 const PageHeader = styled.div`display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; gap: 1rem; flex-wrap: wrap;`;
@@ -94,7 +86,7 @@ const GenerateLink = styled(Link)`
   display: inline-block; padding: 0.3rem 0.7rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600;
   border: 1px solid ${palette.warning}; background: ${palette.warningSoft}; color: ${palette.warning};
   text-decoration: none; white-space: nowrap;
-  &:hover { background: ${palette.warning}; color: #fff; }
+  &:hover { background: ${palette.warning}; color: ${palette.onAccent}; }
 `;
 
 const ProgressBar = styled.div<{ $pct: number }>`
@@ -111,24 +103,24 @@ const EmptyState = styled.div`padding: 3rem; text-align: center; color: ${palett
 const NoBadge = styled.span`
   display: inline-flex; align-items: center; font-size: 0.7rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.05em; border-radius: 0.375rem; padding: 0.125rem 0.5rem;
-  background: #f3f4f6; color: #6b7280;
+  background: ${palette.surfaceAlt}; color: ${palette.textMuted};
 `;
 
 const AccentAdvanceBtn = styled(AdvanceBtn)`
   border-color: ${palette.success}; color: ${palette.success}; background: ${palette.successSoft};
-  &:hover { background: ${palette.success}; color: #fff; }
+  &:hover { background: ${palette.success}; color: ${palette.onAccent}; }
   &:disabled { opacity: 0.5; cursor: default; }
 `;
 
 const CurrentMonthBanner = styled.div`
   display: flex; align-items: center; gap: 1rem;
   padding: 1rem 1.25rem; margin-bottom: 1.5rem;
-  background: ${palette.warningSoft}; border: 1px solid #e8d8ad;
+  background: ${palette.warningSoft}; border: 1px solid ${palette.warningBorder};
   border-left: 3px solid ${palette.warning}; border-radius: 0.75rem;
 `;
 const BannerText = styled.div`flex: 1; font-size: 0.9rem; color: ${palette.text};`;
 const BannerOpenBtn = styled.button`
-  flex-shrink: 0; padding: 0.5rem 0.875rem; background: ${palette.text}; color: #fff;
+  flex-shrink: 0; padding: 0.5rem 0.875rem; background: ${palette.text}; color: ${palette.onAccent};
   border: none; border-radius: 0.5rem; font-size: 0.8125rem; font-weight: 600; cursor: pointer;
   &:hover { opacity: 0.9; }
   &:disabled { opacity: 0.5; cursor: default; }
@@ -138,7 +130,7 @@ const BannerOpenBtn = styled.button`
 const PastMonthsBanner = styled.div`
   display: flex; align-items: flex-start; gap: 1rem;
   padding: 1rem 1.25rem; margin-bottom: 1.5rem;
-  background: ${palette.dangerSoft}; border: 1px solid #e8b6a8;
+  background: ${palette.dangerSoft}; border: 1px solid ${palette.dangerBorder};
   border-left: 3px solid ${palette.danger}; border-radius: 0.75rem;
 `;
 
@@ -167,7 +159,7 @@ const ModalConfirm = styled.button<{ $danger?: boolean }>`
   padding: 0.5rem 1.1rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600;
   border: none; cursor: pointer;
   background: ${({ $danger }) => ($danger ? palette.danger : palette.accent)};
-  color: #fff;
+  color: ${palette.onAccent};
   &:hover { opacity: 0.88; }
   &:disabled { opacity: 0.5; cursor: default; }
 `;

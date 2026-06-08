@@ -5,18 +5,10 @@ import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable
 import { adminControlService, AdminAuditLog } from '../../services/adminControl.service';
 import { labelForAction } from '../../utils/auditActionLabel';
 
+import { palette } from '../../styles/adminTheme';
 // Spec §10 Администратори > История на действията — surfaced inside Control section.
 // Shows security-relevant admin actions: auth, permissions, suspensions, approvals.
 
-const palette = {
-  bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
-  text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
-  accent: '#c96442',
-  danger: '#b54327', dangerSoft: '#f4dcd2',
-  warning: '#b5803a', warningSoft: '#f5ead2',
-  success: '#4a7c59', successSoft: '#e6efe3',
-  info: '#2563eb', infoSoft: '#dbeafe',
-};
 
 const PageShell = styled.div`background:${palette.bg};min-height:calc(100vh - 4rem);padding:2rem 2.5rem;`;
 const PageHeader = styled.div`display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2rem;gap:1rem;flex-wrap:wrap;`;

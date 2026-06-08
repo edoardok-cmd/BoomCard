@@ -3,18 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { useAuth } from '../../contexts/AuthContext';
 
-const palette = {
-  bg: '#faf9f5',
-  surface: '#ffffff',
-  border: '#e8e5dc',
-  text: '#141413',
-  textMuted: '#605a50',
-  accent: '#c96442',
-  accentSoft: '#f3e8de',
-  danger: '#b54327',
-  dangerSoft: '#f4dcd2',
-};
 
+import { palette } from '../../styles/adminTheme';
 const AdminProfileLogoutPage: React.FC = () => {
   const { logout } = useAuth();
   const navigate = useNavigate();
@@ -89,8 +79,8 @@ const Icon = styled.div`
 const Spinner = styled.div`
   width: 2.5rem;
   height: 2.5rem;
-  border: 3px solid #e8e5dc;
-  border-top-color: #c96442;
+  border: 3px solid ${palette.border};
+  border-top-color: ${palette.accent};
   border-radius: 50%;
   margin-bottom: 1rem;
   animation: spin 1s linear infinite;
@@ -122,7 +112,7 @@ const Actions = styled.div`
 
 const DangerButton = styled.button`
   background: ${palette.danger};
-  color: white;
+  color: ${palette.onAccent};
   border: 0;
   padding: 0.625rem 1.5rem;
   border-radius: 0.5rem;

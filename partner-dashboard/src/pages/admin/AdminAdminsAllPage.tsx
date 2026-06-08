@@ -7,6 +7,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { RequirePermission } from '../../components/auth/RequirePermission';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
+import { palette } from '../../styles/adminTheme';
 import {
   adminAdminsService,
   AdminUser,
@@ -21,28 +22,6 @@ const ASSIGNABLE_ROLES: Array<{ value: AdminRoleKey; label: string }> = [
   { value: 'PARTNER_MANAGER', label: 'Мениджър партньори' },
 ];
 
-const palette = {
-  bg: '#faf9f5',
-  surface: '#ffffff',
-  border: '#e8e5dc',
-  text: '#141413',
-  textMuted: '#605a50',
-  textSubtle: '#8c8678',
-  accent: '#c96442',
-  accentSoft: '#f3e8de',
-  success: '#4a7c59',
-  successSoft: '#e6efe3',
-  warning: '#b5803a',
-  warningSoft: '#f5ead2',
-  danger: '#b54327',
-  dangerSoft: '#f4dcd2',
-  info: '#2563eb',
-  infoSoft: '#dbeafe',
-  purple: '#7c3aed',
-  purpleSoft: '#ede9fe',
-  teal: '#0f766e',
-  tealSoft: '#ccfbf1',
-};
 
 const PageShell = styled.div`
   background: ${palette.bg};
@@ -107,7 +86,7 @@ const CreateAdminBtn = styled(Link)`
   gap: 0.375rem;
   padding: 0.5625rem 1.125rem;
   background: ${palette.accent};
-  color: #fff;
+  color: ${palette.onAccent};
   font-size: 0.875rem;
   font-weight: 700;
   border-radius: 0.5rem;
@@ -200,7 +179,7 @@ const RoleBadge = styled.span<{ $key: string }>`
       case 'SUPPORT':     return `background: ${palette.infoSoft}; color: ${palette.info};`;
       case 'RISK_REVIEW':     return `background: ${palette.warningSoft}; color: ${palette.warning};`;
       case 'PARTNER_MANAGER': return `background: ${palette.tealSoft}; color: ${palette.teal};`;
-      default:                return `background: #f3f4f6; color: #374151;`;
+      default:                return `background: ${palette.surfaceAlt}; color: ${palette.text};`;
     }
   }}
 `;
@@ -273,7 +252,7 @@ const PrimaryBtn = styled.button<{ $loading?: boolean }>`
   flex: 1;
   padding: 0.625rem;
   background: ${palette.accent};
-  color: #fff;
+  color: ${palette.onAccent};
   font-size: 0.9375rem;
   font-weight: 700;
   border: none;
@@ -471,8 +450,8 @@ export default function AdminAdminsAllPage() {
             letterSpacing: '0.05em',
             borderRadius: '0.375rem',
             padding: '0.125rem 0.5rem',
-            background: row.twoFactorEnabled ? palette.successSoft : '#f3f4f6',
-            color: row.twoFactorEnabled ? palette.success : '#6b7280',
+            background: row.twoFactorEnabled ? palette.successSoft : palette.surfaceAlt,
+            color: row.twoFactorEnabled ? palette.success : palette.textMuted,
           }}
         >
           {row.twoFactorEnabled ? 'Активна' : 'Изкл.'}

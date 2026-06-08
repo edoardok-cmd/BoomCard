@@ -9,20 +9,11 @@ import {
 } from '../../services/adminSettings.service';
 import { latestMeta, formatAuditStamp, describeApiError } from '../../utils/systemSettingsAudit';
 
+import { palette } from '../../styles/adminTheme';
 // Spec §7.4 — Контрол > Лимити и правила
 // Дневен лимит, мин/макс сума, авто-одобрение, ръчна намеса от супер-админ.
 // Backend CRUD at /api/admin/settings/fraud-rules.
 
-const palette = {
-  bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
-  text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
-  accent: '#c96442', accentSoft: '#f3e8de',
-  success: '#4a7c59', successSoft: '#e6efe3',
-  danger: '#b54327', dangerSoft: '#f4dcd2',
-  warning: '#b5803a', warningSoft: '#f5ead2',
-  info: '#2563eb', infoSoft: '#dbeafe',
-  purple: '#7c3aed', purpleSoft: '#ede9fe',
-};
 
 const TIER_LABELS: Record<string, string> = {
   SYSTEM:       'Системно (глобално)',

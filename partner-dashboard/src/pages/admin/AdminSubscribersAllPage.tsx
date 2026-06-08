@@ -27,6 +27,7 @@ import { formatPhoneBG } from '../../utils/validators';
 import { adminDashboardService } from '../../services/adminDashboard.service';
 import { useSystemFormat } from '../../hooks/useSystemFormat';
 
+import { palette } from '../../styles/adminTheme';
 /* ─── i18n table (page-local; spec is in BG) ───────────────────────────── */
 type Lang = 'en' | 'bg';
 const I18N = {
@@ -205,30 +206,6 @@ function tr(key: I18NKey, lang: Lang, vars?: Record<string, string | number>): s
 }
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
-const palette = {
-  bg: '#faf9f5',
-  surface: '#ffffff',
-  border: '#e8e5dc',
-  text: '#141413',
-  textMuted: '#605a50',
-  textSubtle: '#8c8678',
-  accent: '#c96442',
-  accentSoft: '#f3e8de',
-  success: '#4a7c59',
-  successSoft: '#e6efe3',
-  warning: '#b5803a',
-  warningSoft: '#f5ead2',
-  danger: '#b54327',
-  dangerSoft: '#f4dcd2',
-  info: '#2563eb',
-  infoSoft: '#dbeafe',
-  purple: '#7c3aed',
-  purpleSoft: '#ede9fe',
-  teal: '#0f766e',
-  tealSoft: '#ccfbf1',
-  amber: '#92400e',
-  amberSoft: '#fef3c7',
-};
 
 /* ─── Layout ───────────────────────────────────────────────────────────────── */
 const PageShell = styled.div`
@@ -434,11 +411,11 @@ const Btn = styled.button<{ $variant?: 'primary' | 'ghost' | 'danger' }>`
 
   ${({ $variant = 'ghost' }) => {
     if ($variant === 'primary')
-      return `background: ${palette.accent}; color: #fff; border-color: ${palette.accent};
+      return `background: ${palette.accent}; color: ${palette.onAccent}; border-color: ${palette.accent};
         &:hover { background: #b55a3b; }`;
     if ($variant === 'danger')
       return `background: ${palette.dangerSoft}; color: ${palette.danger}; border-color: ${palette.danger};
-        &:hover { background: #ebb8a8; }`;
+        &:hover { background: ${palette.dangerBorder}; }`;
     return `background: ${palette.surface}; color: ${palette.textMuted}; border-color: ${palette.border};
       &:hover { background: ${palette.bg}; color: ${palette.text}; }`;
   }}
@@ -474,7 +451,7 @@ const PlanBadge = styled.span<{ $plan: SubscriptionPlan }>`
       case 'LIGHT':
         return `background: ${palette.tealSoft}; color: ${palette.teal};`;
       default:
-        return `background: #f3f4f6; color: #6b7280;`;
+        return `background: ${palette.surfaceAlt}; color: ${palette.textMuted};`;
     }
   }}
 `;
@@ -512,10 +489,10 @@ const StatusBadge = styled.span<{ $status: SubscriptionStatus }>`
       case 'EXPIRED':
         return `background: ${palette.purpleSoft}; color: ${palette.purple};`;
       case 'PAUSED':
-        return `background: #f3f4f6; color: #374151;`;
+        return `background: ${palette.surfaceAlt}; color: ${palette.text};`;
       case 'CANCELLED':
       default:
-        return `background: #f3f4f6; color: #6b7280;`;
+        return `background: ${palette.surfaceAlt}; color: ${palette.textMuted};`;
     }
   }}
 `;
@@ -783,9 +760,9 @@ const UserStatusBadge = styled.span<{ $status: UserAccountStatus | 'DELETED' }>`
   ${({ $status }) => {
     if ($status === 'ACTIVE') return `background: ${palette.successSoft}; color: ${palette.success};`;
     if ($status === 'SUSPENDED') return `background: ${palette.warningSoft}; color: ${palette.warning};`;
-    if ($status === 'DELETED') return `background: #fee2e2; color: #991b1b;`;
-    if ($status === 'PENDING_VERIFICATION' || $status === 'PENDING_PAYMENT') return `background: #eff6ff; color: #1d4ed8;`;
-    return `background: #f3f4f6; color: #6b7280;`;
+    if ($status === 'DELETED') return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
+    if ($status === 'PENDING_VERIFICATION' || $status === 'PENDING_PAYMENT') return `background: ${palette.infoSoft}; color: ${palette.info};`;
+    return `background: ${palette.surfaceAlt}; color: ${palette.textMuted};`;
   }}
 `;
 
@@ -1996,9 +1973,9 @@ export default function AdminSubscribersAllPage() {
       {ibanChangedAfter && (() => {
         const d = new Date(ibanChangedAfter);
         return (
-          <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: '#f5ead2', border: '1px solid #e8d8ad', borderRadius: '0.625rem', fontSize: '0.875rem', color: '#7a5a22', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: palette.warningSoft, border: `1px solid ${palette.warningBorder}`, borderRadius: '0.625rem', fontSize: '0.875rem', color: palette.warning, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span>{T('ibanFocusLabel')} {d.toLocaleString(lang === 'bg' ? 'bg-BG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' })} — {data?.total ?? '…'} {T('colSubscriber').toLowerCase()}</span>
-            <button onClick={() => { setIbanChangedAfter(''); setPage(1); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7a5a22', fontWeight: 600, fontSize: '0.875rem' }}>{T('clearFilter')}</button>
+            <button onClick={() => { setIbanChangedAfter(''); setPage(1); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: palette.warning, fontWeight: 600, fontSize: '0.875rem' }}>{T('clearFilter')}</button>
           </div>
         );
       })()}

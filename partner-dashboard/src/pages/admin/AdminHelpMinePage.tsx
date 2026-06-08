@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import TicketDrawer from '../../components/admin/TicketDrawer';
+import { palette } from '../../styles/adminTheme';
 import {
   adminHelpService,
   HelpTicket,
@@ -14,15 +15,6 @@ import {
   TicketUser,
 } from '../../services/adminHelp.service';
 
-const palette = {
-  bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
-  text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
-  accent: '#c96442', accentSoft: '#f3e8de',
-  success: '#4a7c59', successSoft: '#e6efe3',
-  warning: '#b5803a', warningSoft: '#f5ead2',
-  danger: '#b54327', dangerSoft: '#f4dcd2',
-  info: '#2563eb', infoSoft: '#dbeafe',
-};
 
 const PageShell = styled.div`background: ${palette.bg}; min-height: calc(100vh - 4rem); padding: 2rem 2.5rem;`;
 const PageHeader = styled.div`display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; gap: 1rem; flex-wrap: wrap;`;
@@ -103,7 +95,7 @@ const EmptyLink = styled(Link)`
 const NewTicketBtn = styled(Link)`
   display: inline-flex; align-items: center; gap: 0.375rem;
   padding: 0.5625rem 1.125rem; border: none; border-radius: 0.5rem;
-  background: ${palette.accent}; color: #fff; font-size: 0.875rem; font-weight: 600;
+  background: ${palette.accent}; color: ${palette.onAccent}; font-size: 0.875rem; font-weight: 600;
   text-decoration: none; white-space: nowrap; align-self: flex-start;
   &:hover { background: #b5522e; }
 `;

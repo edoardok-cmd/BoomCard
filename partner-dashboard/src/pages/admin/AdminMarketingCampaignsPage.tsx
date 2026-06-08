@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
+import { palette } from '../../styles/adminTheme';
 import {
   adminMarketingService,
   MarketingCampaign,
@@ -10,15 +11,6 @@ import {
   MarketingList,
 } from '../../services/adminMarketing.service';
 
-const palette = {
-  bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
-  text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
-  accent: '#c96442', accentSoft: '#f3e8de',
-  success: '#4a7c59', successSoft: '#e6efe3',
-  warning: '#b5803a', warningSoft: '#f5ead2',
-  danger: '#b54327', dangerSoft: '#f4dcd2',
-  info: '#2563eb', infoSoft: '#dbeafe',
-};
 
 const PageShell = styled.div`background: ${palette.bg}; min-height: calc(100vh - 4rem); padding: 2rem 2.5rem;`;
 const PageHeader = styled.div`display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; gap: 1rem; flex-wrap: wrap;`;
@@ -69,18 +61,18 @@ const TYPE_COLOR: Record<MarketingChannel, string> = {
   SMS: palette.success,
 };
 
-const PrimaryBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: #fff; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { opacity: 0.9; } &:disabled { opacity: 0.5; cursor: default; }`;
+const PrimaryBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: ${palette.onAccent}; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { opacity: 0.9; } &:disabled { opacity: 0.5; cursor: default; }`;
 const GhostBtn = styled.button`padding: 0.5rem 1.125rem; background: transparent; color: ${palette.textMuted}; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { border-color: ${palette.textMuted}; }`;
-const DangerBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; border: 1px solid #f1c4b8; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { background: #eebcac; }`;
+const DangerBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; border: 1px solid ${palette.dangerBorder}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { background: ${palette.dangerBorder}; }`;
 
 const ToggleBtn = styled.button<{ $variant: 'info' | 'warn' | 'success' | 'danger' }>`
   margin-left: 0.4rem; padding: 0.1rem 0.45rem; border-radius: 0.25rem; font-size: 0.65rem;
   font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; border: 1px solid;
   ${({ $variant }) => {
-    if ($variant === 'info')    return `background: ${palette.infoSoft}; color: ${palette.info}; border-color: #93c5fd;`;
-    if ($variant === 'warn')    return `background: ${palette.warningSoft}; color: ${palette.warning}; border-color: #fbbf24;`;
-    if ($variant === 'danger')  return `background: ${palette.dangerSoft}; color: ${palette.danger}; border-color: #f1c4b8;`;
-    return `background: ${palette.successSoft}; color: ${palette.success}; border-color: #86efac;`;
+    if ($variant === 'info')    return `background: ${palette.infoSoft}; color: ${palette.info}; border-color: ${palette.infoBorder};`;
+    if ($variant === 'warn')    return `background: ${palette.warningSoft}; color: ${palette.warning}; border-color: ${palette.warningBorder};`;
+    if ($variant === 'danger')  return `background: ${palette.dangerSoft}; color: ${palette.danger}; border-color: ${palette.dangerBorder};`;
+    return `background: ${palette.successSoft}; color: ${palette.success}; border-color: ${palette.successBorder};`;
   }}
   &:hover { opacity: 0.8; } &:disabled { opacity: 0.45; cursor: default; }
 `;
@@ -100,8 +92,8 @@ const ConfirmText = styled.p`font-size: 0.9375rem; color: ${palette.text}; margi
 const ConfirmSub = styled.p`font-size: 0.8125rem; color: ${palette.textSubtle}; margin: 0;`;
 const HintText = styled.p`font-size: 0.75rem; color: ${palette.textSubtle}; margin: 0.25rem 0 0;`;
 const InfoBox = styled.div`padding: 0.5rem 0.875rem; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; background: ${palette.bg}; color: ${palette.textMuted};`;
-const WarnBanner = styled.div`padding: 0.5rem 0.875rem; border: 1px solid #fbbf24; border-radius: 0.5rem; font-size: 0.8125rem; background: ${palette.warningSoft}; color: ${palette.warning}; margin-bottom: 1.125rem;`;
-const ErrorBanner = styled.div`padding: 0.5rem 0.875rem; border: 1px solid #f1c4b8; border-radius: 0.5rem; font-size: 0.8125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; margin-bottom: 1.125rem;`;
+const WarnBanner = styled.div`padding: 0.5rem 0.875rem; border: 1px solid ${palette.warningBorder}; border-radius: 0.5rem; font-size: 0.8125rem; background: ${palette.warningSoft}; color: ${palette.warning}; margin-bottom: 1.125rem;`;
+const ErrorBanner = styled.div`padding: 0.5rem 0.875rem; border: 1px solid ${palette.dangerBorder}; border-radius: 0.5rem; font-size: 0.8125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; margin-bottom: 1.125rem;`;
 
 const DetailGrid = styled.div`display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;`;
 const DetailItem = styled.div``;

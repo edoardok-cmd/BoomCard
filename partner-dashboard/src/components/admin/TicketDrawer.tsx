@@ -13,17 +13,8 @@ import {
 } from '../../services/adminHelp.service';
 import { adminAdminsService } from '../../services/adminAdmins.service';
 
-const palette = {
-  bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
-  text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
-  accent: '#c96442', accentSoft: '#f3e8de',
-  success: '#4a7c59', successSoft: '#e6efe3',
-  warning: '#b5803a', warningSoft: '#f5ead2',
-  danger: '#b54327', dangerSoft: '#f4dcd2',
-  info: '#2563eb', infoSoft: '#dbeafe',
-  adminBubble: '#f0f4ff', userBubble: '#f5f4f0',
-};
 
+import { palette } from '../../styles/adminTheme';
 const copy = {
   en: {
     loading: 'Loading ticket…',
@@ -393,7 +384,7 @@ export default function TicketDrawer({ ticketId, onClose }: Props) {
                           placeholder={language === 'bg' ? 'Причина за отказване…' : 'Rejection reason…'}
                           value={rejectReason}
                           onChange={(e) => setRejectReason(e.target.value)}
-                          style={{ padding: '0.3rem 0.5rem', border: '1px solid #e8e5dc', borderRadius: '0.375rem', fontSize: '0.8125rem', width: '14rem' }}
+                          style={{ padding: '0.3rem 0.5rem', border: `1px solid ${palette.border}`, borderRadius: '0.375rem', fontSize: '0.8125rem', width: '14rem', background: palette.surface, color: palette.text }}
                         />
                         <RejectBtn
                           onClick={() => { if (rejectReason.trim().length >= 10) rejectMutation.mutate(rejectReason.trim()); }}
@@ -590,7 +581,7 @@ const AssignBtn = styled.button`
   border: 1px solid ${palette.accent}; border-radius: 0.375rem;
   background: ${palette.accentSoft}; color: ${palette.accent};
   cursor: pointer; white-space: nowrap;
-  &:hover { background: ${palette.accent}; color: #fff; }
+  &:hover { background: ${palette.accent}; color: ${palette.onAccent}; }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
@@ -660,7 +651,7 @@ const ReplyHint = styled.span`font-size: 0.75rem; color: ${palette.textSubtle};`
 
 const SendBtn = styled.button`
   padding: 0.5rem 1.125rem; border: none; border-radius: 0.5rem;
-  background: ${palette.accent}; color: #fff; font-size: 0.875rem; font-weight: 600;
+  background: ${palette.accent}; color: ${palette.onAccent}; font-size: 0.875rem; font-weight: 600;
   cursor: pointer;
   &:hover:not(:disabled) { background: #b5522e; }
   &:disabled { opacity: 0.5; cursor: not-allowed; }

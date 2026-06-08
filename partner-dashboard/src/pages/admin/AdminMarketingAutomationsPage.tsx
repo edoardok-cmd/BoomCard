@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import { useAuth } from '../../contexts/AuthContext';
+import { palette } from '../../styles/adminTheme';
 import {
   adminMarketingService,
   MarketingAutomation,
@@ -9,15 +10,6 @@ import {
   MarketingTemplate,
 } from '../../services/adminMarketing.service';
 
-const palette = {
-  bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
-  text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
-  accent: '#c96442', accentSoft: '#f3e8de',
-  success: '#4a7c59', successSoft: '#e6efe3',
-  warning: '#b5803a', warningSoft: '#f5ead2',
-  danger: '#b54327', dangerSoft: '#f4dcd2',
-  info: '#2563eb', infoSoft: '#dbeafe',
-};
 
 const PageShell = styled.div`background: ${palette.bg}; min-height: calc(100vh - 4rem); padding: 2rem 2.5rem;`;
 const PageHeader = styled.div`display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; gap: 1rem; flex-wrap: wrap;`;
@@ -53,13 +45,13 @@ const StatusBadge = styled.span<{ $status: AutomationStatus }>`
 
 const WarnBanner = styled.div`
   background: ${palette.warningSoft}; color: ${palette.warning};
-  border: 1px solid #e8c97a; border-radius: 0.5rem;
+  border: 1px solid ${palette.warningBorder}; border-radius: 0.5rem;
   padding: 0.625rem 0.875rem; font-size: 0.8125rem; margin-top: 0.5rem;
 `;
 
-const PrimaryBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: #fff; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { opacity: 0.9; } &:disabled { opacity: 0.5; cursor: not-allowed; }`;
+const PrimaryBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: ${palette.onAccent}; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { opacity: 0.9; } &:disabled { opacity: 0.5; cursor: not-allowed; }`;
 const GhostBtn = styled.button`padding: 0.5rem 1.125rem; background: transparent; color: ${palette.textMuted}; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { border-color: ${palette.textMuted}; }`;
-const DangerBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; border: 1px solid #f1c4b8; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { background: #eebcac; }`;
+const DangerBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; border: 1px solid ${palette.dangerBorder}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { background: ${palette.dangerBorder}; }`;
 
 const Overlay = styled.div`position: fixed; inset: 0; background: rgba(20,20,19,0.45); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 1rem;`;
 const ModalBox = styled.div`background: ${palette.surface}; border-radius: 0.875rem; width: 100%; max-width: 34rem; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.18);`;
@@ -370,7 +362,7 @@ export default function AdminMarketingAutomationsPage() {
       </PageHeader>
 
       {apiError && !modal && (
-        <WarnBanner style={{ marginBottom: '1rem', background: palette.dangerSoft, color: palette.danger, borderColor: '#f1c4b8' }}>
+        <WarnBanner style={{ marginBottom: '1rem', background: palette.dangerSoft, color: palette.danger, borderColor: palette.dangerBorder }}>
           {apiError}
         </WarnBanner>
       )}
@@ -429,7 +421,7 @@ export default function AdminMarketingAutomationsPage() {
             </ModalHeader>
             <ModalBody>
               {apiError && (
-                <div style={{ background: palette.dangerSoft, color: palette.danger, border: '1px solid #f1c4b8', borderRadius: '0.5rem', padding: '0.625rem 0.875rem', fontSize: '0.8125rem', marginBottom: '1rem' }}>
+                <div style={{ background: palette.dangerSoft, color: palette.danger, border: `1px solid ${palette.dangerBorder}`, borderRadius: '0.5rem', padding: '0.625rem 0.875rem', fontSize: '0.8125rem', marginBottom: '1rem' }}>
                   {apiError}
                 </div>
               )}
@@ -513,7 +505,7 @@ export default function AdminMarketingAutomationsPage() {
               <ConfirmText>Предстои изтриване на <strong>{selected.name}</strong>.</ConfirmText>
               <ConfirmSub>Автоматизацията ще спре незабавно. Действието е необратимо.</ConfirmSub>
               {selected.status === 'ACTIVE' && (
-                <WarnBanner style={{ marginTop: '0.75rem', background: palette.dangerSoft, color: palette.danger, borderColor: '#f1c4b8' }}>
+                <WarnBanner style={{ marginTop: '0.75rem', background: palette.dangerSoft, color: palette.danger, borderColor: palette.dangerBorder }}>
                   <strong>Автоматизацията е АКТИВНА</strong>
                   {selected.totalRuns > 0 && ` и е изпращала ${selected.totalRuns.toLocaleString('bg-BG')} пъти`}.
                   {' '}Изтриването й ще спре всички бъдещи изпращания.
@@ -525,7 +517,7 @@ export default function AdminMarketingAutomationsPage() {
                 </WarnBanner>
               )}
               {apiError && (
-                <div style={{ background: palette.dangerSoft, color: palette.danger, border: '1px solid #f1c4b8', borderRadius: '0.5rem', padding: '0.625rem 0.875rem', fontSize: '0.8125rem', marginTop: '0.75rem' }}>
+                <div style={{ background: palette.dangerSoft, color: palette.danger, border: `1px solid ${palette.dangerBorder}`, borderRadius: '0.5rem', padding: '0.625rem 0.875rem', fontSize: '0.8125rem', marginTop: '0.75rem' }}>
                   {apiError}
                 </div>
               )}

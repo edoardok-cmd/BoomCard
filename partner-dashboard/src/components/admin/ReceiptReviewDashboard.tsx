@@ -5,6 +5,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { CheckCircle, XCircle, AlertTriangle, Eye } from 'lucide-react';
 import toast from 'react-hot-toast';
 import FraudReasonTag from './FraudReasonTag';
+import { palette } from '../../styles/adminTheme';
 
 // Styled Components
 const DashboardContainer = styled.div`
@@ -23,7 +24,7 @@ const Header = styled.div`
 const Title = styled.h1`
   font-size: 2rem;
   font-weight: 700;
-  color: #111827;
+  color: ${palette.text};
   margin: 0;
 `;
 
@@ -45,7 +46,7 @@ const StatCard = styled.div<{ $variant: 'pending' | 'approved' | 'rejected' | 'f
       case 'flagged': return 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)';
     }
   }};
-  color: white;
+  color: ${palette.onAccent};
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 `;
 
@@ -70,15 +71,15 @@ const FilterBar = styled.div`
 const FilterButton = styled.button<{ $active: boolean }>`
   padding: 0.5rem 1rem;
   border-radius: 0.5rem;
-  border: 2px solid ${props => props.$active ? '#000' : '#e5e7eb'};
-  background: ${props => props.$active ? '#000' : 'white'};
-  color: ${props => props.$active ? 'white' : '#6b7280'};
+  border: 2px solid ${props => props.$active ? palette.text : palette.border};
+  background: ${props => props.$active ? palette.text : palette.surface};
+  color: ${props => props.$active ? palette.surface : palette.textMuted};
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
 
   &:hover {
-    border-color: #000;
+    border-color: ${palette.text};
     transform: translateY(-1px);
   }
 `;
@@ -93,9 +94,9 @@ const ActionButton = styled.button<{ $variant?: 'approve' | 'reject' }>`
   background: ${props => {
     if (props.$variant === 'approve') return '#10b981';
     if (props.$variant === 'reject') return '#ef4444';
-    return '#6b7280';
+    return palette.textMuted;
   }};
-  color: white;
+  color: ${palette.onAccent};
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
@@ -122,7 +123,8 @@ const BulkActions = styled.div`
   gap: 1rem;
   margin-bottom: 1rem;
   padding: 1rem;
-  background: #f9fafb;
+  background: ${palette.surfaceAlt};
+  color: ${palette.text};
   border-radius: 0.5rem;
 `;
 
@@ -137,13 +139,13 @@ const ReceiptCard = styled.div<{ $selected: boolean }>`
   grid-template-columns: auto 1fr auto;
   gap: 1.5rem;
   padding: 1.5rem;
-  background: white;
-  border: 2px solid ${props => props.$selected ? '#000' : '#e5e7eb'};
+  background: ${palette.surface};
+  border: 2px solid ${props => props.$selected ? palette.text : palette.border};
   border-radius: 0.75rem;
   transition: all 0.2s;
 
   &:hover {
-    border-color: #000;
+    border-color: ${palette.text};
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   }
 `;
@@ -182,7 +184,7 @@ const ReceiptHeader = styled.div`
 const MerchantName = styled.h3`
   font-size: 1.125rem;
   font-weight: 700;
-  color: #111827;
+  color: ${palette.text};
   margin: 0;
 `;
 
@@ -193,20 +195,20 @@ const StatusBadge = styled.div<{ $status: ReceiptStatus }>`
   font-weight: 600;
   background: ${props => {
     switch (props.$status) {
-      case ReceiptStatus.PENDING: return '#fef3c7';
-      case ReceiptStatus.APPROVED: return '#d1fae5';
-      case ReceiptStatus.REJECTED: return '#fee2e2';
-      case ReceiptStatus.MANUAL_REVIEW: return '#fed7aa';
-      default: return '#f3f4f6';
+      case ReceiptStatus.PENDING: return palette.warningSoft;
+      case ReceiptStatus.APPROVED: return palette.successSoft;
+      case ReceiptStatus.REJECTED: return palette.dangerSoft;
+      case ReceiptStatus.MANUAL_REVIEW: return palette.accentSoft;
+      default: return palette.surfaceAlt;
     }
   }};
   color: ${props => {
     switch (props.$status) {
-      case ReceiptStatus.PENDING: return '#92400e';
-      case ReceiptStatus.APPROVED: return '#065f46';
-      case ReceiptStatus.REJECTED: return '#991b1b';
-      case ReceiptStatus.MANUAL_REVIEW: return '#9a3412';
-      default: return '#1f2937';
+      case ReceiptStatus.PENDING: return palette.warning;
+      case ReceiptStatus.APPROVED: return palette.success;
+      case ReceiptStatus.REJECTED: return palette.danger;
+      case ReceiptStatus.MANUAL_REVIEW: return palette.accent;
+      default: return palette.text;
     }
   }};
 `;
@@ -221,7 +223,7 @@ const InfoItem = styled.div``;
 
 const InfoLabel = styled.div`
   font-size: 0.75rem;
-  color: #6b7280;
+  color: ${palette.textMuted};
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 0.25rem;
@@ -230,7 +232,7 @@ const InfoLabel = styled.div`
 const InfoValue = styled.div`
   font-size: 1rem;
   font-weight: 600;
-  color: #111827;
+  color: ${palette.text};
 `;
 
 const FraudScore = styled.div<{ $score: number }>`
@@ -239,8 +241,8 @@ const FraudScore = styled.div<{ $score: number }>`
   gap: 0.5rem;
   padding: 0.5rem;
   border-radius: 0.5rem;
-  background: ${props => props.$score > 60 ? '#fee2e2' : props.$score > 30 ? '#fed7aa' : '#d1fae5'};
-  color: ${props => props.$score > 60 ? '#991b1b' : props.$score > 30 ? '#9a3412' : '#065f46'};
+  background: ${props => props.$score > 60 ? palette.dangerSoft : props.$score > 30 ? palette.accentSoft : palette.successSoft};
+  color: ${props => props.$score > 60 ? palette.danger : props.$score > 30 ? palette.accent : palette.success};
   font-weight: 600;
 `;
 
@@ -273,7 +275,8 @@ const Modal = styled.div<{ $show: boolean }>`
 `;
 
 const ModalContent = styled.div`
-  background: white;
+  background: ${palette.surface};
+  color: ${palette.text};
   border-radius: 1rem;
   max-width: 800px;
   max-height: 90vh;
@@ -295,8 +298,10 @@ const ModalActions = styled.div`
 const TextArea = styled.textarea`
   width: 100%;
   padding: 0.75rem;
-  border: 2px solid #e5e7eb;
+  border: 2px solid ${palette.border};
   border-radius: 0.5rem;
+  background: ${palette.surface};
+  color: ${palette.text};
   font-family: inherit;
   resize: vertical;
   min-height: 100px;
@@ -304,21 +309,25 @@ const TextArea = styled.textarea`
 
   &:focus {
     outline: none;
-    border-color: #000;
+    border-color: ${palette.accent};
   }
+  &::placeholder { color: ${palette.textSubtle}; }
 `;
 
 const Input = styled.input`
   width: 100%;
   padding: 0.75rem;
-  border: 2px solid #e5e7eb;
+  border: 2px solid ${palette.border};
   border-radius: 0.5rem;
+  background: ${palette.surface};
+  color: ${palette.text};
   font-family: inherit;
 
   &:focus {
     outline: none;
-    border-color: #000;
+    border-color: ${palette.accent};
   }
+  &::placeholder { color: ${palette.textSubtle}; }
 `;
 
 export const ReceiptReviewDashboard: React.FC = () => {

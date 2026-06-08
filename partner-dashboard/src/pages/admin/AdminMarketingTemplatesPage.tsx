@@ -1,21 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
+import { palette } from '../../styles/adminTheme';
 import {
   adminMarketingService,
   MarketingTemplate,
   MarketingChannel,
 } from '../../services/adminMarketing.service';
 
-const palette = {
-  bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
-  text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
-  accent: '#c96442', accentSoft: '#f3e8de',
-  success: '#4a7c59', successSoft: '#e6efe3',
-  warning: '#b5803a', warningSoft: '#f5ead2',
-  danger: '#b54327', dangerSoft: '#f4dcd2',
-  info: '#2563eb', infoSoft: '#dbeafe',
-};
 
 const PageShell = styled.div`background: ${palette.bg}; min-height: calc(100vh - 4rem); padding: 2rem 2.5rem;`;
 const PageHeader = styled.div`display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; gap: 1rem; flex-wrap: wrap;`;
@@ -37,7 +29,7 @@ const TypePill = styled.span<{ $type: MarketingChannel }>`
   ${({ $type }) => {
     switch ($type) {
       case 'EMAIL': return `background: ${palette.infoSoft}; color: ${palette.info};`;
-      case 'PUSH':  return `background: #f3e8de; color: #c96442;`;
+      case 'PUSH':  return `background: ${palette.accentSoft}; color: ${palette.accent};`;
       case 'SMS':   return `background: ${palette.successSoft}; color: ${palette.success};`;
     }
   }}
@@ -46,12 +38,12 @@ const TypePill = styled.span<{ $type: MarketingChannel }>`
 const SmsBadge = styled.span`
   display: inline-flex; font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.04em; border-radius: 0.25rem; padding: 0.1rem 0.35rem; margin-left: 0.35rem;
-  background: ${palette.warningSoft}; color: ${palette.warning}; border: 1px solid #fbbf24;
+  background: ${palette.warningSoft}; color: ${palette.warning}; border: 1px solid ${palette.warningBorder};
 `;
 
-const PrimaryBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: #fff; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { opacity: 0.9; } &:disabled { opacity: 0.5; cursor: default; }`;
+const PrimaryBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.accent}; color: ${palette.onAccent}; border: none; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { opacity: 0.9; } &:disabled { opacity: 0.5; cursor: default; }`;
 const GhostBtn = styled.button`padding: 0.5rem 1.125rem; background: transparent; color: ${palette.textMuted}; border: 1px solid ${palette.border}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { border-color: ${palette.textMuted}; }`;
-const DangerBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; border: 1px solid #f1c4b8; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { background: #eebcac; }`;
+const DangerBtn = styled.button`padding: 0.5rem 1.125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; border: 1px solid ${palette.dangerBorder}; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; &:hover { background: ${palette.dangerBorder}; }`;
 
 const Overlay = styled.div`position: fixed; inset: 0; background: rgba(20,20,19,0.45); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 1rem;`;
 const ModalBox = styled.div`background: ${palette.surface}; border-radius: 0.875rem; width: 100%; max-width: 38rem; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.18);`;
@@ -68,8 +60,8 @@ const ModalSelect = styled.select`padding: 0.5rem 0.875rem; border: 1px solid ${
 const HintText = styled.p`font-size: 0.75rem; color: ${palette.textSubtle}; margin: 0;`;
 const ConfirmText = styled.p`font-size: 0.9375rem; color: ${palette.text}; margin: 0 0 0.5rem;`;
 const ConfirmSub = styled.p`font-size: 0.8125rem; color: ${palette.textSubtle}; margin: 0;`;
-const WarnBanner = styled.div`padding: 0.5rem 0.875rem; border: 1px solid #fbbf24; border-radius: 0.5rem; font-size: 0.8125rem; background: ${palette.warningSoft}; color: ${palette.warning}; margin-bottom: 1rem;`;
-const ErrorBanner = styled.div`padding: 0.5rem 0.875rem; border: 1px solid #f1c4b8; border-radius: 0.5rem; font-size: 0.8125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; margin-bottom: 1rem;`;
+const WarnBanner = styled.div`padding: 0.5rem 0.875rem; border: 1px solid ${palette.warningBorder}; border-radius: 0.5rem; font-size: 0.8125rem; background: ${palette.warningSoft}; color: ${palette.warning}; margin-bottom: 1rem;`;
+const ErrorBanner = styled.div`padding: 0.5rem 0.875rem; border: 1px solid ${palette.dangerBorder}; border-radius: 0.5rem; font-size: 0.8125rem; background: ${palette.dangerSoft}; color: ${palette.danger}; margin-bottom: 1rem;`;
 
 const TabRow = styled.div`display: flex; gap: 0; border-bottom: 1px solid ${palette.border}; margin-bottom: 1rem;`;
 const Tab = styled.button<{ $active: boolean }>`
@@ -80,7 +72,7 @@ const Tab = styled.button<{ $active: boolean }>`
 `;
 const PreviewFrame = styled.div`
   border: 1px solid ${palette.border}; border-radius: 0.5rem; padding: 1rem;
-  background: #ffffff; min-height: 6rem; font-size: 0.875rem; line-height: 1.6;
+  background: ${palette.surface}; min-height: 6rem; font-size: 0.875rem; line-height: 1.6;
   overflow: auto; max-height: 22rem;
 `;
 const DetailLabel = styled.div`font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: ${palette.textSubtle}; margin-bottom: 0.25rem;`;
@@ -419,7 +411,7 @@ export default function AdminMarketingTemplatesPage() {
                 {bodyLoading ? (
                   <div style={{ padding: '1rem', color: palette.textSubtle, fontSize: '0.875rem' }}>Зарежда се…</div>
                 ) : previewTab === 'preview' && form.type === 'EMAIL' ? (
-                  <PreviewFrame dangerouslySetInnerHTML={{ __html: form.body || '<em style="color:#8c8678">Без съдържание.</em>' }} />
+                  <PreviewFrame dangerouslySetInnerHTML={{ __html: form.body || `<em style="color:${palette.textSubtle}">Без съдържание.</em>` }} />
                 ) : (
                   <Textarea
                     value={form.body}
@@ -501,7 +493,7 @@ export default function AdminMarketingTemplatesPage() {
                 <div style={{ padding: '1rem', color: palette.textSubtle, fontSize: '0.875rem' }}>Зарежда се…</div>
               ) : viewDetail ? (
                 viewTab === 'preview' && selected.type === 'EMAIL' ? (
-                  <PreviewFrame dangerouslySetInnerHTML={{ __html: viewDetail.body || '<em style="color:#8c8678">Без съдържание.</em>' }} />
+                  <PreviewFrame dangerouslySetInnerHTML={{ __html: viewDetail.body || `<em style="color:${palette.textSubtle}">Без съдържание.</em>` }} />
                 ) : (
                   <Textarea
                     value={viewDetail.body}
@@ -557,7 +549,7 @@ export default function AdminMarketingTemplatesPage() {
               </ConfirmText>
               <ConfirmSub>
                 Кампаниите, използващи този шаблон, ще загубят препратката към него.
-                <strong style={{ color: '#b54327' }}> Активни автоматизации, свързани с шаблона, не могат да бъдат изтрити — спрете ги първо.</strong>
+                <strong style={{ color: palette.danger }}> Активни автоматизации, свързани с шаблона, не могат да бъдат изтрити — спрете ги първо.</strong>
                 {' '}Действието не може да бъде отменено.
               </ConfirmSub>
             </ModalBody>

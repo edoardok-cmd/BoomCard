@@ -15,6 +15,12 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTheme, ThemeMode } from '../../../contexts/ThemeContext';
 import { apiService } from '../../../services/api.service';
 import { ADMIN_NAV } from '../../admin/AdminNav';
+import {
+  getAdminGateReason,
+  isNavTargetLocked,
+  ADMIN_GATE_HIGHLIGHT_EVENT,
+  type AdminGateHighlightDetail,
+} from '../../auth/adminGate';
 
 interface ImpersonatablePartner {
   partnerId: string;
@@ -304,28 +310,30 @@ const UserMenuButtonItem = styled.button`
   }
 `;
 
-const UserMenuItem = styled(Link)`
+const UserMenuItem = styled(Link)<{ $locked?: boolean }>`
   display: flex;
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem 1rem;
-  color: #374151;
+  color: ${({ $locked }) => ($locked ? '#9ca3af' : '#374151')};
   text-decoration: none;
   font-size: 0.875rem;
   font-weight: 500;
   transition: all 200ms;
+  opacity: ${({ $locked }) => ($locked ? 0.6 : 1)};
+  cursor: ${({ $locked }) => ($locked ? 'not-allowed' : 'pointer')};
 
   [data-theme="dark"] & {
-    color: #d1d5db;
+    color: ${({ $locked }) => ($locked ? '#6b7280' : '#d1d5db')};
   }
 
   &:hover {
-    background: #f9fafb;
-    color: #111827;
+    background: ${({ $locked }) => ($locked ? 'transparent' : '#f9fafb')};
+    color: ${({ $locked }) => ($locked ? '#9ca3af' : '#111827')};
 
     [data-theme="dark"] & {
-      background: #374151;
-      color: #f9fafb;
+      background: ${({ $locked }) => ($locked ? 'transparent' : '#374151')};
+      color: ${({ $locked }) => ($locked ? '#6b7280' : '#f9fafb')};
     }
   }
 
@@ -338,6 +346,14 @@ const UserMenuItem = styled(Link)`
       color: #9ca3af;
     }
   }
+`;
+
+const MenuLockIcon = styled.span`
+  margin-left: auto;
+  font-size: 0.8125rem;
+  line-height: 1;
+  flex-shrink: 0;
+  opacity: 0.8;
 `;
 
 const UserMenuDivider = styled.div`
@@ -961,6 +977,32 @@ export const Header: React.FC<HeaderProps> = ({
   } = useAuth();
   const [isSwitching, setIsSwitching] = useState<string | null>(null);
   const [impersonateModalOpen, setImpersonateModalOpen] = useState(false);
+
+  // Admin nav gate (2FA setup / temp-password change required). Derived from the
+  // SAME helper the route guard and the sidebar (CategoryShell) use, so the
+  // header user-menu admin nav can never disagree with them. Do NOT fork.
+  const adminGateReason = getAdminGateReason(user);
+
+  // Mirrors CategoryShell.handleLockedNavClick exactly: a locked click either
+  // dispatches the highlight event (when already on the security page, where a
+  // route change would be a silent no-op) or navigates with state (cross-page).
+  // Both paths reach AdminProfileSecurityPage's single deduped (id'd) toast +
+  // banner pulse, so no path double-toasts or zero-toasts.
+  const handleLockedAdminNavClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!adminGateReason) return;
+    setUserMenuOpen(false);
+    const onSecurityPage = location.pathname.startsWith('/admin/profile/security');
+    if (onSecurityPage) {
+      window.dispatchEvent(
+        new CustomEvent<AdminGateHighlightDetail>(ADMIN_GATE_HIGHLIGHT_EVENT, {
+          detail: { reason: adminGateReason },
+        }),
+      );
+    } else {
+      navigate('/admin/profile/security', { state: { reason: adminGateReason } });
+    }
+  };
   const [impersonatableSearch, setImpersonatableSearch] = useState('');
   const [impersonatablePartners, setImpersonatablePartners] = useState<ImpersonatablePartner[] | null>(null);
   const [impersonatableLoading, setImpersonatableLoading] = useState(false);
@@ -1456,24 +1498,39 @@ export const Header: React.FC<HeaderProps> = ({
                         )}
                         {user.role === 'admin' ? (
                           <>
-                            {/* 10-category admin navigation driven by ADMIN_NAV */}
-                            {ADMIN_NAV.map((category) => (
-                              <UserMenuItem
-                                key={category.key}
-                                to={category.path}
-                                onClick={() => setUserMenuOpen(false)}
-                              >
-                                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d={category.icon}
-                                  />
-                                </svg>
-                                {language === 'bg' ? category.labelBg : category.labelEn}
-                              </UserMenuItem>
-                            ))}
+                            {/* 10-category admin navigation driven by ADMIN_NAV.
+                                Locked items get the SAME treatment as the sidebar
+                                (dimmed + lock icon + tooltip + deduped toast),
+                                reusing isNavTargetLocked / getAdminGateReason. */}
+                            {ADMIN_NAV.map((category) => {
+                              const locked = isNavTargetLocked(user, category.path);
+                              const lockTooltip = locked
+                                ? adminGateReason === 'mustChangePassword'
+                                  ? t('admin.navLock.tooltipChangePassword')
+                                  : t('admin.navLock.tooltipSetup2FA')
+                                : undefined;
+                              return (
+                                <UserMenuItem
+                                  key={category.key}
+                                  to={category.path}
+                                  $locked={locked}
+                                  title={lockTooltip}
+                                  aria-disabled={locked || undefined}
+                                  onClick={locked ? handleLockedAdminNavClick : () => setUserMenuOpen(false)}
+                                >
+                                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d={category.icon}
+                                    />
+                                  </svg>
+                                  {language === 'bg' ? category.labelBg : category.labelEn}
+                                  {locked && <MenuLockIcon aria-hidden="true">🔒</MenuLockIcon>}
+                                </UserMenuItem>
+                              );
+                            })}
 
                           </>
                         ) : user.role === 'partner' || isImpersonating ? (

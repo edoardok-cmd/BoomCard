@@ -2,6 +2,7 @@ import React from 'react';
 import styled from 'styled-components';
 import { useLanguage } from '../../contexts/LanguageContext';
 
+import { palette } from '../../styles/adminTheme';
 // Generic placeholder rendered for admin sub-pages not yet implemented.
 // The CategoryShell tab bar + header still renders normally around this.
 const AdminComingSoonPage: React.FC = () => {
@@ -32,13 +33,13 @@ const Icon = styled.div`
 const Title = styled.h2`
   font-size: 1.5rem;
   font-weight: 600;
-  color: #111827;
+  color: ${palette.text};
   margin: 0 0 0.5rem;
 `;
 
 const Body = styled.p`
   font-size: 0.9375rem;
-  color: #6b7280;
+  color: ${palette.textMuted};
   max-width: 28rem;
   margin: 0;
 `;

@@ -23,29 +23,8 @@ import { riskBucket, riskLabel, type RiskBucket } from '../../utils/planLabels';
 import { csvEscape, fmtDateTime, downloadBlob } from '../../utils/csvExport';
 import { formatPhoneBG } from '../../utils/validators';
 
+import { palette } from '../../styles/adminTheme';
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
-const palette = {
-  bg: '#faf9f5',
-  surface: '#ffffff',
-  border: '#e8e5dc',
-  text: '#141413',
-  textMuted: '#605a50',
-  textSubtle: '#8c8678',
-  accent: '#c96442',
-  accentSoft: '#f3e8de',
-  success: '#4a7c59',
-  successSoft: '#e6efe3',
-  warning: '#b5803a',
-  warningSoft: '#f5ead2',
-  danger: '#b54327',
-  dangerSoft: '#f4dcd2',
-  info: '#2563eb',
-  infoSoft: '#dbeafe',
-  purple: '#7c3aed',
-  purpleSoft: '#ede9fe',
-  teal: '#0f766e',
-  tealSoft: '#ccfbf1',
-};
 
 /* ─── Layout ───────────────────────────────────────────────────────────────── */
 const PageShell = styled.div`
@@ -236,7 +215,7 @@ const Btn = styled.button<{ $variant?: 'primary' | 'ghost' }>`
 
   ${({ $variant = 'ghost' }) =>
     $variant === 'primary'
-      ? `background: ${palette.accent}; color: #fff; border-color: ${palette.accent};
+      ? `background: ${palette.accent}; color: ${palette.onAccent}; border-color: ${palette.accent};
          &:hover { background: #b55a3b; }`
       : `background: ${palette.surface}; color: ${palette.textMuted}; border-color: ${palette.border};
          &:hover { background: ${palette.bg}; color: ${palette.text}; }`}
@@ -278,7 +257,7 @@ const TypeBadge = styled.span<{ $type: WalletTransactionType }>`
       case 'CASHBACK_CREDIT': return `background: ${palette.tealSoft}; color: ${palette.teal};`;
       case 'PURCHASE': return `background: ${palette.infoSoft}; color: ${palette.info};`;
       case 'REFUND': return `background: ${palette.purpleSoft}; color: ${palette.purple};`;
-      default: return `background: #f3f4f6; color: #374151;`;
+      default: return `background: ${palette.surfaceAlt}; color: ${palette.text};`;
     }
   }}
 `;
@@ -324,7 +303,7 @@ const StatusBadge = styled.span<{ $status: AnyStatus | string }>`
       case 'Expired':
       case 'ANNULLED':
       default:
-        return `background: #f3f4f6; color: #6b7280;`;
+        return `background: ${palette.surfaceAlt}; color: ${palette.textMuted};`;
     }
   }}
 `;

@@ -6,16 +6,8 @@ import { toast } from 'react-hot-toast';
 import { adminSettingsService, SystemSettingHistoryRow } from '../../services/adminSettings.service';
 import { latestMeta, formatAuditStamp, describeApiError } from '../../utils/systemSettingsAudit';
 
-const palette = {
-  bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
-  text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
-  accent: '#c96442', accentSoft: '#f3e8de',
-  info: '#2563eb', infoSoft: '#dbeafe',
-  danger: '#dc2626', dangerSoft: '#fee2e2',
-  warning: '#b45309', warningSoft: '#fef3c7',
-  success: '#4a7c59',
-};
 
+import { palette } from '../../styles/adminTheme';
 const PageShell = styled.div`background: ${palette.bg}; min-height: calc(100vh - 4rem); padding: 2rem 2.5rem;`;
 const PageHeader = styled.div`margin-bottom: 2rem;`;
 const Eyebrow = styled.p`font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: ${palette.textSubtle}; margin-bottom: 0.25rem;`;
@@ -54,7 +46,7 @@ const TextInput = styled.input`
 const SaveBtn = styled.button`
   padding: 0.5625rem 1.25rem;
   background: ${palette.accent};
-  color: #fff;
+  color: ${palette.onAccent};
   border: none;
   border-radius: 0.5rem;
   font-size: 0.875rem;
@@ -116,7 +108,7 @@ const ToggleSlider = styled.span`
     position: absolute;
     height: 1rem; width: 1rem;
     left: 0.1875rem; bottom: 0.1875rem;
-    background: white;
+    background: ${palette.surface};
     border-radius: 50%;
     transition: transform 0.2s;
   }
@@ -186,7 +178,7 @@ const ErrorPanelDetail = styled.p`margin: 0; font-size: 0.8125rem; opacity: 0.85
 const RetryBtn = styled.button`
   padding: 0.5rem 1rem;
   background: ${palette.danger};
-  color: #fff;
+  color: ${palette.onAccent};
   border: none;
   border-radius: 0.5rem;
   font-size: 0.8125rem;
@@ -253,7 +245,7 @@ const CancelBtn = styled.button`
 const DangerBtn = styled.button`
   padding: 0.5625rem 1.25rem;
   background: ${palette.warning};
-  color: #fff;
+  color: ${palette.onAccent};
   border: none;
   border-radius: 0.5rem;
   font-size: 0.875rem;
@@ -273,7 +265,7 @@ const HistoryItem = styled.div`
 const KeyBadge = styled.span`
   display: inline-block; padding: 0.08rem 0.4rem; border-radius: 0.2rem;
   font-size: 0.67rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
-  background: #f3e8de; color: #c96442; white-space: nowrap;
+  background: ${palette.accentSoft}; color: ${palette.accent}; white-space: nowrap;
 `;
 const HistoryDate = styled.span`font-size: 0.7rem; color: ${palette.textSubtle}; white-space: nowrap;`;
 
@@ -305,25 +297,25 @@ function fmtDate(iso: string) {
 }
 
 function SystemHistoryRows({ rows, loading }: { rows: SystemSettingHistoryRow[]; loading: boolean }) {
-  if (loading) return <p style={{ color: '#8c8678', fontSize: '0.8125rem', margin: '0.5rem 0 0' }}>Зареждане…</p>;
-  if (rows.length === 0) return <p style={{ color: '#8c8678', fontSize: '0.8125rem', margin: '0.5rem 0 0' }}>Няма история.</p>;
+  if (loading) return <p style={{ color: palette.textSubtle, fontSize: '0.8125rem', margin: '0.5rem 0 0' }}>Зареждане…</p>;
+  if (rows.length === 0) return <p style={{ color: palette.textSubtle, fontSize: '0.8125rem', margin: '0.5rem 0 0' }}>Няма история.</p>;
   return (
     <HistoryList>
       {rows.map(row => (
         <HistoryItem key={row.id}>
           <div>
             <KeyBadge>{SYSTEM_KEY_LABELS[row.key] ?? row.key}</KeyBadge>
-            <div style={{ marginTop: '0.25rem', color: '#141413', fontSize: '0.7875rem' }}>
+            <div style={{ marginTop: '0.25rem', color: palette.text, fontSize: '0.7875rem' }}>
               {row.oldValue !== null && row.oldValue !== ''
-                ? <><span style={{ color: '#8c8678' }}>{row.oldValue || '—'}</span>{' → '}<strong>{row.newValue || '(изчистено)'}</strong></>
+                ? <><span style={{ color: palette.textSubtle }}>{row.oldValue || '—'}</span>{' → '}<strong>{row.newValue || '(изчистено)'}</strong></>
                 : <strong>{row.newValue || '(изчистено)'}</strong>
               }
             </div>
             {row.changedByName && (
-              <div style={{ fontSize: '0.7rem', color: '#8c8678', marginTop: '0.1rem' }}>от {row.changedByName}</div>
+              <div style={{ fontSize: '0.7rem', color: palette.textSubtle, marginTop: '0.1rem' }}>от {row.changedByName}</div>
             )}
             {row.notes && (
-              <div style={{ fontSize: '0.7rem', color: '#605a50', marginTop: '0.15rem', fontStyle: 'italic' }}>
+              <div style={{ fontSize: '0.7rem', color: palette.textMuted, marginTop: '0.15rem', fontStyle: 'italic' }}>
                 „{row.notes}"
               </div>
             )}

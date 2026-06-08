@@ -13,17 +13,8 @@ import {
 } from '../../services/adminPartnerRequests.service';
 import { getCategoryName } from '../../types/categories.types';
 
-const palette = {
-  bg: '#faf9f5', surface: '#ffffff', border: '#e8e5dc',
-  text: '#141413', textMuted: '#605a50', textSubtle: '#8c8678',
-  accent: '#c96442', accentSoft: '#f3e8de',
-  success: '#4a7c59', successSoft: '#e6efe3',
-  warning: '#b5803a', warningSoft: '#f5ead2',
-  danger: '#b54327', dangerSoft: '#f4dcd2',
-  info: '#2563eb', infoSoft: '#dbeafe',
-  teal: '#0f766e', tealSoft: '#ccfbf1',
-};
 
+import { palette } from '../../styles/adminTheme';
 const LEGACY_CATEGORY_MAP: Record<string, string> = {
   'RESTAURANTS_FOOD': 'restaurants', 'ACCOMMODATION': 'accommodation',
   'SPA_WELLNESS': 'spa', 'PANORAMIC_PLACES': 'panoramic',
@@ -432,7 +423,7 @@ export default function PartnerRequestDrawer({ partnerId, onClose, canWrite, onA
                         {partner.city}
                         {partner.region && ` (${partner.region})`}
                       </>
-                    : <span style={{ color: 'var(--color-text-muted, #8c8678)', fontStyle: 'italic' }}>
+                    : <span style={{ color: palette.textSubtle, fontStyle: 'italic' }}>
                         {isEn ? 'Not provided' : 'Не е предоставен'}
                       </span>
                   }
@@ -891,7 +882,7 @@ const ActionLink = styled.button<{ $danger?: boolean }>`
   background: ${p => p.$danger ? palette.dangerSoft : palette.accentSoft};
   color: ${p => p.$danger ? palette.danger : palette.accent};
   cursor: pointer; white-space: nowrap;
-  &:hover { background: ${p => p.$danger ? palette.danger : palette.accent}; color: #fff; }
+  &:hover { background: ${p => p.$danger ? palette.danger : palette.accent}; color: ${palette.onAccent}; }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
@@ -900,7 +891,7 @@ const ActionBtn = styled.button<{ $variant?: 'success' | 'danger' }>`
   padding: 0.375rem 0.875rem; border: none; border-radius: 0.5rem;
   font-size: 0.8125rem; font-weight: 600; cursor: pointer;
   background: ${p => p.$variant === 'success' ? palette.success : p.$variant === 'danger' ? palette.danger : palette.accent};
-  color: #fff;
+  color: ${palette.onAccent};
   &:hover:not(:disabled) { opacity: 0.88; }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
@@ -969,7 +960,7 @@ const NoteMeta = styled.div`
   display: flex; align-items: center; gap: 0.5rem;
 `;
 const InternalBadge = styled.span`
-  background: ${palette.warning}; color: #fff; font-size: 0.6rem;
+  background: ${palette.warning}; color: ${palette.onAccent}; font-size: 0.6rem;
   font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 0.25rem;
   text-transform: uppercase; letter-spacing: 0.06em;
 `;

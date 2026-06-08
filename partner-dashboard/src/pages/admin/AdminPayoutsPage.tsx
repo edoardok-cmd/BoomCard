@@ -15,27 +15,8 @@ import {
 } from '../../services/adminPayouts.service';
 import { adminFinanceService } from '../../services/adminFinance.service';
 
+import { palette } from '../../styles/adminTheme';
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
-const palette = {
-  bg: '#faf9f5',
-  surface: '#ffffff',
-  border: '#e8e5dc',
-  text: '#141413',
-  textMuted: '#605a50',
-  textSubtle: '#8c8678',
-  accent: '#c96442',
-  accentSoft: '#f3e8de',
-  success: '#4a7c59',
-  successSoft: '#e6efe3',
-  warning: '#b5803a',
-  warningSoft: '#f5ead2',
-  danger: '#b54327',
-  dangerSoft: '#f4dcd2',
-  info: '#2563eb',
-  infoSoft: '#dbeafe',
-  purple: '#7c3aed',
-  purpleSoft: '#ede9fe',
-};
 
 /* ─── Layout ───────────────────────────────────────────────────────────────── */
 const PageShell = styled.div`
@@ -92,9 +73,9 @@ const SummaryCard = styled.div<{ $variant?: 'warning' | 'info' | 'danger' | 'neu
     p.$variant === 'danger'  ? palette.dangerSoft :
     palette.surface};
   border: 1px solid ${p =>
-    p.$variant === 'warning' ? '#e5c97a' :
-    p.$variant === 'info'    ? '#bfdbfe' :
-    p.$variant === 'danger'  ? '#f5b7aa' :
+    p.$variant === 'warning' ? palette.warningBorder :
+    p.$variant === 'info'    ? palette.infoBorder :
+    p.$variant === 'danger'  ? palette.dangerBorder :
     palette.border};
   border-radius: 0.75rem;
   padding: 1rem 1.25rem;
@@ -165,7 +146,7 @@ const SearchBtn = styled.button`
   border-left: none;
   border-radius: 0 0.5rem 0.5rem 0;
   background: ${palette.accent};
-  color: #fff;
+  color: ${palette.onAccent};
   font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
@@ -213,7 +194,7 @@ const ClearBtn = styled.button`
   background: transparent;
   color: ${palette.textMuted};
   cursor: pointer;
-  &:hover { background: ${palette.dangerSoft}; color: ${palette.danger}; border-color: #f5b7aa; }
+  &:hover { background: ${palette.dangerSoft}; color: ${palette.danger}; border-color: ${palette.dangerBorder}; }
 `;
 
 const ExportBtn = styled.button`
@@ -250,7 +231,7 @@ const BulkBar = styled.div`
   gap: 1rem;
   padding: 0.75rem 1rem;
   background: ${palette.infoSoft};
-  border: 1px solid #bfdbfe;
+  border: 1px solid ${palette.infoBorder};
   border-radius: 0.5rem;
   margin-bottom: 1rem;
 `;
@@ -269,7 +250,7 @@ const BulkBtn = styled.button`
   font-weight: 600;
   cursor: pointer;
   background: ${palette.info};
-  color: #fff;
+  color: ${palette.onAccent};
   border: none;
   &:hover { opacity: 0.88; }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -339,7 +320,7 @@ const PlanBadge = styled.span<{ $plan: string }>`
     switch ($plan) {
       case 'PREMIUM': return `background: ${palette.purpleSoft}; color: ${palette.purple};`;
       case 'BASIC':   return `background: ${palette.infoSoft}; color: ${palette.info};`;
-      default:        return `background: #f3f4f6; color: #6b7280;`;
+      default:        return `background: ${palette.surfaceAlt}; color: ${palette.textMuted};`;
     }
   }}
 `;
@@ -365,12 +346,12 @@ const StatusBadge = styled.span<{ $status: PayoutStatus }>`
       case 'FAILED':
         return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
       case 'CANCELLED':
-        return `background: #f3f4f6; color: #374151;`;
+        return `background: ${palette.surfaceAlt}; color: ${palette.text};`;
       case 'RISK_HOLD':
         return `background: ${palette.purpleSoft}; color: ${palette.purple};`;
       case 'ANNULLED':
       default:
-        return `background: #f3f4f6; color: #6b7280;`;
+        return `background: ${palette.surfaceAlt}; color: ${palette.textMuted};`;
     }
   }}
 `;
@@ -1000,12 +981,12 @@ export default function AdminPayoutsPage() {
         </TitleBlock>
         <div style={{ display: 'flex', gap: 0 }}>
           <ExportBtn
-            style={{ borderRadius: '0.5rem 0 0 0.5rem', borderRight: 'none', background: exportFormat === 'xlsx' ? '#c96442' : undefined, color: exportFormat === 'xlsx' ? '#fff' : undefined, borderColor: exportFormat === 'xlsx' ? '#c96442' : undefined }}
+            style={{ borderRadius: '0.5rem 0 0 0.5rem', borderRight: 'none', background: exportFormat === 'xlsx' ? palette.accent : undefined, color: exportFormat === 'xlsx' ? '#fff' : undefined, borderColor: exportFormat === 'xlsx' ? palette.accent : undefined }}
             onClick={() => setExportFormat('xlsx')}
             disabled={exporting}
           >XLSX</ExportBtn>
           <ExportBtn
-            style={{ borderRadius: '0 0.5rem 0.5rem 0', background: exportFormat === 'csv' ? '#c96442' : undefined, color: exportFormat === 'csv' ? '#fff' : undefined, borderColor: exportFormat === 'csv' ? '#c96442' : undefined }}
+            style={{ borderRadius: '0 0.5rem 0.5rem 0', background: exportFormat === 'csv' ? palette.accent : undefined, color: exportFormat === 'csv' ? '#fff' : undefined, borderColor: exportFormat === 'csv' ? palette.accent : undefined }}
             onClick={() => setExportFormat('csv')}
             disabled={exporting}
           >CSV</ExportBtn>
@@ -1029,7 +1010,7 @@ export default function AdminPayoutsPage() {
           <SummaryMeta>{fmtBgn(displaySummary.processingTotal)} общо</SummaryMeta>
         </SummaryCard>
 
-        <SummaryCard style={{ background: palette.purpleSoft, border: `1px solid #c4b5fd` }}>
+        <SummaryCard style={{ background: palette.purpleSoft, border: `1px solid ${palette.purpleBorder}` }}>
           <SummaryLabel style={{ color: palette.purple }}>Задържани (риск)</SummaryLabel>
           <SummaryValue style={{ color: palette.purple }}>{displaySummary.riskHoldCount}</SummaryValue>
           <SummaryMeta>изискват преглед</SummaryMeta>

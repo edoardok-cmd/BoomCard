@@ -5,24 +5,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { adminAdminsService, AdminRoleKey, CreateAdminResponse } from '../../services/adminAdmins.service';
 
-const palette = {
-  bg: '#faf9f5',
-  surface: '#ffffff',
-  border: '#e8e5dc',
-  text: '#141413',
-  textMuted: '#605a50',
-  textSubtle: '#8c8678',
-  accent: '#c96442',
-  accentSoft: '#f3e8de',
-  success: '#4a7c59',
-  successSoft: '#e6efe3',
-  danger: '#b54327',
-  dangerSoft: '#f4dcd2',
-  warning: '#7a5c1e',
-  warningSoft: '#fdf3dc',
-  warningBorder: '#e8d5a3',
-};
 
+import { palette } from '../../styles/adminTheme';
 const PageShell = styled.div`
   background: ${palette.bg};
   min-height: calc(100vh - 4rem);
@@ -123,7 +107,7 @@ const ButtonRow = styled.div`
 const SubmitButton = styled.button<{ $loading?: boolean }>`
   padding: 0.625rem 1.5rem;
   background: ${palette.accent};
-  color: #fff;
+  color: ${palette.onAccent};
   font-size: 0.9375rem;
   font-weight: 700;
   border: none;
@@ -148,7 +132,7 @@ const ResetButton = styled.button`
 
 const SuccessBanner = styled.div`
   background: ${palette.successSoft};
-  border: 1px solid #b7d9c4;
+  border: 1px solid ${palette.successBorder};
   border-radius: 0.5rem;
   padding: 0.875rem 1.125rem;
   font-size: 0.875rem;
@@ -159,7 +143,7 @@ const SuccessBanner = styled.div`
 
 const ErrorBanner = styled.div`
   background: ${palette.dangerSoft};
-  border: 1px solid #e8bdb4;
+  border: 1px solid ${palette.dangerBorder};
   border-radius: 0.5rem;
   padding: 0.875rem 1.125rem;
   font-size: 0.875rem;
