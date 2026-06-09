@@ -2,34 +2,10 @@
   "framework": null,
   "buildCommand": "npm run build --workspace=partner-dashboard",
   "outputDirectory": "partner-dashboard/dist",
-  "redirects": [
-    {
-      "source": "/api/:path*",
-      "destination": "https://boomcard-api.fly.dev/api/:path*",
-      "permanent": false
-    }
-  ],
   "rewrites": [
     {
       "source": "/((?!assets/).*)",
       "destination": "/index.html"
-    }
-  ],
-  "build": {
-    "env": {
-      "VITE_API_URL": "https://boomcard-api.fly.dev",
-      "VITE_API_BASE_URL": "https://boomcard-api.fly.dev/api"
-    }
-  },
-  "headers": [
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        { "key": "Access-Control-Allow-Credentials", "value": "true" },
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET,OPTIONS,PATCH,DELETE,POST,PUT" },
-        { "key": "Access-Control-Allow-Headers", "value": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version" }
-      ]
     }
   ]
 }
