@@ -35,8 +35,11 @@ export class VenuesApi {
   /**
    * Get single venue by ID
    */
-  static async getVenueById(id: string): Promise<ApiResponse<Venue>> {
-    return await apiClient.get<Venue>(
+  static async getVenueById(id: string): Promise<ApiResponse<ApiResponse<Venue>>> {
+    // The backend wraps the venue in its own { success, data } envelope, and
+    // apiClient.get re-wraps that, so the actual venue lives at res.data.data
+    // (mirror getOfferById — task 021).
+    return await apiClient.get<ApiResponse<Venue>>(
       `${API_CONFIG.ENDPOINTS.VENUES.BASE}/${id}`
     );
   }

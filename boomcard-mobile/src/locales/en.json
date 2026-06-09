@@ -15,6 +15,7 @@
     "close": "Close",
     "done": "Done",
     "retry": "Retry",
+    "back": "Back",
     "refresh": "Refresh",
     "connectionTimeout": "Connection timed out. Please check your internet and try again.",
     "noData": "No data",
@@ -635,6 +636,8 @@
   "offers": {
     "title": "Offers",
     "detail": "Offer Details",
+    "notFoundTitle": "Offer not found",
+    "notFoundDesc": "This offer is no longer available or the link has expired.",
     "viewMenu": "Menu",
     "searchPlaceholder": "Search offers...",
     "categoryAll": "All",
