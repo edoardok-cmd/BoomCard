@@ -310,8 +310,8 @@ const EntryStatusBadge = styled.span<{ $status: CashbackEntryStatus }>`
 `;
 
 /* ─── Helpers ───────────────────────────────────────────────────────────────── */
-function fmtMoney(n: number, locale: string): string {
-  return n.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function fmtMoney(n: number | null | undefined, locale: string): string {
+  return (n ?? 0).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /* ─── Component ─────────────────────────────────────────────────────────────── */
@@ -349,7 +349,7 @@ export default function AdminCashbackPage() {
         })
       : '—';
 
-  const fmt = (n: number) => fmtMoney(n, locale);
+  const fmt = (n: number | null | undefined) => fmtMoney(n, locale);
   const bgn = T('bgn');
 
   const { data: stats } = useQuery({
@@ -540,7 +540,7 @@ export default function AdminCashbackPage() {
   const thresholdHint = thresholds
     ? Object.entries({
         [T('planBasic')]:      thresholds.BASIC,
-        [T('planPremiumWk')]:  thresholds.LIGHT,
+        [T('planPremiumWk')]:  thresholds.PREMIUM_WEEKLY,
         [T('planPremiumMo')]:  thresholds.PREMIUM,
       })
         .map(([label, val]) => `${label} ${fmt(val)} ${bgn}`)
