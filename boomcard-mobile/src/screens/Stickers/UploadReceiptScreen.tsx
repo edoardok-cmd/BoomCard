@@ -60,6 +60,10 @@ export default function UploadReceiptScreen() {
   const [billAmount, setBillAmount] = useState<number>(0);
   const [ocrConfidence, setOcrConfidence] = useState<number>(0);
   const [cashbackEarned, setCashbackEarned] = useState<number>(0);
+  // R4 — outcome of the scan/upload so the success screen can distinguish
+  // auto-approved (credited) from manual-review ("In Review", high-risk only).
+  const [scanStatus, setScanStatus] = useState<string>('');
+  const [scanMessage, setScanMessage] = useState<string>('');
   // User's plan code (BASIC / LIGHT / PREMIUM) — used to compute accurate cashback estimate
   // per the master cashback matrix (§2). Fetched once on mount; null = not yet known.
   const [userPlanCode, setUserPlanCode] = useState<string | null>(null);
@@ -67,6 +71,11 @@ export default function UploadReceiptScreen() {
   // Used to render a non-blocking warning banner — submission still works since the
   // server re-validates sticker + venue when the scan is posted.
   const [stickerValidationFailed, setStickerValidationFailed] = useState(false);
+  // R6 §8.5 — set true only when the server explicitly reports valid:false
+  // (inactive / in-processing / not-found). A network error leaves this false so
+  // the user isn't hard-blocked by a transient failure (server re-validates anyway).
+  const [stickerInvalid, setStickerInvalid] = useState(false);
+  const [stickerInvalidReason, setStickerInvalidReason] = useState<string>('');
 
   const ocrService = OCRService.getInstance();
   const s = getStyles(theme, isDarkMode);
@@ -90,9 +99,14 @@ export default function UploadReceiptScreen() {
   // Load venue info from sticker ID
   useEffect(() => {
     StickersApi.validateSticker(stickerId).then((res) => {
-      if (res.success && res.data) {
-        setVenueName(res.data.venueName || '');
-        setCashbackPercent(Math.max(0, Math.min(100, res.data.cashbackPercent || 0)));
+      // R6 — distinguish an explicit valid:false (abort) from a network failure.
+      const body: any = res.success ? ((res.data as any)?.data ?? res.data) : null;
+      if (body && body.valid === false) {
+        setStickerInvalid(true);
+        setStickerInvalidReason(body.message || '');
+      } else if (res.success && body) {
+        setVenueName(body.venueName || '');
+        setCashbackPercent(Math.max(0, Math.min(100, body.cashbackPercent || 0)));
       } else {
         setStickerValidationFailed(true);
       }
@@ -192,6 +206,16 @@ export default function UploadReceiptScreen() {
   };
 
   const handleSubmit = async () => {
+    // R6 §8.5 — abort when the sticker is explicitly invalid (inactive / in-processing
+    // / not-found), surfacing the server's per-reason message.
+    if (stickerInvalid) {
+      crossPlatformAlert(
+        t('common.error'),
+        stickerInvalidReason || t('stickers.stickerInvalid', 'Този QR код не е активен или не може да се използва в момента.')
+      );
+      return;
+    }
+
     if (!billAmount || billAmount <= 0) {
       crossPlatformAlert(t('common.error'), t('stickers.enterValidAmount', 'Please enter a valid bill amount'));
       return;
@@ -254,10 +278,20 @@ export default function UploadReceiptScreen() {
         : (billAmount * Math.max(0, scanRes.data.cashbackPercent ?? 0)) / 100;
       setCashbackEarned(earned);
 
+      // R4 — record the scan outcome; prefer the upload response (post-OCR) for
+      // the authoritative status, falling back to the initial scan response.
+      let finalStatus: string = (scanRes.data as any).status || '';
+      const initialMessage: string = (scanRes.data as any).message || '';
+
       // Upload the receipt photo linked to this scan
       if (imageUri) {
-        await StickersApi.uploadReceiptForScan(scanId, imageUri);
+        const upRes = await StickersApi.uploadReceiptForScan(scanId, imageUri);
+        const upBody: any = upRes?.success ? ((upRes.data as any)?.data ?? upRes.data) : null;
+        if (upBody?.status) finalStatus = upBody.status;
+        if (upBody?.message) setScanMessage(upBody.message);
       }
+      setScanStatus(finalStatus);
+      if (!scanMessage && initialMessage) setScanMessage(initialMessage);
 
       // Cancel the 30-minute reminder now that the receipt has been submitted
       if (reminderNotificationId) {
@@ -292,28 +326,49 @@ export default function UploadReceiptScreen() {
 
   // ── Success ─────────────────────────────────────────────
   if (stage === 'success') {
+    // R4 §9.4/§9.5 — "In Review" applies to high-risk (MANUAL_REVIEW/PENDING) only;
+    // Low/Medium risk auto-approve and are credited immediately.
+    const isReview = scanStatus === 'MANUAL_REVIEW' || scanStatus === 'PENDING' || scanStatus === 'VALIDATING';
+    const isApproved = scanStatus === 'APPROVED';
+    const title = isReview
+      ? t('stickers.successReviewTitle', 'Изпратено за преглед')
+      : t('stickers.successTitle', 'Cashback Submitted!');
+    const subtitle = scanMessage
+      || (isReview
+        ? t('stickers.successReviewDesc', 'Бележката Ви е изпратена за преглед (In Review).')
+        : isApproved
+          ? t('stickers.successApprovedDesc', 'Кешбекът Ви беше одобрен и начислен.')
+          : t('stickers.successDesc', 'Your receipt has been submitted for review.'));
+    const note = isReview
+      ? t('stickers.successReviewNote', 'Ще получите кешбека след одобрение.')
+      : isApproved
+        ? t('stickers.successApprovedNote', 'Кешбекът е добавен към портфейла Ви.')
+        : t('stickers.successNote', 'Cashback will be credited to your wallet once approved.');
+
     return (
       <View style={[s.container, s.centered]}>
         <LinearGradient
-          colors={isDarkMode ? ['#052e16', '#14532d'] : ['#dcfce7', '#bbf7d0']}
+          colors={isReview
+            ? (isDarkMode ? ['#422006', '#713f12'] : ['#fef9c3', '#fef08a'])
+            : (isDarkMode ? ['#052e16', '#14532d'] : ['#dcfce7', '#bbf7d0'])}
           style={s.successCard}
         >
           <View style={s.successIconCircle}>
-            <Ionicons name="checkmark-circle" size={56} color="#22c55e" />
+            <Ionicons
+              name={isReview ? 'time' : 'checkmark-circle'}
+              size={56}
+              color={isReview ? '#D97706' : '#22c55e'}
+            />
           </View>
-          <Text style={s.successTitle}>{t('stickers.successTitle', 'Cashback Submitted!')}</Text>
-          <Text style={s.successSubtitle}>
-            {t('stickers.successDesc', 'Your receipt has been submitted for review.')}
-          </Text>
+          <Text style={s.successTitle}>{title}</Text>
+          <Text style={s.successSubtitle}>{subtitle}</Text>
           <View style={s.successAmountRow}>
             <Ionicons name="trending-up" size={20} color="#16a34a" />
             <Text style={s.successAmount}>
               +{cashbackEarned.toFixed(2)} BGN {t('stickers.cashbackLabel', 'cashback')}
             </Text>
           </View>
-          <Text style={s.successNote}>
-            {t('stickers.successNote', 'Cashback will be credited to your wallet once approved.')}
-          </Text>
+          <Text style={s.successNote}>{note}</Text>
         </LinearGradient>
 
         <TouchableOpacity style={s.doneButton} onPress={() => (navigation as any).navigate('Dashboard')}>

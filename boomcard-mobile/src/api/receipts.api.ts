@@ -9,67 +9,24 @@ import apiClient from './client';
 import { API_CONFIG } from '../constants/config';
 import type {
   Receipt,
-  ReceiptSubmitRequest,
   ReceiptStats,
   ApiResponse,
   PaginatedResponse,
 } from '../types';
 
 export class ReceiptsApi {
-  /**
-   * Submit receipt with OCR data and GPS coordinates
-   * CRITICAL: GPS coordinates are required for 60m validation
-   */
-  static async submitReceipt(
-    data: ReceiptSubmitRequest
-  ): Promise<ApiResponse<Receipt>> {
-    return await apiClient.post<Receipt>(
-      API_CONFIG.ENDPOINTS.RECEIPTS.SUBMIT,
-      data
-    );
-  }
+  // NOTE: submitReceipt() and uploadReceiptImage() were removed (R2). The
+  // /api/receipts/v2/submit and /v2/upload endpoints are RETIRED (410 GONE).
+  // The live receipt-upload path is POST /api/stickers/scan/:scanId/receipt,
+  // wired through StickersApi.uploadReceiptForScan.
 
   /**
-   * Upload receipt image. Returns an opaque uploadToken that MUST be passed to
-   * submitReceipt — the server no longer accepts client-supplied image hashes.
-   */
-  static async uploadReceiptImage(
-    imageUri: string,
-    onProgress?: (progress: number) => void
-  ): Promise<ApiResponse<{ uploadToken: string; expiresAt: string; imageUrl: string }>> {
-    const formData = new FormData();
-
-    // Convert URI to blob/file for upload
-    const filename = imageUri.split('/').pop() || 'receipt.jpg';
-    const match = /\.(\w+)$/.exec(filename);
-    const type = match ? `image/${match[1]}` : 'image/jpeg';
-
-    formData.append('receipt', {
-      uri: imageUri,
-      name: filename,
-      type,
-    } as any);
-
-    return await apiClient.upload(
-      API_CONFIG.ENDPOINTS.RECEIPTS.UPLOAD,
-      formData,
-      (progressEvent) => {
-        if (onProgress && progressEvent.total) {
-          const percentCompleted = Math.round(
-            (progressEvent.loaded * 100) / progressEvent.total
-          );
-          onProgress(percentCompleted);
-        }
-      }
-    );
-  }
-
-  /**
-   * Check if receipt image is a duplicate
+   * Check if receipt image is a duplicate.
+   * Backend returns { exists: boolean } (R2 — shape corrected).
    */
   static async checkDuplicate(
     imageHash: string
-  ): Promise<ApiResponse<{ isDuplicate: boolean; existingReceiptId?: string }>> {
+  ): Promise<ApiResponse<{ exists: boolean }>> {
     return await apiClient.get(
       `${API_CONFIG.ENDPOINTS.RECEIPTS.CHECK_DUPLICATE}?hash=${imageHash}`
     );

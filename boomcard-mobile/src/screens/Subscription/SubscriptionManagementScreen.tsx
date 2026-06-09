@@ -19,6 +19,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useFocusEffect } from '@react-navigation/native';
+import * as WebBrowser from 'expo-web-browser';
 import { useTheme } from '../../contexts/ThemeContext';
 import { crossPlatformAlert } from '../../utils/alert';
 import apiClient from '../../api/client';
@@ -57,13 +58,22 @@ const PLAN_LABELS: Record<string, { bg: string; en: string }> = {
   PREMIUM: { bg: 'Premium',        en: 'Premium' },
 };
 
+// S4 — maps the backend's Stripe-internal statuses onto the spec's 4 canonical
+// states (Active | Expired | Cancelled | Failed Payment). PAST_DUE and
+// FAILED_PAYMENT both render as the red "Failed Payment" state; EXPIRED is now
+// styled explicitly instead of falling through to grey "PAUSED".
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
-  ACTIVE:   { bg: 'rgba(16,185,129,0.12)', text: '#10B981' },
-  TRIALING: { bg: 'rgba(59,130,246,0.12)', text: '#3B82F6' },
-  PAST_DUE: { bg: 'rgba(245,158,11,0.12)', text: '#D97706' },
-  PAUSED:   { bg: 'rgba(107,114,128,0.12)', text: '#6B7280' },
-  CANCELLED:{ bg: 'rgba(239,68,68,0.12)',  text: '#EF4444' },
+  ACTIVE:         { bg: 'rgba(16,185,129,0.12)', text: '#10B981' },
+  TRIALING:       { bg: 'rgba(59,130,246,0.12)', text: '#3B82F6' },
+  PAST_DUE:       { bg: 'rgba(239,68,68,0.12)',  text: '#EF4444' },
+  FAILED_PAYMENT: { bg: 'rgba(239,68,68,0.12)',  text: '#EF4444' },
+  PAUSED:         { bg: 'rgba(107,114,128,0.12)', text: '#6B7280' },
+  EXPIRED:        { bg: 'rgba(107,114,128,0.12)', text: '#6B7280' },
+  CANCELLED:      { bg: 'rgba(239,68,68,0.12)',  text: '#EF4444' },
 };
+
+// Statuses that mean "renewal payment failed" — drive the recovery banner (S2).
+const FAILED_PAYMENT_STATUSES = ['PAST_DUE', 'FAILED_PAYMENT'];
 
 const SubscriptionManagementScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
@@ -74,6 +84,8 @@ const SubscriptionManagementScreen = ({ navigation }: any) => {
   const [history, setHistory] = useState<PaymentHistory[]>([]);
   const [togglingRenewal, setTogglingRenewal] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [changingCard, setChangingCard] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadData = async () => {
@@ -175,6 +187,57 @@ const SubscriptionManagementScreen = ({ navigation }: any) => {
     }
   };
 
+  // S1 — Change payment card. POSTs change-card and opens the returned Stripe
+  // billing-portal / Paysera payment URL in an in-app browser. The card is
+  // updated externally; on return we refresh the subscription.
+  const handleChangeCard = async () => {
+    if (!subscription || changingCard) return;
+    setChangingCard(true);
+    try {
+      const res = await apiClient.post(`/api/subscriptions/${subscription.id}/change-card`, {});
+      if (res.success) {
+        // Response shape: { type:'stripe', url } | { type:'paysera', paymentUrl, orderId }
+        const body = (res.data as any)?.data ?? res.data;
+        const url: string | undefined = body?.url || body?.paymentUrl;
+        if (!url) {
+          crossPlatformAlert(t('common.error'), t('subscription.changeCardNoUrl', 'Връзката за смяна на картата не е налична.'));
+          return;
+        }
+        await WebBrowser.openBrowserAsync(url);
+        // User may have completed the flow in the browser — refresh on return.
+        await loadData();
+      } else {
+        crossPlatformAlert(t('common.error'), res.error || t('subscription.changeCardFailed', 'Неуспешна смяна на картата'));
+      }
+    } catch (e: any) {
+      crossPlatformAlert(t('common.error'), e.message || t('subscription.changeCardFailed', 'Неуспешна смяна на картата'));
+    } finally {
+      setChangingCard(false);
+    }
+  };
+
+  // S3 — Retry the failed renewal payment (POST /:id/retry-payment).
+  const handleRetryPayment = async () => {
+    if (!subscription || retrying) return;
+    setRetrying(true);
+    try {
+      const res = await apiClient.post(`/api/subscriptions/${subscription.id}/retry-payment`, {});
+      if (res.success) {
+        await loadData();
+        crossPlatformAlert(
+          t('common.success', 'Успех'),
+          t('subscription.retrySuccess', 'Плащането е успешно. Абонаментът е активен.')
+        );
+      } else {
+        crossPlatformAlert(t('common.error'), res.error || t('subscription.retryFailed', 'Неуспешно плащане. Опитайте да смените картата.'));
+      }
+    } catch (e: any) {
+      crossPlatformAlert(t('common.error'), e.message || t('subscription.retryFailed', 'Неуспешно плащане. Опитайте да смените картата.'));
+    } finally {
+      setRetrying(false);
+    }
+  };
+
   const handleTrialRefund = () => {
     if (!subscription) return;
     crossPlatformAlert(
@@ -228,6 +291,7 @@ const SubscriptionManagementScreen = ({ navigation }: any) => {
   const planLabel = PLAN_LABELS[subscription.plan]?.bg || subscription.plan;
   const statusColor = STATUS_COLORS[subscription.status] || STATUS_COLORS.PAUSED;
   const isActive = subscription.status === 'ACTIVE' || subscription.status === 'TRIALING';
+  const isFailedPayment = FAILED_PAYMENT_STATUSES.includes(subscription.status);
   const isCancellationPending = subscription.cancelAtPeriodEnd === true;
   const trialRefundWindow = subscription.trialRefundEligibleUntil
     ? new Date(subscription.trialRefundEligibleUntil) > new Date() && !subscription.trialRefundUsed
@@ -297,6 +361,42 @@ const SubscriptionManagementScreen = ({ navigation }: any) => {
         </View>
       </View>
 
+      {/* S2 — Failed-payment recovery banner (spec §3.4/§3.5).
+          Shown on PAST_DUE/FAILED_PAYMENT with "Retry" (S3) + "Change card" (S1). */}
+      {isFailedPayment && (
+        <View style={s.failedBanner}>
+          <View style={s.failedHeader}>
+            <Ionicons name="alert-circle" size={22} color="#EF4444" />
+            <Text style={s.failedTitle}>{t('subscription.paymentFailedTitle', 'Плащането за абонамент не премина')}</Text>
+          </View>
+          <Text style={s.failedSub}>
+            {t('subscription.paymentFailedSub', 'Не успяхме да подновим абонамента Ви. Опитайте отново или сменете платежната карта, за да запазите достъпа си.')}
+          </Text>
+          <View style={s.failedActions}>
+            <TouchableOpacity
+              style={[s.failedBtn, s.failedBtnPrimary]}
+              onPress={handleRetryPayment}
+              disabled={retrying || changingCard}
+              activeOpacity={0.85}
+            >
+              {retrying
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Text style={s.failedBtnPrimaryText}>{t('subscription.retryPayment', 'Подновете плащането')}</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.failedBtn, s.failedBtnSecondary]}
+              onPress={handleChangeCard}
+              disabled={retrying || changingCard}
+              activeOpacity={0.85}
+            >
+              {changingCard
+                ? <ActivityIndicator size="small" color="#EF4444" />
+                : <Text style={s.failedBtnSecondaryText}>{t('subscription.changeCard', 'Сменете картата')}</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {/* Trial refund banner — only within 24h */}
       {trialRefundWindow && (
         <TouchableOpacity style={s.trialBanner} onPress={handleTrialRefund} activeOpacity={0.8}>
@@ -311,13 +411,28 @@ const SubscriptionManagementScreen = ({ navigation }: any) => {
 
       {/* Actions */}
       <View style={s.actionsCard}>
-        {/* Upgrade (for non-Premium) */}
+        {/* Upgrade (for non-Premium). S5 — pass currentCardType so the upgrade
+            screen hides the current/downgrade plans and shows the credit notice. */}
         {subscription.plan !== 'PREMIUM' && isActive && (
-          <TouchableOpacity style={s.actionRow} onPress={() => navigation.navigate('UpgradePlans')}>
+          <TouchableOpacity style={s.actionRow} onPress={() => navigation.navigate('UpgradePlans', { currentCardType: subscription.plan })}>
             <View style={[s.actionIcon, { backgroundColor: isDarkMode ? 'rgba(212,168,67,0.15)' : 'rgba(212,168,67,0.1)' }]}>
               <Ionicons name="arrow-up-circle-outline" size={20} color="#D4A843" />
             </View>
             <Text style={s.actionLabel}>{t('subscription.upgradeToPremium', 'Преминаване към Premium Monthly')}</Text>
+            <Ionicons name="chevron-forward" size={18} color={theme.colors.onSurfaceVariant} />
+          </TouchableOpacity>
+        )}
+
+        {/* S1 — Change payment card (always available while not failed; the
+            failed-payment banner already exposes it for the failed state). */}
+        {!isFailedPayment && (
+          <TouchableOpacity style={s.actionRow} onPress={handleChangeCard} disabled={changingCard}>
+            <View style={[s.actionIcon, { backgroundColor: isDarkMode ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)' }]}>
+              {changingCard
+                ? <ActivityIndicator size="small" color="#3B82F6" />
+                : <Ionicons name="card-outline" size={20} color={isDarkMode ? '#60A5FA' : '#3B82F6'} />}
+            </View>
+            <Text style={s.actionLabel}>{t('subscription.changeCard', 'Сменете картата')}</Text>
             <Ionicons name="chevron-forward" size={18} color={theme.colors.onSurfaceVariant} />
           </TouchableOpacity>
         )}
@@ -421,6 +536,21 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
   toggleRow: { justifyContent: 'space-between' },
   infoLabel: { fontSize: 14, color: theme.colors.onSurfaceVariant },
   infoValue: { fontSize: 14, fontWeight: '600', color: theme.colors.onSurface, marginLeft: 'auto' as any },
+
+  failedBanner: {
+    backgroundColor: isDarkMode ? 'rgba(239,68,68,0.12)' : '#FEF2F2',
+    borderRadius: 16, padding: 16, marginBottom: 16,
+    borderWidth: 1, borderColor: isDarkMode ? 'rgba(239,68,68,0.35)' : 'rgba(239,68,68,0.25)',
+  },
+  failedHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  failedTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: '#EF4444' },
+  failedSub: { fontSize: 13, color: isDarkMode ? '#FCA5A5' : '#991B1B', marginTop: 8, lineHeight: 18 },
+  failedActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  failedBtn: { flex: 1, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
+  failedBtnPrimary: { backgroundColor: '#EF4444' },
+  failedBtnPrimaryText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  failedBtnSecondary: { borderWidth: 1.5, borderColor: '#EF4444', backgroundColor: 'transparent' },
+  failedBtnSecondaryText: { color: '#EF4444', fontWeight: '700', fontSize: 14 },
 
   trialBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 12,

@@ -60,6 +60,20 @@ const PENDING_STATUSES = new Set(['PENDING', 'PENDING_CONFIRMATION', 'PROCESSING
 const APPROVED_STATUSES = new Set(['APPROVED']);
 const REJECTED_STATUSES = new Set(['REJECTED', 'EXPIRED']);
 
+// R5 §3.2 — collapse internal pipeline states onto the canonical user vocabulary.
+// The user never sees PROCESSING/VALIDATING/MANUAL_REVIEW/PENDING_CONFIRMATION.
+const CANONICAL_STATUS: Record<string, string> = {
+  PENDING: 'IN_REVIEW',
+  PENDING_CONFIRMATION: 'IN_REVIEW',
+  PROCESSING: 'IN_REVIEW',
+  VALIDATING: 'IN_REVIEW',
+  MANUAL_REVIEW: 'IN_REVIEW',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  EXPIRED: 'EXPIRED',
+};
+const toCanonicalStatus = (status: string): string => CANONICAL_STATUS[status] || status;
+
 const ReceiptsScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const { theme, isDarkMode } = useTheme();
@@ -172,6 +186,7 @@ const ReceiptsScreen = ({ navigation }: any) => {
 
   const renderReceiptItem = ({ item }: { item: Receipt }) => {
     const statusConfig = STATUS_CONFIG[item.status] || STATUS_CONFIG.EXPIRED;
+    const canonicalStatus = toCanonicalStatus(item.status); // R5
 
     return (
       <TouchableOpacity
@@ -196,7 +211,7 @@ const ReceiptsScreen = ({ navigation }: any) => {
             <View style={[s.statusBadge, { backgroundColor: isDarkMode ? `${statusConfig.bg}30` : statusConfig.bg }]}>
               <Ionicons name={statusConfig.icon} size={13} color={isDarkMode ? statusConfig.text.replace('#0', '#6').replace('#1', '#5').replace('#3', '#7').replace('#5', '#9').replace('#9', '#D') : statusConfig.text} />
               <Text style={[s.statusText, { color: isDarkMode ? statusConfig.text.replace('#0', '#6').replace('#1', '#5').replace('#3', '#7').replace('#5', '#9').replace('#9', '#D') : statusConfig.text }]}>
-                {t(`receipts.status.${item.status}`) || item.status}
+                {t(`receipts.status.${canonicalStatus}`, t(`receipts.status.${item.status}`, item.status))}
               </Text>
             </View>
           </View>

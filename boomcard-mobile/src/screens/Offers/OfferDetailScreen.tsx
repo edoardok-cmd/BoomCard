@@ -22,6 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useTheme } from '../../contexts/ThemeContext';
 import { OffersApi } from '../../api/offers.api';
+import FavoriteButton from '../../components/FavoriteButton';
 import type { Offer } from '../../types';
 import { OfferType } from '../../types';
 
@@ -148,8 +149,11 @@ export default function OfferDetailScreen() {
         </Text>
       ) : null}
 
-      {/* Title */}
-      <Text style={[styles.title, { color: theme.colors.onSurface }]}>{title}</Text>
+      {/* Title + favorite heart (N5) */}
+      <View style={styles.titleRow}>
+        <Text style={[styles.title, { color: theme.colors.onSurface, flex: 1 }]}>{title}</Text>
+        {offer.id ? <FavoriteButton entityKind="offer" entityId={offer.id} size={26} /> : null}
+      </View>
 
       {/* Discount label */}
       {discountLabel ? (
@@ -345,11 +349,16 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginTop: 12,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginHorizontal: 20,
+    marginTop: 6,
+    gap: 8,
+  },
   title: {
     fontSize: 22,
     fontWeight: '800',
-    marginHorizontal: 20,
-    marginTop: 6,
     lineHeight: 28,
   },
   discount: {

@@ -18,7 +18,9 @@
     "refresh": "Refresh",
     "connectionTimeout": "Connection timed out. Please check your internet and try again.",
     "noData": "No data",
-    "loadError": "Could not load data. Tap to retry."
+    "loadError": "Could not load data. Tap to retry.",
+    "info": "Information",
+    "featureUnavailable": "This feature is temporarily unavailable."
   },
   "auth": {
     "login": "Login",
@@ -78,7 +80,11 @@
     "fillRequiredFields": "Please fill in all required fields",
     "createAccountButton": "Create Account",
     "registrationFailed": "Registration Failed",
-    "unableToCreateAccount": "Unable to create account"
+    "unableToCreateAccount": "Unable to create account",
+    "emailNotVerifiedTitle": "Email not verified",
+    "emailNotVerifiedBody": "Please verify your email address. We can send you a new verification link.",
+    "resendVerification": "Resend",
+    "verificationResent": "If an account exists for this email, we've sent a verification link."
   },
   "dashboard": {
     "title": "Dashboard",
@@ -114,7 +120,14 @@
     "upgradeYourPlan": "Upgrade Your Plan",
     "unlockHigherCashback": "Unlock higher cashback rates",
     "noCardTitle": "Card not activated",
-    "noCardDesc": "Tap to activate your BOOM Card"
+    "noCardDesc": "Tap to activate your BOOM Card",
+    "cashbackAvailable": "Available",
+    "cashbackPending": "Pending",
+    "cashbackExpiring": "Expiring soon",
+    "cardFailedPayment": "Payment failed",
+    "uploadReceipt": "Upload receipt",
+    "uploadReceiptSub": "Earn cashback",
+    "recentTransactions": "Recent transactions"
   },
   "wallet": {
     "title": "Wallet",
@@ -150,7 +163,12 @@
     "setupPayoutAccount": "Set up payout bank account",
     "payoutIbanStored": "Payout to bank account ending {{iban}}",
     "payoutBeneficiaryRequired": "Name required",
-    "payoutBeneficiaryRequiredDesc": "Please enter the account holder name as shown on your bank account."
+    "payoutBeneficiaryRequiredDesc": "Please enter the account holder name as shown on your bank account.",
+    "inReview": "In Review",
+    "sentToPayout": "Sent to payout",
+    "expiringSoon": "Expiring soon: {{amount}}",
+    "viewExpiryCountdown": "View expiry",
+    "autoPayoutHint": "You will be paid out automatically once you reach {{amount}}."
   },
   "transactions": {
     "title": "Transaction History",
@@ -194,7 +212,8 @@
       "VALIDATING": "Validating",
       "REJECTED": "Rejected",
       "MANUAL_REVIEW": "Review",
-      "EXPIRED": "Expired"
+      "EXPIRED": "Expired",
+      "IN_REVIEW": "In Review"
     },
     "loadingReceipts": "Loading receipts...",
     "failedToLoad": "Failed to load receipts",
@@ -236,7 +255,12 @@
       "submitReceipt": "Submit Receipt",
       "positionReceipt": "Position receipt within frame",
       "gallery": "Gallery"
-    }
+    },
+    "approved": "Approved",
+    "noFilterResults": "No results",
+    "noFilterResultsDesc": "No receipts for the selected filter. Try a different period or status.",
+    "submittedAt": "Submitted on",
+    "rejectionReason": "Rejection reason"
   },
   "card": {
     "title": "My Card",
@@ -352,7 +376,20 @@
     "startingCamera": "Starting camera...",
     "camerapaused": "Camera paused",
     "receiptDeadlineExpired": "Submission deadline has passed. Receipts must be submitted by 6:00 AM the following morning.",
-    "locationTooFar": "You are too far from the venue ({{distance}} away, limit is {{limit}}m). Please return to the venue to submit your receipt."
+    "locationTooFar": "You are too far from the venue ({{distance}} away, limit is {{limit}}m). Please return to the venue to submit your receipt.",
+    "accountPaused": "Your account is paused. Scanning is unavailable until it's reactivated. Please contact support.",
+    "outdatedQr": "This BOOM sticker is outdated. Please ask the venue for a new one.",
+    "partnerNotAccepting": "This venue isn't accepting BoomCard transactions right now. Try again later or see nearby active venues.",
+    "subscriptionFailedPayment": "Your subscription has a failed payment. Resume it from the “Subscription & payments” menu to keep scanning receipts.",
+    "renewSubscription": "Renew subscription",
+    "stickerInvalid": "This QR code isn't active or can't be used right now.",
+    "successReviewTitle": "Submitted for review",
+    "successReviewDesc": "Your receipt has been submitted for review.",
+    "successApprovedDesc": "Your cashback was approved and credited.",
+    "successReviewNote": "You'll receive the cashback once approved.",
+    "successApprovedNote": "The cashback has been added to your wallet.",
+    "venueLookupFailedWarning": "Couldn't load venue details — your submission will still be reviewed by the server.",
+    "cameraOnlyHint": "Receipts must be photographed live with your camera. Gallery upload is not accepted."
   },
   "profile": {
     "title": "Profile",
@@ -405,7 +442,22 @@
     "passwordMismatch": "New passwords do not match",
     "passwordMustBeDifferent": "New password must be different from current password",
     "passwordChangeSuccess": "Password changed successfully",
-    "passwordChangeError": "Failed to change password"
+    "passwordChangeError": "Failed to change password",
+    "invalidEmail": "Invalid email address.",
+    "emailChangeFailed": "Email change request failed.",
+    "emailCodePasswordRequired": "Enter your code and password.",
+    "emailChanged": "Your email address has been changed.",
+    "city": "City",
+    "enterCity": "Enter city",
+    "country": "Country",
+    "enterCountry": "Enter country",
+    "changeEmail": "Change",
+    "emailChangeHint": "You'll receive a confirmation code at the new address.",
+    "changeEmailTitle": "Change email",
+    "changeEmailRequestBody": "Enter the new email address. We'll send a confirmation code.",
+    "newEmailPlaceholder": "New email",
+    "changeEmailVerifyBody": "Enter the code from the email and your current password.",
+    "emailCodePlaceholder": "Confirmation code"
   },
   "settings": {
     "title": "Settings",
@@ -452,20 +504,26 @@
     "sendEmail": "Send Email",
     "info": "Info",
     "account": "Account",
-    "deleteAccount": "Delete Profile",
-    "deleteAccountDesc": "Permanently delete your account and all associated data",
-    "deleteAccountConfirmTitle": "Delete Profile",
-    "deleteAccountConfirmMsg": "Are you sure? This action is irreversible. All your data will be permanently deleted.",
-    "deleteAccountSuccess": "Your profile has been deleted successfully.",
-    "deleteAccountError": "Failed to delete profile. Please try again.",
-    "deletePasswordRequired": "Please enter your password to confirm deletion.",
-    "deletePasswordPrompt": "Enter your current password to confirm account deletion.",
+    "deleteAccount": "Close Account",
+    "deleteAccountDesc": "Deactivates your access and stops marketing. Financial history is retained per legal obligations.",
+    "deleteAccountConfirmTitle": "Close Account",
+    "deleteAccountConfirmMsg": "Your access will be deactivated and marketing messages will stop. Your financial history (transactions, cashback, invoices) is retained as required by law. This action cannot be undone.",
+    "deleteAccountSuccess": "Your account access has been deactivated.",
+    "deleteAccountError": "Failed to close the account. Please try again.",
+    "deletePasswordRequired": "Please enter your password to confirm.",
+    "deletePasswordPrompt": "Your access will be deactivated and marketing will stop; financial history is retained per legal obligations. This cannot be undone. Enter your current password to confirm.",
     "deletePasswordPlaceholder": "Current password",
     "marketingConsent": "Marketing Preferences",
     "marketingEmail": "Email Marketing",
     "marketingEmailDesc": "Receive promotional emails and offers",
     "marketingPhone": "SMS / Phone Marketing",
-    "marketingPhoneDesc": "Receive promotional SMS messages"
+    "marketingPhoneDesc": "Receive promotional SMS messages",
+    "consentSaveFailed": "Failed to save consent.",
+    "prefsSaveFailed": "Failed to save preferences.",
+    "catSystem": "System notifications",
+    "catSystemDesc": "Mandatory — always on",
+    "tabs": "Navigation",
+    "showInBottomNav": "Show in bottom navigation"
   },
   "help": {
     "category": "Category",
@@ -480,12 +538,25 @@
     "message": "Message",
     "messagePlaceholder": "Describe your issue in detail...",
     "messageTooShort": "Message must be at least 10 characters.",
+    "title": "Help",
     "submit": "Send Request",
     "submitSuccess": "Your request has been submitted. We will get back to you shortly.",
-    "submitError": "Failed to submit. Please try again."
+    "submitError": "Failed to submit. Please try again.",
+    "replyTooShort": "Your message must be at least 10 characters.",
+    "replyFailed": "Failed to send.",
+    "myRequests": "My requests",
+    "noReplies": "No replies yet.",
+    "staff": "Support",
+    "you": "You",
+    "ticketClosed": "This request is closed.",
+    "replyPlaceholder": "Write a reply...",
+    "noRequests": "You have no submitted requests.",
+    "newRequest": "New request",
+    "requestType": "Request type"
   },
   "subscription": {
     "title": "Subscription Plans",
+    "management": "Subscription & payments",
     "subtitle": "Choose the perfect plan for your lifestyle",
     "trialText": "24h free Premium trial for all plans",
     "yearly": "Yearly (20% off)",
@@ -509,15 +580,49 @@
     "minPayout": "Min. payout: €{{amount}}",
     "status": {
       "ACTIVE": "Active",
-      "TRIALING": "Trialing",
-      "PAST_DUE": "Past due",
+      "TRIALING": "Trial",
+      "PAST_DUE": "Failed Payment",
       "UNPAID": "Unpaid",
       "CANCELLED": "Cancelled",
       "EXPIRED": "Expired",
       "INCOMPLETE": "Incomplete",
       "INCOMPLETE_EXPIRED": "Incomplete expired",
-      "PAUSED": "Suspended"
-    }
+      "PAUSED": "Paused",
+      "FAILED_PAYMENT": "Failed Payment"
+    },
+    "cancelTitle": "Cancel subscription",
+    "cancelConfirm": "Your subscription will stay active until the end of the current period. Are you sure?",
+    "cancelAction": "Cancel subscription",
+    "cancelledTitle": "Subscription cancelled",
+    "cancelledDesc": "You'll have access until the end of the current period.",
+    "reactivated": "Subscription reactivated.",
+    "changeCardNoUrl": "The card change link is unavailable.",
+    "changeCardFailed": "Failed to change card",
+    "retrySuccess": "Payment succeeded. Your subscription is active.",
+    "retryFailed": "Payment failed. Try changing your card.",
+    "trialRefundTitle": "Request refund",
+    "trialRefundConfirm": "You'll receive a full refund. All accrued cashback will be voided. Continue?",
+    "trialRefundAction": "Request refund",
+    "refundInitiated": "Request received",
+    "refundDesc": "The amount will be refunded within 5-7 business days.",
+    "noSubscription": "You have no active subscription",
+    "currentPlan": "Current plan",
+    "accessUntil": "Access until",
+    "nextPayment": "Next payment",
+    "paymentCard": "Card",
+    "autoRenewal": "Auto-renewal",
+    "paymentFailedTitle": "Subscription payment failed",
+    "paymentFailedSub": "We couldn't renew your subscription. Try again or change your payment card to keep your access.",
+    "retryPayment": "Retry payment",
+    "changeCard": "Change card",
+    "trialRefundAvailable": "24-hour trial",
+    "trialRefundSub": "You can request a full refund",
+    "upgradeToPremium": "Upgrade to Premium Monthly",
+    "reactivate": "Resume subscription",
+    "cancelSubscription": "Cancel subscription",
+    "paymentHistory": "Payment history",
+    "subscriptionPayment": "Subscription payment",
+    "paid": "Paid"
   },
   "errors": {
     "networkError": "Network error. Please check your connection.",
@@ -638,6 +743,34 @@
   },
   "favorites": {
     "empty": "No favorite places",
-    "emptyDesc": "Add favorite BOOM places by tapping the heart icon"
+    "emptyDesc": "Add favorite BOOM places by tapping the heart icon",
+    "title": "Favorites",
+    "explorePlaces": "Explore BOOM places",
+    "unknownPlace": "BOOM place",
+    "view": "View"
+  },
+  "account": {
+    "verificationSent": "We've sent a new verification email.",
+    "archivedTitle": "Account closed",
+    "archivedSub": "Access to this account has been terminated. Please contact support for assistance.",
+    "contactSupport": "Support",
+    "pausedTitle": "Account paused",
+    "pausedSub": "Your account is temporarily paused. Scanning and cashback are unavailable. Contact support to reactivate it.",
+    "resume": "Reactivate",
+    "verifyTitle": "Verify your email",
+    "verifySub": "Please verify your email address to use all features.",
+    "resendVerification": "Resend"
+  },
+  "cashback": {
+    "title": "Cashback",
+    "fromScan": "Cashback from scan",
+    "validUntil": "Valid until",
+    "voidedReason": "Reason",
+    "emptyFiltered": "No cashback entries for the selected filters."
+  },
+  "nearby": {
+    "title": "Nearby",
+    "locationSoon": "Location filtering will be available soon. Showing all BOOM places.",
+    "noPlaces": "No places available"
   }
 }

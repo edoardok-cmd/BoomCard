@@ -125,25 +125,9 @@ export class StickersApi {
     );
   }
 
-  /**
-   * Get venue sticker configuration
-   */
-  static async getVenueConfig(
-    venueId: string
-  ): Promise<ApiResponse<{
-    cashbackPercent: number;
-    premiumBonus?: number;
-    platinumBonus?: number;
-    minBillAmount?: number;
-    maxScansPerDay?: number;
-    gpsVerificationEnabled: boolean;
-    gpsRadiusMeters: number;
-    ocrVerificationEnabled: boolean;
-  }>> {
-    return await apiClient.get(
-      `${API_CONFIG.ENDPOINTS.STICKERS.BASE}/venue/${venueId}/config`
-    );
-  }
+  // NOTE: getVenueConfig() was removed (R1). GET /api/stickers/venue/:venueId/config
+  // is PARTNER/ADMIN-only and 403s for USER. The public validateSticker() above
+  // already returns cashbackPercent for the user scan flow.
 }
 
 export default StickersApi;

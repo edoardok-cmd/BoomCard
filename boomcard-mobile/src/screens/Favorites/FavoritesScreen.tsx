@@ -21,19 +21,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../../contexts/ThemeContext';
-import apiClient from '../../api/client';
+import { favoritesApi, FavoriteRef } from '../../api/favorites.api';
 import { PartnersApi } from '../../api/partners.api';
+import { OffersApi } from '../../api/offers.api';
+import { VenuesApi } from '../../api/venues.api';
 import type { Partner } from '../../types';
-
-interface FavoriteRef {
-  id: string;
-  entityKind: string;
-  entityId: string;
-  createdAt: string;
-}
 
 interface FavoritePartner extends FavoriteRef {
   partner?: Partner;
+  // Generic display fields resolved for offer/venue kinds (N5).
+  title?: string;
+  subtitle?: string;
+  entity?: any; // resolved offer/venue object for navigation
 }
 
 const FavoritesScreen = ({ navigation }: any) => {
@@ -48,18 +47,29 @@ const FavoritesScreen = ({ navigation }: any) => {
   const loadData = async () => {
     setError(null);
     try {
-      const res = await apiClient.get('/api/favorites');
+      const res = await favoritesApi.list();
       if (!res.success) throw new Error('Failed to load favorites');
 
-      const refs: FavoriteRef[] = res.data?.data || [];
-      const partnerRefs = refs.filter(r => r.entityKind === 'partner');
+      const refs: FavoriteRef[] = res.data || [];
 
-      // Fetch partner details for each favorite in parallel
+      // N5 — resolve display info for all three favorite kinds in parallel.
       const enriched = await Promise.all(
-        partnerRefs.map(async (ref): Promise<FavoritePartner> => {
+        refs.map(async (ref): Promise<FavoritePartner> => {
           try {
-            const pRes = await PartnersApi.getPartnerById(ref.entityId);
-            return { ...ref, partner: pRes.success ? pRes.data : undefined };
+            if (ref.entityKind === 'partner') {
+              const pRes = await PartnersApi.getPartnerById(ref.entityId);
+              const p = pRes.success ? pRes.data : undefined;
+              return { ...ref, partner: p, title: p?.businessName, subtitle: [p?.category, p?.city].filter(Boolean).join(' · ') };
+            }
+            if (ref.entityKind === 'offer') {
+              const oRes = await OffersApi.getOfferById(ref.entityId);
+              const o: any = oRes.success ? oRes.data : undefined;
+              return { ...ref, entity: o, title: o?.title, subtitle: o?.partner?.businessName || o?.category };
+            }
+            // venue
+            const vRes = await VenuesApi.getVenueById(ref.entityId);
+            const v: any = vRes.success ? vRes.data : undefined;
+            return { ...ref, entity: v, title: v?.name, subtitle: [v?.category, v?.city].filter(Boolean).join(' · ') };
           } catch {
             return ref;
           }
@@ -78,9 +88,7 @@ const FavoritesScreen = ({ navigation }: any) => {
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
   const handleRemove = async (fav: FavoritePartner) => {
-    const res = await apiClient.delete('/api/favorites', {
-      data: { entityKind: fav.entityKind, entityId: fav.entityId },
-    });
+    const res = await favoritesApi.remove(fav.entityKind, fav.entityId);
     if (res.success) {
       setFavorites(prev => prev.filter(f => f.id !== fav.id));
     }
@@ -126,37 +134,39 @@ const FavoritesScreen = ({ navigation }: any) => {
     </View>
   );
 
+  const KIND_ICON: Record<string, any> = { partner: 'storefront', offer: 'pricetag', venue: 'location' };
+
   const renderItem = ({ item }: { item: FavoritePartner }) => {
     const p = item.partner;
-    const name = p?.businessName || t('favorites.unknownPlace', 'BOOM място');
-    const category = p?.category || '';
-    const city = p?.city || '';
+    const name = item.title || p?.businessName || t('favorites.unknownPlace', 'BOOM място');
+    const subtitle = item.subtitle || '';
+
+    const onView = () => {
+      if (item.entityKind === 'offer' && item.entity) {
+        navigation.navigate('OfferDetail', { offer: item.entity });
+      } else if (item.entityKind === 'partner' && (p?.id || item.entityId)) {
+        // Partner favorites jump to that partner's offers list.
+        navigation.navigate('Offers', { partnerId: p?.id || item.entityId });
+      } else if (item.entityKind === 'venue') {
+        navigation.navigate('Offers', { venueId: item.entityId });
+      }
+    };
 
     return (
       <View style={s.card}>
         <View style={s.cardLeft}>
           <View style={s.iconCircle}>
-            <Ionicons name="storefront" size={22} color={isDarkMode ? '#A78BFA' : '#8B5CF6'} />
+            <Ionicons name={KIND_ICON[item.entityKind] || 'heart'} size={22} color={isDarkMode ? '#A78BFA' : '#8B5CF6'} />
           </View>
           <View style={s.cardInfo}>
             <Text style={s.cardName} numberOfLines={1}>{name}</Text>
-            {(category || city) ? (
-              <Text style={s.cardMeta} numberOfLines={1}>
-                {[category, city].filter(Boolean).join(' · ')}
-              </Text>
+            {subtitle ? (
+              <Text style={s.cardMeta} numberOfLines={1}>{subtitle}</Text>
             ) : null}
           </View>
         </View>
         <View style={s.cardActions}>
-          <TouchableOpacity
-            style={s.viewBtn}
-            activeOpacity={0.7}
-            onPress={() => {
-              if (p?.id) {
-                navigation.navigate('OfferDetail', { partnerId: p.id, partner: p });
-              }
-            }}
-          >
+          <TouchableOpacity style={s.viewBtn} activeOpacity={0.7} onPress={onView}>
             <Text style={s.viewBtnText}>{t('favorites.view', 'Виж')}</Text>
           </TouchableOpacity>
           <TouchableOpacity

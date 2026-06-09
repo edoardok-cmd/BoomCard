@@ -190,9 +190,63 @@ export class AuthApi {
   /**
    * Record a consent choice (GDPR audit trail).
    * type: 'email_marketing' | 'phone_marketing' | 'marketing' | 'terms' | 'privacy'
+   *
+   * NOTE: this is an audit-only write — it does NOT update the user's preference
+   * columns. Use getMarketingConsent()/updateMarketingConsent() to read and
+   * persist the actual marketing-consent state (A1).
    */
   static async recordConsent(type: string, granted: boolean): Promise<ApiResponse<void>> {
     return apiClient.post<void>(API_CONFIG.ENDPOINTS.AUTH.CONSENT, { type, granted });
+  }
+
+  /**
+   * A1 — read the caller's persisted marketing-consent state.
+   */
+  static async getMarketingConsent(): Promise<ApiResponse<{ marketingConsentEmail: boolean; marketingConsentPhone: boolean }>> {
+    return apiClient.get(API_CONFIG.ENDPOINTS.AUTH.MARKETING_CONSENT);
+  }
+
+  /**
+   * A1 — update the caller's marketing-consent columns (PUT). Pass either or both
+   * channels; the backend stamps timestamps and mirrors the legacy aggregate flag.
+   */
+  static async updateMarketingConsent(
+    payload: { marketingConsentEmail?: boolean; marketingConsentPhone?: boolean }
+  ): Promise<ApiResponse<{ marketingConsentEmail: boolean; marketingConsentPhone: boolean }>> {
+    return apiClient.put(API_CONFIG.ENDPOINTS.AUTH.MARKETING_CONSENT, payload);
+  }
+
+  /**
+   * A4 — initiate an email change. Sends a verification code to the new address.
+   */
+  static async requestEmailChange(newEmail: string): Promise<ApiResponse<void>> {
+    return apiClient.post<void>(API_CONFIG.ENDPOINTS.AUTH.CHANGE_EMAIL_REQUEST, { newEmail });
+  }
+
+  /**
+   * A4 — confirm an email change with the code + current password.
+   */
+  static async confirmEmailChange(code: string, password: string): Promise<ApiResponse<User>> {
+    const response = await apiClient.post<User>(API_CONFIG.ENDPOINTS.AUTH.CHANGE_EMAIL_VERIFY, { code, password });
+    if (response.success && response.data) {
+      const updated = (response.data as any).data ?? response.data;
+      await StorageService.setUserData(updated);
+    }
+    return response;
+  }
+
+  /**
+   * A9 — resend the email-verification link for the authenticated account.
+   */
+  static async resendEmailVerification(): Promise<ApiResponse<{ alreadyVerified: boolean }>> {
+    return apiClient.post(API_CONFIG.ENDPOINTS.AUTH.RESEND_EMAIL_VERIFICATION);
+  }
+
+  /**
+   * A9 — request a verification link by email when locked out of login (public).
+   */
+  static async requestEmailVerification(email: string): Promise<ApiResponse<void>> {
+    return apiClient.post<void>(API_CONFIG.ENDPOINTS.AUTH.REQUEST_EMAIL_VERIFICATION, { email });
   }
 }
 

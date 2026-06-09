@@ -8,11 +8,11 @@ import {
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
 import { crossPlatformAlert } from '../../utils/alert';
-import apiClient from '../../api/client';
-import { API_CONFIG } from '../../constants/config';
+import { helpApi } from '../../api/help.api';
 
 const CATEGORIES = [
   { key: 'CASHBACK', labelKey: 'help.categoryCashback' },
@@ -22,7 +22,16 @@ const CATEGORIES = [
   { key: 'OTHER', labelKey: 'help.categoryOther' },
 ] as const;
 
+// N4 §12.2 — request types accepted by the backend (USER_REQUEST_TYPES).
+const REQUEST_TYPE_OPTIONS = [
+  { key: 'SUPPORT', labelKey: 'help.typeSupport', fallback: 'Поддръжка' },
+  { key: 'DISPUTE', labelKey: 'help.typeDispute', fallback: 'Спор' },
+  { key: 'CHANGE', labelKey: 'help.typeChange', fallback: 'Промяна' },
+  { key: 'OTHER', labelKey: 'help.typeOther', fallback: 'Друго' },
+] as const;
+
 type Category = typeof CATEGORIES[number]['key'];
+type RequestType = typeof REQUEST_TYPE_OPTIONS[number]['key'];
 
 const HelpScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
@@ -30,6 +39,7 @@ const HelpScreen = ({ navigation }: any) => {
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [category, setCategory] = useState<Category>('OTHER');
+  const [requestType, setRequestType] = useState<RequestType>('SUPPORT');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const styles = getStyles(theme);
@@ -46,10 +56,12 @@ const HelpScreen = ({ navigation }: any) => {
 
     setIsSubmitting(true);
     try {
-      const response = await apiClient.post(
-        API_CONFIG.ENDPOINTS.HELP.SUBMIT_TICKET,
-        { subject: subject.trim(), body: message.trim(), category }
-      );
+      const response = await helpApi.submitTicket({
+        subject: subject.trim(),
+        body: message.trim(),
+        category,
+        requestType, // N4 §12.2
+      });
       if (response.success) {
         crossPlatformAlert(t('common.success'), t('help.submitSuccess'), [
           { text: t('common.ok'), onPress: () => navigation.goBack() },
@@ -67,6 +79,29 @@ const HelpScreen = ({ navigation }: any) => {
   return (
     <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
       <View style={styles.content}>
+        {/* N3 — link to the user's existing requests (status + thread). */}
+        <TouchableOpacity style={styles.myRequestsBtn} onPress={() => navigation.navigate('MyRequests')}>
+          <Ionicons name="list-outline" size={20} color={theme.colors.primary} />
+          <Text style={styles.myRequestsText}>{t('help.myRequests', 'Моите заявки')}</Text>
+          <Ionicons name="chevron-forward" size={18} color={theme.colors.onSurfaceVariant} />
+        </TouchableOpacity>
+
+        {/* N4 §12.2 — request type */}
+        <Text style={styles.sectionTitle}>{t('help.requestType', 'Тип заявка')}</Text>
+        <View style={styles.categoryRow}>
+          {REQUEST_TYPE_OPTIONS.map((rt) => (
+            <TouchableOpacity
+              key={rt.key}
+              style={[styles.categoryBtn, requestType === rt.key && styles.categoryBtnActive]}
+              onPress={() => setRequestType(rt.key)}
+            >
+              <Text style={[styles.categoryBtnText, requestType === rt.key && styles.categoryBtnTextActive]}>
+                {t(rt.labelKey, rt.fallback)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         <Text style={styles.sectionTitle}>{t('help.category')}</Text>
         <View style={styles.categoryRow}>
           {CATEGORIES.map((cat) => (
@@ -131,6 +166,18 @@ const getStyles = (theme: any) => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  myRequestsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.outline,
+    backgroundColor: theme.colors.surfaceVariant,
+    marginBottom: 4,
+  },
+  myRequestsText: { flex: 1, fontSize: 15, fontWeight: '600', color: theme.colors.onSurface },
   categoryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   categoryBtn: {
     paddingHorizontal: 12,

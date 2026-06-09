@@ -8,11 +8,31 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
+import { View, StyleSheet, FlatList, RefreshControl, ScrollView, TouchableOpacity } from 'react-native';
 import { Text, Card, Chip } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import { walletApi } from '../../api/wallet.api';
 import { formatDualCurrency, formatDateTime } from '../../utils/format';
+
+// W8 §6.7 — period + status filters forwarded to the backend.
+type PeriodFilter = 'all' | '7d' | '30d';
+type StatusFilter = 'all' | 'PENDING' | 'CLEARED' | 'LOCKED' | 'PAID' | 'EXPIRED' | 'VOIDED';
+
+const PERIOD_FILTERS: { key: PeriodFilter; labelKey: string; fallback: string }[] = [
+  { key: 'all', labelKey: 'cashback.periodAll', fallback: 'Всички' },
+  { key: '7d',  labelKey: 'cashback.period7d',  fallback: '7 дни' },
+  { key: '30d', labelKey: 'cashback.period30d', fallback: '30 дни' },
+];
+
+const STATUS_FILTERS: { key: StatusFilter; labelKey: string; fallback: string }[] = [
+  { key: 'all',     labelKey: 'cashback.statusAll',     fallback: 'Всички' },
+  { key: 'CLEARED', labelKey: 'cashback.statusCleared', fallback: 'Налични' },
+  { key: 'PENDING', labelKey: 'cashback.statusPending', fallback: 'Чакащи' },
+  { key: 'LOCKED',  labelKey: 'cashback.statusLocked',  fallback: 'В обработка' },
+  { key: 'PAID',    labelKey: 'cashback.statusPaid',    fallback: 'Изплатени' },
+  { key: 'EXPIRED', labelKey: 'cashback.statusExpired', fallback: 'Изтекли' },
+  { key: 'VOIDED',  labelKey: 'cashback.statusVoided',  fallback: 'Анулирани' },
+];
 
 type CashbackEntry = {
   id: string;
@@ -86,10 +106,17 @@ export default function CashbackHistoryScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [entries, setEntries] = useState<CashbackEntry[]>([]);
+  const [period, setPeriod] = useState<PeriodFilter>('all');
+  const [status, setStatus] = useState<StatusFilter>('all');
 
   const load = useCallback(async () => {
     try {
-      const data = await walletApi.getTransactions({ type: 'CASHBACK_CREDIT', limit: 100 });
+      const data = await walletApi.getTransactions({
+        type: 'CASHBACK_CREDIT',
+        limit: 100,
+        ...(period !== 'all' ? { period } : {}),
+        ...(status !== 'all' ? { status } : {}),
+      });
       setEntries(data?.transactions ?? []);
     } catch (err) {
       console.error('[CashbackHistory] failed to load:', err);
@@ -97,7 +124,7 @@ export default function CashbackHistoryScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [period, status]);
 
   useEffect(() => {
     load();
@@ -173,17 +200,45 @@ export default function CashbackHistoryScreen() {
     );
   }
 
+  const FilterHeader = (
+    <View style={styles.filters}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+        {PERIOD_FILTERS.map((f) => (
+          <TouchableOpacity
+            key={f.key}
+            style={[styles.filterChip, period === f.key && styles.filterChipActive]}
+            onPress={() => setPeriod(f.key)}
+          >
+            <Text style={[styles.filterChipText, period === f.key && styles.filterChipTextActive]}>{t(f.labelKey, f.fallback)}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.filterRow, { marginTop: 8 }]}>
+        {STATUS_FILTERS.map((f) => (
+          <TouchableOpacity
+            key={f.key}
+            style={[styles.filterChip, status === f.key && styles.filterChipActive]}
+            onPress={() => setStatus(f.key)}
+          >
+            <Text style={[styles.filterChipText, status === f.key && styles.filterChipTextActive]}>{t(f.labelKey, f.fallback)}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+
   return (
     <FlatList
       style={styles.container}
       data={entries}
       keyExtractor={(item) => item.id}
       renderItem={renderEntry}
-      contentContainerStyle={entries.length === 0 ? styles.emptyContainer : styles.listContent}
+      ListHeaderComponent={FilterHeader}
+      contentContainerStyle={entries.length === 0 ? styles.emptyContainerWithHeader : styles.listContent}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       ListEmptyComponent={
         <Text style={styles.emptyText}>
-          {t('cashback.empty', 'Все още нямате кешбек записи.')}
+          {t('cashback.emptyFiltered', 'Няма кешбек записи за избраните филтри.')}
         </Text>
       }
     />
@@ -207,5 +262,15 @@ const styles = StyleSheet.create({
   stateChip: { height: 22, paddingHorizontal: 2 },
   stateChipText: { fontSize: 10, fontWeight: '700' },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 80 },
-  emptyText: { opacity: 0.6, fontSize: 14 },
+  emptyContainerWithHeader: { paddingHorizontal: 16, paddingTop: 16 },
+  emptyText: { opacity: 0.6, fontSize: 14, textAlign: 'center', marginTop: 40 },
+  filters: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
+  filterRow: { gap: 8, paddingRight: 16 },
+  filterChip: {
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 18,
+    backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0',
+  },
+  filterChipActive: { backgroundColor: '#111', borderColor: '#111' },
+  filterChipText: { fontSize: 13, color: '#475569', fontWeight: '600' },
+  filterChipTextActive: { color: '#FFFFFF' },
 });

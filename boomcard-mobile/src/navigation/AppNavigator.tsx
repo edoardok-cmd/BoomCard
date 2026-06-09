@@ -17,6 +17,8 @@ import { useTabVisibility } from '../contexts/TabVisibilityContext';
 import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
 import { ProgressRing } from '../components/loading';
 import BoomLogo from '../components/brand/BoomLogo';
+import AccountStatusBanner from '../components/AccountStatusBanner';
+import { navigationRef } from './navigationRef';
 import * as SecureStore from '../utils/secureStore';
 import { STORAGE_KEYS } from '../constants/config';
 
@@ -44,10 +46,10 @@ import ChangePasswordScreen from '../screens/Profile/ChangePasswordScreen';
 import SettingsScreen from '../screens/Profile/SettingsScreen';
 import SyncAnalysisScreen from '../screens/Profile/SyncAnalysisScreen';
 import HelpScreen from '../screens/Profile/HelpScreen';
+import MyRequestsScreen from '../screens/Profile/MyRequestsScreen';
 
 // Payment Screens
 import WalletScreen from '../screens/Payments/WalletScreen';
-import TopUpScreen from '../screens/Payments/TopUpScreen';
 import TransactionHistoryScreen from '../screens/Payments/TransactionHistoryScreen';
 import CashbackHistoryScreen from '../screens/Payments/CashbackHistoryScreen';
 
@@ -212,6 +214,9 @@ const MainNavigator = ({ initialRouteName = 'MainTabs', initialParams }: { initi
   const { theme } = useTheme();
 
   return (
+    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      {/* A2 — global account-status gate (paused / archived / verify-email). */}
+      <AccountStatusBanner />
     <Stack.Navigator
       initialRouteName={initialRouteName}
       screenOptions={{
@@ -241,14 +246,7 @@ const MainNavigator = ({ initialRouteName = 'MainTabs', initialParams }: { initi
           title: 'Wallet'
         }}
       />
-      <Stack.Screen
-        name="TopUp"
-        component={TopUpScreen}
-        options={{
-          headerShown: true,
-          title: 'Top Up'
-        }}
-      />
+      {/* W3: TopUp route removed — the wallet is a cashback-only ledger with no top-up concept (spec §6). */}
       <Stack.Screen
         name="TransactionHistory"
         component={TransactionHistoryScreen}
@@ -318,6 +316,11 @@ const MainNavigator = ({ initialRouteName = 'MainTabs', initialParams }: { initi
           headerShown: true,
           title: 'Support'
         }}
+      />
+      <Stack.Screen
+        name="MyRequests"
+        component={MyRequestsScreen}
+        options={{ headerShown: true, title: 'Моите заявки' }}
       />
       <Stack.Screen
         name="SyncAnalysis"
@@ -406,6 +409,7 @@ const MainNavigator = ({ initialRouteName = 'MainTabs', initialParams }: { initi
         options={{ headerShown: false }}
       />
     </Stack.Navigator>
+    </View>
   );
 };
 
@@ -485,7 +489,7 @@ export const AppNavigator = () => {
   const routeParams = routeOrderId ? { orderId: routeOrderId } : undefined;
 
   return (
-    <NavigationContainer theme={navigationTheme} documentTitle={{ formatter: () => 'BOOM Card' }}>
+    <NavigationContainer ref={navigationRef} theme={navigationTheme} documentTitle={{ formatter: () => 'BOOM Card' }}>
       {isAuthenticated ? (
         <MainNavigator initialRouteName={routeName} initialParams={routeParams} />
       ) : (

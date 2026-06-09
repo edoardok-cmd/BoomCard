@@ -5,8 +5,8 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, ScrollView, RefreshControl, Alert } from 'react-native';
-import { Text, Card, Button, FAB, List, Chip } from 'react-native-paper';
+import { View, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { Text, Card, Button, List, Chip } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { walletApi } from '../../api/wallet.api';
@@ -32,31 +32,33 @@ export default function WalletScreen() {
     balance: number;
     availableBalance: number;
     pendingBalance: number;
+    expiringBalance: number;
     currency: string;
     isLocked: boolean;
     lastUpdated: string | null;
     payoutThreshold: number;
     payoutThresholdEUR: number;
-    canRequestPayout: boolean;
     payoutIban: string | null;
     payoutBeneficiaryName: string | null;
   }>({
     balance: 0,
     availableBalance: 0,
     pendingBalance: 0,
+    expiringBalance: 0,
     currency: 'BGN',
     isLocked: false,
     lastUpdated: null,
     payoutThreshold: 0,
     payoutThresholdEUR: 0,
-    canRequestPayout: false,
     payoutIban: null,
     payoutBeneficiaryName: null,
   });
+  // W4: Locked ("Sent to payout") balance is derived from LOCKED cashback rows —
+  // the balance endpoint does not expose a lockedBalance aggregate.
+  const [lockedBalance, setLockedBalance] = useState(0);
   const mountedRef = useRef(true);
   useEffect(() => { return () => { mountedRef.current = false; }; }, []);
 
-  const [payoutLoading, setPayoutLoading] = useState(false);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [statistics, setStatistics] = useState({
     totalCashback: 0,
@@ -69,17 +71,22 @@ export default function WalletScreen() {
     const withTimeout = <T,>(p: Promise<T>): Promise<T> =>
       Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), TIMEOUT_MS))]);
 
-    const [balanceResult, txResult, statsResult] = await Promise.allSettled([
+    const [balanceResult, txResult, statsResult, lockedResult] = await Promise.allSettled([
       withTimeout(walletApi.getBalance()),
       withTimeout(walletApi.getTransactions({ limit: 10 })),
       withTimeout(walletApi.getStatistics()),
+      withTimeout(walletApi.getTransactions({ status: 'LOCKED', limit: 100 })),
     ]);
 
     if (!mountedRef.current) return;
 
-    if (balanceResult.status === 'fulfilled') setBalance(balanceResult.value);
+    if (balanceResult.status === 'fulfilled') setBalance((prev) => ({ ...prev, ...(balanceResult.value as any) }));
     if (txResult.status === 'fulfilled') setTransactions((txResult.value as any).transactions || []);
     if (statsResult.status === 'fulfilled') setStatistics(statsResult.value as any);
+    if (lockedResult.status === 'fulfilled') {
+      const lockedTx: any[] = (lockedResult.value as any)?.transactions || [];
+      setLockedBalance(lockedTx.reduce((sum, tx) => sum + Math.abs(tx.amount || 0), 0));
+    }
 
     setLoading(false);
     setRefreshing(false);
@@ -92,56 +99,6 @@ export default function WalletScreen() {
   const handleRefresh = () => {
     setRefreshing(true);
     loadWalletData();
-  };
-
-  const handleTopUp = () => {
-    (navigation as any).navigate('TopUp');
-  };
-
-  const handleRequestPayout = async () => {
-    // If no IBAN is stored, direct the user to their profile to set it up first
-    if (!balance.payoutIban) {
-      Alert.alert(
-        t('wallet.payoutIbanRequired'),
-        t('wallet.payoutSetupInProfile'),
-        [
-          { text: t('common.cancel'), style: 'cancel' },
-          { text: t('profile.goToProfile'), onPress: () => (navigation as any).navigate('EditProfile') },
-        ]
-      );
-      return;
-    }
-    setPayoutLoading(true);
-    try {
-      const result = await walletApi.requestPayout();
-      const payoutAmount: number | undefined = result?.amount;
-      Alert.alert(
-        t('wallet.requestPayout'),
-        payoutAmount
-          ? t('wallet.payoutSuccessWithAmount', { amount: formatDualCurrency(payoutAmount) })
-          : t('wallet.payoutSuccess')
-      );
-      await loadWalletData();
-    } catch (error: any) {
-      const rawErr: string = error?.message || '';
-      if (rawErr.includes('SUBSCRIPTION_INACTIVE') || rawErr.includes('SUBSCRIPTION_FAILED_PAYMENT') || rawErr.includes('SUBSCRIPTION_PAST_DUE')) {
-        Alert.alert(
-          t('common.info', 'Информация'),
-          t(
-            'wallet.subscriptionInactiveForPayout',
-            'Абонаментът Ви трябва да е активен, за да получите изплащане. Възобновете го от менюто „Абонамент и плащания".'
-          ),
-          [
-            { text: t('common.cancel', 'Откажи'), style: 'cancel' },
-            { text: t('stickers.renewSubscription', 'Възобнови абонамент'), onPress: () => (navigation as any).navigate('SubscriptionManagement') },
-          ]
-        );
-      } else {
-        Alert.alert(t('wallet.payoutError'), rawErr || t('errors.unknownError'));
-      }
-    } finally {
-      setPayoutLoading(false);
-    }
   };
 
   const getTransactionIcon = (type: string) => {
@@ -208,11 +165,36 @@ export default function WalletScreen() {
               </Text>
             )}
 
-            {balance.pendingBalance > 0 && (
-              <View style={styles.pendingContainer}>
-                <Chip icon="clock" mode="outlined">
-                  {formatDualCurrency(balance.pendingBalance)} {t('wallet.pending')}
-                </Chip>
+            {/* Balance breakdown — Pending ("In Review") + Locked ("Sent to payout") (W4) */}
+            {(balance.pendingBalance > 0 || lockedBalance > 0) && (
+              <View style={styles.breakdownContainer}>
+                {balance.pendingBalance > 0 && (
+                  <Chip icon="clock" mode="outlined" style={styles.breakdownChip}>
+                    {formatDualCurrency(balance.pendingBalance)} · {t('wallet.inReview', 'В преглед')}
+                  </Chip>
+                )}
+                {lockedBalance > 0 && (
+                  <Chip icon="bank-transfer-out" mode="outlined" style={styles.breakdownChip}>
+                    {formatDualCurrency(lockedBalance)} · {t('wallet.sentToPayout', 'В обработка за плащане')}
+                  </Chip>
+                )}
+              </View>
+            )}
+
+            {/* Expiring-soon line — links to the per-record countdown in history (W5) */}
+            {balance.expiringBalance > 0 && (
+              <View style={styles.cashbackValidityRow}>
+                <Text variant="bodySmall" style={styles.expiringText}>
+                  {t('wallet.expiringSoon', { amount: formatDualCurrency(balance.expiringBalance) })}
+                </Text>
+                <Button
+                  mode="text"
+                  compact
+                  onPress={() => (navigation as any).navigate('CashbackHistory')}
+                  labelStyle={styles.expiringLinkLabel}
+                >
+                  {t('wallet.viewExpiryCountdown', 'Виж срокове')}
+                </Button>
               </View>
             )}
 
@@ -223,10 +205,10 @@ export default function WalletScreen() {
               </Text>
             </View>
 
-            {/* Payout threshold and request button */}
+            {/* Payout account setup + passive auto-payout hint (W1/W9).
+                There is NO user-initiated payout action — payouts are automatic. */}
             <View style={styles.payoutRow}>
-              {/* Setup banner — shown when user hasn't saved their bank account yet */}
-              {!balance.payoutIban && (
+              {!balance.payoutIban ? (
                 <Button
                   mode="outlined"
                   icon="bank-outline"
@@ -236,9 +218,7 @@ export default function WalletScreen() {
                 >
                   {t('wallet.setupPayoutAccount')}
                 </Button>
-              )}
-
-              {balance.payoutIban && (
+              ) : (
                 <Text variant="bodySmall" style={styles.ibanStoredText}>
                   {t('wallet.payoutIbanStored', { iban: `****${balance.payoutIban.slice(-4)}` })}
                 </Text>
@@ -247,26 +227,10 @@ export default function WalletScreen() {
               <Text variant="bodySmall" style={styles.payoutThresholdText}>
                 {balance.isLocked
                   ? t('wallet.walletLocked')
-                  : balance.canRequestPayout
-                    ? t('wallet.payoutThresholdMet')
-                    : t('wallet.payoutThresholdNotMet', {
-                        amount: formatDualCurrency(balance.payoutThreshold - balance.availableBalance),
-                        thresholdEUR: balance.payoutThresholdEUR,
-                      })}
-              </Text>
-
-              <Button
-                mode="contained"
-                onPress={handleRequestPayout}
-                loading={payoutLoading}
-                disabled={!balance.canRequestPayout || payoutLoading || balance.isLocked}
-                style={[styles.payoutButton, !balance.canRequestPayout && styles.payoutButtonDisabled]}
-                labelStyle={styles.payoutButtonLabel}
-              >
-                {t('wallet.requestPayout')}
-              </Button>
-              <Text variant="bodySmall" style={styles.payoutToCardText}>
-                {t('wallet.payoutToCard')}
+                  : t('wallet.autoPayoutHint', {
+                      amount: formatDualCurrency(balance.payoutThreshold),
+                      defaultValue: 'Ще получите автоматично изплащане при достигане на {{amount}}.',
+                    })}
               </Text>
             </View>
 
@@ -345,14 +309,6 @@ export default function WalletScreen() {
           </Card.Content>
         </Card>
       </ScrollView>
-
-      {/* Top Up FAB */}
-      <FAB
-        style={styles.fab}
-        icon="plus"
-        label={t('wallet.topUp')}
-        onPress={handleTopUp}
-      />
     </View>
   );
 }
@@ -395,10 +351,27 @@ const styles = StyleSheet.create({
     opacity: 0.45,
     marginBottom: 12,
   },
-  pendingContainer: {
+  breakdownContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
     marginBottom: 12,
   },
+  breakdownChip: {
+    marginRight: 4,
+  },
+  expiringText: {
+    color: '#F59E0B',
+    fontWeight: '600',
+  },
+  expiringLinkLabel: {
+    fontSize: 12,
+    color: '#D4A843',
+  },
   cashbackValidityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
     marginTop: 8,
     marginBottom: 4,
     paddingHorizontal: 4,
@@ -427,23 +400,6 @@ const styles = StyleSheet.create({
   payoutThresholdText: {
     opacity: 0.65,
     marginBottom: 4,
-  },
-  payoutButton: {
-    backgroundColor: '#D4A843',
-    borderRadius: 8,
-  },
-  payoutButtonDisabled: {
-    backgroundColor: '#D1D5DB',
-  },
-  payoutButtonLabel: {
-    color: '#000',
-    fontWeight: '600',
-  },
-  payoutToCardText: {
-    opacity: 0.5,
-    fontStyle: 'italic',
-    marginTop: 4,
-    textAlign: 'center',
   },
   statsRow: {
     flexDirection: 'row',
@@ -484,11 +440,5 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#F59E0B',
     marginTop: 2,
-  },
-  fab: {
-    position: 'absolute',
-    right: 16,
-    bottom: 16,
-    backgroundColor: '#D4A843',
   },
 });

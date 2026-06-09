@@ -23,17 +23,26 @@ export const API_CONFIG = {
       CHANGE_PASSWORD: '/api/auth/change-password',
       DELETE_ACCOUNT: '/api/auth/account',
       CONSENT: '/api/auth/consent',
+      MARKETING_CONSENT: '/api/auth/marketing-consent',
+      CHANGE_EMAIL_REQUEST: '/api/auth/change-email/request',
+      CHANGE_EMAIL_VERIFY: '/api/auth/change-email/verify',
+      RESEND_EMAIL_VERIFICATION: '/api/auth/resend-email-verification',
+      REQUEST_EMAIL_VERIFICATION: '/api/auth/request-email-verification',
     },
     HELP: {
       SUBMIT_TICKET: '/api/help/ticket',
       MY_TICKETS: '/api/help/tickets',
+      TICKET_BY_ID: '/api/help/tickets/:id',
+      TICKET_REPLIES: '/api/help/tickets/:id/replies',
+      TICKET_REPLY: '/api/help/tickets/:id/reply',
     },
     // Receipts
+    // NOTE: the live receipt-upload path is POST /api/stickers/scan/:scanId/receipt
+    // (see StickersApi.uploadReceiptForScan). The legacy /api/receipts/v2/submit and
+    // /v2/upload endpoints were RETIRED (410 GONE) and have been removed here (R2).
     RECEIPTS: {
       BASE: '/api/receipts',
       STATS: '/api/receipts/stats',
-      SUBMIT: '/api/receipts/v2/submit',
-      UPLOAD: '/api/receipts/v2/upload',
       CHECK_DUPLICATE: '/api/receipts/v2/check-duplicate',
       ANALYTICS: '/api/receipts/v2/analytics',
     },
@@ -49,19 +58,14 @@ export const API_CONFIG = {
       BASE: '/api/venues',
       NEARBY: '/api/venues/nearby',
     },
-    // Payments
-    PAYMENTS: {
-      INTENTS: '/api/payments/intents',
-      CARDS: '/api/payments/cards',
-      TRANSACTIONS: '/api/payments/transactions',
-      STATISTICS: '/api/payments/statistics',
-    },
-    // Wallet
+    // Payments — BoomCard is Paysera-only; there is NO tokenized card CRUD endpoint
+    // (the Stripe paymentsRouter is imported but never mounted on the backend).
+    // Card changes happen exclusively via the subscription change-card redirect.
+    // The /cards /intents config keys + payments.api.ts client were removed (S8/S9).
+    // Wallet — cashback-only ledger. No top-up (W3) and no /withdraw (W2) concept.
     WALLET: {
       BALANCE: '/api/wallet/balance',
       TRANSACTIONS: '/api/wallet/transactions',
-      TOP_UP: '/api/wallet/topup',
-      WITHDRAW: '/api/wallet/withdraw',
     },
     // Offers
     OFFERS: {
@@ -87,7 +91,14 @@ export const API_CONFIG = {
     SUBSCRIPTIONS: {
       CURRENT: '/api/subscriptions/current',
       CREATE: '/api/subscriptions/create',
+      HISTORY: '/api/subscriptions/history',
+      // Order-status poll is per-order: /status/:orderId (S7 — path templated by caller)
       STATUS: '/api/subscriptions/status',
+      RETRY_PAYMENT: '/api/subscriptions/:id/retry-payment',
+      CHANGE_CARD: '/api/subscriptions/:id/change-card',
+      CANCEL: '/api/subscriptions/:id/cancel',
+      REACTIVATE: '/api/subscriptions/:id/reactivate',
+      UPDATE_PLAN: '/api/subscriptions/:id/update-plan',
     },
     // Plans (public — no auth required)
     PLANS: {
@@ -152,11 +163,11 @@ export const APP_CONFIG = {
   BUNDLE_ID_IOS: 'bg.boomcard.mobile',
   BUNDLE_ID_ANDROID: 'bg.boomcard.mobile',
 
-  // Default language
-  DEFAULT_LANGUAGE: 'en',
+  // Default language — spec §18.3 mandates Bulgarian for a fresh install (A5/N8).
+  DEFAULT_LANGUAGE: 'bg',
 
-  // Supported languages
-  SUPPORTED_LANGUAGES: ['en', 'bg'],
+  // Supported languages (bg listed first to match the spec-default)
+  SUPPORTED_LANGUAGES: ['bg', 'en'],
 
   // Currency
   CURRENCY: 'BGN',
@@ -166,7 +177,9 @@ export const APP_CONFIG = {
   // OCR Configuration
   OCR: {
     LANGUAGES: 'bul+eng', // Bulgarian + English
-    CONFIDENCE_THRESHOLD: 70, // Minimum confidence for auto-approval
+    // Display-only threshold. The server strips any client-supplied confidence and
+    // re-runs its own OCR, so this never gates auto-approval (R7). Spec value is 60%.
+    CONFIDENCE_THRESHOLD: 60,
   },
 
   // Receipt Configuration
@@ -254,4 +267,11 @@ export const STATUS_COLORS = {
   COMPLETED: '#10B981',
   FAILED: '#EF4444',
   CANCELLED: '#6B7280',
+  // Subscription failed-payment states (S4) — both Stripe PAST_DUE and the
+  // canonical FAILED_PAYMENT map to the spec "Failed Payment" red.
+  PAST_DUE: '#EF4444',
+  FAILED_PAYMENT: '#EF4444',
+  ACTIVE: '#10B981',
+  TRIALING: '#10B981',
+  PAUSED: '#6B7280',
 };

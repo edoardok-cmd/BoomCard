@@ -15,6 +15,7 @@ import { useAuth } from '../../store/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { ReceiptsApi } from '../../api/receipts.api';
 import { cardApi } from '../../api/card.api';
+import { walletApi } from '../../api/wallet.api';
 import apiClient from '../../api/client';
 import { useFocusEffect } from '@react-navigation/native';
 import { notificationsApi } from '../../api/notifications.api';
@@ -58,6 +59,12 @@ const DashboardScreen = ({ navigation }: any) => {
   const [subscription, setSubscription] = useState<any>(null);
   const [cardMissing, setCardMissing] = useState(false);
   const [recentTransactions, setRecentTransactions] = useState<RecentTransaction[]>([]);
+  // W6 — spec §6.6 cashback breakdown (Available / Pending / Expiring).
+  const [walletBalance, setWalletBalance] = useState<{
+    availableBalance: number;
+    pendingBalance: number;
+    expiringBalance: number;
+  } | null>(null);
 
   useFocusEffect(useCallback(() => {
     notificationsApi.getUnreadCount().then(res => {
@@ -135,7 +142,18 @@ const DashboardScreen = ({ navigation }: any) => {
         }
       }).catch((err) => { if (__DEV__) console.warn('Dashboard: receipts fetch failed', err); anyFailed = true; });
 
-      await Promise.allSettled([subscriptionPromise, receiptsStatsPromise, cardStatsPromise, receiptsPromise]);
+      // W6 — wallet cashback breakdown for the dashboard 3-line display
+      const walletPromise = walletApi.getBalance().then((bal: any) => {
+        if (!mountedRef.current || !bal) return;
+        setWalletBalance({
+          availableBalance: bal.availableBalance ?? 0,
+          pendingBalance: bal.pendingBalance ?? 0,
+          expiringBalance: bal.expiringBalance ?? 0,
+        });
+        anySucceeded = true;
+      }).catch((err) => { if (__DEV__) console.warn('Dashboard: wallet balance fetch failed', err); anyFailed = true; });
+
+      await Promise.allSettled([subscriptionPromise, receiptsStatsPromise, cardStatsPromise, receiptsPromise, walletPromise]);
 
       // Show error banner only when no request yielded data (complete outage)
       if (mountedRef.current && anyFailed && !anySucceeded) {
@@ -254,6 +272,31 @@ const DashboardScreen = ({ navigation }: any) => {
             </View>
           )}
         </View>
+
+        {/* W6 §6.6 — Available / Pending / Expiring breakdown. Each line renders
+            only when that state has a non-zero balance. */}
+        {walletBalance && (walletBalance.availableBalance > 0 || walletBalance.pendingBalance > 0 || walletBalance.expiringBalance > 0) && (
+          <View style={s.cashbackBreakdown}>
+            {walletBalance.availableBalance > 0 && (
+              <View style={s.cashbackBreakdownRow}>
+                <Text style={s.cashbackBreakdownLabel}>{t('dashboard.cashbackAvailable', 'Налично')}</Text>
+                <Text style={s.cashbackBreakdownValue}>{formatDualCurrency(walletBalance.availableBalance)}</Text>
+              </View>
+            )}
+            {walletBalance.pendingBalance > 0 && (
+              <View style={s.cashbackBreakdownRow}>
+                <Text style={s.cashbackBreakdownLabel}>{t('dashboard.cashbackPending', 'В преглед')}</Text>
+                <Text style={s.cashbackBreakdownValue}>{formatDualCurrency(walletBalance.pendingBalance)}</Text>
+              </View>
+            )}
+            {walletBalance.expiringBalance > 0 && (
+              <View style={s.cashbackBreakdownRow}>
+                <Text style={[s.cashbackBreakdownLabel, s.cashbackExpiringLabel]}>{t('dashboard.cashbackExpiring', 'Изтича скоро')}</Text>
+                <Text style={[s.cashbackBreakdownValue, s.cashbackExpiringValue]}>{formatDualCurrency(walletBalance.expiringBalance)}</Text>
+              </View>
+            )}
+          </View>
+        )}
       </LinearGradient>
 
       {/* No card warning — subscription exists but card was never provisioned */}
@@ -350,6 +393,10 @@ const DashboardScreen = ({ navigation }: any) => {
                           ? t('dashboard.cardActive')
                           : subscription.status === 'CANCELLED'
                           ? t('dashboard.cardExpired')
+                          : subscription.status === 'EXPIRED'
+                          ? t('dashboard.cardExpired')
+                          : (subscription.status === 'PAST_DUE' || subscription.status === 'FAILED_PAYMENT')
+                          ? t('dashboard.cardFailedPayment', 'Неуспешно плащане')
                           : t('dashboard.cardSuspended')}
                       </Text>
                     </View>
@@ -679,6 +726,35 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: isDarkMode ? '#93C5FD' : '#D4A843',
+  },
+
+  // W6 — cashback breakdown (Available / Pending / Expiring)
+  cashbackBreakdown: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.2)',
+    gap: 6,
+  },
+  cashbackBreakdownRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  cashbackBreakdownLabel: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  cashbackBreakdownValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  cashbackExpiringLabel: {
+    color: '#FCD34D',
+  },
+  cashbackExpiringValue: {
+    color: '#FCD34D',
   },
 
   // Card Plan Banner

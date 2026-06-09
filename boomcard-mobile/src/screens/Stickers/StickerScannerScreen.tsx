@@ -18,10 +18,13 @@ import notificationService from '../../services/notification.service';
 import { getDeviceFingerprint } from '../../services/deviceFingerprint.service';
 import StickersApi from '../../api/stickers.api';
 import { useFeatureFlags } from '../../store/MobileConfigContext';
+import { useAuth } from '../../store/AuthContext';
+import { isAccountPaused, isAccountBlocked } from '../../components/AccountStatusBanner';
 
 export default function StickerScannerScreen() {
   const navigation = useNavigation();
   const { t } = useTranslation();
+  const { user } = useAuth();
   const { stickerScan: stickerScanEnabled } = useFeatureFlags();
   const isFocused = useIsFocused();
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
@@ -102,6 +105,29 @@ export default function StickerScannerScreen() {
     if (scanned || locating) return;
     setScanned(true);
 
+    // R3 — pre-scan account-status guard (spec §1.2/§13.1). A paused (Inactive/
+    // Suspended) or archived account cannot scan, even with an active subscription.
+    if (isAccountBlocked(user?.status)) {
+      crossPlatformAlert(
+        t('common.info', 'Информация'),
+        t('account.archivedSub', 'Достъпът до този профил е прекратен. Свържете се с поддръжката за съдействие.')
+      );
+      setScanned(false);
+      return;
+    }
+    if (isAccountPaused(user?.status)) {
+      crossPlatformAlert(
+        t('common.info', 'Информация'),
+        t('stickers.accountPaused', 'Профилът Ви е спрян. Сканирането е недостъпно, докато не бъде възстановен. Свържете се с поддръжката.'),
+        [
+          { text: t('common.cancel', 'Откажи'), style: 'cancel' },
+          { text: t('account.contactSupport', 'Поддръжка'), onPress: () => (navigation as any).navigate('HelpScreen') },
+        ]
+      );
+      setScanned(false);
+      return;
+    }
+
     // Validate BOOM sticker QR format
     let stickerId: string;
     let payloadVenueId: string | undefined;
@@ -161,7 +187,23 @@ export default function StickerScannerScreen() {
         // markers surface the renewal CTA so the user knows scanning is blocked
         // until they restore the subscription.
         const rawErr = sessionRes.error || '';
-        if (rawErr.includes('PARTNER_NOT_ACCEPTING')) {
+        if (rawErr.includes('ACCOUNT_ARCHIVED')) {
+          // R3 — server-side account-status rejection (archived). Mirrors the
+          // pre-scan guard above for the case where status changed mid-session.
+          crossPlatformAlert(
+            t('common.info', 'Информация'),
+            t('account.archivedSub', 'Достъпът до този профил е прекратен. Свържете се с поддръжката за съдействие.')
+          );
+        } else if (rawErr.includes('ACCOUNT_INACTIVE') || rawErr.includes('ACCOUNT_PAUSED') || rawErr.includes('ACCOUNT_SUSPENDED')) {
+          crossPlatformAlert(
+            t('common.info', 'Информация'),
+            t('stickers.accountPaused', 'Профилът Ви е спрян. Сканирането е недостъпно, докато не бъде възстановен. Свържете се с поддръжката.'),
+            [
+              { text: t('common.cancel', 'Откажи'), style: 'cancel' },
+              { text: t('account.contactSupport', 'Поддръжка'), onPress: () => (navigation as any).navigate('HelpScreen') },
+            ]
+          );
+        } else if (rawErr.includes('PARTNER_NOT_ACCEPTING')) {
           crossPlatformAlert(
             t('common.info', 'Информация'),
             t(

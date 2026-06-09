@@ -49,6 +49,8 @@ const SettingsScreen = ({ navigation }: any) => {
   const [currentLanguage, setCurrentLanguage] = useState(getCurrentLanguage());
   const [marketingConsentEmail, setMarketingConsentEmail] = useState(false);
   const [marketingConsentPhone, setMarketingConsentPhone] = useState(false);
+  // N1/N2 — server-backed notification preferences ({email, push, inApp, sms, quietHours}).
+  const [serverPrefs, setServerPrefs] = useState<any>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
@@ -117,6 +119,31 @@ const SettingsScreen = ({ navigation }: any) => {
         setMarketingConsentEmail(!!(userData as any).marketingConsentEmail);
         setMarketingConsentPhone(!!(userData as any).marketingConsentPhone);
       }
+
+      // A1 — seed marketing-consent from the authoritative preference store.
+      AuthApi.getMarketingConsent().then((res) => {
+        if (res.success && res.data) {
+          const data = (res.data as any).data ?? res.data;
+          setMarketingConsentEmail(!!data.marketingConsentEmail);
+          setMarketingConsentPhone(!!data.marketingConsentPhone);
+        }
+      }).catch(() => { /* keep cached values */ });
+
+      // N1 — seed the server-backed notification preferences so the push/email
+      // switches reflect (and write to) the backend, not just device storage.
+      notificationsApi.getPreferences().then((res) => {
+        if (res.success && res.data) {
+          const prefs = (res.data as any).data ?? res.data;
+          setServerPrefs(prefs);
+          if (prefs?.push?.enabled !== undefined || prefs?.email?.enabled !== undefined) {
+            setSettings((prev) => ({
+              ...prev,
+              pushNotifications: prefs?.push?.enabled ?? prev.pushNotifications,
+              emailNotifications: prefs?.email?.enabled ?? prev.emailNotifications,
+            }));
+          }
+        }
+      }).catch(() => { /* fall back to device-local */ });
     } catch (error) {
       console.error('Failed to load settings:', error);
     } finally {
@@ -354,14 +381,22 @@ const SettingsScreen = ({ navigation }: any) => {
       [setting]: newValue,
     });
 
-    // Persist to storage
+    // Persist to storage (and, for notification channels, to the backend — N1).
     try {
       switch (setting) {
         case 'pushNotifications':
           await StorageService.setPushNotifications(newValue);
+          // N1 — gate server-sent push notifications, not just the device flag.
+          notificationsApi.updatePreferences({ push: { enabled: newValue } })
+            .then((res) => { if (res.success) setServerPrefs((p: any) => ({ ...(p || {}), push: { ...(p?.push || {}), enabled: newValue } })); })
+            .catch(() => { /* best-effort; device flag already saved */ });
           break;
         case 'emailNotifications':
           await StorageService.setEmailNotifications(newValue);
+          // N1 — gate server-sent email notifications.
+          notificationsApi.updatePreferences({ email: { enabled: newValue } })
+            .then((res) => { if (res.success) setServerPrefs((p: any) => ({ ...(p || {}), email: { ...(p?.email || {}), enabled: newValue } })); })
+            .catch(() => { /* best-effort */ });
           break;
         case 'locationServices':
           await StorageService.setLocationServices(newValue);
@@ -466,21 +501,70 @@ const SettingsScreen = ({ navigation }: any) => {
     }
   };
 
+  // A1 — write to the preference store (PUT /marketing-consent), not the audit
+  // endpoint. recordConsent() only appended a GDPR audit row, so the toggle
+  // appeared to revert on reload because getProfile() reads the real columns.
   const handleMarketingConsentEmail = async (value: boolean) => {
     setMarketingConsentEmail(value);
     try {
-      await AuthApi.recordConsent('email_marketing', value);
+      const res = await AuthApi.updateMarketingConsent({ marketingConsentEmail: value });
+      if (!res.success) throw new Error(res.error || 'failed');
     } catch {
       setMarketingConsentEmail(!value);
+      crossPlatformAlert(t('common.error'), t('settings.consentSaveFailed', 'Неуспешно запазване на съгласието.'));
     }
   };
 
   const handleMarketingConsentPhone = async (value: boolean) => {
     setMarketingConsentPhone(value);
     try {
-      await AuthApi.recordConsent('phone_marketing', value);
+      const res = await AuthApi.updateMarketingConsent({ marketingConsentPhone: value });
+      if (!res.success) throw new Error(res.error || 'failed');
     } catch {
       setMarketingConsentPhone(!value);
+      crossPlatformAlert(t('common.error'), t('settings.consentSaveFailed', 'Неуспешно запазване на съгласието.'));
+    }
+  };
+
+  // N2 — per-category notification toggles (spec §11.1/§11.3). Optional categories
+  // can be turned off; mandatory categories (systemAnnouncements) are always on.
+  // Toggling a category updates BOTH channels (push + email) for that category.
+  const OPTIONAL_CATEGORIES: { key: string; labelKey: string; fallback: string }[] = [
+    { key: 'newOffers',   labelKey: 'settings.catNewOffers',   fallback: 'Нови оферти' },
+    { key: 'promotions',  labelKey: 'settings.catPromotions',  fallback: 'Промоции' },
+    { key: 'reviews',     labelKey: 'settings.catReviews',     fallback: 'Отзиви' },
+  ];
+
+  const isCategoryEnabled = (key: string): boolean => {
+    // Enabled if enabled on either channel (defaults to true when unknown).
+    const push = serverPrefs?.push?.[key];
+    const email = serverPrefs?.email?.[key];
+    if (push === undefined && email === undefined) return true;
+    return !!(push || email);
+  };
+
+  const toggleCategory = async (key: string) => {
+    const next = !isCategoryEnabled(key);
+    const optimistic = {
+      ...(serverPrefs || {}),
+      push: { ...(serverPrefs?.push || {}), [key]: next },
+      email: { ...(serverPrefs?.email || {}), [key]: next },
+    };
+    setServerPrefs(optimistic);
+    try {
+      const res = await notificationsApi.updatePreferences({
+        push: { [key]: next },
+        email: { [key]: next },
+      });
+      if (!res.success) throw new Error(res.error || 'failed');
+    } catch {
+      // revert
+      setServerPrefs((p: any) => ({
+        ...(p || {}),
+        push: { ...(p?.push || {}), [key]: !next },
+        email: { ...(p?.email || {}), [key]: !next },
+      }));
+      crossPlatformAlert(t('common.error'), t('settings.prefsSaveFailed', 'Неуспешно запазване на предпочитанията.'));
     }
   };
 
@@ -536,6 +620,36 @@ const SettingsScreen = ({ navigation }: any) => {
               trackColor={{ false: '#CBD5E1', true: '#E6D5A8' }}
               thumbColor={settings.emailNotifications ? theme.colors.gold : '#F3F4F6'}
             />
+          </View>
+
+          {/* N2 — per-category notification preferences */}
+          {OPTIONAL_CATEGORIES.map((cat) => (
+            <View style={styles.settingRow} key={cat.key}>
+              <View style={styles.settingInfo}>
+                <Ionicons name="pricetags-outline" size={22} color={theme.colors.primary} />
+                <View style={styles.settingText}>
+                  <Text style={styles.settingLabel}>{t(cat.labelKey, cat.fallback)}</Text>
+                </View>
+              </View>
+              <Switch
+                value={isCategoryEnabled(cat.key)}
+                onValueChange={() => toggleCategory(cat.key)}
+                trackColor={{ false: '#CBD5E1', true: '#E6D5A8' }}
+                thumbColor={isCategoryEnabled(cat.key) ? theme.colors.gold : '#F3F4F6'}
+              />
+            </View>
+          ))}
+
+          {/* Mandatory category — always on, cannot be disabled (spec §11.3). */}
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Ionicons name="megaphone-outline" size={22} color={theme.colors.primary} />
+              <View style={styles.settingText}>
+                <Text style={styles.settingLabel}>{t('settings.catSystem', 'Системни съобщения')}</Text>
+                <Text style={styles.settingDescription}>{t('settings.catSystemDesc', 'Задължителни — винаги включени')}</Text>
+              </View>
+            </View>
+            <Switch value={true} disabled trackColor={{ false: '#CBD5E1', true: '#E6D5A8' }} thumbColor={theme.colors.gold} />
           </View>
         </View>
 

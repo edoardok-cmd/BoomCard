@@ -26,11 +26,11 @@ const languageDetector = {
   detect: async (callback: (lng: string) => void) => {
     try {
       const savedLanguage = await SecureStore.getItemAsync(STORAGE_KEYS.LANGUAGE);
-      // Use 'en' as fallback if no language is saved
-      callback(savedLanguage || 'en');
+      // N8/A5 — spec §18.3 mandates Bulgarian as the default for a fresh install.
+      callback(savedLanguage || APP_CONFIG.DEFAULT_LANGUAGE);
     } catch (error) {
       console.error('Error loading language:', error);
-      callback('en');
+      callback(APP_CONFIG.DEFAULT_LANGUAGE);
     }
   },
   init: () => {},
@@ -49,7 +49,7 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
-    fallbackLng: 'en', // Use English as fallback
+    fallbackLng: APP_CONFIG.DEFAULT_LANGUAGE, // N8/A5 — Bulgarian per spec §18.3
     compatibilityJSON: 'v4',
     interpolation: {
       escapeValue: false, // React already escapes values
@@ -68,6 +68,18 @@ export const changeLanguage = async (language: string) => {
   try {
     await i18n.changeLanguage(language);
     await SecureStore.setItemAsync(STORAGE_KEYS.LANGUAGE, language);
+    // A8 — keep the backend preferredLanguage in sync so transactional emails
+    // honour the in-app language. Best-effort: pre-auth (first-run) calls have no
+    // token and simply 401, which we swallow. Lazy import avoids a cycle.
+    try {
+      const AuthApi = (await import('../api/auth.api')).default;
+      const isAuthed = await AuthApi.isAuthenticated();
+      if (isAuthed) {
+        AuthApi.updateProfile({ preferredLanguage: language } as any).catch(() => {});
+      }
+    } catch {
+      /* swallow — language already applied locally */
+    }
   } catch (error) {
     console.error('Error changing language:', error);
   }

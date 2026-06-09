@@ -23,6 +23,7 @@ import { useAuth } from '../../store/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import BiometricService from '../../services/biometric.service';
 import StorageService from '../../services/storage.service';
+import AuthApi from '../../api/auth.api';
 import type { LoginRequest } from '../../types';
 import { getErrorMessage } from '../../utils/error';
 import { validateEmail } from '../../utils/validation';
@@ -96,7 +97,33 @@ const LoginScreen = ({ navigation }: any) => {
         errorMessage = t('auth.loginFailedMessage');
       }
 
-      crossPlatformAlert(t('auth.loginError'), errorMessage);
+      // A9 — when login is blocked because the email isn't verified, offer a
+      // self-service resend (public endpoint, takes only the email).
+      const lower = (errorMessage || '').toLowerCase();
+      const notVerified = lower.includes('verif') || lower.includes('потвърд') || lower.includes('not been verified');
+      if (notVerified) {
+        crossPlatformAlert(
+          t('auth.emailNotVerifiedTitle', 'Имейлът не е потвърден'),
+          t('auth.emailNotVerifiedBody', 'Моля, потвърдете имейл адреса си. Можем да Ви изпратим нова връзка за потвърждение.'),
+          [
+            { text: t('common.cancel', 'Откажи'), style: 'cancel' },
+            {
+              text: t('auth.resendVerification', 'Изпрати отново'),
+              onPress: async () => {
+                try {
+                  await AuthApi.requestEmailVerification(credentials.email);
+                } catch { /* always succeeds server-side to avoid enumeration */ }
+                crossPlatformAlert(
+                  t('common.info', 'Информация'),
+                  t('auth.verificationResent', 'Ако съществува акаунт за този имейл, изпратихме връзка за потвърждение.')
+                );
+              },
+            },
+          ]
+        );
+      } else {
+        crossPlatformAlert(t('auth.loginError'), errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }

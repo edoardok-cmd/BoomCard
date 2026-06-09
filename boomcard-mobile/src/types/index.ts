@@ -18,6 +18,14 @@ export interface User {
   emailVerifiedAt?: string;
   lastLoginAt?: string;
   stripeCustomerId?: string;
+  // A7 §13.5 — profile-editable location fields accepted by PUT /api/auth/profile
+  city?: string;
+  country?: string;
+  // A8 — preferred language synced to backend so transactional emails honour it
+  preferredLanguage?: string;
+  // A1 — marketing consent (read back from GET /api/auth/me / marketing-consent)
+  marketingConsentEmail?: boolean;
+  marketingConsentPhone?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -29,11 +37,15 @@ export enum UserRole {
   SUPER_ADMIN = 'SUPER_ADMIN',
 }
 
+// A3 — full UserStatus parity with backend schema.prisma:1963.
 export enum UserStatus {
   ACTIVE = 'ACTIVE',
   INACTIVE = 'INACTIVE',
   SUSPENDED = 'SUSPENDED',
   PENDING_VERIFICATION = 'PENDING_VERIFICATION',
+  PENDING_PAYMENT = 'PENDING_PAYMENT',
+  DELETED = 'DELETED',
+  ARCHIVED = 'ARCHIVED',
 }
 
 export interface AuthResponse {
