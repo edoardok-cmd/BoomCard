@@ -6,7 +6,7 @@
  * Activation happens ONLY via webhook. This page only displays status.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
@@ -213,6 +213,11 @@ const SubscriptionSuccessPage: React.FC = () => {
   const [redirectVerified, setRedirectVerified] = useState(false);
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [anonymousEmail, setAnonymousEmail] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+
+  // Refs that let the polling interval read latest values without being deps
+  const elapsedRef = useRef(0);
+  const activeRef = useRef(false);
 
   const verifyRedirectData = useCallback(async () => {
     if (!payseraData || !payseraSs1 || redirectVerified) return false;
@@ -224,6 +229,7 @@ const SubscriptionSuccessPage: React.FC = () => {
       if (result.isSuccess) {
         setStatus('success');
         setIsPolling(false);
+        activeRef.current = false;
         // Create a minimal subscription-like object for display
         setSubscription({
           subscriptionId: '',
@@ -241,6 +247,7 @@ const SubscriptionSuccessPage: React.FC = () => {
     return false;
   }, [payseraData, payseraSs1, redirectVerified, orderId]);
 
+  // checkStatus no longer has elapsedTime in deps — reads elapsedRef instead.
   const checkStatus = useCallback(async () => {
     if (!orderId) {
       setStatus('error');
@@ -258,9 +265,11 @@ const SubscriptionSuccessPage: React.FC = () => {
           setAnonymousEmail(result.email || null);
           setStatus('success');
           setIsPolling(false);
+          activeRef.current = false;
         } else if (result.status === 'FAILED') {
           setStatus('error');
           setIsPolling(false);
+          activeRef.current = false;
         } else {
           setStatus('pending');
         }
@@ -270,6 +279,7 @@ const SubscriptionSuccessPage: React.FC = () => {
       if (result.isActive) {
         setStatus('success');
         setIsPolling(false);
+        activeRef.current = false;
       } else {
         setStatus('pending');
       }
@@ -283,47 +293,62 @@ const SubscriptionSuccessPage: React.FC = () => {
       }
 
       // Don't immediately show error - might just be processing
-      if (elapsedTime > MAX_TOTAL_TIME) {
+      if (elapsedRef.current > MAX_TOTAL_TIME) {
         setStatus('error');
         setIsPolling(false);
+        activeRef.current = false;
       }
     }
-  }, [orderId, elapsedTime, redirectVerified, payseraData, payseraSs1, verifyRedirectData]);
+  }, [orderId, redirectVerified, payseraData, payseraSs1, verifyRedirectData]);
 
-  // Initial check and polling
+  // Keep a ref to the latest checkStatus so the interval always calls the
+  // freshest version without being a dep that would restart the effect.
+  const checkStatusRef = useRef(checkStatus);
+  useEffect(() => { checkStatusRef.current = checkStatus; }, [checkStatus]);
+
+  // Polling effect — stable: only re-runs on orderId change or manual retry.
+  // Does NOT depend on checkStatus, status, or isPolling so state updates
+  // inside checkStatus cannot trigger a cascade of new intervals.
   useEffect(() => {
     if (!orderId) {
       setStatus('error');
       return;
     }
 
-    // Initial check
-    checkStatus();
+    elapsedRef.current = 0;
+    activeRef.current = true;
+    setElapsedTime(0);
+    setIsPolling(true);
 
-    // Set up polling interval
+    checkStatusRef.current();
+
     const pollInterval = setInterval(() => {
-      if (isPolling && status !== 'success') {
-        checkStatus();
-        setElapsedTime(prev => prev + POLLING_INTERVAL);
+      if (!activeRef.current) {
+        clearInterval(pollInterval);
+        return;
       }
+      elapsedRef.current += POLLING_INTERVAL;
+      setElapsedTime(elapsedRef.current);
+      if (elapsedRef.current >= MAX_TOTAL_TIME) {
+        setIsPolling(false);
+        activeRef.current = false;
+        clearInterval(pollInterval);
+        return;
+      }
+      checkStatusRef.current();
     }, POLLING_INTERVAL);
 
-    // Stop polling after max time
-    const timeoutId = setTimeout(() => {
-      setIsPolling(false);
-    }, MAX_TOTAL_TIME);
-
     return () => {
+      activeRef.current = false;
       clearInterval(pollInterval);
-      clearTimeout(timeoutId);
     };
-  }, [orderId, checkStatus, isPolling, status]);
+  }, [orderId, retryCount]);
 
   const handleRetry = () => {
     setElapsedTime(0);
     setIsPolling(true);
     setStatus('loading');
-    checkStatus();
+    setRetryCount(c => c + 1);
   };
 
   const showTimeoutWarning = elapsedTime >= MAX_POLLING_TIME && status !== 'success';
