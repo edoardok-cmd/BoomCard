@@ -1146,15 +1146,15 @@ const DashboardPage: React.FC = () => {
             transition={{ duration: 0.3, delay: 0.15 }}
           >
             <SubscriptionHeader>
-              <PlanBadge $plan={dashboardData?.subscription.plan ?? 'BASIC'}>
-                {isLoadingDashboard ? '...' : planLabel(dashboardData?.subscription.plan ?? 'BASIC')}
+              <PlanBadge $plan={dashboardData?.subscription?.plan ?? 'BASIC'}>
+                {isLoadingDashboard ? '...' : planLabel(dashboardData?.subscription?.plan ?? 'BASIC')}
               </PlanBadge>
-              <StatusBadge $status={dashboardData?.subscription.status ?? 'ACTIVE'}>
-                {isLoadingDashboard ? '...' : statusLabel(dashboardData?.subscription.status ?? 'ACTIVE')}
+              <StatusBadge $status={dashboardData?.subscription?.status ?? 'ACTIVE'}>
+                {isLoadingDashboard ? '...' : statusLabel(dashboardData?.subscription?.status ?? 'ACTIVE')}
               </StatusBadge>
             </SubscriptionHeader>
 
-            {dashboardData?.subscription.currentPeriodEnd && (
+            {dashboardData?.subscription?.currentPeriodEnd && (
               <SubscriptionMeta>
                 <SubscriptionMetaLabel>
                   {t('dashboard.nextBilling')}
