@@ -56,7 +56,7 @@ export interface PayseraPayment {
 export interface PayseraCallback {
   data: string; // URL-safe base64 encoded data
   ss1: string; // MD5 signature: md5(data + password)
-  ss2?: string; // SHA-256 signature: sha256(data + password) (optional)
+  ss2?: string; // RSA signature from Paysera (not verified — ss1 is sufficient)
 }
 
 export interface PayseraCallbackData {
@@ -299,34 +299,18 @@ export class PayseraService {
   }
 
   /**
-   * Verify callback signatures:
-   *   ss1 = MD5(data + signPassword)    — required per Paysera spec
-   *   ss2 = SHA-256(data + signPassword) — optional additional verification
+   * Verify callback signatures.
+   * ss1 = MD5(data + signPassword) — required per Paysera spec.
+   * ss2 is a Paysera RSA signature (not an HMAC); we skip it and rely on ss1.
    */
   async verifyCallback(callback: PayseraCallback): Promise<boolean> {
     try {
-      // 1. Verify MD5 signature (ss1) — always required
       const expectedSs1 = this.generateSign(callback.data);
       if (callback.ss1 !== expectedSs1) {
         logger.warn('Invalid MD5 signature (ss1)');
         return false;
       }
-
-      // 2. Verify SHA-256 signature (ss2) when present
-      if (callback.ss2) {
-        const expectedSs2 = crypto
-          .createHash('sha256')
-          .update(callback.data + this.config.signPassword)
-          .digest('hex');
-        if (callback.ss2 !== expectedSs2) {
-          logger.warn('Invalid SHA-256 signature (ss2)');
-          return false;
-        }
-        logger.info('Callback signatures verified (ss1 + ss2 SHA-256)');
-      } else {
-        logger.info('Callback signature verified (ss1 only)');
-      }
-
+      logger.info('Callback signature verified (ss1)');
       return true;
     } catch (error: any) {
       logger.error('Error verifying callback:', error);
