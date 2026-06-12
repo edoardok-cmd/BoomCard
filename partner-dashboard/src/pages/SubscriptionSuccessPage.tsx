@@ -271,6 +271,11 @@ const SubscriptionSuccessPage: React.FC = () => {
           setIsPolling(false);
           activeRef.current = false;
         } else {
+          // Webhook not yet received — try redirect-data fallback immediately
+          if (!redirectVerified && payseraData && payseraSs1) {
+            const verified = await verifyRedirectData();
+            if (verified) return;
+          }
           setStatus('pending');
         }
         return;

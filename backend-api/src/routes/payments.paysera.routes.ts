@@ -1006,6 +1006,7 @@ router.post(
       customerName,
       lang: 'BUL',
       country: 'BG',
+      paymentMethod: 'wallet',
     });
 
     logger.info(`Anonymous subscription payment created: ${orderId}, plan ${plan.planCode}, ${priceInCents / 100} EUR`);
