@@ -829,6 +829,7 @@ router.post(
     // Map plan code to subscription enum
     const subscriptionPlanMap: Record<string, SubscriptionPlan> = {
       'PREMIUM_WEEKLY': SubscriptionPlan.PREMIUM_WEEKLY,
+      'LIGHT': SubscriptionPlan.PREMIUM_WEEKLY,
       'BASIC': SubscriptionPlan.BASIC,
       'PREMIUM': SubscriptionPlan.PREMIUM_MONTHLY,
     };

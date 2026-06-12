@@ -97,7 +97,6 @@ class PlansService {
       }
       throw new Error('Failed to fetch plans');
     } catch (error) {
-      console.error('Error fetching plans:', error);
       throw error;
     }
   }
@@ -115,7 +114,6 @@ class PlansService {
       }
       throw new Error('Plan not found');
     } catch (error) {
-      console.error('Error fetching plan:', error);
       throw error;
     }
   }
@@ -133,7 +131,6 @@ class PlansService {
       }
       throw new Error('Plan not found');
     } catch (error) {
-      console.error('Error fetching plan:', error);
       throw error;
     }
   }
@@ -151,7 +148,6 @@ class PlansService {
       }
       throw new Error('Subscription not found');
     } catch (error) {
-      console.error('Error checking subscription status:', error);
       throw error;
     }
   }
@@ -175,7 +171,6 @@ class PlansService {
       }
       throw new Error('Verification failed');
     } catch (error) {
-      console.error('Error verifying payment redirect:', error);
       throw error;
     }
   }
@@ -201,7 +196,6 @@ class PlansService {
       }
       throw new Error('Failed to fetch payment methods');
     } catch (error) {
-      console.error('Error fetching payment methods:', error);
       throw error;
     }
   }
@@ -253,7 +247,6 @@ class PlansService {
       }
       throw new Error('Failed to create subscription payment');
     } catch (error) {
-      console.error('Error creating subscription payment:', error);
       throw error;
     }
   }

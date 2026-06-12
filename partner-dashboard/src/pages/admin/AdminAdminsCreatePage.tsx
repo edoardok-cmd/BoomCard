@@ -237,8 +237,8 @@ export default function AdminAdminsCreatePage() {
   return (
     <PageShell>
       <Eyebrow>Администратори</Eyebrow>
-      <PageTitle>Създай администратор</PageTitle>
-      <PageSubtitle>Създай нов администраторски акаунт и му задай начална роля.</PageSubtitle>
+      <PageTitle>Създай служител</PageTitle>
+      <PageSubtitle>Създай нов акаунт за служител и му задай начална роля.</PageSubtitle>
 
       <FormCard>
         {lastCreated && (
@@ -350,7 +350,7 @@ export default function AdminAdminsCreatePage() {
 
           <ButtonRow>
             <SubmitButton type="submit" $loading={createMutation.isPending} disabled={createMutation.isPending}>
-              {createMutation.isPending ? 'Създаване…' : 'Създай администратор'}
+              {createMutation.isPending ? 'Създаване…' : 'Създай служител'}
             </SubmitButton>
             <ResetButton type="button" onClick={() => { setForm(EMPTY); setServerError(null); setLastCreated(null); }}>
               Изчисти

@@ -284,7 +284,11 @@ const SubscriptionSuccessPage: React.FC = () => {
         setStatus('pending');
       }
     } catch (error) {
-      console.error('Error checking subscription status:', error);
+      // 404 = "not processed yet" — expected during polling, don't log as error
+      const is404 = (error as { response?: { status?: number } })?.response?.status === 404;
+      if (!is404) {
+        console.error('Error checking subscription status:', error);
+      }
 
       // If subscription not found, try verifying Paysera redirect data
       if (!redirectVerified && payseraData && payseraSs1) {

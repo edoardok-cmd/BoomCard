@@ -135,7 +135,7 @@ export const ADMIN_NAV: AdminNavCategory[] = [
     permissionKey: 'admins.actions.read',
     subItems: [
       { labelBg: 'Всички администратори', labelEn: 'All Admins', path: '/admin/admins/all', permissionKey: 'admins.read' },
-      { labelBg: 'Създай администратор', labelEn: 'Create Admin', path: '/admin/admins/create', permissionKey: 'admins.write' },
+      { labelBg: 'Създай служител', labelEn: 'Create Staff', path: '/admin/admins/create', permissionKey: 'admins.write' },
       { labelBg: 'Чакащи одобрения', labelEn: 'Pending Approvals', path: '/admin/admins/pending', permissionKey: 'admins.read' },
       { labelBg: 'Критични действия', labelEn: 'Critical Actions', path: '/admin/admins/critical-actions', permissionKey: 'admins.actions.read' },
       { labelBg: 'История на действията', labelEn: 'Action History', path: '/admin/admins/audit', permissionKey: 'admins.audit.read' },

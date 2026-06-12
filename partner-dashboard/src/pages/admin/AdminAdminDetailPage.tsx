@@ -566,7 +566,7 @@ export default function AdminAdminDetailPage() {
             <p style={{ fontSize: '0.75rem', color: palette.textSubtle, margin: '0 0 1.25rem' }}>
               За роля <strong>Супер администратор</strong> използвайте{' '}
               <Link to="/admin/admins/create" style={{ color: palette.accent }} onClick={() => setShowAddRole(false)}>
-                Създай администратор
+                Създай служител
               </Link>{' '}— изисква двойно одобрение.
             </p>
             <OverlayActions>
