@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import bcrypt from 'bcryptjs';
+import { v4 as uuidv4 } from 'uuid';
 import { asyncHandler } from '../middleware/error.middleware';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { validate } from '../middleware/validation.middleware';
@@ -1223,7 +1224,8 @@ router.post(
       BASIC: SubscriptionPlan.BASIC,
       PREMIUM: SubscriptionPlan.PREMIUM_MONTHLY,
     };
-    const subscriptionPlan = planCodeMap[pending.plan.planCode];
+    const planCode = pending.plan.planCode;
+    const subscriptionPlan = planCodeMap[planCode];
     if (!subscriptionPlan) {
       return res.status(500).json({ success: false, message: 'Invalid plan configuration' });
     }
@@ -1239,17 +1241,16 @@ router.post(
     const now = new Date();
 
     // Pre-generate card assets outside the transaction (no DB access needed).
-    const cardNumber = (() => {
-      const part = () => Math.random().toString(36).substring(2, 6).toUpperCase();
-      return `BOOM-${part()}-${part()}-${part()}`;
-    })();
+    // Use UUID for guaranteed uniqueness instead of Math.random() which could collide.
+    const uuid4Str = uuidv4().replace(/-/g, '').substring(0, 12).toUpperCase();
+    const cardNumber = `BOOM-${uuid4Str.substring(0, 4)}-${uuid4Str.substring(4, 8)}-${uuid4Str.substring(8, 12)}`;
     const planToCardType: Record<string, CardType> = {
       PREMIUM_WEEKLY: CardType.PREMIUM_WEEKLY,
       LIGHT: CardType.PREMIUM_WEEKLY, // legacy Plan.planCode shim
       BASIC: CardType.BASIC,
       PREMIUM: CardType.PREMIUM,
     };
-    const cardTypeForPlan = planToCardType[subscriptionPlan] ?? CardType.PREMIUM_WEEKLY;
+    const cardTypeForPlan = planToCardType[planCode] ?? CardType.PREMIUM_WEEKLY;
     const qrCodeData = JSON.stringify({ cardNumber, type: cardTypeForPlan, issuedAt: now.toISOString() });
     const qrCodeUrl = await QRCode.toDataURL(qrCodeData, { errorCorrectionLevel: 'H', width: 300, margin: 2 });
 
