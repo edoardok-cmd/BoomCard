@@ -1252,12 +1252,20 @@ router.post(
     };
     const cardTypeForPlan = planToCardType[planCode] ?? CardType.PREMIUM_WEEKLY;
     const qrCodeData = JSON.stringify({ cardNumber, type: cardTypeForPlan, issuedAt: now.toISOString() });
-    const qrCodeUrl = await QRCode.toDataURL(qrCodeData, { errorCorrectionLevel: 'H', width: 300, margin: 2 });
+    let qrCodeUrl: string;
+    try {
+      qrCodeUrl = await QRCode.toDataURL(qrCodeData, { errorCorrectionLevel: 'H', width: 300, margin: 2 });
+    } catch (err) {
+      logger.error(`QRCode generation failed for card ${cardNumber}:`, err);
+      throw new Error('Failed to generate QR code for card');
+    }
 
     // Atomic transaction: create user + loyalty + subscription + card + wallet,
     // mark PendingSubscription complete. All-or-nothing — no stranded users.
-    const { user } = await prisma.$transaction(async (tx) => {
-      const newUser = await tx.user.create({
+    let user: { id: string; email: string; firstName: string; lastName: string; role: string; status: string };
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const newUser = await tx.user.create({
         data: {
           email: pending.email,
           passwordHash,
@@ -1329,16 +1337,34 @@ router.post(
         data: { status: 'COMPLETED', completedAt: now, token: null },
       });
 
-      return { user: newUser };
-    });
+        return { user: newUser };
+      });
+      user = result.user;
+    } catch (txErr: any) {
+      logger.error('Transaction failed during account creation:', {
+        error: txErr.message,
+        code: (txErr as any).code,
+        email: pending.email,
+        planCode,
+      });
+      throw txErr;
+    }
 
     // Sync card type to match the activated subscription plan (pass plan code, not enum value)
-    await cardService.syncCardTypeWithSubscription(user.id, planCode).catch((err) => {
+    try {
+      await cardService.syncCardTypeWithSubscription(user.id, planCode);
+    } catch (err) {
       logger.error(`Failed to sync card type for user ${user.id}:`, err);
-    });
+    }
 
     // Generate JWT tokens
-    const tokens = await AuthService.createSession({ id: user.id, email: user.email, role: user.role });
+    let tokens: { accessToken: string; refreshToken: string; expiresIn: string };
+    try {
+      tokens = await AuthService.createSession({ id: user.id, email: user.email, role: user.role });
+    } catch (err) {
+      logger.error(`Failed to create session for user ${user.id}:`, err);
+      throw err;
+    }
 
     // Send welcome email (fire-and-forget). Spec §7.1: respect the language
     // the user explicitly selected at profile creation.
