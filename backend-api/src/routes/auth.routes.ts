@@ -1265,34 +1265,34 @@ router.post(
     let user: { id: string; email: string; firstName: string; lastName: string; role: string; status: string };
     try {
       const result = await prisma.$transaction(async (tx) => {
-        // Ensure preferredLanguage is never null - it's a required field with default in DB
+        // Ensure all required fields have values - Prisma defaults don't apply in transactions
         const safePreferredLanguage = lang && ['bg', 'en'].includes(lang) ? lang : 'bg';
 
-        // Log the exact values being sent to understand NULL constraint violation
-        const userData = {
-          email: pending.email,
-          passwordHash: passwordHash ? '***' : null,
-          firstName: firstName?.trim() || pending.email.split('@')[0],
-          lastName: lastName?.trim() || '',
-          phone: phone?.trim() || null,
-          role: 'USER',
-          status: UserStatus.ACTIVE,
-          emailVerified: true,
-          emailVerifiedAt: now,
-          termsAcceptedAt: now,
-          privacyAcceptedAt: now,
-          termsVersion: TERMS_VERSION,
-          marketingConsentEmail,
-          marketingConsentPhone,
-          marketingConsent,
-          preferredLanguage: safePreferredLanguage,
-        };
-        logger.info('User data being created:', userData);
-
         const newUser = await tx.user.create({
-        data: userData as any,
-        select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true },
-      });
+          data: {
+            email: pending.email,
+            passwordHash,
+            firstName: firstName?.trim() || pending.email.split('@')[0],
+            lastName: lastName?.trim() || '',
+            phone: phone?.trim() || null,
+            role: 'USER',
+            status: UserStatus.ACTIVE,
+            emailVerified: true,
+            emailVerifiedAt: now,
+            termsAcceptedAt: now,
+            privacyAcceptedAt: now,
+            termsVersion: TERMS_VERSION,
+            marketingConsentEmail,
+            marketingConsentPhone,
+            marketingConsent,
+            preferredLanguage: safePreferredLanguage,
+            // Explicitly set required fields that have defaults - transaction doesn't apply DB defaults
+            riskScore: 0,
+            mustChangePassword: false,
+            totpRecoveryCodes: [],
+          },
+          select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true },
+        });
 
       // Create loyalty account
       await tx.loyaltyAccount.create({
