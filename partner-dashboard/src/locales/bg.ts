@@ -1020,7 +1020,7 @@ export const bg: TranslationKey = {
     howItWorks: 'Как работи партньорството с BOOM Card',
     stepsSubtitle: 'Ясен процес от кандидатстване до реални клиенти',
     readyToStart: 'Готови да започнете?',
-    ctaText: 'Попълнете формата по-долу, за да започнем процеса по партньорство.',
+    ctaText: 'Да станете партньор на BOOM Card отнема само няколко минути.',
     partnershipApplication: 'Формуляр за кандидатстване',
     businessName: 'Име на заведението',
     businessNamePlaceholder: 'Име...',

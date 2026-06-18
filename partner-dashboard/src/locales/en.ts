@@ -1018,7 +1018,7 @@ export const en = {
     howItWorks: 'How the BOOM Card partnership works',
     stepsSubtitle: 'A clear process from application to real customers',
     readyToStart: 'Ready to Get Started?',
-    ctaText: 'Fill out the form below to start the partnership process.',
+    ctaText: 'Becoming a BOOM Card partner takes just a couple of minutes.',
     partnershipApplication: 'Partnership Application',
     businessName: 'Business Name',
     businessNamePlaceholder: 'Name...',
