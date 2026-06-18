@@ -148,7 +148,13 @@ const VenueLocationPicker: React.FC<VenueLocationPickerProps> = ({
     if (marker) {
       const pos = marker.getLatLng();
       onChange({ latitude: pos.lat, longitude: pos.lng });
+      setMessage(null); // Clear error when location is set via drag
     }
+  };
+
+  const handleMapClick = (coords: Coordinates) => {
+    onChange(coords);
+    setMessage(null); // Clear error when location is set via map click
   };
 
   const center = value ?? SOFIA;
@@ -182,7 +188,7 @@ const VenueLocationPicker: React.FC<VenueLocationPickerProps> = ({
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <MapRecenter coords={value} />
-          <ClickCapture onPick={onChange} disabled={disabled} />
+          <ClickCapture onPick={handleMapClick} disabled={disabled} />
           {value && (
             <Marker
               position={[value.latitude, value.longitude]}
