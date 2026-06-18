@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import Pagination from '../../common/Pagination/Pagination';
-import { palette } from '../../../styles/adminTheme';
+import { palette, zIndex } from '../../../styles/adminTheme';
 
 export interface ColumnDef<T> {
   key: string;
@@ -302,7 +302,7 @@ const ActionDropdown = styled.div`
   position: absolute;
   right: 0;
   top: 100%;
-  z-index: 50;
+  z-index: ${zIndex.dropdown};
   background: ${palette.surface};
   border: 1px solid ${palette.border};
   border-radius: 0.5rem;

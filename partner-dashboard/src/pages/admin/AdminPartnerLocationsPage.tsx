@@ -6,7 +6,7 @@ import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
-import { palette } from '../../styles/adminTheme';
+import { palette, zIndex } from '../../styles/adminTheme';
 import {
   adminLocationsService,
   AdminVenue,
@@ -156,15 +156,6 @@ const IdText = styled.span`
   color: ${palette.textSubtle}; display: block; margin-top: 0.125rem;
 `;
 
-const StickerDot = styled.span<{ $active: boolean }>`
-  display: inline-block;
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: ${({ $active }) => ($active ? palette.success : palette.textSubtle)};
-  margin-right: 0.375rem;
-`;
-
 const PartnerTypePill = styled.span<{ $color: string }>`
   display: inline-flex;
   align-items: center;
@@ -184,7 +175,7 @@ const DrawerBackdrop = styled.div`
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.35);
-  z-index: 900;
+  z-index: ${zIndex.modalBackdrop};
 `;
 const DrawerPanel = styled.div`
   position: fixed;
@@ -195,7 +186,7 @@ const DrawerPanel = styled.div`
   max-width: 26rem;
   background: ${palette.surface};
   border-left: 1px solid ${palette.border};
-  z-index: 901;
+  z-index: ${zIndex.drawer};
   display: flex;
   flex-direction: column;
   box-shadow: -8px 0 32px rgba(0, 0, 0, 0.1);
@@ -286,7 +277,7 @@ const Overlay = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: ${zIndex.modal};
 `;
 const ModalBox = styled.div`
   background: ${palette.surface};
@@ -650,38 +641,6 @@ export default function AdminPartnerLocationsPage() {
       },
     },
     {
-      key: 'qr',
-      header: language === 'bg' ? 'QR / Стикери' : 'QR / Stickers',
-      render: (row) => {
-        const count = row._count?.stickers ?? 0;
-        const cfg = row.stickerConfig;
-        // Warn when an ACTIVE venue has no active sticker config — this is the
-        // same condition the backend gate enforces on PATCH /:id/status → ACTIVE.
-        const isActiveNoQr = (row.venueStatus as VenueStatus) === 'ACTIVE' && !cfg?.isActive;
-        return (
-          <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <span style={{ fontSize: '0.8125rem', color: isActiveNoQr ? palette.warning : palette.textMuted, fontWeight: isActiveNoQr ? 600 : 400 }}>
-              {count > 0 ? (
-                <span title={isActiveNoQr ? (language === 'bg' ? 'Активна локация без активна QR конфигурация!' : 'Active location has no active QR config!') : undefined}>
-                  {isActiveNoQr ? '⚠ ' : ''}{count} QR {language === 'bg' ? 'кода' : 'codes'}
-                </span>
-              ) : (
-                <span title={isActiveNoQr ? (language === 'bg' ? 'Активна локация без QR конфигурация!' : 'Active location has no QR config!') : undefined}>
-                  {isActiveNoQr ? '⚠ ' : ''}{language === 'bg' ? 'Без QR' : 'No QR'}
-                </span>
-              )}
-            </span>
-            {cfg && (
-              <MetaLine>
-                <StickerDot $active={cfg.isActive} />
-                {cfg.cashbackPercent}% cashback
-              </MetaLine>
-            )}
-          </span>
-        );
-      },
-    },
-    {
       key: 'menu',
       header: t('admin.locationsColMenu'),
       render: (row) => {
@@ -709,74 +668,6 @@ export default function AdminPartnerLocationsPage() {
         </span>
         );
       },
-    },
-    {
-      key: 'qrHistory',
-      header: language === 'bg' ? 'QR История' : 'QR History',
-      render: (row) => {
-        const stickers = row.stickers ?? [];
-        const vs: VenueStatus = (row.venueStatus as VenueStatus) ?? 'ACTIVE';
-        // Spec §5.4 — surface "защо е сменян" inline only for non-ACTIVE
-        // statuses (REPLACED/SUSPENDED). ACTIVE rows with a stale note from a
-        // prior status change shouldn't leak that note here; the full timeline
-        // is available in the drawer.
-        const note = row.venueStatusNote;
-        const showNote = !!note && vs !== 'ACTIVE';
-        const noteLabel =
-          vs === 'REPLACED' ? (language === 'bg' ? 'Заменен' : 'Replaced')
-          : vs === 'SUSPENDED' ? (language === 'bg' ? 'Спрян' : 'Suspended')
-          : (language === 'bg' ? 'Бележка' : 'Note');
-        const historyCount = row._count?.statusHistory ?? 0;
-
-        if (stickers.length === 0 && !showNote && historyCount === 0) {
-          return <span style={{ color: palette.textSubtle, fontSize: '0.8125rem' }}>—</span>;
-        }
-        const latest = stickers[0];
-        const activeCount = stickers.filter(s => s.status === 'ACTIVE').length;
-        return (
-          <span style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
-            {latest && (
-              <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
-                {language === 'bg' ? 'Последен:' : 'Latest:'} {fmt(latest.createdAt)}
-              </span>
-            )}
-            {stickers.length > 1 && (
-              <MetaLine>
-                {activeCount}/{stickers.length} {language === 'bg' ? 'активни' : 'active'}
-              </MetaLine>
-            )}
-            {showNote && note && (
-              <span
-                title={note}
-                style={{
-                  fontSize: '0.7rem',
-                  color: palette.danger,
-                  fontWeight: 500,
-                  marginTop: '0.125rem',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.25rem',
-                }}
-              >
-                <span style={{ fontWeight: 700 }}>{noteLabel}:</span>{' '}
-                {note.length > 40 ? note.slice(0, 40) + '…' : note}
-              </span>
-            )}
-            {historyCount > 0 && (
-              <MetaLine style={{ color: palette.textSubtle }}>
-                {language === 'bg' ? 'Промени' : 'Changes'}: <strong>{historyCount}</strong>
-              </MetaLine>
-            )}
-          </span>
-        );
-      },
-    },
-    {
-      key: 'createdAt',
-      header: t('admin.locationsColCreated'),
-      render: (row) => (
-        <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>{fmt(row.createdAt)}</span>
-      ),
     },
   ];
 

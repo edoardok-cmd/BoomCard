@@ -13,7 +13,7 @@ import {
 import { getCategoryName } from '../../types/categories.types';
 import PartnerRequestDrawer from '../../components/admin/PartnerRequestDrawer';
 
-import { palette } from '../../styles/adminTheme';
+import { palette, zIndex } from '../../styles/adminTheme';
 const LEGACY_CATEGORY_MAP: Record<string, string> = {
   'RESTAURANTS_FOOD': 'restaurants', 'ACCOMMODATION': 'accommodation',
   'SPA_WELLNESS': 'spa', 'PANORAMIC_PLACES': 'panoramic',
@@ -131,12 +131,13 @@ const ContactCell = styled.div`
 /* ─── Reject modal ─────────────────────────────────────────────────────────── */
 const Overlay = styled.div`
   position: fixed; inset: 0; background: rgba(0,0,0,0.45);
-  z-index: 200; display: flex; align-items: center; justify-content: center;
+  z-index: ${zIndex.modalBackdrop}; display: flex; align-items: center; justify-content: center;
 `;
 const Modal = styled.div`
   background: ${palette.surface}; border-radius: 0.875rem;
   padding: 1.75rem; width: 100%; max-width: 26rem;
   box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+  z-index: ${zIndex.modal};
 `;
 const ModalTitle = styled.h2`font-size: 1.125rem; font-weight: 700; color: ${palette.text}; margin: 0 0 0.5rem;`;
 const ModalSubtitle = styled.p`font-size: 0.875rem; color: ${palette.textMuted}; margin: 0 0 1rem;`;
@@ -164,71 +165,6 @@ const Btn = styled.button<{ $variant?: 'danger' | 'ghost' | 'primary' }>`
 `;
 
 /* ─── Readiness cell (§5.2) ────────────────────────────────────────────────── */
-const ReadinessRow = styled.div`
-  display: flex; align-items: center; gap: 0.375rem;
-  font-size: 0.75rem; line-height: 1.2;
-`;
-const ReadinessIcon = styled.span<{ $ok: boolean }>`
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 14px; height: 14px; border-radius: 50%;
-  background: ${p => p.$ok ? palette.successSoft : palette.warningSoft};
-  color: ${p => p.$ok ? palette.success : palette.warning};
-  font-size: 0.625rem; font-weight: 800;
-  flex-shrink: 0;
-`;
-
-function OnboardingReadinessCell({ partnerId, language }: { partnerId: string; language: string }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ['onboarding-readiness', partnerId],
-    queryFn: () => adminPartnerRequestsService.getOnboardingReadiness(partnerId),
-    staleTime: 30 * 1000,
-  });
-
-  if (isLoading) {
-    return <span style={{ fontSize: '0.75rem', color: palette.textSubtle }}>…</span>;
-  }
-  if (!data) {
-    return <span style={{ fontSize: '0.75rem', color: palette.textSubtle }}>—</span>;
-  }
-
-  // All three checks are per-venue (spec §5.2). The receipt and QR gates
-  // require coverage of every venue: a 5-venue partner needs 5 receipt-covered
-  // venues + 5 active sticker configs, not just one of each.
-  const locationsOk = data.venueCount > 0;
-  const receiptsOk = data.venueCount > 0 && data.venuesWithReceipts >= data.venueCount;
-  const qrOk = data.venueCount > 0 && data.stickerConfigCount >= data.venueCount;
-
-  return (
-    <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-      <ReadinessRow>
-        <ReadinessIcon $ok={locationsOk}>{locationsOk ? '✓' : '!'}</ReadinessIcon>
-        <span style={{ color: palette.textMuted }}>
-          {language === 'bg' ? 'Локации' : 'Locations'}: <strong>{data.venueCount}</strong>
-        </span>
-      </ReadinessRow>
-      <ReadinessRow>
-        <ReadinessIcon $ok={receiptsOk}>{receiptsOk ? '✓' : '!'}</ReadinessIcon>
-        <span style={{ color: palette.textMuted }}>
-          {language === 'bg' ? 'Касови бележки' : 'Receipts'}: <strong>{data.venuesWithReceipts}</strong>
-          {data.venueCount > 0 && <span style={{ color: palette.textSubtle }}>/{data.venueCount}</span>}
-          {data.receiptTemplateCount > data.venuesWithReceipts && (
-            <span style={{ color: palette.textSubtle, fontSize: '0.7rem', marginLeft: '0.25rem' }}>
-              ({data.receiptTemplateCount} {language === 'bg' ? 'шаблона' : 'templates'})
-            </span>
-          )}
-        </span>
-      </ReadinessRow>
-      <ReadinessRow>
-        <ReadinessIcon $ok={qrOk}>{qrOk ? '✓' : '!'}</ReadinessIcon>
-        <span style={{ color: palette.textMuted }}>
-          {language === 'bg' ? 'QR настройки' : 'QR settings'}: <strong>{data.stickerConfigCount}</strong>
-          {data.venueCount > 0 && <span style={{ color: palette.textSubtle }}>/{data.venueCount}</span>}
-        </span>
-      </ReadinessRow>
-    </span>
-  );
-}
-
 /* ─── Stage config ─────────────────────────────────────────────────────────── */
 interface PipelineStage {
   key: string;
@@ -423,18 +359,6 @@ export default function AdminPartnerPipelinePage() {
       ),
     },
     {
-      key: 'address',
-      header: language === 'bg' ? 'Адрес' : 'Address',
-      render: (row) => (
-        <span style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>
-          {row.address
-            ? <>{row.address}{row.city ? <><br /><span style={{ color: palette.textSubtle }}>{row.city}</span></> : null}</>
-            : (row.city ?? <span style={{ color: palette.textSubtle }}>—</span>)
-          }
-        </span>
-      ),
-    },
-    {
       key: 'assignedAdmin',
       header: language === 'bg' ? 'Отговорник' : 'Owner',
       render: (row) =>
@@ -464,21 +388,6 @@ export default function AdminPartnerPipelinePage() {
         </span>
       ),
     },
-  ];
-
-  // Spec §5.2 — DOGOVARYANE stage shows negotiated % alongside base columns
-  const dogovaryaneColumns: ColumnDef<PendingPartner>[] = [
-    ...baseColumns.slice(0, -1),
-    {
-      key: 'discountRate',
-      header: language === 'bg' ? 'Договаряне %' : 'Negotiating %',
-      render: (row: PendingPartner) => (
-        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: row.discountRate != null ? palette.accent : palette.textSubtle }}>
-          {row.discountRate != null ? `${row.discountRate}%` : '—'}
-        </span>
-      ),
-    },
-    baseColumns[baseColumns.length - 1],
   ];
 
   const buildRowActions = (nextStage: string | null): RowAction<PendingPartner>[] => [
@@ -571,23 +480,9 @@ export default function AdminPartnerPipelinePage() {
           stage.key === 'DOGOVARYANE'  ? dogovaryaneQuery.isLoading  :
           stage.key === 'ONBOARDING'   ? onboardingQuery.isLoading   :
           odobrenQuery.isLoading;
-        // Spec §5.2 — DOGOVARYANE shows discount %, ONBOARDING/ODOBRENA shows readiness
-        const stageColumns: ColumnDef<PendingPartner>[] =
-          stage.key === 'ONBOARDING' || stage.key === 'ODOBRENA'
-            ? [
-                ...baseColumns.slice(0, -1),
-                {
-                  key: 'readiness',
-                  header: language === 'bg' ? 'Готовност' : 'Readiness',
-                  render: (row: PendingPartner) => (
-                    <OnboardingReadinessCell partnerId={row.id} language={language} />
-                  ),
-                },
-                baseColumns[baseColumns.length - 1],
-              ]
-            : stage.key === 'DOGOVARYANE'
-              ? dogovaryaneColumns
-              : baseColumns;
+        // Use consistent 4-column base layout across all stages
+        // Readiness status and negotiation % are now shown in the detail drawer
+        const stageColumns: ColumnDef<PendingPartner>[] = baseColumns;
         return (
           <Card key={stage.key}>
             <SectionTitle $color={stage.color}>
