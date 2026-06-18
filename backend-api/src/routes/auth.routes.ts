@@ -1265,6 +1265,9 @@ router.post(
     let user: { id: string; email: string; firstName: string; lastName: string; role: string; status: string };
     try {
       const result = await prisma.$transaction(async (tx) => {
+        // Ensure preferredLanguage is never null - it's a required field with default in DB
+        const safePreferredLanguage = lang && ['bg', 'en'].includes(lang) ? lang : 'bg';
+
         // Log the exact values being sent to understand NULL constraint violation
         const userData = {
           email: pending.email,
@@ -1282,7 +1285,7 @@ router.post(
           marketingConsentEmail,
           marketingConsentPhone,
           marketingConsent,
-          preferredLanguage: lang,
+          preferredLanguage: safePreferredLanguage,
         };
         logger.info('User data being created:', userData);
 
