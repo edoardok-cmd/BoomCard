@@ -1332,8 +1332,8 @@ router.post(
       return { user: newUser };
     });
 
-    // Sync card type to match the activated subscription plan
-    await cardService.syncCardTypeWithSubscription(user.id, subscriptionPlan).catch((err) => {
+    // Sync card type to match the activated subscription plan (pass plan code, not enum value)
+    await cardService.syncCardTypeWithSubscription(user.id, planCode).catch((err) => {
       logger.error(`Failed to sync card type for user ${user.id}:`, err);
     });
 
