@@ -25,7 +25,7 @@ import { consumeActivationToken } from '../services/partnerActivation.service';
 import { ActivationLinkError } from '../services/activationLink.service';
 import { detach } from '../utils/detach';
 
-const TERMS_VERSION = process.env.TERMS_VERSION || '2026-02-24';
+const TERMS_VERSION = process.env.TERMS_VERSION ? String(process.env.TERMS_VERSION) : '2026-02-24';
 
 const avatarUpload = multer({
   storage: multer.memoryStorage(),
@@ -1265,10 +1265,10 @@ router.post(
     let user: { id: string; email: string; firstName: string; lastName: string; role: string; status: string };
     try {
       const result = await prisma.$transaction(async (tx) => {
-        const newUser = await tx.user.create({
-        data: {
+        // Log the exact values being sent to understand NULL constraint violation
+        const userData = {
           email: pending.email,
-          passwordHash,
+          passwordHash: passwordHash ? '***' : null,
           firstName: firstName?.trim() || pending.email.split('@')[0],
           lastName: lastName?.trim() || '',
           phone: phone?.trim() || null,
@@ -1283,7 +1283,11 @@ router.post(
           marketingConsentPhone,
           marketingConsent,
           preferredLanguage: lang,
-        },
+        };
+        logger.info('User data being created:', userData);
+
+        const newUser = await tx.user.create({
+        data: userData as any,
         select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true },
       });
 
