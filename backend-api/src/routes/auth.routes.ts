@@ -1274,7 +1274,7 @@ router.post(
             passwordHash,
             firstName: firstName?.trim() || pending.email.split('@')[0],
             lastName: lastName?.trim() || '',
-            phone: phone?.trim() || null,
+            phone: phone?.trim() || '', // phone is NOT NULL in database
             role: 'USER',
             status: UserStatus.ACTIVE,
             emailVerified: true,
