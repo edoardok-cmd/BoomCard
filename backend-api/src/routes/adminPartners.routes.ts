@@ -337,11 +337,35 @@ router.patch(
   '/:id/status',
   requirePermission('partners.requests.write'),
   asyncHandler(async (req: AuthRequest, res) => {
-    const { requestStatus } = req.body as { requestStatus?: string };
+    let { requestStatus } = req.body as { requestStatus?: string };
 
-    if (!requestStatus || !Object.values(PartnerRequestStatus).includes(requestStatus as PartnerRequestStatus)) {
-      return res.status(400).json({ error: 'Invalid requestStatus' });
+    // Normalize database-mapped names to TypeScript enum names (frontend sends NOVA/KOMUNIKACIYA/etc.,
+    // we need NEW/COMMUNICATION/etc. for validation and Prisma).
+    // Map database @map values back to enum names.
+    const DB_TO_ENUM_MAP: Record<string, PartnerRequestStatus> = {
+      'NOVA': PartnerRequestStatus.NEW,
+      'KOMUNIKACIYA': PartnerRequestStatus.COMMUNICATION,
+      'DOGOVARYANE': PartnerRequestStatus.NEGOTIATION,
+      'ONBOARDING': PartnerRequestStatus.ONBOARDING,
+      'ODOBRENA': PartnerRequestStatus.APPROVED,
+      'OTKAZANA': PartnerRequestStatus.REJECTED,
+    };
+
+    if (!requestStatus) {
+      return res.status(400).json({ error: 'requestStatus is required' });
     }
+
+    // Accept either TypeScript enum names or database-mapped names
+    const normalized = DB_TO_ENUM_MAP[requestStatus] || (requestStatus as PartnerRequestStatus);
+
+    if (!Object.values(PartnerRequestStatus).includes(normalized)) {
+      return res.status(400).json({
+        error: 'Invalid requestStatus',
+        validValues: Object.values(PartnerRequestStatus),
+      });
+    }
+
+    requestStatus = normalized;
 
     const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
     if (!partner) return res.status(404).json({ error: 'Partner not found' });
