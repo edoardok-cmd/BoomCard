@@ -1316,6 +1316,10 @@ const PartnersPage: React.FC = () => {
         lastName: formData.lastName,
         phone: formData.phone,
         acceptTerms: formData.acceptTerms,
+        // The single consent checkbox covers both Terms and Privacy Policy
+        // ("Общите условия и Политиката за поверителност"), so it satisfies the
+        // separate acceptPrivacy requirement register() enforces for partners.
+        acceptPrivacy: formData.acceptTerms,
         accountType: 'partner',
         businessInfo: {
           businessName: formData.businessName,
