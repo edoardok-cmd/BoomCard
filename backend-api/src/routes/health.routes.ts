@@ -6,6 +6,7 @@
 
 import { Router, Request, Response } from 'express';
 import prisma from '../lib/prisma';
+import { getRedisConnection } from '../queues/redis';
 
 const router = Router();
 
@@ -84,7 +85,6 @@ router.get('/detailed', async (req: Request, res: Response) => {
     const dbTime = Date.now() - dbStart;
     health.checks.database = { status: 'ok', responseTime: dbTime };
   } catch (error) {
-    health.status = 'degraded';
     health.checks.database = {
       status: 'error',
       responseTime: 0,
@@ -92,23 +92,30 @@ router.get('/detailed', async (req: Request, res: Response) => {
     };
   }
 
-  // Check Redis (if configured)
-  if (process.env.REDIS_URL) {
+  // Check Redis — reuse the shared ioredis singleton; no new client per call.
+  // The singleton is configured with maxRetriesPerRequest: null (required by BullMQ), so
+  // ping() would retry indefinitely under a network partition. Guard with a 3-second race.
+  const redisConn = getRedisConnection();
+  if (redisConn) {
     const redisStart = Date.now();
+    let pingTimeoutHandle: NodeJS.Timeout | undefined;
     try {
-      const { createClient } = require('redis');
-      const client = createClient({ url: process.env.REDIS_URL, socket: { connectTimeout: 3000 } });
-      await client.connect();
-      await client.ping();
-      const redisTime = Date.now() - redisStart;
-      health.checks.redis = { status: 'ok', responseTime: redisTime };
-      await client.disconnect();
+      const pingTimeout = new Promise<never>((_, reject) => {
+        pingTimeoutHandle = setTimeout(
+          () => reject(new Error('Redis ping timeout')),
+          3000,
+        );
+      });
+      await Promise.race([redisConn.ping(), pingTimeout]);
+      health.checks.redis = { status: 'ok', responseTime: Date.now() - redisStart };
     } catch (error) {
       health.checks.redis = {
         status: 'error',
         responseTime: Date.now() - redisStart,
         error: error instanceof Error ? error.message : 'Unknown error',
       };
+    } finally {
+      if (pingTimeoutHandle) clearTimeout(pingTimeoutHandle);
     }
   } else {
     health.checks.redis = { status: 'not_configured', responseTime: 0 };

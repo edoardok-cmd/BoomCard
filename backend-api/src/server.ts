@@ -72,6 +72,7 @@ import { prisma } from './lib/prisma';
 import SentryConfig from './config/sentry.config';
 import { setupSwagger } from './config/swagger.config';
 import monitoring from './config/monitoring.config';
+import { applyRateLimiters } from './config/security.config';
 
 // Load environment variables
 dotenv.config();
@@ -194,6 +195,9 @@ const limiter = rateLimit({
   skip: () => process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test',
 });
 app.use('/api/', limiter);
+
+// Route-specific rate limiters (auth, payment, upload) — production-only guard is inside the function
+applyRateLimiters(app);
 
 // CSRF protection: reject cross-origin state-mutating requests
 // Webhooks excluded because they come from external servers (no Origin header or known 3rd-party origin)

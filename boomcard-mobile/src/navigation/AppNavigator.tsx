@@ -28,6 +28,7 @@ import RegisterScreen from '../screens/Auth/RegisterScreen';
 import PlanSelectionScreen from '../screens/Auth/PlanSelectionScreen';
 import CheckoutScreen from '../screens/Auth/CheckoutScreen';
 import ForgotPasswordScreen from '../screens/Auth/ForgotPasswordScreen';
+import CompleteProfileScreen from '../screens/Auth/CompleteProfileScreen';
 
 // Main App Screens
 import DashboardScreen from '../screens/Dashboard/DashboardScreen';
@@ -66,10 +67,33 @@ import NotificationsScreen from '../screens/Notifications/NotificationsScreen';
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
+// Module-level helper — runs once at module load, before any component renders.
+// Reads the /complete-profile?token=... URL synchronously so the lazy useState
+// initializer (below) has the token available before the first render cycle,
+// which is required for React Navigation's initialRouteName to take effect.
+function extractDeeplinkToken(): string | null {
+  if (typeof window === 'undefined') return null; // SSR guard
+  if (Platform.OS !== 'web') return null;
+  const path = window.location.pathname;
+  const params = new URLSearchParams(window.location.search);
+  if (path.startsWith('/complete-profile')) {
+    const t = params.get('token');
+    if (t) {
+      // Clean the URL so a refresh doesn't re-trigger this routing
+      window.history.replaceState({}, '', '/');
+      return t;
+    }
+  }
+  return null;
+}
+
 // Auth Stack Navigator
-const AuthNavigator = () => {
+// When `initialToken` is provided (web deeplink: /complete-profile?token=...) the
+// stack opens directly on CompleteProfileScreen with the token pre-injected.
+const AuthNavigator = ({ initialToken }: { initialToken?: string } = {}) => {
   return (
     <Stack.Navigator
+      initialRouteName={initialToken ? 'CompleteProfile' : 'Login'}
       screenOptions={{
         headerShown: false,
         cardStyle: { flex: 1 },
@@ -80,6 +104,12 @@ const AuthNavigator = () => {
       <Stack.Screen name="PlanSelection" component={PlanSelectionScreen} />
       <Stack.Screen name="Checkout" component={CheckoutScreen} />
       <Stack.Screen name="Register" component={RegisterScreen} />
+      <Stack.Screen
+        name="CompleteProfile"
+        component={CompleteProfileScreen}
+        options={{ headerShown: false }}
+        initialParams={initialToken ? { token: initialToken } : undefined}
+      />
     </Stack.Navigator>
   );
 };
@@ -418,6 +448,20 @@ export const AppNavigator = () => {
   const { isAuthenticated, isLoading } = useAuth();
   const { isDarkMode, theme } = useTheme();
   const [mainInitialRoute, setMainInitialRoute] = useState<string | null>(null);
+  // Token extracted from a /complete-profile?token=... web deeplink.
+  // The lazy initializer (extractDeeplinkToken) runs synchronously before the
+  // first render so React Navigation's initialRouteName sees the token
+  // immediately — no useEffect delay, no Login flash.
+  // Cleared once the user is authenticated (so the Auth navigator reverts to
+  // Login on a subsequent logout).
+  const [completeProfileToken, setCompleteProfileToken] = useState<string | null>(extractDeeplinkToken);
+
+  // Clear the pending deeplink token once the user has successfully authenticated
+  useEffect(() => {
+    if (isAuthenticated && completeProfileToken) {
+      setCompleteProfileToken(null);
+    }
+  }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check for pending payment or subscription return URL when user becomes authenticated
   useEffect(() => {
@@ -493,7 +537,7 @@ export const AppNavigator = () => {
       {isAuthenticated ? (
         <MainNavigator initialRouteName={routeName} initialParams={routeParams} />
       ) : (
-        <AuthNavigator />
+        <AuthNavigator initialToken={completeProfileToken ?? undefined} />
       )}
     </NavigationContainer>
   );

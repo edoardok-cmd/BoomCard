@@ -2082,6 +2082,88 @@ export class AuthService {
       }
     }
 
+    // PendingSubscription users: paid but haven't completed registration yet.
+    // Only checked when NO User row of any kind exists for this email — active
+    // OR deleted. The soft-delete extension on prisma.user.findMany already
+    // excludes DELETED rows from `users`, so we run a separate bypass query
+    // to count them (the extension is skipped when the caller provides an
+    // explicit deletedAt filter — see src/lib/prisma.ts:34).
+    // Also, /complete-profile rejects if a User row exists for the email, so a
+    // PAID PendingSubscription for a known email would fail at completion anyway.
+    // M1: guard findMany so a transient DB error falls through to the generic
+    // success return rather than leaking a 500 that breaks enumeration-safety.
+
+    // Count DELETED users for this email. prisma.user.count is NOT intercepted
+    // by the soft-delete $extends hook (which only wraps findMany/findFirst/
+    // findUnique — see src/lib/prisma.ts:38-52), so it sees all rows natively.
+    // The explicit deletedAt: { not: null } filter scopes the result to
+    // soft-deleted rows only.
+    const deletedUserCount = await prisma.user.count({
+      where: { email: email.toLowerCase(), deletedAt: { not: null } },
+    }).catch(() => 1); // fail-safe: assume a deleted user exists if the query errors
+                       // so we conservatively skip the PendingSubscription path
+
+    // Only check PendingSubscription when NO User row of any kind exists for this email.
+    if (users.length === 0 && deletedUserCount === 0) {
+      const pendingRows = await prisma.pendingSubscription.findMany({
+        where: {
+          email: email.toLowerCase(),
+          status: 'PAID',
+          expiresAt: { gt: new Date() }, // exclude rows that have been logically purged
+        },
+        include: { plan: { select: { displayName: true, displayNameBg: true } } },
+      }).catch((err: unknown) => {
+        logger.error('[forgotPassword] pendingSubscription.findMany failed', err);
+        return [] as never[];
+      });
+
+      for (const pending of pendingRows) {
+        // Refresh the registration token — the original 30-min window may have expired.
+        // M1: wrap the entire loop body in try/catch so any error (token write,
+        // plan access, email dispatch) is caught per-row and does not propagate
+        // to the caller — preserving the anti-enumeration guarantee.
+        try {
+          const freshToken = crypto.randomBytes(32).toString('hex');
+          await prisma.pendingSubscription.update({
+            where: { id: pending.id },
+            data: {
+              token: freshToken,
+              tokenExpiresAt: new Date(Date.now() + 30 * 60 * 1000),
+            },
+          });
+
+          const frontendBase = process.env.FRONTEND_URL || 'https://boomcard.bg';
+          const lang: 'bg' | 'en' = pending.language === 'en' ? 'en' : 'bg';
+          detach(emailService.sendCompleteProfileEmail(pending.email, {
+            planName: pending.plan.displayName,
+            planNameBg: pending.plan.displayNameBg ?? undefined,
+            completeProfileUrl: `${frontendBase}/complete-profile?token=${freshToken}`,
+            language: lang,
+          }), (err: unknown) => logger.error('[forgotPassword] complete-profile resend failed', err));
+
+          // Write a LinkResendLog entry so IP-level rate limiting has a supporting
+          // record; no per-subscription threshold is enforced (no User to suspend).
+          await prisma.linkResendLog.create({
+            data: { linkType: 'PASSWORD_RESET', subjectId: pending.id, actorId: null },
+          }).catch((err: unknown) => logger.error('[forgotPassword] linkResendLog.create (pending) failed', err));
+
+          // L2: audit trail for each pending-subscription token refresh.
+          detach(writeAudit({
+            actorUserId: null,
+            action: 'auth.pending-subscription.registration-resent',
+            objectType: 'PendingSubscription',
+            objectId: pending.id,
+            after: { email: pending.email, selfService: true },
+          }), (err: unknown) => logger.error('[forgotPassword] writeAudit (pending) failed', err));
+
+          logger.info(`[forgotPassword] PendingSubscription ${pending.id}: resent complete-profile email`);
+        } catch (err: unknown) {
+          logger.error(`[forgotPassword] PendingSubscription ${pending.id} processing failed`, err);
+          continue;
+        }
+      }
+    }
+
     return { message: 'If an account with that email exists, a reset code has been sent.' };
   }
 

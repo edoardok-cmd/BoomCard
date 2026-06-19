@@ -24,6 +24,8 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateProfile: (data: Partial<User>) => Promise<void>;
   refetchUser: () => Promise<void>;
+  /** Activate a session directly from tokens + user data (e.g. complete-profile deeplink). */
+  loginWithSession: (data: { user: User; accessToken: string; refreshToken: string }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -197,6 +199,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await updateProfileMutation.mutateAsync(data);
   };
 
+  /**
+   * Establish an authenticated session directly from tokens + user data returned
+   * by a public endpoint (e.g. POST /api/auth/complete-profile).
+   * Mirrors the side-effects of a normal login: persist tokens, set user state,
+   * and clear any stale query cache so the new session starts clean.
+   */
+  const loginWithSession = async (data: { user: User; accessToken: string; refreshToken: string }) => {
+    await StorageService.setTokens(data.accessToken, data.refreshToken);
+    await StorageService.setUserData(data.user);
+    setUser(data.user);
+    queryClient.clear();
+    SyncService.clear();
+  };
+
   const value: AuthContextType = {
     user,
     isLoading,
@@ -206,6 +222,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     logout,
     updateProfile,
     refetchUser,
+    loginWithSession,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

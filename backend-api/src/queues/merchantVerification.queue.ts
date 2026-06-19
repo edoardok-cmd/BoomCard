@@ -13,10 +13,10 @@ const DEFAULT_JOB_OPTS: JobsOptions = {
   // cost; a transient S3/OCR failure shouldn't block the scan permanently.
   attempts: 3,
   backoff: { type: 'exponential', delay: 5000 },
-  // Keep the last 1000 completed and 5000 failed jobs for observability. Older
-  // ones are evicted automatically — without this, Redis memory grows unbounded.
-  removeOnComplete: { count: 1000 },
-  removeOnFail: { count: 5000 },
+  // Keep a modest number of completed/failed jobs for observability. Lower counts
+  // reduce Redis memory growth and limit the cleanup scan work after cap resets.
+  removeOnComplete: { count: 100 },
+  removeOnFail: { count: 200 },
 };
 
 let cachedQueue: Queue<MerchantVerificationJob> | null | undefined;

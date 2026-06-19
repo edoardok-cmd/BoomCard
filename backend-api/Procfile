@@ -1,1 +1,4 @@
 web: npm start
+# Worker process (BullMQ merchant-verification). Required on platforms that read
+# Procfile (Render, Railway, Heroku). Fly.io reads fly.toml instead.
+worker: node dist/worker.js

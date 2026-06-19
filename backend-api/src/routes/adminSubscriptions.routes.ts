@@ -13,6 +13,7 @@ import { logger } from '../utils/logger';
 import { detach } from '../utils/detach';
 
 const APP_URL = process.env.APP_URL || 'https://mobile.boomcard.bg';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://boomcard.bg';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -809,7 +810,7 @@ router.post('/pending/:id/resend-token', requirePermission('subscriptions.write'
     await emailService.sendCompleteProfileEmail(row.email, {
       planName: row.plan?.displayName ?? row.planId,
       planNameBg: row.plan?.displayNameBg,
-      completeProfileUrl: `${APP_URL}/complete-profile?token=${token}`,
+      completeProfileUrl: `${FRONTEND_URL}/complete-profile?token=${token}`,
       language: (row.language === 'en' ? 'en' : 'bg') as 'bg' | 'en',
     });
 

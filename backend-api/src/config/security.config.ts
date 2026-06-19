@@ -91,6 +91,11 @@ export function applyRateLimiters(app: Application) {
   app.use('/api/auth/register', authRateLimiter);
   app.use('/api/auth/forgot-password', authRateLimiter);
   app.use('/api/auth/reset-password', authRateLimiter);
+  app.use('/api/auth/refresh', authRateLimiter);
+  app.post('/api/auth/verify-email', authRateLimiter);
+  app.use('/api/auth/request-email-verification', authRateLimiter);
+  app.use('/api/auth/partner/activate', authRateLimiter);
+  app.use('/api/auth/complete-profile', authRateLimiter);
 
   // Payment endpoints - very restrictive
   app.use('/api/payments', paymentRateLimiter);

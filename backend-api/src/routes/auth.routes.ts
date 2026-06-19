@@ -10,7 +10,7 @@ import { AuthService } from '../services/auth.service';
 import { imageUploadService } from '../services/imageUpload.service';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
-import { authRateLimiter, switchAccountRateLimiter, switchableAccountsRateLimiter, impersonateRateLimiter } from '../middleware/security.middleware';
+import { switchAccountRateLimiter, switchableAccountsRateLimiter, impersonateRateLimiter } from '../middleware/security.middleware';
 import { z } from 'zod';
 import { SubscriptionStatus, SubscriptionPlan, UserStatus, CardType } from '@prisma/client';
 import QRCode from 'qrcode';
@@ -128,7 +128,6 @@ router.get(
  */
 router.post(
   '/verify-email',
-  authRateLimiter,
   asyncHandler(async (req: Request, res: Response) => {
     const { token } = req.body as { token?: string };
     if (!token || typeof token !== 'string') {
@@ -222,7 +221,6 @@ router.post(
  */
 router.post(
   '/request-email-verification',
-  authRateLimiter,
   asyncHandler(async (req: Request, res: Response) => {
     const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -260,7 +258,6 @@ router.post(
  */
 router.post(
   '/partner/activate',
-  authRateLimiter,
   asyncHandler(async (req: Request, res: Response) => {
     const { token, password } = req.body as { token?: string; password?: string };
     if (!token || typeof token !== 'string') {
@@ -679,7 +676,6 @@ router.post(
  */
 router.post(
   '/forgot-password',
-  authRateLimiter,
   asyncHandler(async (req: Request, res: Response) => {
     const { email } = req.body;
 
@@ -699,7 +695,6 @@ router.post(
  */
 router.post(
   '/reset-password',
-  authRateLimiter,
   asyncHandler(async (req: Request, res: Response) => {
     const { email, otp, newPassword } = req.body;
 
@@ -1259,7 +1254,6 @@ const completeProfileSchema = z.object({
 
 router.post(
   '/complete-profile',
-  authRateLimiter,
   asyncHandler(async (req: Request, res: Response) => {
     const parseResult = completeProfileSchema.safeParse(req.body);
     if (!parseResult.success) {
