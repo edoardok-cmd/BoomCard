@@ -345,7 +345,7 @@ function PortalActionMenuToggle<T>({
       </ActionMenu>
       {isOpen &&
         createPortal(
-          <PortalActionDropdown style={{ top: `${position.top}px`, right: `${position.right}px` }}>
+          <PortalActionDropdown data-action-menu="true" style={{ top: `${position.top}px`, right: `${position.right}px` }}>
             {visibleActions.map((action) => {
               const isDisabled = !!action.disabled?.(row);
               return (
