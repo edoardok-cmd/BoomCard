@@ -248,6 +248,8 @@ export const bg: TranslationKey = {
     loggedOut: 'Успешно излизане',
     stoppedImpersonating: 'Спряхте да се представяте',
     emailUpdated: 'Имейлът е обновен успешно',
+    notAPartnerYet: 'Все още не сте партньор?',
+    applyAsPartner: 'Кандидатствайте тук',
   },
 
   // Partner Registration

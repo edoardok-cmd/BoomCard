@@ -136,7 +136,10 @@ class ApiService {
 
         // Handle other error status codes
         if (error.response?.status === 403) {
-          console.error('Access forbidden:', error.response.data);
+          // TWO_FACTOR_REQUIRED is a normal control-flow signal, not an error
+          if (error.response.data?.details?.code !== 'TWO_FACTOR_REQUIRED') {
+            console.error('Access forbidden:', error.response.data);
+          }
         } else if (error.response?.status === 404) {
           console.error('Resource not found:', error.config.url);
         } else if (error.response?.status >= 500) {

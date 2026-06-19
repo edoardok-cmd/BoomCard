@@ -246,6 +246,8 @@ export const en = {
     loggedOut: 'Logged out successfully',
     stoppedImpersonating: 'Stopped impersonating',
     emailUpdated: 'Email updated successfully',
+    notAPartnerYet: 'Not a partner yet?',
+    applyAsPartner: 'Apply here',
   },
 
   // Partner Registration
