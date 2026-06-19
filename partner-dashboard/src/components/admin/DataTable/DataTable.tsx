@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import styled from 'styled-components';
 import Pagination from '../../common/Pagination/Pagination';
 import { palette, zIndex } from '../../../styles/adminTheme';
@@ -145,45 +146,14 @@ export function DataTable<T>({
                     {rowActions && rowActions.length > 0 && (
                       <Td>
                         {visibleActions.length > 0 && (
-                          <ActionMenu data-action-menu="true">
-                            <ActionToggle
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setOpenActionRow(openActionRow === key ? null : key);
-                              }}
-                            >
-                              ···
-                            </ActionToggle>
-                            {openActionRow === key && (
-                              <ActionDropdown>
-                                {visibleActions.map((action) => {
-                                  const isDisabled = !!action.disabled?.(row);
-                                  return (
-                                    <ActionItem
-                                      key={action.label}
-                                      $danger={!!action.danger}
-                                      disabled={isDisabled}
-                                      title={
-                                        isDisabled
-                                          ? typeof action.disabledTitle === 'function'
-                                            ? action.disabledTitle(row)
-                                            : action.disabledTitle
-                                          : undefined
-                                      }
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (isDisabled) return;
-                                        setOpenActionRow(null);
-                                        action.onClick(row);
-                                      }}
-                                    >
-                                      {action.label}
-                                    </ActionItem>
-                                  );
-                                })}
-                              </ActionDropdown>
-                            )}
-                          </ActionMenu>
+                          <PortalActionMenuToggle
+                            key={key}
+                            isOpen={openActionRow === key}
+                            onToggle={() => setOpenActionRow(openActionRow === key ? null : key)}
+                            visibleActions={visibleActions}
+                            row={row}
+                            onActionClick={() => setOpenActionRow(null)}
+                          />
                         )}
                       </Td>
                     )}
@@ -299,10 +269,8 @@ const ActionToggle = styled.button`
   }
 `;
 
-const ActionDropdown = styled.div`
-  position: absolute;
-  right: 0;
-  top: 100%;
+const PortalActionDropdown = styled.div`
+  position: fixed;
   z-index: ${zIndex.dropdown};
   background: ${palette.surface};
   border: 1px solid ${palette.border};
@@ -337,3 +305,71 @@ const ActionItem = styled.button<{ $danger: boolean }>`
     background: none;
   }
 `;
+
+// Portal-based action menu that escapes overflow containers
+function PortalActionMenuToggle<T>({
+  isOpen,
+  onToggle,
+  visibleActions,
+  row,
+  onActionClick,
+}: {
+  isOpen: boolean;
+  onToggle: () => void;
+  visibleActions: RowAction<T>[];
+  row: T;
+  onActionClick: () => void;
+}) {
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const [position, setPosition] = useState({ top: 0, right: 0 });
+
+  useEffect(() => {
+    if (!isOpen || !toggleRef.current) return;
+    const rect = toggleRef.current.getBoundingClientRect();
+    setPosition({
+      top: rect.bottom + window.scrollY,
+      right: window.innerWidth - rect.right,
+    });
+  }, [isOpen]);
+
+  return (
+    <>
+      <ActionMenu data-action-menu="true">
+        <ActionToggle ref={toggleRef} onClick={(e) => { e.stopPropagation(); onToggle(); }}>
+          ···
+        </ActionToggle>
+      </ActionMenu>
+      {isOpen &&
+        createPortal(
+          <PortalActionDropdown style={{ top: `${position.top}px`, right: `${position.right}px` }}>
+            {visibleActions.map((action) => {
+              const isDisabled = !!action.disabled?.(row);
+              return (
+                <ActionItem
+                  key={action.label}
+                  $danger={!!action.danger}
+                  disabled={isDisabled}
+                  title={
+                    isDisabled
+                      ? typeof action.disabledTitle === 'function'
+                        ? action.disabledTitle(row)
+                        : action.disabledTitle
+                      : undefined
+                  }
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isDisabled) return;
+                    onActionClick();
+                    action.onClick(row);
+                  }}
+                >
+                  {action.label}
+                </ActionItem>
+              );
+            })}
+          </PortalActionDropdown>,
+          document.body,
+        )}
+    </>
+  );
+}
