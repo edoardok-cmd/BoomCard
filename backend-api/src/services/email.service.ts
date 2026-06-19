@@ -125,6 +125,10 @@ export interface CompleteProfileData {
   planNameBg?: string;
   completeProfileUrl: string;
   language?: 'bg' | 'en';
+  // Optional receipt details — include when suppressing a separate payment receipt email
+  orderId?: string;
+  amount?: number;
+  currency?: string;
 }
 
 export interface SubscriptionCancelledData {
@@ -2343,8 +2347,9 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
 
 
   /**
-   * §7.2: Standalone payment receipt email — sent at payment time only.
-   * A separate welcome/complete-profile email follows after profile creation.
+   * Standalone payment receipt email template. Retained for potential future use.
+   * Both anonymous-checkout callback handlers now embed receipt details directly
+   * in sendCompleteProfileEmail instead of calling this separately.
    */
   async sendPaymentReceiptEmail(
     email: string,
@@ -2417,6 +2422,11 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
         <tr><td style="padding:40px;">
           <p style="margin:0 0 20px;color:#333;font-size:16px;">${greeting}</p>
           <p style="margin:0 0 20px;color:#666;font-size:16px;line-height:1.6;">${body}</p>
+          ${(data.orderId || data.amount != null) ? `
+          <div style="background:#f8f9fa;border-radius:6px;padding:16px;margin:0 0 20px;">
+            ${data.amount != null ? `<p style="margin:0 0 8px;color:#555;font-size:14px;"><strong>${isBg ? 'Сума' : 'Amount'}:</strong> ${data.amount.toFixed(2)} ${data.currency || 'EUR'}</p>` : ''}
+            ${data.orderId ? `<p style="margin:0;color:#555;font-size:14px;"><strong>${isBg ? 'Поръчка №' : 'Order #'}:</strong> ${data.orderId}</p>` : ''}
+          </div>` : ''}
           <div style="text-align:center;margin:32px 0;">
             <a href="${data.completeProfileUrl}" style="display:inline-block;background:#667eea;color:#fff;text-decoration:none;padding:16px 40px;border-radius:6px;font-size:16px;font-weight:bold;">${btnLabel}</a>
           </div>
@@ -2431,9 +2441,14 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
   </table>
 </body>
 </html>`;
+    const receiptText = (data.orderId || data.amount != null)
+      ? (isBg
+          ? `${data.amount != null ? `Сума: ${data.amount.toFixed(2)} ${data.currency || 'EUR'}\n` : ''}${data.orderId ? `Поръчка №: ${data.orderId}\n` : ''}\n`
+          : `${data.amount != null ? `Amount: ${data.amount.toFixed(2)} ${data.currency || 'EUR'}\n` : ''}${data.orderId ? `Order #: ${data.orderId}\n` : ''}\n`)
+      : '';
     const text = isBg
-      ? `Завършете настройката на акаунта си за план ${planName} (връзката е валидна 30 мин):\n${data.completeProfileUrl}\n\nВъпроси? office@boomcard.bg`
-      : `Complete your ${planName} account setup (link expires in 30 min):\n${data.completeProfileUrl}\n\nQuestions? office@boomcard.bg`;
+      ? `Завършете настройката на акаунта си за план ${planName} (връзката е валидна 30 мин):\n${data.completeProfileUrl}\n\n${receiptText}Въпроси? office@boomcard.bg`
+      : `Complete your ${planName} account setup (link expires in 30 min):\n${data.completeProfileUrl}\n\n${receiptText}Questions? office@boomcard.bg`;
     return this.sendEmail({ to: email, subject, html, text });
   }
 

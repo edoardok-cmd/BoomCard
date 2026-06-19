@@ -116,20 +116,98 @@ router.post(
         break;
     }
 
-    const orderId = `BOOM-CHK-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+    // ── Guard 1 & 2: existing registered user ─────────────────────────────────
+    // F-5: mask email in log output to avoid logging full PII
+    const maskedEmail = (e: string) => {
+      const [local, domain] = e.split('@');
+      return `${local.slice(0, 3)}***@${domain}`;
+    };
 
-    // Create PendingSubscription record
-    await prisma.pendingSubscription.create({
-      data: {
-        email: email.toLowerCase(),
-        planId: plan.id,
-        billingPeriod,
-        language: checkoutLanguage,
-        payseraOrderId: orderId,
-        status: 'CREATED',
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      },
+    const normalizedEmail = email.toLowerCase();
+
+    // F-1 + F-3: findMany to cover @@unique([email, role]) multi-row schema;
+    // deletedAt: null excludes soft-deleted users so their email is treated as free.
+    const existingUsers = await prisma.user.findMany({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' }, deletedAt: null },
+      select: { id: true },
     });
+
+    if (existingUsers.length > 0) {
+      const userIds = existingUsers.map(u => u.id);
+
+      // F-4: include PAUSED in the blocked statuses
+      const activeSub = await prisma.subscription.findFirst({
+        where: {
+          userId: { in: userIds },
+          status: { in: ['ACTIVE', 'TRIALING', 'PAUSED'] },
+        },
+        select: { id: true },
+      });
+
+      if (activeSub) {
+        logger.warn(`Checkout blocked — email already has active plan: ${maskedEmail(normalizedEmail)} (EMAIL_ALREADY_HAS_ACTIVE_PLAN)`);
+        return res.status(409).json({
+          success: false,
+          code: 'EMAIL_ALREADY_HAS_ACTIVE_PLAN',
+          message: 'An active subscription already exists for this email. Please log in to manage your subscription.',
+        });
+      }
+
+      logger.warn(`Checkout blocked — email registered but no active plan: ${maskedEmail(normalizedEmail)} (EMAIL_REGISTERED_NO_ACTIVE_PLAN)`);
+      return res.status(409).json({
+        success: false,
+        code: 'EMAIL_REGISTERED_NO_ACTIVE_PLAN',
+        message: 'An account already exists for this email. Please log in to subscribe.',
+      });
+    }
+
+    // ── Guard 3: in-flight pending checkout ───────────────────────────────────
+    // F-2: wrap the check + create in a serializable transaction to prevent TOCTOU
+    // races where two concurrent requests both pass the guard and create duplicate
+    // PendingSubscription rows (and therefore two Paysera payments).
+    let orderId: string | null = null;
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        const inFlight = await tx.pendingSubscription.findFirst({
+          where: {
+            email: normalizedEmail,
+            status: { in: ['CREATED', 'PAID'] },
+            expiresAt: { gt: new Date() },
+          },
+          select: { id: true },
+        });
+
+        if (inFlight) {
+          throw Object.assign(new Error('CHECKOUT_ALREADY_IN_PROGRESS'), { code: 'CHECKOUT_ALREADY_IN_PROGRESS' });
+        }
+
+        orderId = `BOOM-CHK-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+
+        await tx.pendingSubscription.create({
+          data: {
+            email: normalizedEmail,
+            planId: plan.id,
+            billingPeriod,
+            language: checkoutLanguage,
+            payseraOrderId: orderId,
+            status: 'CREATED',
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          },
+        });
+      }, { isolationLevel: 'Serializable' });
+    } catch (txErr: any) {
+      if (txErr?.code === 'CHECKOUT_ALREADY_IN_PROGRESS') {
+        logger.warn(`Checkout blocked — in-flight pending checkout exists for: ${maskedEmail(normalizedEmail)} (CHECKOUT_ALREADY_IN_PROGRESS)`);
+        return res.status(409).json({
+          success: false,
+          code: 'CHECKOUT_ALREADY_IN_PROGRESS',
+          message: 'A checkout is already in progress for this email. Please complete or wait for the previous checkout to expire.',
+        });
+      }
+      throw txErr;
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Build redirect URLs
     const acceptUrl = (clientSuccessUrl && isAllowedRedirectUrl(clientSuccessUrl))
@@ -278,22 +356,20 @@ async function handleCheckoutCallback(req: Request, res: Response) {
 
       logger.info(`PendingSubscription ${pending.id} marked PAID, registration token issued`);
 
-      // §7.2: Send two separate emails — payment receipt first, then profile-setup invite.
+      // Send a single account-setup email that includes the payment receipt details.
+      // Sending a separate payment receipt email is redundant — sendCompleteProfileEmail
+      // already confirms payment success ("Payment successful — one last step") and
+      // carrying orderId/amount here means the user gets everything in one message.
       const pendingLanguage: 'bg' | 'en' = pending.language === 'en' ? 'en' : 'bg';
-      detach(emailService.sendPaymentReceiptEmail(pending.email, {
-        planName: pending.plan.displayName,
-        planNameBg: pending.plan.displayNameBg ?? undefined,
-        orderId: result.orderId,
-        amount: result.amount ? result.amount / 100 : undefined,
-        currency: 'EUR',
-      }, pendingLanguage), err => logger.error('Failed to send payment receipt email:', err));
-
       detach(emailService.sendCompleteProfileEmail(pending.email, {
         planName: pending.plan.displayName,
         planNameBg: pending.plan.displayNameBg ?? undefined,
         completeProfileUrl: `${FRONTEND_URL}/complete-profile?token=${token}`,
         // Spec §7.1: BG default, EN only when the user explicitly used the EN UI at checkout.
         language: pendingLanguage,
+        orderId: result.orderId,
+        amount: result.amount ? result.amount / 100 : undefined,
+        currency: 'EUR',
       }), err => logger.error('Failed to send complete-profile email:', err));
 
     } else if (result.status === 'failed' || result.status === 'cancelled') {
