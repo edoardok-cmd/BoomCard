@@ -296,10 +296,9 @@ export default function AdminPendingSubscriptionsPage() {
       const params = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
       if (q.trim()) params.set('email', q.trim());
       if (s)       params.set('status', s);
-      const res = await apiService.get<ListResponse>(`/admin/subscriptions/pending?${params}`);
-      const body = (res as any)?.data ?? res;
-      setData(body.data ?? []);
-      setTotal(body.total ?? 0);
+      const body = await apiService.get<ListResponse>(`/admin/subscriptions/pending?${params}`);
+      setData((body as any).data ?? []);
+      setTotal((body as any).total ?? 0);
     } catch {
       toast.error(lang === 'bg' ? 'Грешка при зареждане' : 'Failed to load');
     } finally {
