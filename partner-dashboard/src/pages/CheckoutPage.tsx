@@ -415,6 +415,7 @@ const CheckoutPage: React.FC = () => {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [emailConflictCode, setEmailConflictCode] = useState<'EMAIL_ALREADY_HAS_ACTIVE_PLAN' | 'EMAIL_REGISTERED_NO_ACTIVE_PLAN' | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [resolvedPlanId, setResolvedPlanId] = useState<string | null>(planId);
 
@@ -545,9 +546,14 @@ const CheckoutPage: React.FC = () => {
         language,
       });
       window.location.href = result.paymentUrl;
-    } catch (err) {
+    } catch (err: any) {
       console.error('Guest payment error:', err);
-      setError(language === 'bg' ? 'Грешка при обработка на плащането' : 'Error processing payment');
+      const code = err?.response?.data?.code;
+      if (code === 'EMAIL_ALREADY_HAS_ACTIVE_PLAN' || code === 'EMAIL_REGISTERED_NO_ACTIVE_PLAN') {
+        setEmailConflictCode(code);
+      } else {
+        setError(language === 'bg' ? 'Грешка при обработка на плащането' : 'Error processing payment');
+      }
       setIsProcessing(false);
     }
   };
@@ -626,7 +632,7 @@ const CheckoutPage: React.FC = () => {
                     <GuestInput
                       type="email"
                       value={guestEmail}
-                      onChange={e => setGuestEmail(e.target.value)}
+                      onChange={e => { setGuestEmail(e.target.value); setEmailConflictCode(null); }}
                       $hasError={!!guestErrors.email}
                       placeholder="you@example.com"
                     />
@@ -643,6 +649,20 @@ const CheckoutPage: React.FC = () => {
                     />
                   </GuestField>
                 </GuestForm>
+
+                {emailConflictCode && (
+                  <div style={{ padding: '0.875rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', color: '#dc2626', lineHeight: 1.5 }}>
+                    {emailConflictCode === 'EMAIL_ALREADY_HAS_ACTIVE_PLAN' ? (
+                      language === 'bg'
+                        ? <>{' Имате активен абонамент за този имейл. '}<Link to="/login" style={{ color: 'inherit', fontWeight: 600 }}>Влезте в акаунта си</Link>{' за да го управлявате.'}</>
+                        : <>You already have an active subscription for this email.{' '}<Link to="/login" style={{ color: 'inherit', fontWeight: 600 }}>Sign in</Link>{' to manage it.'}</>
+                    ) : (
+                      language === 'bg'
+                        ? <>{' Акаунт с този имейл вече съществува. '}<Link to="/login" style={{ color: 'inherit', fontWeight: 600 }}>Влезте</Link>{' за да се абонирате.'}</>
+                        : <>An account with this email already exists.{' '}<Link to="/login" style={{ color: 'inherit', fontWeight: 600 }}>Sign in</Link>{' to subscribe.'}</>
+                    )}
+                  </div>
+                )}
 
                 <Button
                   variant="primary"
