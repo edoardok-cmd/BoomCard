@@ -1356,24 +1356,33 @@ router.post(
         // Ensure all required fields have values - Prisma defaults don't apply in transactions
         const safePreferredLanguage = lang && ['bg', 'en'].includes(lang) ? lang : 'bg';
 
-        // Race-safe duplicate check inside the transaction.
-        // DELETED users may re-subscribe; reactivate them instead of blocking.
+        // Race-safe duplicate check (soft-delete extension auto-adds deletedAt:null,
+        // so findFirst here only sees non-deleted rows).
         const existingUser = await tx.user.findFirst({
           where: { email: pending.email, role: 'USER' },
-          select: { id: true, status: true },
+          select: { id: true },
         });
-        if (existingUser && existingUser.status !== 'DELETED') {
+        if (existingUser) {
           throw Object.assign(new Error('An account with this email already exists. Please log in.'), { _userAlreadyExists: true });
         }
 
+        // Check for soft-deleted users — must bypass the extension by providing an
+        // explicit deletedAt filter (the extension skips adding its own filter when
+        // any deletedAt clause is already present).
+        const softDeletedUser = await tx.user.findFirst({
+          where: { email: pending.email, role: 'USER', deletedAt: { not: null } },
+          select: { id: true },
+        });
+
         let newUser: { id: string; email: string; firstName: string; lastName: string; role: string; status: string };
-        if (existingUser && existingUser.status === 'DELETED') {
-          // Reactivate the deleted account with the new subscription's credentials.
+        if (softDeletedUser) {
+          // Reactivate the soft-deleted account with the new subscription's credentials.
           newUser = await tx.user.update({
-            where: { id: existingUser.id },
+            where: { id: softDeletedUser.id },
             data: {
               passwordHash,
               status: UserStatus.ACTIVE,
+              deletedAt: null,
               emailVerified: true,
               emailVerifiedAt: now,
               marketingConsentEmail,
