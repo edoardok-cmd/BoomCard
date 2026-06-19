@@ -547,14 +547,20 @@ const CheckoutPage: React.FC = () => {
       });
       window.location.href = result.paymentUrl;
     } catch (err: any) {
-      console.error('Guest payment error:', err);
+      console.error('Guest payment error:', err?.response?.data ?? err?.message ?? err);
+      const status = err?.response?.status;
       const code = err?.response?.data?.code;
-      if (
-        code === 'EMAIL_ALREADY_HAS_ACTIVE_PLAN' ||
-        code === 'EMAIL_REGISTERED_NO_ACTIVE_PLAN' ||
-        code === 'CHECKOUT_ALREADY_IN_PROGRESS'
-      ) {
-        setEmailConflictCode(code);
+      if (status === 409) {
+        if (
+          code === 'EMAIL_ALREADY_HAS_ACTIVE_PLAN' ||
+          code === 'EMAIL_REGISTERED_NO_ACTIVE_PLAN' ||
+          code === 'CHECKOUT_ALREADY_IN_PROGRESS'
+        ) {
+          setEmailConflictCode(code);
+        } else {
+          const msg = err?.response?.data?.message;
+          setError(msg || (language === 'bg' ? 'Заявката не може да бъде изпълнена. Опитайте отново.' : 'This request could not be completed. Please try again.'));
+        }
       } else {
         setError(language === 'bg' ? 'Грешка при обработка на плащането' : 'Error processing payment');
       }
