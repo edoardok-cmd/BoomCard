@@ -693,8 +693,30 @@ const RegisterPartnerPage: React.FC = () => {
       // toast is shown by AuthContext.register.
       navigate('/login', { replace: true });
     } catch (error) {
-      // Error is handled by the AuthContext with toast
+      // AuthContext already fires a toast; also surface the conflict inline.
       console.error('Registration error:', error);
+      const err = error as {
+        response?: { status?: number; data?: { message?: string; error?: string | { message?: string } } };
+        message?: string;
+      };
+      if (err?.response?.status === 409) {
+        const raw = err?.response?.data?.error;
+        const backendMsg = (
+          (typeof raw === 'object' ? (raw as { message?: string })?.message : raw) ||
+          err?.response?.data?.message ||
+          err?.message ||
+          ''
+        ).toLowerCase();
+        if (backendMsg.includes('phone')) {
+          setErrors(prev => ({ ...prev, phone: t('errors.phoneAlreadyRegistered') }));
+          setTouched(prev => ({ ...prev, phone: true }));
+          document.getElementById('phone')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+          setErrors(prev => ({ ...prev, email: t('errors.emailAlreadyRegistered') }));
+          setTouched(prev => ({ ...prev, email: true }));
+          document.getElementById('email')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }
     }
   };
 
