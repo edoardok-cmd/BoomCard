@@ -280,6 +280,7 @@ const EmptyState = styled.div`
 const ActionMenu = styled.div`
   position: relative;
   display: inline-block;
+  z-index: ${zIndex.dropdown};
 `;
 
 const ActionToggle = styled.button`
