@@ -323,19 +323,23 @@ function PortalActionMenuToggle<T>({
   const toggleRef = useRef<HTMLButtonElement>(null);
   const [position, setPosition] = useState({ top: 0, right: 0 });
 
-  useEffect(() => {
-    if (!isOpen || !toggleRef.current) return;
-    const rect = toggleRef.current.getBoundingClientRect();
-    setPosition({
-      top: rect.bottom + window.scrollY,
-      right: window.innerWidth - rect.right,
-    });
-  }, [isOpen]);
+  const handleToggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Calculate position before calling onToggle so the first render of the
+    // dropdown already has the correct coords (React 18 batches both state
+    // updates into a single flush, eliminating the flash-at-top-of-page).
+    // position: fixed is viewport-relative — no scrollY offset needed.
+    if (!isOpen && toggleRef.current) {
+      const rect = toggleRef.current.getBoundingClientRect();
+      setPosition({ top: rect.bottom, right: window.innerWidth - rect.right });
+    }
+    onToggle();
+  };
 
   return (
     <>
       <ActionMenu data-action-menu="true">
-        <ActionToggle ref={toggleRef} onClick={(e) => { e.stopPropagation(); onToggle(); }}>
+        <ActionToggle ref={toggleRef} onClick={handleToggle}>
           ···
         </ActionToggle>
       </ActionMenu>
