@@ -651,7 +651,7 @@ const CheckoutPage: React.FC = () => {
                 </GuestForm>
 
                 {emailConflictCode && (
-                  <div style={{ padding: '0.875rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', color: '#dc2626', lineHeight: 1.5 }}>
+                  <div style={{ padding: '0.875rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', color: '#dc2626', lineHeight: 1.6 }}>
                     {emailConflictCode === 'EMAIL_ALREADY_HAS_ACTIVE_PLAN' ? (
                       language === 'bg'
                         ? <>{' Имате активен абонамент за този имейл. '}<Link to="/login" style={{ color: 'inherit', fontWeight: 600 }}>Влезте в акаунта си</Link>{' за да го управлявате.'}</>
