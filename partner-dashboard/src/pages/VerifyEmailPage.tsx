@@ -1,86 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { XCircle, Loader } from 'lucide-react';
-// S1 fix: CheckCircle2 removed — the 'success' render case was dead code
-// (setStatus('success') is never called; backend returns a 302 redirect).
 import { Button } from '../components/common/Button/Button';
 import { useLanguage } from '../contexts/LanguageContext';
 import { apiService } from '../services/api.service';
 import toast from 'react-hot-toast';
-
-// Audit-pass [10.3]: production fallback when VITE_API_URL is unset. The
-// previous empty-string fallback caused `window.location.replace` to hit
-// /api/auth/verify-email on the partner-dashboard origin (Vercel) and 404
-// because Vercel doesn't serve that path. Hardcode the prod backend URL so
-// a misconfigured build still works rather than silently breaking.
-const FALLBACK_API_URL = 'https://boomcard-api.fly.dev';
-
-// S2 fix: use the correct Vite pattern instead of `(import.meta as any).env`
-// to preserve TypeScript env-variable type checking at build time.
-const CONFIGURED_API_URL: string = import.meta.env.VITE_API_URL || FALLBACK_API_URL;
-
-// B5 fix: validate the resolved API base against a known-good hostname
-// allowlist before using it in a window.location.replace call. If the build
-// pipeline is misconfigured and VITE_API_URL is set to an attacker-controlled
-// value, users' one-time activation tokens would be forwarded to that domain.
-// S3 fix: add staging/preview hostnames so CI deployments don't silently
-// fall through to production and consume staging activation tokens there.
-const ALLOWED_API_HOSTS = [
-  'https://boomcard-api.fly.dev',
-  'https://boomcard-api-staging.fly.dev',
-  // LOW-1 fix (review r2ac): added localhost:3025 which is the actual backend port
-  // per vite.config.ts proxy and .env.local. Without this entry, setting
-  // VITE_API_URL=http://localhost:3025 for local dev failed the allowlist check
-  // and silently fell through to the production backend.
-  'http://localhost:3025',
-  'http://localhost:4000',
-  'http://localhost:3001',
-  'http://localhost:3000',
-];
-
-function getSafeApiBase(): string | null {
-  if (ALLOWED_API_HOSTS.includes(CONFIGURED_API_URL.replace(/\/$/, ''))) {
-    return CONFIGURED_API_URL.replace(/\/$/, '');
-  }
-  // If the configured URL doesn't match the allowlist, fall back to the
-  // hardcoded production URL. This is safe because the fallback is constant.
-  // Log the mismatch so misconfigured deployments are easy to diagnose.
-  if (CONFIGURED_API_URL !== FALLBACK_API_URL) {
-    console.error(
-      `[VerifyEmailPage] VITE_API_URL value "${CONFIGURED_API_URL}" is not in the ` +
-      `allowed-hosts list. Falling back to ${FALLBACK_API_URL}.`
-    );
-  }
-  return FALLBACK_API_URL;
-}
-
-// Module-level flag: set to true when the synchronous redirect at module load
-// LOW-1 fix (review r2ac): earlyRedirectFiredOnLoad module flag removed.
-// It was used in a useEffect condition (`redirectedRef.current || earlyRedirectFiredOnLoad`)
-// but that caused SPA navigations to /verify-email to skip the redirect because the
-// module-level flag stayed `true` for the lifetime of the JS bundle.  The per-instance
-// `redirectedRef` is sufficient to prevent double-redirect; the module flag is not needed.
-
-// Audit-pass [10.1]: redirect SYNCHRONOUSLY at module top before any React
-// mount so the "Verifying..." card never flashes. Uses
-// `window.location.search` directly to avoid waiting for react-router.
-if (typeof window !== 'undefined') {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const earlyToken = params.get('token');
-    if (earlyToken) {
-      const safeBase = getSafeApiBase();
-      if (safeBase) {
-        // Use replace so the verify-email URL doesn't pollute history.
-        window.location.replace(`${safeBase}/api/auth/verify-email?token=${encodeURIComponent(earlyToken)}`);
-      }
-    }
-  } catch {
-    /* noop — fall through to React-side handling */
-  }
-}
+import * as authStorage from '../lib/auth/authStorage';
+import { persistRefreshToken } from '../lib/auth/persistRefreshToken';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -105,8 +33,9 @@ const Card = styled(motion.div)`
   }
 `;
 
-// S1 fix: 'success' removed from the $status union — the success case was
-// dead code (backend redirects instead of returning to React).
+// S1 fix: 'success' removed from the $status union — the success case is
+// handled by auto-login (POST /api/auth/verify-email returns JWT tokens and
+// the page redirects to "/" directly, never reaching a 'success' render state).
 const IconWrapper = styled(motion.div)<{ $status: 'loading' | 'error' }>`
   width: 100px;
   height: 100px;
@@ -195,10 +124,11 @@ const SpinningLoader = styled(Loader)`
   ${spin}
 `;
 
-// S1 fix: 'success' is dead code — setStatus('success') is never called.
-// The backend returns a 302 redirect directly; React never gets to set a
-// success state. Removed 'success' (and 'expired') from the union to
-// eliminate unreachable branches.
+// S1 fix: 'success' is not a reachable render state. When verification
+// succeeds, the page calls POST /api/auth/verify-email via apiService, stores
+// the returned JWT tokens, and immediately redirects to "/". When 2FA is
+// required, it redirects to /login?emailVerified=true. Removed 'success' (and
+// 'expired') from the union to eliminate unreachable branches.
 type VerificationStatus = 'loading' | 'error';
 
 const EmailInput = styled.input`
@@ -229,16 +159,6 @@ const VerifyEmailPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
   const email = searchParams.get('email');
-
-  // MEDIUM-B1 fix (review r2ac): per-component-instance redirect guard.
-  // The module-level synchronous redirect covers only the very first mount
-  // (synchronous redirect on page load). When the user navigates away and back
-  // to /verify-email in a SPA session (e.g., clicking a second activation link),
-  // the module code does not re-execute, so the synchronous redirect does not fire again
-  // and the useEffect would bail early — leaving the user stuck on the spinner.
-  // redirectedRef.current is false on every fresh component mount, ensuring the
-  // redirect fires correctly for each SPA navigation to this page.
-  const redirectedRef = useRef(false);
 
   const [status, setStatus] = useState<VerificationStatus>('loading');
   const [isResending, setIsResending] = useState(false);
@@ -306,46 +226,41 @@ const VerifyEmailPage: React.FC = () => {
 
   useEffect(() => {
     if (!token) {
-      // No token — the URL was hit without a verification link. Show the
-      // error/resend state so the user can request a new email.
       setStatus('error');
       return;
     }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiService.post<any>('/auth/verify-email', { token });
+        if (cancelled) return;
+        const resData = res?.data ?? res;
+        const accessToken: string | undefined = resData?.accessToken;
+        const refreshToken: string | undefined = resData?.refreshToken;
+        const user: { firstName?: string | null; [key: string]: unknown } | undefined = resData?.user;
 
-    // The real verification lives on the backend: GET /api/auth/verify-email
-    // returns a 302 to /login?emailVerified=true|already (or error=...).
-    // Letting the browser follow that redirect natively is both simpler and
-    // ensures status flags (?emailVerified=already vs true) propagate.
-    //
-    // Audit-pass [10.1]: the module-top synchronous redirect above already
-    // fired for clients that have window. This effect remains as a fallback
-    // for SSR/hydration cases where the early redirect was skipped.
-    // B5/S2 fix: use getSafeApiBase() (allowlist-validated) instead of the
-    // raw env value. Language is irrelevant to the redirect URL — removed from
-    // the dependency array (B6 fix) so a language-context update does not
-    // cause a double-redirect.
-    // LOW-1 fix (review r2ac): use only the per-instance ref to guard against
-    // double-redirect.  The module-level `earlyRedirectFiredOnLoad` flag is
-    // intentionally excluded here because it stays `true` for the lifetime of
-    // the JS module (i.e. across SPA navigations within the same session).
-    // Including it in the OR condition caused the useEffect redirect to be
-    // skipped on every SPA navigation to /verify-email after the initial load,
-    // meaning users who navigated here without a fresh page load were never
-    // redirected to the backend verification endpoint.
-    // `redirectedRef.current` is reset to false on each new component mount,
-    // so it correctly allows one redirect per mount regardless of the module
-    // flag's state.
-    if (redirectedRef.current) {
-      return;
-    }
-    const safeBase = getSafeApiBase();
-    if (safeBase) {
-      redirectedRef.current = true;
-      window.location.replace(`${safeBase}/api/auth/verify-email?token=${encodeURIComponent(token)}`);
-    } else {
-      setStatus('error');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        if (accessToken && user) {
+          authStorage.setItem('token', accessToken, false);
+          if (refreshToken) persistRefreshToken(refreshToken, false);
+          authStorage.setItem('boomcard_auth', JSON.stringify(user), false);
+          apiService.setAuthToken(accessToken);
+          toast.success(
+            language === 'bg'
+              ? `Добре дошли${user.firstName ? `, ${user.firstName}` : ''}! Имейлът ви е потвърден.`
+              : `Welcome${user.firstName ? `, ${user.firstName}` : ''}! Your email has been verified.`,
+          );
+          setTimeout(() => window.location.replace('/'), 300);
+        } else {
+          // Email verified but auto-login not possible (2FA required or tokens absent).
+          // Fall back to the pre-existing UX: redirect to the login page with the
+          // emailVerified flag so the user knows their email is confirmed.
+          setTimeout(() => window.location.replace('/login?emailVerified=true'), 300);
+        }
+      } catch {
+        if (!cancelled) setStatus('error');
+      }
+    })();
+    return () => { cancelled = true; };
   }, [token]);
 
   const handleResendEmail = async () => {
@@ -416,8 +331,9 @@ const VerifyEmailPage: React.FC = () => {
           </>
         );
 
-      // S1 fix: 'success' case removed — it was dead code; the backend always
-      // redirects via 302 and React never transitions to a 'success' status.
+      // S1 fix: 'success' case removed — auto-login redirects to "/" immediately
+      // after storing tokens; the 2FA path redirects to /login?emailVerified=true.
+      // Neither path reaches a 'success' render state.
 
       case 'error':
         return (

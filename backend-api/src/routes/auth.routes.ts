@@ -120,6 +120,81 @@ router.get(
 );
 
 /**
+ * POST /api/auth/verify-email — spec §9.5 v1.1
+ * Public, rate-limited. Consumes a verification token and returns a session
+ * (accessToken + refreshToken) so the client can auto-log the user in
+ * immediately after clicking the email link, without a second password entry.
+ * Body: { token: string }
+ */
+router.post(
+  '/verify-email',
+  authRateLimiter,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { token } = req.body as { token?: string };
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ success: false, error: 'token is required' });
+    }
+
+    let result: Awaited<ReturnType<typeof AuthService.verifyEmail>>;
+    try {
+      result = await AuthService.verifyEmail(token);
+    } catch (err: any) {
+      const status = err?.statusCode >= 400 && err?.statusCode < 500 ? err.statusCode : 500;
+      return res.status(status).json({ success: false, error: err?.message || 'Verification failed' });
+    }
+
+    // If the account has 2FA enabled, we cannot issue a session without a TOTP
+    // code. Return a partial success so the frontend redirects to the login page.
+    if (result.totpEnabled) {
+      return res.json({
+        success: true,
+        requiresTwoFactor: true,
+        alreadyVerified: result.alreadyVerified,
+      });
+    }
+
+    const tokens = await AuthService.createSession({
+      id: result.userId,
+      email: result.email,
+      role: result.role,
+    });
+
+    const ip = getClientIp(req);
+    const userAgent = req.headers['user-agent'];
+    detach(writeAudit({
+      actorUserId: result.userId,
+      action: 'auth.email_verify_login',
+      objectType: 'user',
+      objectId: result.userId,
+      ip: ip ?? null,
+      userAgent: userAgent ?? null,
+    }), () => undefined);
+
+    return res.json({
+      success: true,
+      data: {
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        expiresIn: tokens.expiresIn,
+        alreadyVerified: result.alreadyVerified,
+        user: {
+          id: result.userId,
+          email: result.email,
+          firstName: result.firstName,
+          lastName: result.lastName,
+          role: result.role,
+          avatar: result.avatar,
+          emailVerified: true,
+          mustChangePassword: result.mustChangePassword,
+          twoFactorEnabled: result.totpEnabled,
+          partner_account_status: undefined,
+        },
+      },
+    });
+  })
+);
+
+/**
  * POST /api/auth/resend-email-verification — spec §9.5 v1.1
  * Self-service resend for the 24h email verification link. Authenticated:
  * any user can re-trigger a fresh link to their own account.

@@ -445,8 +445,8 @@ export class AuthService {
       logger.info(`Partner application received: ${user.email} (user ${user.id}, partner ${result.partnerId})`);
 
       // Fire-and-forget emails — don't block the response on delivery
-      const apiBase = process.env.API_URL || 'https://boomcard-api.fly.dev';
-      const verificationUrl = `${apiBase}/api/auth/verify-email?token=${user.emailVerificationToken}`;
+      const frontendBase = process.env.FRONTEND_URL || 'https://boomcard.bg';
+      const verificationUrl = `${frontendBase}/verify-email?token=${user.emailVerificationToken}`;
       detach(emailService.sendPartnerEmailVerification(user.email, {
         firstName: user.firstName || user.email.split('@')[0],
         businessName: info.businessName.trim(),
@@ -640,8 +640,8 @@ export class AuthService {
       data: { emailVerificationToken: token, emailVerificationExpiry: expiry },
     });
 
-    const apiBase = process.env.API_URL || 'https://boomcard-api.fly.dev';
-    const verificationUrl = `${apiBase}/api/auth/verify-email?token=${token}`;
+    const frontendBase = process.env.FRONTEND_URL || 'https://boomcard.bg';
+    const verificationUrl = `${frontendBase}/verify-email?token=${token}`;
     const firstName = user.firstName || user.email.split('@')[0];
 
     if (user.role === 'PARTNER') {
@@ -707,14 +707,42 @@ export class AuthService {
   static async verifyEmail(token: string) {
     const user = await prisma.user.findUnique({
       where: { emailVerificationToken: token },
-      select: { id: true, email: true, emailVerificationExpiry: true, emailVerified: true },
+      select: {
+        id: true,
+        email: true,
+        emailVerificationExpiry: true,
+        emailVerified: true,
+        role: true,
+        firstName: true,
+        lastName: true,
+        avatar: true,
+        mustChangePassword: true,
+        totpEnabledAt: true,
+        status: true,
+      },
     });
 
     if (!user) {
       throw new AppError('Invalid or expired verification link', 400);
     }
+
+    const blockedStatuses = ['SUSPENDED', 'ARCHIVED', 'DELETED'];
+    if (blockedStatuses.includes(user.status as string)) {
+      throw new AppError('Account is not eligible for activation', 403);
+    }
+
     if (user.emailVerified) {
-      return { alreadyVerified: true };
+      return {
+        alreadyVerified: true,
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        avatar: user.avatar,
+        mustChangePassword: user.mustChangePassword,
+        totpEnabled: user.totpEnabledAt !== null,
+      };
     }
     if (user.emailVerificationExpiry && user.emailVerificationExpiry < new Date()) {
       throw new AppError('Verification link has expired. Please contact office@boomcard.bg', 400);
@@ -731,7 +759,17 @@ export class AuthService {
     });
 
     logger.info(`Email verified for user ${user.email}`);
-    return { alreadyVerified: false };
+    return {
+      alreadyVerified: false,
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      avatar: user.avatar,
+      mustChangePassword: user.mustChangePassword,
+      totpEnabled: user.totpEnabledAt !== null,
+    };
   }
 
   /**

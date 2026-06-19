@@ -3,6 +3,7 @@ import { toast } from 'react-hot-toast';
 import { apiService } from '../services/api.service';
 import { useLanguage } from './LanguageContext';
 import * as authStorage from '../lib/auth/authStorage';
+import { persistRefreshToken } from '../lib/auth/persistRefreshToken';
 
 // Shape of errors surfaced from axios/apiService — every field is optional
 // because error.response is only populated for HTTP failures (network drops
@@ -309,29 +310,6 @@ const REFRESH_TOKEN_KEY = 'refreshToken';
 const SWITCHABLE_ACCOUNTS_KEY = 'boomcard_switchable_accounts';
 const IMPERSONATION_KEY = 'boomcard_impersonation';
 const PARTNER_RESTRICTION_KEY = 'boomcard_partner_restriction';
-
-// Mirror the refresh token into the `boomcard_refresh` cookie that the axios
-// 401-interceptor in api.service.ts reads from. If we only write to
-// storage, the very first 401 after login/register/OAuth/switch fails
-// to refresh because the interceptor finds no cookie. Every auth flow that
-// returns a refresh token must go through this.
-//
-// `persistent` mirrors the rememberMe choice from login: when false the
-// refresh token goes to sessionStorage and the cookie omits max-age (session
-// cookie) so both evaporate when the browser closes. When undefined, we
-// inherit whichever storage currently holds the refresh token so token
-// rotations (switchAccount, refresh interceptor, impersonate) don't quietly
-// upgrade an ephemeral session into a remembered one.
-function persistRefreshToken(refreshToken: string, persistent?: boolean): void {
-  const shouldPersist = persistent === undefined
-    ? authStorage.isPersistent(REFRESH_TOKEN_KEY)
-    : persistent;
-  authStorage.setItem(REFRESH_TOKEN_KEY, refreshToken, shouldPersist);
-  if (typeof document === 'undefined') return;
-  const secure = location.protocol === 'https:' ? '; Secure' : '';
-  const lifetime = shouldPersist ? `; max-age=${7 * 24 * 60 * 60}` : '';
-  document.cookie = `boomcard_refresh=${refreshToken}; path=/${lifetime}; SameSite=Strict${secure}`;
-}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { t } = useLanguage();
