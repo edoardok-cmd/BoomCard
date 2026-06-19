@@ -692,7 +692,8 @@ const FormMicroTrust = styled.p`
   font-size: 0.875rem;
   color: #9ca3af;
   text-align: center;
-  margin-top: -0.5rem;
+  margin-top: 1rem;
+  margin-bottom: 0;
 
   [data-theme="dark"] & {
     color: #6b7280;

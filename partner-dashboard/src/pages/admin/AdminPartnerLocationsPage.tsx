@@ -277,7 +277,7 @@ const Overlay = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: ${zIndex.modal};
+  z-index: ${zIndex.modalBackdrop};
 `;
 const ModalBox = styled.div`
   background: ${palette.surface};
@@ -287,6 +287,7 @@ const ModalBox = styled.div`
   width: 100%;
   max-width: 26rem;
   box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+  z-index: ${zIndex.modal};
 `;
 const ModalTitle = styled.h3`
   font-size: 1.1rem;

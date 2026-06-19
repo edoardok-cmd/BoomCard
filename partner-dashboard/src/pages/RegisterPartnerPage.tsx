@@ -67,26 +67,6 @@ const Subtitle = styled.p`
   transition: color var(--transition-normal);
 `;
 
-const Badge = styled.div`
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  background: rgba(59, 130, 246, 0.1);
-  border: 1px solid rgba(59, 130, 246, 0.3);
-  border-radius: 9999px;
-  color: var(--color-info);
-  font-size: 0.875rem;
-  font-weight: 600;
-  margin: 0 auto 1.5rem;
-  transition: all var(--transition-normal);
-
-  [data-theme="dark"] & {
-    background: rgba(59, 130, 246, 0.15);
-    border-color: rgba(59, 130, 246, 0.4);
-  }
-`;
-
 const Form = styled.form`
   display: flex;
   flex-direction: column;
@@ -109,6 +89,25 @@ const SectionTitle = styled.h3`
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  transition: color var(--transition-normal);
+`;
+
+const IconWrapper = styled.span`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+`;
+
+const SvgIcon = styled.svg`
+  width: 100%;
+  height: 100%;
+  color: var(--color-text-primary);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   transition: color var(--transition-normal);
 `;
 
@@ -716,10 +715,6 @@ const RegisterPartnerPage: React.FC = () => {
             />
           </Logo>
 
-          <Badge>
-            🏢 {t('partnerRegistration.businessAccount')}
-          </Badge>
-
           <Title>{t('partnerRegistration.title')}</Title>
           <Subtitle>
             {t('partnerRegistration.subtitle')}
@@ -729,7 +724,13 @@ const RegisterPartnerPage: React.FC = () => {
           {/* Personal Information */}
           <Section>
             <SectionTitle>
-              👤 {t('partnerRegistration.personalInfo')}
+              <IconWrapper>
+                <SvgIcon viewBox="0 0 24 24" fill="none">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor"/>
+                  <circle cx="12" cy="7" r="4" stroke="currentColor"/>
+                </SvgIcon>
+              </IconWrapper>
+              {t('partnerRegistration.personalInfo')}
             </SectionTitle>
 
             <FormRow>
@@ -844,7 +845,14 @@ const RegisterPartnerPage: React.FC = () => {
           {/* Business Information */}
           <Section>
             <SectionTitle>
-              🏢 {t('partnerRegistration.businessInfo')}
+              <IconWrapper>
+                <SvgIcon viewBox="0 0 24 24" fill="none">
+                  <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor"/>
+                  <path d="M3 9h18" stroke="currentColor"/>
+                  <path d="M9 3v18" stroke="currentColor"/>
+                </SvgIcon>
+              </IconWrapper>
+              {t('partnerRegistration.businessInfo')}
             </SectionTitle>
 
             <FormRow>
@@ -1085,7 +1093,14 @@ const RegisterPartnerPage: React.FC = () => {
           {/* Spec §2.3 — Ниво на участие (required) */}
           <Section>
             <SectionTitle>
-              🎯 {language === 'bg' ? 'Квалификация' : 'Qualification'}
+              <IconWrapper>
+                <SvgIcon viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="9" stroke="currentColor"/>
+                  <circle cx="12" cy="12" r="5" stroke="currentColor"/>
+                  <circle cx="12" cy="12" r="1" fill="currentColor"/>
+                </SvgIcon>
+              </IconWrapper>
+              {language === 'bg' ? 'Квалификация' : 'Qualification'}
             </SectionTitle>
             <FormGroup>
               <Label htmlFor="participationLevel">
@@ -1117,7 +1132,13 @@ const RegisterPartnerPage: React.FC = () => {
           {/* Spec §2.3 — Допълнително: Свободен текст (optional) */}
           <Section>
             <SectionTitle>
-              📝 {language === 'bg' ? 'Допълнително' : 'Additional information'}
+              <IconWrapper>
+                <SvgIcon viewBox="0 0 24 24" fill="none">
+                  <path d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" stroke="currentColor"/>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" fill="none"/>
+                </SvgIcon>
+              </IconWrapper>
+              {language === 'bg' ? 'Допълнително' : 'Additional information'}
             </SectionTitle>
             <FormGroup>
               <Label htmlFor="additionalInfo">
@@ -1225,7 +1246,17 @@ const RegisterPartnerPage: React.FC = () => {
               required before any business-confirmation acknowledgement is re-added. */}
 
           <InfoBox>
-            <strong>📋 {t('partnerRegistration.note')}</strong>{' '}
+            <strong>
+              <IconWrapper style={{ display: 'inline-flex', marginRight: '0.5rem', verticalAlign: 'text-bottom' }}>
+                <SvgIcon viewBox="0 0 24 24" fill="none">
+                  <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor"/>
+                  <path d="M7 9h10" stroke="currentColor"/>
+                  <path d="M7 13h10" stroke="currentColor"/>
+                  <path d="M7 17h4" stroke="currentColor"/>
+                </SvgIcon>
+              </IconWrapper>
+              {t('partnerRegistration.note')}
+            </strong>{' '}
             {language === 'bg'
               ? 'След изпращане на заявката, нашият екип ще се свърже с вас до 2 работни дни. При одобрение и завършен онбординг ще получите имейл с линк за активиране на акаунта и задаване на парола.'
               : 'After submitting your application, our team will contact you within 2 business days. Once approved and onboarding is complete, you will receive an email with an activation link to set your password.'}

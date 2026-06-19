@@ -76,6 +76,33 @@ export const palette = {
   navActiveSoft: 'var(--admin-nav-active-soft)',
 } as const;
 
+/**
+ * Z-index scale for layering UI elements.
+ * Base layers: 0-99 (tables, cards), 100-199 (overlays, backdrops), 200+ (modals, drawers).
+ * Dropdown menus must sit above all modals and drawers (e.g. z-index 1100).
+ */
+export const zIndex = {
+  // Base layers (content, cards)
+  base: 0,
+
+  // Overlays and semi-transparent backdrops
+  overlay: 100,
+  modalBackdrop: 200,
+
+  // Modals, drawers, panels
+  modal: 1000,
+  drawer: 1001,
+  notification: 1050,
+
+  // Dropdowns, tooltips, popovers (must be above all modals/drawers)
+  dropdown: 1100,
+  tooltip: 1100,
+  popover: 1100,
+
+  // Top-most layers (for critical alerts, top navigation overlays)
+  max: 9999,
+} as const;
+
 export type AdminPalette = typeof palette;
 
 export default palette;
