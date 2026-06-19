@@ -415,7 +415,7 @@ const CheckoutPage: React.FC = () => {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [emailConflictCode, setEmailConflictCode] = useState<'EMAIL_ALREADY_HAS_ACTIVE_PLAN' | 'EMAIL_REGISTERED_NO_ACTIVE_PLAN' | null>(null);
+  const [emailConflictCode, setEmailConflictCode] = useState<'EMAIL_ALREADY_HAS_ACTIVE_PLAN' | 'EMAIL_REGISTERED_NO_ACTIVE_PLAN' | 'CHECKOUT_ALREADY_IN_PROGRESS' | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [resolvedPlanId, setResolvedPlanId] = useState<string | null>(planId);
 
@@ -549,7 +549,11 @@ const CheckoutPage: React.FC = () => {
     } catch (err: any) {
       console.error('Guest payment error:', err);
       const code = err?.response?.data?.code;
-      if (code === 'EMAIL_ALREADY_HAS_ACTIVE_PLAN' || code === 'EMAIL_REGISTERED_NO_ACTIVE_PLAN') {
+      if (
+        code === 'EMAIL_ALREADY_HAS_ACTIVE_PLAN' ||
+        code === 'EMAIL_REGISTERED_NO_ACTIVE_PLAN' ||
+        code === 'CHECKOUT_ALREADY_IN_PROGRESS'
+      ) {
         setEmailConflictCode(code);
       } else {
         setError(language === 'bg' ? 'Грешка при обработка на плащането' : 'Error processing payment');
@@ -656,6 +660,10 @@ const CheckoutPage: React.FC = () => {
                       language === 'bg'
                         ? <>{' Имате активен абонамент за този имейл. '}<Link to="/login" style={{ color: 'inherit', fontWeight: 600 }}>Влезте в акаунта си</Link>{' за да го управлявате.'}</>
                         : <>You already have an active subscription for this email.{' '}<Link to="/login" style={{ color: 'inherit', fontWeight: 600 }}>Sign in</Link>{' to manage it.'}</>
+                    ) : emailConflictCode === 'CHECKOUT_ALREADY_IN_PROGRESS' ? (
+                      language === 'bg'
+                        ? 'Плащане за този имейл вече е в процес. Моля, изчакайте малко и опитайте отново.'
+                        : 'A checkout is already in progress for this email. Please wait a moment and try again.'
                     ) : (
                       language === 'bg'
                         ? <>{' Акаунт с този имейл вече съществува. '}<Link to="/login" style={{ color: 'inherit', fontWeight: 600 }}>Влезте</Link>{' за да се абонирате.'}</>
