@@ -1,20 +1,16 @@
 # BoomCard Platform - QA Dependency Report
-Generated: 2025-08-27T23:08:18.530Z
+Generated: 2026-06-19T22:31:26.481Z
 
 ## Summary
 - Services Checked: 15
 - Errors Found: 5
 - Warnings: 4
-- Auto-Fixed: 5
+- Auto-Fixed: 1
 
 ## Dependency Status
 
 ### ✅ Fixed Issues
-- Updated package.json for api-gateway
-- Updated package.json for analytics-service
-- Updated requirements.txt for ml-service
-- Updated package.json for event-processor
-- Updated package.json for query-service
+- Updated package.json for partner-dashboard
 
 ### ❌ Errors
 - Service directory not found: storage-service

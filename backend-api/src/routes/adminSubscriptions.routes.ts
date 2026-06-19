@@ -794,17 +794,17 @@ router.post('/pending/:id/resend-token', requirePermission('subscriptions.write'
       res.status(400).json({ error: 'Profile already completed' });
       return;
     }
-    if (row.expiresAt <= new Date()) {
-      res.status(400).json({ error: 'Checkout session has expired' });
-      return;
-    }
-
     const token = crypto.randomBytes(32).toString('hex');
     const tokenExpiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    // When an admin explicitly resends, extend the checkout session window so
+    // the user can still complete their profile even if the original expiry passed.
+    const extendedExpiresAt = row.expiresAt <= new Date()
+      ? new Date(Date.now() + 24 * 60 * 60 * 1000)
+      : row.expiresAt;
 
     await prisma.pendingSubscription.update({
       where: { id },
-      data: { token, tokenExpiresAt },
+      data: { token, tokenExpiresAt, expiresAt: extendedExpiresAt },
     });
 
     await emailService.sendCompleteProfileEmail(row.email, {
