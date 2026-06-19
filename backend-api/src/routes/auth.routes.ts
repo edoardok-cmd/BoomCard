@@ -1275,20 +1275,39 @@ router.post(
     });
 
     if (!pending) {
+      // Idempotency: token was already used — sign the user in rather than erroring
+      const completed = await prisma.pendingSubscription.findFirst({
+        where: { token, status: 'COMPLETED' },
+        select: { email: true },
+      });
+      if (completed) {
+        const existingUser = await prisma.user.findFirst({
+          where: { email: completed.email, role: 'USER' },
+          select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true },
+        });
+        if (existingUser && (existingUser.status === 'ACTIVE' || existingUser.status === 'INACTIVE')) {
+          const tokens = await AuthService.createSession({ id: existingUser.id, email: existingUser.email, role: existingUser.role });
+          return res.status(200).json({
+            success: true,
+            message: 'Account already created. You have been signed in.',
+            data: {
+              user: {
+                id: existingUser.id,
+                email: existingUser.email,
+                firstName: existingUser.firstName,
+                lastName: existingUser.lastName,
+                role: existingUser.role,
+              },
+              ...tokens,
+            },
+          });
+        }
+      }
       return res.status(400).json({ success: false, message: 'Invalid or expired registration token' });
     }
 
     if (!pending.tokenExpiresAt || pending.tokenExpiresAt < new Date()) {
       return res.status(400).json({ success: false, message: 'Registration token has expired' });
-    }
-
-    // Block same-email + same-role duplicate (cross-role coexistence is allowed per project rules)
-    const existing = await prisma.user.findFirst({
-      where: { email: pending.email, role: 'USER' },
-      select: { id: true },
-    });
-    if (existing) {
-      return res.status(409).json({ success: false, message: 'An account with this email already exists. Please log in.' });
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
@@ -1342,6 +1361,15 @@ router.post(
       const result = await prisma.$transaction(async (tx) => {
         // Ensure all required fields have values - Prisma defaults don't apply in transactions
         const safePreferredLanguage = lang && ['bg', 'en'].includes(lang) ? lang : 'bg';
+
+        // Race-safe duplicate check inside the transaction
+        const existingUser = await tx.user.findFirst({
+          where: { email: pending.email, role: 'USER' },
+          select: { id: true },
+        });
+        if (existingUser) {
+          throw Object.assign(new Error('An account with this email already exists. Please log in.'), { _userAlreadyExists: true });
+        }
 
         const newUser = await tx.user.create({
           data: {
@@ -1413,16 +1441,19 @@ router.post(
         create: { userId: newUser.id, balance: 0, availableBalance: 0, pendingBalance: 0 },
       });
 
-      // Mark PendingSubscription as COMPLETED and nullify the one-time token
+      // Mark PendingSubscription as COMPLETED (token preserved for idempotency)
       await tx.pendingSubscription.update({
         where: { id: pending.id },
-        data: { status: 'COMPLETED', completedAt: now, token: null },
+        data: { status: 'COMPLETED', completedAt: now },
       });
 
         return { user: newUser };
       });
       user = result.user;
     } catch (txErr: any) {
+      if ((txErr as any)._userAlreadyExists) {
+        return res.status(409).json({ success: false, code: 'USER_ALREADY_EXISTS', message: 'An account with this email already exists. Please log in.' });
+      }
       logger.error('Transaction failed during account creation:', {
         error: txErr.message,
         code: (txErr as any).code,
