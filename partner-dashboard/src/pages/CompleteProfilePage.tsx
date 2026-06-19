@@ -127,6 +127,7 @@ const CompleteProfilePage: React.FC = () => {
   const [apiError, setApiError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [emailConflict, setEmailConflict] = useState(false);
+  const [accountCreated, setAccountCreated] = useState(false);
 
   // HIGH fix (review r2ad HIGH-1): already-authenticated users must not reach
   // this page. If they do, their existing session tokens would be silently
@@ -193,7 +194,7 @@ const CompleteProfilePage: React.FC = () => {
     try {
       // MEDIUM-1 fix (r2ad): use apiService.post instead of raw axios so this
       // call goes through the shared 401-refresh interceptor and base-URL config.
-      const response = await apiService.post<{ data: { accessToken: string; refreshToken: string } }>(
+      await apiService.post<{ data: { accessToken: string; refreshToken: string } }>(
         '/auth/complete-profile',
         {
           token,
@@ -205,29 +206,11 @@ const CompleteProfilePage: React.FC = () => {
           lang: language,
         },
       );
-      const { accessToken, refreshToken } = response.data;
-
-      // MEDIUM-1 fix: use authStorage (the same abstraction used by AuthContext)
-      // instead of raw localStorage.setItem so that:
-      // 1. The token keys match exactly what AuthContext reads ('token',
-      //    'refreshToken') and the storage layer is consistent.
-      // 2. The boomcard_refresh cookie is set so the axios 401-interceptor can
-      //    silently refresh the access token before the first expiry.
-      // Note: AuthContext.loadUser fires on the next page load and will call
-      // GET /auth/me, which fills the boomcard_auth user cache key.
-      authStorage.setItem('token', accessToken, true); // persistent = true (activation is one-time)
-      authStorage.setItem('refreshToken', refreshToken, true);
-
-      // Mirror the refresh token into the cookie that the 401-interceptor reads
-      // (mirrors the logic in AuthContext.persistRefreshToken).
-      // LOW-3 fix (review r2ad): corrected lifetime from 30 days (2592000) to
-      // 7 days (604800) to match AuthContext.persistRefreshToken's max-age.
-      const isSecure = window.location.protocol === 'https:';
-      const lifetime = '; max-age=604800'; // 7 days — matches AuthContext.persistRefreshToken
-      document.cookie = `boomcard_refresh=${refreshToken}; path=/${lifetime}; SameSite=Strict${isSecure ? '; Secure' : ''}`;
-
-      // Hard navigate so AuthContext reinitializes with the stored tokens
-      window.location.href = '/dashboard';
+      // USER-role accounts (BoomCard customers) belong on the mobile app, not the
+      // partner dashboard. Storing tokens here and redirecting to /dashboard causes
+      // an infinite redirect loop (PartnerStatusRoute blocks non-partner roles).
+      // Show a success screen with a link to the mobile app instead.
+      setAccountCreated(true);
     } catch (err: any) {
       if (err?.response?.status === 409) {
         setEmailConflict(true);
@@ -238,6 +221,29 @@ const CompleteProfilePage: React.FC = () => {
       setIsSubmitting(false);
     }
   };
+
+  if (accountCreated) {
+    return (
+      <PageContainer>
+        <Card>
+          <Title>{language === 'bg' ? 'Акаунтът е създаден!' : 'Account Created!'}</Title>
+          <Subtitle>
+            {language === 'bg'
+              ? 'Твоят BoomCard акаунт е готов. Влез от мобилното приложение, за да използваш абонамента си.'
+              : 'Your BoomCard account is ready. Sign in from the mobile app to use your subscription.'}
+          </Subtitle>
+          <Button
+            variant="primary"
+            size="large"
+            fullWidth
+            onClick={() => { window.location.href = 'https://mobile.boomcard.bg'; }}
+          >
+            {language === 'bg' ? 'Отиди към BoomCard' : 'Go to BoomCard'}
+          </Button>
+        </Card>
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer>
