@@ -1356,44 +1356,66 @@ router.post(
         // Ensure all required fields have values - Prisma defaults don't apply in transactions
         const safePreferredLanguage = lang && ['bg', 'en'].includes(lang) ? lang : 'bg';
 
-        // Race-safe duplicate check inside the transaction
+        // Race-safe duplicate check inside the transaction.
+        // DELETED users may re-subscribe; reactivate them instead of blocking.
         const existingUser = await tx.user.findFirst({
           where: { email: pending.email, role: 'USER' },
-          select: { id: true },
+          select: { id: true, status: true },
         });
-        if (existingUser) {
+        if (existingUser && existingUser.status !== 'DELETED') {
           throw Object.assign(new Error('An account with this email already exists. Please log in.'), { _userAlreadyExists: true });
         }
 
-        const newUser = await tx.user.create({
-          data: {
-            email: pending.email,
-            passwordHash,
-            firstName: firstName?.trim() || pending.email.split('@')[0],
-            lastName: lastName?.trim() || '',
-            phone: phone?.trim() || '', // phone is NOT NULL in database
-            role: 'USER',
-            status: UserStatus.ACTIVE,
-            emailVerified: true,
-            emailVerifiedAt: now,
-            termsAcceptedAt: now,
-            privacyAcceptedAt: now,
-            termsVersion: TERMS_VERSION,
-            marketingConsentEmail,
-            marketingConsentPhone,
-            marketingConsent,
-            preferredLanguage: safePreferredLanguage,
-            // Explicitly set required fields that have defaults - transaction doesn't apply DB defaults
-            riskScore: 0,
-            mustChangePassword: false,
-            totpRecoveryCodes: [],
-          },
-          select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true },
-        });
+        let newUser: { id: string; email: string; firstName: string; lastName: string; role: string; status: string };
+        if (existingUser && existingUser.status === 'DELETED') {
+          // Reactivate the deleted account with the new subscription's credentials.
+          newUser = await tx.user.update({
+            where: { id: existingUser.id },
+            data: {
+              passwordHash,
+              status: UserStatus.ACTIVE,
+              emailVerified: true,
+              emailVerifiedAt: now,
+              marketingConsentEmail,
+              marketingConsentPhone,
+              marketingConsent,
+              preferredLanguage: lang && ['bg', 'en'].includes(lang) ? lang : 'bg',
+              mustChangePassword: false,
+            },
+            select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true },
+          });
+        } else {
+          newUser = await tx.user.create({
+            data: {
+              email: pending.email,
+              passwordHash,
+              firstName: firstName?.trim() || pending.email.split('@')[0],
+              lastName: lastName?.trim() || '',
+              phone: phone?.trim() || '', // phone is NOT NULL in database
+              role: 'USER',
+              status: UserStatus.ACTIVE,
+              emailVerified: true,
+              emailVerifiedAt: now,
+              termsAcceptedAt: now,
+              privacyAcceptedAt: now,
+              termsVersion: TERMS_VERSION,
+              marketingConsentEmail,
+              marketingConsentPhone,
+              marketingConsent,
+              preferredLanguage: safePreferredLanguage,
+              riskScore: 0,
+              mustChangePassword: false,
+              totpRecoveryCodes: [],
+            },
+            select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true },
+          });
+        }
 
-      // Create loyalty account
-      await tx.loyaltyAccount.create({
-        data: {
+      // Create loyalty account (upsert handles reactivated users that already have one)
+      await tx.loyaltyAccount.upsert({
+        where: { userId: newUser.id },
+        update: {},
+        create: {
           userId: newUser.id,
           tier: 'BRONZE',
           points: 0,
