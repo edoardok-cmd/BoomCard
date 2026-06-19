@@ -30,7 +30,6 @@ import HomePage from './pages/HomePage';
 
 // Lazy load all other pages
 const LoginPage = lazy(() => import('./pages/LoginPage'));
-const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const RegisterPartnerPage = lazy(() => import('./pages/RegisterPartnerPage'));
 const PartnerActivatePage = lazy(() => import('./pages/PartnerActivatePage'));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
@@ -793,14 +792,6 @@ function App() {
                     element={
                       <ProtectedRoute requireAuth={false}>
                         <LoginPage />
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route
-                    path="/register"
-                    element={
-                      <ProtectedRoute requireAuth={false}>
-                        <RegisterPage />
                       </ProtectedRoute>
                     }
                   />

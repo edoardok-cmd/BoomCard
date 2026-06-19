@@ -1273,10 +1273,6 @@ const RegisterPartnerPage: React.FC = () => {
           </SubmitButton>
         </Form>
 
-        <SwitchAccountType>
-          {t('partnerRegistration.switchToCustomer')} <Link to="/register">{t('partnerRegistration.signUpAsCustomer')}</Link>
-        </SwitchAccountType>
-
         <LoginPrompt>
           {t('partnerRegistration.alreadyHaveAccount')} <Link to="/login">{t('partnerRegistration.signIn')}</Link>
         </LoginPrompt>
