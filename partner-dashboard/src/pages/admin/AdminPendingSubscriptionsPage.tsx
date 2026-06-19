@@ -243,13 +243,16 @@ const T = {
   colPaidAt:     { bg: 'Платено',                                              en: 'Paid At' },
   colTokenExp:   { bg: 'Линк изтича',                                          en: 'Token Expires' },
   colActions:    { bg: 'Действия',                                             en: 'Actions' },
-  resend:        { bg: 'Изпрати отново',                                       en: 'Resend link' },
-  confirmPrompt: { bg: 'Изпрати профил-линк до',                              en: 'Send profile link to' },
-  confirm:       { bg: 'Потвърди',                                             en: 'Confirm' },
-  cancel:        { bg: 'Откажи',                                               en: 'Cancel' },
-  sent:          { bg: 'Изпратено до',                                         en: 'Sent to' },
-  empty:         { bg: 'Няма намерени незавършени регистрации.',               en: 'No incomplete registrations found.' },
-  loading:       { bg: 'Зареждане…',                                           en: 'Loading…' },
+  resend:             { bg: 'Изпрати отново',                                        en: 'Resend link' },
+  confirmPrompt:      { bg: 'Изпрати профил-линк до',                               en: 'Send profile link to' },
+  confirm:            { bg: 'Потвърди',                                              en: 'Confirm' },
+  cancel:             { bg: 'Откажи',                                                en: 'Cancel' },
+  sent:               { bg: 'Изпратено до',                                          en: 'Sent to' },
+  empty:              { bg: 'Няма намерени незавършени регистрации.',                en: 'No incomplete registrations found.' },
+  loading:            { bg: 'Зареждане…',                                            en: 'Loading…' },
+  cancelCheckout:     { bg: 'Откажи плащане',                                        en: 'Cancel checkout' },
+  cancelConfirmPmt:   { bg: 'Откажи незавършеното плащане за',                       en: 'Cancel the in-progress checkout for' },
+  cancelledCheckout:  { bg: 'Плащането е откажено',                                  en: 'Checkout cancelled' },
 };
 
 function t(key: keyof typeof T, lang: 'bg' | 'en') {
@@ -279,9 +282,10 @@ export default function AdminPendingSubscriptionsPage() {
   const [data, setData]           = useState<PendingSub[]>([]);
   const [total, setTotal]         = useState(0);
   const [loading, setLoading]     = useState(false);
-  const [confirmId, setConfirmId] = useState<string | null>(null);
-  const [sending, setSending]     = useState<string | null>(null);
-  const [sentIds, setSentIds]     = useState<Set<string>>(new Set());
+  const [confirmId, setConfirmId]         = useState<string | null>(null);
+  const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
+  const [sending, setSending]             = useState<string | null>(null);
+  const [sentIds, setSentIds]             = useState<Set<string>>(new Set());
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const LIMIT = 20;
@@ -309,6 +313,21 @@ export default function AdminPendingSubscriptionsPage() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, status, page]);
+
+  async function handleCancelCheckout(row: PendingSub) {
+    setSending(row.id);
+    setCancelConfirmId(null);
+    try {
+      await apiService.delete(`/admin/subscriptions/pending/${row.id}`);
+      toast.success(`${t('cancelledCheckout', lang)} — ${row.email}`);
+      fetchList(query, status, page);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error ?? (lang === 'bg' ? 'Грешка' : 'Error');
+      toast.error(msg);
+    } finally {
+      setSending(null);
+    }
+  }
 
   async function handleResend(row: PendingSub) {
     setSending(row.id);
@@ -380,7 +399,20 @@ export default function AdminPendingSubscriptionsPage() {
                   <Td>{fmt(row.paidAt)}</Td>
                   <Td>{fmt(row.tokenExpiresAt)}</Td>
                   <Td>
-                    {confirmId === row.id ? (
+                    {cancelConfirmId === row.id ? (
+                      <ConfirmBox>
+                        <ConfirmText>{t('cancelConfirmPmt', lang)} {row.email}?</ConfirmText>
+                        <ConfirmBtn
+                          $loading={sending === row.id}
+                          onClick={() => handleCancelCheckout(row)}
+                        >
+                          {t('confirm', lang)}
+                        </ConfirmBtn>
+                        <CancelBtn onClick={() => setCancelConfirmId(null)}>
+                          {t('cancel', lang)}
+                        </CancelBtn>
+                      </ConfirmBox>
+                    ) : confirmId === row.id ? (
                       <ConfirmBox>
                         <ConfirmText>{t('confirmPrompt', lang)} {row.email}?</ConfirmText>
                         <ConfirmBtn
@@ -394,12 +426,22 @@ export default function AdminPendingSubscriptionsPage() {
                         </CancelBtn>
                       </ConfirmBox>
                     ) : (
-                      <ActionBtn
-                        disabled={!canResend(row) || sentIds.has(row.id)}
-                        onClick={() => setConfirmId(row.id)}
-                      >
-                        {t('resend', lang)}
-                      </ActionBtn>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <ActionBtn
+                          disabled={!canResend(row) || sentIds.has(row.id)}
+                          onClick={() => setConfirmId(row.id)}
+                        >
+                          {t('resend', lang)}
+                        </ActionBtn>
+                        {row.status === 'CREATED' && (
+                          <CancelBtn
+                            onClick={() => setCancelConfirmId(row.id)}
+                            style={{ color: '#dc2626', borderColor: 'rgba(220,38,38,0.3)' }}
+                          >
+                            {t('cancelCheckout', lang)}
+                          </CancelBtn>
+                        )}
+                      </div>
                     )}
                   </Td>
                 </Tr>

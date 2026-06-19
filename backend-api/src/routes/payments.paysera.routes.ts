@@ -1045,7 +1045,7 @@ router.post(
             language: checkoutLanguage,
             payseraOrderId: orderId,
             status: 'CREATED',
-            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+            expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 min — matches Paysera session timeout
           },
         });
       }, { isolationLevel: 'Serializable' });

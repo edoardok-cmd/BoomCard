@@ -827,4 +827,46 @@ router.post('/pending/:id/resend-token', requirePermission('subscriptions.write'
   }
 });
 
+/**
+ * DELETE /api/admin/subscriptions/pending/:id
+ * Cancel a CREATED pending checkout (not yet paid). Marks it EXPIRED so the
+ * email can be used immediately for a new checkout without waiting for the TTL.
+ */
+router.delete('/pending/:id', requirePermission('subscriptions.write'), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const row = await prisma.pendingSubscription.findUnique({
+      where: { id },
+      select: { id: true, status: true, email: true },
+    });
+
+    if (!row) {
+      res.status(404).json({ error: 'Pending subscription not found' });
+      return;
+    }
+    if (row.status !== PendingSubscriptionStatus.CREATED) {
+      res.status(400).json({ error: 'Only CREATED checkouts can be cancelled' });
+      return;
+    }
+
+    await prisma.pendingSubscription.update({
+      where: { id },
+      data: { status: PendingSubscriptionStatus.EXPIRED, expiresAt: new Date() },
+    });
+
+    await writeAudit({
+      actorUserId: (req as any).user?.id ?? null,
+      action: 'pending_subscription.cancelled',
+      objectType: 'PendingSubscription',
+      objectId: id,
+      after: { email: row.email, status: 'EXPIRED' },
+    });
+
+    res.json({ cancelled: true, email: row.email });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;
