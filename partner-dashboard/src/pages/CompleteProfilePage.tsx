@@ -126,6 +126,7 @@ const CompleteProfilePage: React.FC = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [apiError, setApiError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [emailConflict, setEmailConflict] = useState(false);
 
   // HIGH fix (review r2ad HIGH-1): already-authenticated users must not reach
   // this page. If they do, their existing session tokens would be silently
@@ -228,8 +229,12 @@ const CompleteProfilePage: React.FC = () => {
       // Hard navigate so AuthContext reinitializes with the stored tokens
       window.location.href = '/dashboard';
     } catch (err: any) {
-      const msg = err?.response?.data?.message || (language === 'bg' ? 'Нещо се обърка' : 'Something went wrong');
-      setApiError(msg);
+      if (err?.response?.status === 409) {
+        setEmailConflict(true);
+      } else {
+        const msg = err?.response?.data?.message || (language === 'bg' ? 'Нещо се обърка' : 'Something went wrong');
+        setApiError(msg);
+      }
       setIsSubmitting(false);
     }
   };
@@ -244,7 +249,17 @@ const CompleteProfilePage: React.FC = () => {
             : 'Choose a password for your BoomCard account'}
         </Subtitle>
 
-        {apiError && (
+        {emailConflict && (
+          <AlertBox $variant="error">
+            {language === 'bg'
+              ? 'Акаунт с този имейл вече съществува. '
+              : 'An account with this email already exists. '}
+            <Link to="/login" style={{ color: 'inherit', fontWeight: 600 }}>
+              {language === 'bg' ? 'Влезте тук' : 'Sign in here'}
+            </Link>
+          </AlertBox>
+        )}
+        {!emailConflict && apiError && (
           <AlertBox $variant="error">{apiError}</AlertBox>
         )}
 
