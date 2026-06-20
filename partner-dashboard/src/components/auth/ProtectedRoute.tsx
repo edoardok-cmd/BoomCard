@@ -45,8 +45,17 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   const { user, isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
 
-  // Show loading spinner while checking auth state
-  if (isLoading) {
+  // Auth-required routes show a spinner while isLoading so we never flash
+  // protected content before the auth check completes.
+  //
+  // Public routes (requireAuth=false) must NOT unmount their children during
+  // loading. Doing so wipes the form's local state mid-request (e.g. the
+  // partner registration form is unmounted when register() sets isLoading=true,
+  // so any 409 error caught after the API call sets state on an unmounted
+  // component and is silently discarded; the form then remounts empty).
+  // For public routes we render children immediately and defer the
+  // authenticated-user redirect until the auth check is done.
+  if (isLoading && requireAuth) {
     return (
       <LoadingContainer>
         <LoadingSpinner
@@ -62,12 +71,14 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   // If route requires auth and user is not authenticated, redirect to login
-  if (requireAuth && !isAuthenticated) {
+  if (!isLoading && requireAuth && !isAuthenticated) {
     return <Navigate to={redirectTo} state={{ from: location }} replace />;
   }
 
-  // If route requires NO auth (e.g., login page) and user IS authenticated, redirect to home
-  if (!requireAuth && isAuthenticated) {
+  // If route requires NO auth (e.g., login page) and user IS authenticated, redirect to home.
+  // Only redirect after auth check completes (isLoading=false) so we don't kick the user
+  // away from a public form mid-request when isLoading briefly flips to true.
+  if (!isLoading && !requireAuth && isAuthenticated) {
     return <Navigate to="/" replace />;
   }
 
