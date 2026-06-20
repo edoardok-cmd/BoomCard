@@ -816,6 +816,7 @@ export const en = {
     goHome: 'Go to home page',
     emailAlreadyRegistered: 'This email is already registered. Please sign in or use a different email.',
     phoneAlreadyRegistered: 'This phone number is already registered. Please use a different number.',
+    tooManyRequests: 'Too many attempts. Please wait 15 minutes and try again.',
     registrationFailed: 'We couldn\'t create your account. Please check your details and try again.',
     invalidCredentials: 'Incorrect email or password.',
     networkError: 'Connection problem. Please check your internet and try again.',

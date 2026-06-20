@@ -699,7 +699,8 @@ const RegisterPartnerPage: React.FC = () => {
         response?: { status?: number; data?: { message?: string; error?: string | { message?: string } } };
         message?: string;
       };
-      if (err?.response?.status === 409) {
+      const status = err?.response?.status;
+      if (status === 409) {
         const raw = err?.response?.data?.error;
         const backendMsg = (
           (typeof raw === 'object' ? (raw as { message?: string })?.message : raw) ||
@@ -716,6 +717,10 @@ const RegisterPartnerPage: React.FC = () => {
           setTouched(prev => ({ ...prev, email: true }));
           document.getElementById('email')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
+      } else if (status === 429) {
+        setErrors(prev => ({ ...prev, email: t('errors.tooManyRequests') }));
+        setTouched(prev => ({ ...prev, email: true }));
+        document.getElementById('email')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     }
   };
