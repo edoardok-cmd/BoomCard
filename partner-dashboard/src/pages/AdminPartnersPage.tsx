@@ -22,6 +22,7 @@ import { placesCategories, experiencesCategories, getCategoryName } from '../typ
 import { adminPartnerRequestsService, AuditEntry } from '../services/adminPartnerRequests.service';
 import { useAuth } from '../contexts/AuthContext';
 import PartnerRequestDrawer from '../components/admin/PartnerRequestDrawer';
+import { extractHouseNumber } from '../utils/addressUtils';
 
 // ─── Styled Components ────────────────────────────────────────────────────────
 
@@ -929,6 +930,9 @@ interface NominatimResult {
   address: {
     road?: string;
     house_number?: string;
+    street_number?: string;
+    block?: string;
+    building?: string;
     city?: string;
     town?: string;
     village?: string;
@@ -1027,7 +1031,10 @@ const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({ value, onChan
 
   const handleSelect = (item: NominatimResult) => {
     const a = item.address;
-    const streetParts = [a.road, a.house_number].filter(Boolean);
+    const houseNumber = extractHouseNumber(a, item.display_name);
+    const road = a.road || '';
+    // Bulgarian convention: road first, then number.
+    const streetParts = [road, houseNumber].filter(Boolean);
     const street = streetParts.join(' ');
     const city = a.city || a.town || a.village || a.municipality || '';
     const region = a.state || a.county || '';
@@ -1053,6 +1060,7 @@ const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({ value, onChan
         onChange={handleChange}
         onFocus={() => value.length >= 3 && suggestions.length > 0 && setOpen(true)}
         placeholder={placeholder || 'Street address…'}
+        data-testid="address-autocomplete"
       />
       {loading && (
         <div style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', color: '#9ca3af' }}>
