@@ -1461,10 +1461,9 @@ export const Header: React.FC<HeaderProps> = ({
               </Tooltip>
             </ThemeMenuContainer>
 
-            {/* Language Toggle - Desktop only, hidden on admin routes */}
+            {/* Language Toggle - always visible, hidden on admin routes */}
             {!location.pathname.startsWith('/admin') && <Tooltip content={language === 'en' ? 'Switch to Bulgarian' : 'Превключи на английски'} position="bottom">
               <LanguageButton
-                className="hidden nav:flex"
                 onClick={() => setLanguage(language === 'en' ? 'bg' : 'en')}
                 aria-label="Toggle language"
               >

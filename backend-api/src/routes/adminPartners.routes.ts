@@ -65,6 +65,9 @@ const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
 router.use(auditMiddleware);
 
+// Shared rate-limit window for activation-link issuance (both /approve and /resend-activation).
+const RESEND_RATE_LIMIT_MS = 60 * 1000; // 1 link per partner per minute
+
 const PARTNER_SELECT = {
   id: true,
   businessName: true,
@@ -698,34 +701,41 @@ router.post(
     // own transaction; nesting via `tx` would require passing the client
     // around. The Partner row's status change is the durable mark — if the
     // link create fails, the admin can resend from the drawer.
-    const [updated] = await prisma.$transaction([
-      prisma.partner.update({
-        where: { id: req.params.id },
-        data: {
-          status: PartnerStatus.ACTIVE,
-          requestStatus: PartnerRequestStatus.APPROVED,
-          // Spec §5.2 v1.1 — `verifiedAt` is the "fully activated" flag, stamped
-          // only on activation-token consumption. Leaving it null here ensures
-          // the partner can't log in or be publicly visible until they click the
-          // activation link.
-          // Spec §3.2 — stamp onboarding completion the first time the partner
-          // gets approved; later approvals (re-activation) don't bump it.
-          ...(partner.onboardingCompletedAt ? {} : { onboardingCompletedAt: new Date() }),
-        },
-        select: PARTNER_SELECT,
-      }),
-      // Spec §5.3 — Historia на промени: record the PENDING→ACTIVE approval so
-      // the status-history tab shows this transition (consistent with /:id/reject).
-      prisma.partnerStatusChange.create({
-        data: {
-          partnerId: req.params.id,
-          fromStatus: partner.status,
-          toStatus: PartnerStatus.ACTIVE,
-          reason: 'Onboarding approved',
-          changedById: (req as AuthRequest).user!.id,
-        },
-      }),
-    ]);
+    // Spec §1.6 / §3.5 — do NOT advance partner.status to ACTIVE here.
+    // The partner only becomes Active when they consume the activation link
+    // (activationLink.service.ts:consume). No PartnerStatusChange record is created
+    // here because partner.status does not change at approval time; the approval
+    // event is captured by writeAudit below. The PENDING→ACTIVE transition is
+    // recorded by consume() in activationLink.service.ts.
+    const updated = await prisma.partner.update({
+      where: { id: req.params.id },
+      data: {
+        requestStatus: PartnerRequestStatus.APPROVED,
+        // Spec §3.2 — stamp onboarding completion the first time the partner
+        // gets approved; later approvals (re-activation) don't bump it.
+        ...(partner.onboardingCompletedAt ? {} : { onboardingCompletedAt: new Date() }),
+      },
+      select: PARTNER_SELECT,
+    });
+
+    // L2 — rate-limit ALL activation-link sends (both initial and re-approve).
+    // A rapid second POST /approve bypasses the /resend rate-limit because it
+    // uses reason='initial'. Guard against this by checking whether ANY non-consumed
+    // link was issued within the last minute, regardless of reason.
+    const recentAnyLink = await prisma.activationLink.findFirst({
+      where: {
+        partnerId: updated.id,
+        consumedAt: null,
+        createdAt: { gte: new Date(Date.now() - RESEND_RATE_LIMIT_MS) },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    if (recentAnyLink) {
+      return res.status(429).json({
+        error: 'An activation link was issued less than a minute ago. Please wait before issuing another.',
+      });
+    }
 
     // Spec §5.2 v1.1 — issue a 72h activation link and email it. We await the
     // link issuance so that on success the API response can confirm a link
@@ -779,7 +789,7 @@ router.post(
       objectType: 'Partner',
       objectId: req.params.id,
       before: { status: partner.status, requestStatus: partner.requestStatus },
-      after: { status: PartnerStatus.ACTIVE, requestStatus: PartnerRequestStatus.APPROVED },
+      after: { status: partner.status, requestStatus: PartnerRequestStatus.APPROVED },
     }), (err) => logger.error('[adminPartners] approve writeAudit failed:', err));
 
     // Spec §5.2 v1.1 — H4 fix: response now reflects the actual outcome of
@@ -800,8 +810,8 @@ router.post(
 // Admin-only: regenerate the 72h activation token, invalidating any prior
 // unconsumed token, log the resend, and email the new link. Rate-limited
 // per-partner so a misclick (or a hostile admin token) can't flood the
-// applicant's inbox.
-const RESEND_RATE_LIMIT_MS = 60 * 1000; // 1 issue per partner per minute
+// applicant's inbox. RESEND_RATE_LIMIT_MS is declared at module top level
+// and shared with the /approve endpoint.
 router.post(
   '/:id/resend-activation',
   // Spec §5.2: resend is accessible from both the onboarding pipeline
@@ -838,16 +848,22 @@ router.post(
       });
     }
 
-    // Rate limit: don't allow a new RESEND within RESEND_RATE_LIMIT_MS of the
-    // previous one. Scoped to reason=RESEND so the initial post-approve
-    // INITIAL link doesn't block a legit "I mis-typed the email, please
-    // resend immediately" flow. The minute cap is a UX guardrail.
+    // Rate limit: don't allow a new link within RESEND_RATE_LIMIT_MS of any
+    // prior unconsummed link, regardless of reason. Without this, an admin can
+    // call /approve (issues an INITIAL link) and immediately /resend-activation
+    // (reason=RESEND), bypassing the per-minute cap because the old check only
+    // looked at RESEND-reason links. Checking any reason closes that gap and
+    // mirrors the /approve endpoint's own rate-limit query.
     const recentResend = await prisma.activationLink.findFirst({
-      where: { partnerId: partner.id, reason: ActivationLinkReason.RESEND },
+      where: {
+        partnerId: partner.id,
+        consumedAt: null,
+        createdAt: { gte: new Date(Date.now() - RESEND_RATE_LIMIT_MS) },
+      },
       orderBy: { createdAt: 'desc' },
       select: { createdAt: true },
     });
-    if (recentResend && Date.now() - recentResend.createdAt.getTime() < RESEND_RATE_LIMIT_MS) {
+    if (recentResend) {
       return res.status(429).json({
         error: 'Activation link was resent less than a minute ago. Please wait before resending.',
       });

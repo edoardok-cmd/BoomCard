@@ -31,6 +31,15 @@ import { logger } from '../utils/logger';
 
 const CASHBACK_VALIDITY_DAYS_DEFAULT = 60;
 
+/**
+ * Sentinel UUID used when a system-automated action voids a cashback record
+ * and no human actor is involved. Recorded as voidedByUserId so every voided
+ * row always has a "responsible actor" per spec audit requirements.
+ * The zero UUID is chosen as a conventional "system" marker — it is not a
+ * valid user ID (Postgres uuid_generate_v4() never produces the nil UUID).
+ */
+const SYSTEM_ACTOR_ID = '00000000-0000-0000-0000-000000000000';
+
 // F-008: Controlled vocabulary for voidedReason per spec requirement.
 // All void reasons must use one of these canonical categories.
 // Adding a new reason requires updating this list AND the gap report.
@@ -544,7 +553,10 @@ export async function recordRejectedAsVoided(params: {
       cashbackStatus: CashbackEntryStatus.VOIDED,
       voidedAt: now,
       voidedReason: reason,
-      voidedByUserId: actorUserId,
+      // L1 / Spec audit trail: every voided record must record a responsible actor.
+      // When the rejection is system-automated (actorUserId=null), use the zero-UUID
+      // sentinel so the field is never null and the audit trail is complete.
+      voidedByUserId: actorUserId ?? SYSTEM_ACTOR_ID,
       description: description ?? `Кешбек анулиран — ${reason}`,
       metadata: metadata ? JSON.stringify(metadata) : undefined,
       ...(stickerScanId ? { stickerScanId } : {}),
@@ -583,6 +595,41 @@ export async function recordPendingForRiskReview(params: {
   if (amount <= 0) return null;
   if (!stickerScanId && !receiptId) {
     throw new Error('recordPendingForRiskReview requires stickerScanId or receiptId');
+  }
+
+  // H2 / Spec §8.1 Rule #1: defense-in-depth guard — never create a cashback
+  // record when account scanning is blocked. The upstream scan processors
+  // (sticker.service, receipt.service) check subscription gates before calling
+  // here, but this guard ensures the invariant holds even if a caller skips
+  // those checks. A single lightweight DB read covers both the user status
+  // (INACTIVE / ARCHIVED block scanning unconditionally) and the subscription
+  // status (EXPIRED / FAILED_PAYMENT / CANCELLED-past-period blocks scanning).
+  const [user, subscription] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { status: true },
+    }),
+    prisma.subscription.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      select: { status: true, currentPeriodEnd: true },
+    }),
+  ]);
+
+  if (user?.status === 'INACTIVE' || user?.status === 'ARCHIVED') {
+    throw new Error('Cannot create cashback: account scanning is blocked');
+  }
+
+  if (subscription) {
+    const sub = subscription;
+    const now = new Date();
+    const isBlockedBySubscription =
+      sub.status === 'EXPIRED' ||
+      sub.status === 'FAILED_PAYMENT' ||
+      (sub.status === 'CANCELLED' && sub.currentPeriodEnd <= now);
+    if (isBlockedBySubscription) {
+      throw new Error('Cannot create cashback: account scanning is blocked');
+    }
   }
 
   // Idempotency: if a wallet entry already exists for this scan/receipt, return it.

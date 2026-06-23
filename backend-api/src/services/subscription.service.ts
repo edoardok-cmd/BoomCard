@@ -827,6 +827,12 @@ export class SubscriptionService {
     if (subscription.status !== 'PAST_DUE') {
       throw new AppError('Subscription is not past due', 400);
     }
+    // Spec §3.3: one retry attempt allowed. Guard against webhook ordering races
+    // where PAST_DUE arrives before FAILED_PAYMENT — if a retry has already been
+    // attempted (retryAttempt > 0) we must not allow a second one.
+    if (subscription.retryAttempt > 0) {
+      throw new AppError('Payment retry already attempted', 400);
+    }
     if (subscription.cancelAtPeriodEnd || subscription.canceledAt) {
       throw new AppError('Cannot retry payment on a subscription that has been cancelled', 400);
     }
@@ -868,10 +874,15 @@ export class SubscriptionService {
         userId,
         OR: [
           // Spec §3.2 canonical statuses: Active (ACTIVE/TRIALING), Paused (PAUSED).
-          // PAST_DUE is Stripe-internal and maps to Failed Payment per spec — excluded.
           { status: { in: ['ACTIVE', 'TRIALING', 'PAUSED'] } },
           // Cancelled-within-paid-period: spec §3.3 — user retains access through period end.
           { status: 'CANCELLED', currentPeriodEnd: { gt: new Date() } },
+          // PAST_DUE / FAILED_PAYMENT: return the subscription object so the frontend can
+          // show the correct "payment failed" / "update payment method" CTA. These statuses
+          // block scanning (assertSubscriptionAllowsScanning) but the user still needs to
+          // see the subscription to take remedial action. Without this, GET /subscriptions/current
+          // returns { hasSubscription: false } during the Stripe dunning window, hiding the CTA.
+          { status: { in: ['PAST_DUE', 'FAILED_PAYMENT'] } },
         ],
       },
       orderBy: { createdAt: 'desc' },

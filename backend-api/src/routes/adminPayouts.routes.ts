@@ -43,7 +43,7 @@ async function checkSubscriptionGate(userId: string): Promise<SubGateResult> {
   if (sub.status === 'ACTIVE' || sub.status === 'TRIALING') return { eligible: true };
   // Spec §4.1 Clash 4.1 — Cancelled-within-paid-period also allows new payouts
   // (access continues through last paid day; earned-rights model).
-  if (sub.status === 'CANCELLED' && sub.currentPeriodEnd > new Date()) return { eligible: true };
+  if (sub.status === 'CANCELLED' && sub.currentPeriodEnd != null && sub.currentPeriodEnd > new Date()) return { eligible: true };
   return { eligible: false, reason: 'INELIGIBLE_STATUS', status: sub.status };
 }
 

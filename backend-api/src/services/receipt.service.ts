@@ -771,9 +771,9 @@ class ReceiptService {
       });
 
       // F-016: Use computeSpecRiskLevel() to determine requiresManualReview instead of
-      // hardcoding to true. F-010 / BC-USER-SPEC-FIX-010: only High-risk requires manual
-      // review per spec §9.4 amendment (2026-06-04). Low and Medium auto-process (auto-
-      // approval within 24h); only High routes to the manual review queue.
+      // hardcoding to true. Per spec §2.2/§3.4 (amendment 2026-06-24): only High-risk
+      // requires manual review. Low and Medium auto-process (auto-approval within 24h);
+      // only High routes to the manual review queue.
       // ibanChangedRecently and locationMismatch need context not always available at
       // receipt submission time — we use conservative defaults (false) so the spec's
       // auto-approve path can engage for clearly low- and medium-risk receipts.
@@ -785,9 +785,8 @@ class ReceiptService {
       });
       const requiresManualReview = specRisk.riskLevel === 'High';
 
-      // F-010 / BC-USER-SPEC-FIX-010: only High-risk routes to MANUAL_REVIEW per spec §9.4
-      // amendment (2026-06-04). Low and Medium auto-process via the PENDING (auto-approval
-      // within 24h) path.
+      // Spec §2.2/§3.4 (amendment 2026-06-24): only High-risk routes to MANUAL_REVIEW.
+      // Low and Medium auto-process via the PENDING (auto-approval within 24h) path.
       const status: ReceiptStatus = requiresManualReview ? ('MANUAL_REVIEW' as any) : ('PENDING' as any);
       const cashbackAmount = 0;
 

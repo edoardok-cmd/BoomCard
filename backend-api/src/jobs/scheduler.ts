@@ -51,6 +51,7 @@ import { writeAudit } from '../middleware/audit.middleware';
 import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo } from '../services/ticketEmail.service';
 import { expireStalePendingCashback } from '../services/cashbackLifecycle.service';
 import { detach } from '../utils/detach';
+import { SLA_WARN_HOURS } from '../services/partnerSla.helper';
 
 const CASHBACK_EXPIRY_BATCH = 10;
 
@@ -1450,7 +1451,7 @@ async function remindExpiringActivationLinks(): Promise<void> {
 
 // U2 — warning threshold for the "deadline approaching" alert: 18h = 75% of the
 // 24h internal assignment SLA (matches computePartnerSla's 'warning' boundary).
-const SLA_HOURS_INTERNAL_WARN = 18;
+// Shared constant imported from partnerSla.helper so both sources stay in sync.
 
 async function escalateOverduePartnerSla(): Promise<void> {
   // Spec §1.6 (L201): the 24h internal SLA is an ASSIGNMENT deadline — "24 hours
@@ -1507,7 +1508,7 @@ async function escalateOverduePartnerSla(): Promise<void> {
   // so an admin can claim the application before the SLA is breached. A 6h cooldown
   // keeps this to roughly one nudge inside the warning window (hourly tick).
   const warnFrom = new Date(Date.now() - 24 * 60 * 60 * 1000);          // 24h ago (deadline)
-  const warnUntil = new Date(Date.now() - SLA_HOURS_INTERNAL_WARN * 60 * 60 * 1000); // 18h ago
+  const warnUntil = new Date(Date.now() - SLA_WARN_HOURS * 60 * 60 * 1000); // 18h ago
   const approachingPartners = await prisma.partner.findMany({
     where: {
       // Older than 18h but not yet past 24h (the overdue scan owns >24h).
@@ -1553,7 +1554,7 @@ async function escalateOverduePartnerSla(): Promise<void> {
 // ── Low/Medium-risk auto-approve sweep (Spec §2.2 / §3.4 / §8.1) ─────────────
 // Auto-approval is performed synchronously at scan time (sticker.service.uploadReceipt):
 // Low (0–20) and Medium (21–50) risk scans are immediately promoted PENDING→Cleared
-// (Medium auto-approves per the §9.4 amendment 2026-06-04). If that inline promote
+// (Medium auto-approves per spec §2.2/§3.4 amendment 2026-06-24). If that inline promote
 // throws, the scan is left stranded in MANUAL_REVIEW with a PENDING cashback row and
 // nothing ever retries it. §3.4/§8.1 require Low/Medium Pending records to clear
 // within the 24h auto-approval window.

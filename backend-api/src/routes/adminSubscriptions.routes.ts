@@ -183,12 +183,26 @@ async function enrichSubscriptions(
     ]),
   );
 
+  const STATUS_DISPLAY_LABELS: Record<SubscriptionStatus, string> = {
+    ACTIVE: 'Active',
+    TRIALING: 'Active (Trial)',
+    CANCELLED: 'Cancelled',
+    EXPIRED: 'Expired',
+    FAILED_PAYMENT: 'Failed Payment',
+    PAST_DUE: 'Failed Payment (Pending)',
+    PAUSED: 'Paused',
+    INCOMPLETE: 'Pending Payment',
+    INCOMPLETE_EXPIRED: 'Expired',
+    UNPAID: 'Failed Payment',
+  };
+
   return rows.map((s) => {
     const payments = paymentsByUser.get(s.user.id);
     return {
       id: s.id,
       plan: s.plan,
       status: s.status,
+      statusDisplayLabel: STATUS_DISPLAY_LABELS[s.status] ?? s.status,
       currentPeriodStart: s.currentPeriodStart,
       currentPeriodEnd: s.currentPeriodEnd,
       cancelAtPeriodEnd: s.cancelAtPeriodEnd,

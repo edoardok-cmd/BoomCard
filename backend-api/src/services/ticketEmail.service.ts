@@ -55,13 +55,9 @@ export function isPlusAddressingEnabled(): boolean {
  *   WAITING   → Waiting
  *   RESOLVED  → Closed        (admin-internal pre-close)
  *   CLOSED    → Closed
- *   REJECTED  → Closed        (F4 — align with the schema convention + the existing
- *                              partner-facing serializers, which map REJECTED→Closed.
- *                              Spec §1.7's canonical set lists both Closed and
- *                              Cancelled but does not dictate which REJECTED takes;
- *                              the schema comment is authoritative: "Not in spec
- *                              canonical enum — map to 'Closed'". Keeping admin and
- *                              partner surfaces consistent.)
+ *   REJECTED  → Cancelled     (Spec §1.7: Cancelled = "Withdrawn or invalid" — a rejected
+ *                              ticket is admin-declined/invalid, not resolved. Closed is
+ *                              reserved for successfully resolved tickets.)
  *   CANCELLED → Cancelled
  */
 export type CanonicalRequestStatus = 'New' | 'In Progress' | 'Waiting' | 'Closed' | 'Cancelled';
@@ -77,10 +73,11 @@ export function toCanonicalRequestStatus(status: string | null | undefined): Can
       return 'Waiting';
     case 'RESOLVED':
     case 'CLOSED':
-    case 'REJECTED':
-      // F4 — REJECTED maps to Closed to match the schema convention and the
-      // existing partner-facing serializers (consistent labelling across surfaces).
       return 'Closed';
+    case 'REJECTED':
+      // Spec §1.7 — REJECTED = "Withdrawn or invalid" maps to Cancelled (not Closed).
+      // Closed = "Resolved" (§1.7); Cancelled = "Withdrawn or invalid" (§1.7).
+      return 'Cancelled';
     case 'CANCELLED':
       return 'Cancelled';
     default:

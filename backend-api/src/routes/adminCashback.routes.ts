@@ -18,6 +18,7 @@ import { authenticate, authorize, requirePermission, AuthRequest } from '../midd
 import { auditMiddleware } from '../middleware/audit.middleware';
 import {
   adminCashbackService, getSubscriberCashbackEntries, getAllCashbackEntries,
+  exportCashbackEntriesCsv,
   CashbackEntryStatus, approveEntry, lockEntry, expireEntry, payEntry, voidEntry, backfillCashbackExpiry,
 } from '../services/adminCashback.service';
 import { getPayoutThresholdBGN } from '../utils/payoutThreshold';
@@ -270,10 +271,51 @@ router.get('/payout-thresholds', requirePermission('cashback.read'), async (_req
 });
 
 // ------------------------------------------------------------------
+// GET /api/admin/cashback/entries/export
+// Spec §3.4 — Export cashback entries as CSV. Must be registered BEFORE /entries
+// so Express does not try to match "export" as an :id param.
+// Query params: ?status=, ?dateFrom=, ?dateTo= (same as /entries filter)
+// Caps at 10,000 rows. Returns CSV with Content-Disposition: attachment.
+// ------------------------------------------------------------------
+router.get('/entries/export', requirePermission('cashback.read'), async (req: AuthRequest, res: Response) => {
+  try {
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const validStatuses: CashbackEntryStatus[] = ['Pending', 'TrialPending', 'Cleared', 'Locked', 'Paid', 'Expired', 'Voided'];
+    const statusFilter = status && (validStatuses as string[]).includes(status)
+      ? (status as CashbackEntryStatus)
+      : undefined;
+
+    const dateFrom = typeof req.query.dateFrom === 'string' && req.query.dateFrom
+      ? new Date(req.query.dateFrom)
+      : undefined;
+    const dateTo = typeof req.query.dateTo === 'string' && req.query.dateTo
+      ? new Date(req.query.dateTo + 'T23:59:59.999Z')
+      : undefined;
+
+    const VALID_RISK_LEVELS = ['Low', 'Medium', 'High'] as const;
+    type RiskLevelFilter = typeof VALID_RISK_LEVELS[number];
+    const riskLevelParam = typeof req.query.riskLevel === 'string' ? req.query.riskLevel : undefined;
+    const riskLevelFilter = riskLevelParam && (VALID_RISK_LEVELS as readonly string[]).includes(riskLevelParam)
+      ? (riskLevelParam as RiskLevelFilter)
+      : undefined;
+
+    const { data } = await getAllCashbackEntries(1, 10000, statusFilter, undefined, dateFrom, dateTo, riskLevelFilter);
+    const csv = exportCashbackEntriesCsv(data);
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="cashback-export.csv"');
+    res.send(csv);
+  } catch (error: any) {
+    logger.error('Failed to export cashback entries:', error);
+    res.status(500).json({ success: false, error: 'Failed to export cashback entries' });
+  }
+});
+
+// ------------------------------------------------------------------
 // GET /api/admin/cashback/entries
 // Spec §4.4 — global per-entry cashback listing with all 7 states
 // (Pending / TrialPending / Cleared / Locked / Paid / Expired / Voided). Filter by ?status=...
-// Optional: ?search=, ?dateFrom=, ?dateTo= for server-side filtering.
+// Optional: ?search=, ?dateFrom=, ?dateTo=, ?riskLevel=Low|Medium|High for server-side filtering.
 // ------------------------------------------------------------------
 router.get('/entries', requirePermission('cashback.read'), async (req: AuthRequest, res: Response) => {
   try {
@@ -295,7 +337,16 @@ router.get('/entries', requirePermission('cashback.read'), async (req: AuthReque
       ? new Date(req.query.dateTo + 'T23:59:59.999Z')
       : undefined;
 
-    const result = await getAllCashbackEntries(page, limit, statusFilter, search, dateFrom, dateTo);
+    // L2: Optional riskLevel filter — translates to a user riskScore range on the
+    // joined wallet.user (same bands as the subscribers listing: Low≤20, 20<Medium≤50, High>50).
+    const VALID_RISK_LEVELS = ['Low', 'Medium', 'High'] as const;
+    type RiskLevelFilter = typeof VALID_RISK_LEVELS[number];
+    const riskLevelParam = typeof req.query.riskLevel === 'string' ? req.query.riskLevel : undefined;
+    const riskLevelFilter = riskLevelParam && (VALID_RISK_LEVELS as readonly string[]).includes(riskLevelParam)
+      ? (riskLevelParam as RiskLevelFilter)
+      : undefined;
+
+    const result = await getAllCashbackEntries(page, limit, statusFilter, search, dateFrom, dateTo, riskLevelFilter);
     res.json({ success: true, ...result });
   } catch (error: any) {
     logger.error('Failed to fetch cashback entries:', error);
@@ -362,7 +413,17 @@ router.post('/entries/:id/approve', requirePermission('cashback.write'), async (
   }
 });
 
-router.post('/entries/:id/lock', requirePermission('cashback.write'), async (req: AuthRequest, res: Response) => {
+// M1 / Spec §3.4: Locked status "cannot be manually changed" — Locked is only
+// entered via the automated payout pipeline, not arbitrary admin action. This
+// endpoint is for the payout system (internal/system use) and should NOT appear
+// in normal admin UI. Restricted to SUPER_ADMIN to prevent accidental locking
+// by regular admins outside the payout pipeline context.
+router.post('/entries/:id/lock', (req: AuthRequest, res: Response, next) => {
+  if (req.user?.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({ success: false, error: 'Only SUPER_ADMIN may manually lock a cashback entry (automated payout pipeline use only — spec §3.4)' });
+  }
+  next();
+}, async (req: AuthRequest, res: Response) => {
   try {
     await lockEntry(req.params.id, req.user!.id);
     res.json({ success: true, message: 'Entry locked' });
@@ -396,17 +457,39 @@ router.post('/entries/:id/pay', requirePermission('cashback.write'), async (req:
 });
 
 // POST /api/admin/cashback/entries/:id/void  — any active state → Voided (spec §4.4 v1.1)
-// body: { reason: string }
+// body: { reason: string, forceVoidLocked?: boolean }
 // The entry stays visible to the user as "Анулиран" with the reason; balance is
 // adjusted by cashbackLifecycleService.markVoided when the entry was Cleared/Locked.
 // skipAudit=true: cashbackLifecycleService.markVoided writes its own AuditLog row
 // with full before/after diff. Middleware would log a second, less-informative row.
+//
+// M2 / Spec §3.4 + §1.3: Locked → Voided (force-void) is an emergency operational
+// path not in the base spec (spec state machine only allows Locked → Paid). It is
+// restricted to SUPER_ADMIN to prevent accidental destruction of in-flight payouts.
 router.post('/entries/:id/void', requirePermission('cashback.write'), async (req: AuthRequest, res: Response) => {
   try {
     const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
     if (!reason) {
       return res.status(400).json({ success: false, error: 'reason is required to void a cashback entry' });
     }
+
+    // M2: Before delegating to voidEntry, check if the target entry is LOCKED.
+    // If so, only SUPER_ADMIN may proceed — Locked→Voided is an emergency operational
+    // path (spec state machine allows Locked→Paid only; Locked→Voided is a controlled
+    // exception for stuck/fraudulent locked payouts, not routine admin action).
+    if (req.user?.role !== 'SUPER_ADMIN') {
+      const targetEntry = await prisma.walletTransaction.findUnique({
+        where: { id: req.params.id },
+        select: { cashbackStatus: true },
+      });
+      if (targetEntry?.cashbackStatus === 'LOCKED') {
+        return res.status(403).json({
+          success: false,
+          error: 'Only SUPER_ADMIN may void a LOCKED cashback entry (emergency path — spec §3.4)',
+        });
+      }
+    }
+
     await voidEntry(req.params.id, req.user!.id, reason);
     req.skipAudit = true;
     res.json({ success: true, message: 'Entry voided' });

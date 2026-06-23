@@ -664,6 +664,11 @@ router.post('/:id/cancel', requirePermission('help.write'), async (req: AuthRequ
     if (trimmedReason.length > 1000) {
       return res.status(400).json({ error: 'Причината е твърде дълга (максимум 1000 символа)' });
     }
+    // L1 — if a reason is provided it must be meaningful (at least 3 characters).
+    // An absent/empty reason is allowed (cancellation is not an adverse decision).
+    if (trimmedReason.length > 0 && trimmedReason.length < 3) {
+      return res.status(400).json({ error: 'Cancellation reason must be at least 3 characters.' });
+    }
 
     const ticket = await prisma.helpTicket.findUnique({
       where: { id: req.params.id },

@@ -213,7 +213,7 @@ model Partner {
   partnerTypeId         String?
   pendingChanges        Json?
   pendingChangesAt      DateTime?
-  categories            String[]
+  categories            String[]              @default([])
   assignedAdminId       String?
   isVisible             Boolean                  @default(true)
   requestStatus         PartnerRequestStatus?
@@ -260,6 +260,8 @@ model Partner {
   @@index([status])
   @@index([city])
   @@index([hasRiskFlag])
+  @@index([status, category, city])
+  @@index([categories], map: "Partner_categories_gin", type: Gin)
 }
 
 model PartnerCashbackPayment {
@@ -1963,7 +1965,7 @@ enum AdminRoleKey {
 enum UserStatus {
   ACTIVE
   INACTIVE
-  SUSPENDED // Operational extension: admin-suspended. Maps to Inactive for users.
+  SUSPENDED // Operational extension: admin abuse lockout. Blocks login entirely (stricter than spec Inactive). Do NOT use to implement spec-Inactive behavior.
   PENDING_VERIFICATION // Operational: email not yet verified. Not a canonical spec state.
   PENDING_PAYMENT // Operational: awaiting initial payment. Not a canonical spec state.
   DELETED // Operational: soft-delete. Not a canonical spec state.

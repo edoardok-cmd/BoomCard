@@ -3,6 +3,8 @@
 **Version 1.2 (Clash-Free, consolidates Admin v1.2 / Partner Final / User Final)**  
 **Date:** 2026-05-29
 
+> **Amendment — 2026-06-24:** Product decision confirmed post v1.2: Medium-risk cashback records (score 21–50) auto-approve on the same 24-hour timer as Low-risk records. Only High-risk records (score 51+) require manual review. §2.2, §3.4, and §3.7 updated accordingly.
+
 ---
 
 ## Overview
@@ -197,15 +199,15 @@ Five risk signals are tracked across all cashback records:
 
 ### 2.2 Risk Review Workflow
 
-**High Risk → Manual Review (Mandatory)**
+**Low Risk → Automatic Approval** (unless blocked by other conditions)
+
+**Medium Risk (score 21–50) → Automatic Approval** — Medium-risk records auto-approve on the same 24-hour timer as Low-risk records. No manual review queue entry.
+
+**High Risk (score 51+) → Manual Review (Mandatory)**
 - Every High-risk cashback enters admin review queue
 - Decision: Approve (Pending → Cleared) or Reject (Pending → Voided)
 - Approval: 60-day countdown starts from Cleared date
 - Rejection: Record marked Voided with reason category + optional internal note
-
-**Low Risk → Automatic Approval** (unless blocked by other conditions)
-
-**Medium Risk (score 21–50) → Manual Review triggered** — all Medium-risk records enter the admin review queue (same workflow as High Risk).
 
 ---
 
@@ -275,7 +277,7 @@ Five risk signals are tracked across all cashback records:
 - View Locked records during payout (informational)
 
 **Automation:**
-- Pending records with Low risk auto-approve within 24 hours
+- Pending records with Low or Medium risk auto-approve within 24 hours
 - Cleared records automatically expire after 60 days if not Paid
 - Locked status persists throughout payout process; cannot be manually changed
 
@@ -339,7 +341,7 @@ Five risk signals are tracked across all cashback records:
 **Risk Signal Tracking:**
 - Five canonical signals recorded with additive scores: IBAN change (+40), Receipt match confidence <60% (+30), QR location mismatch (+20), User has 3+ Voided records (+20), Partner active risk flag (+10)
 - Risk level thresholds: 0–20 = Low, 21–50 = Medium, 51+ = High
-- Medium and High risk records both enter manual admin review queue
+- Only High-risk records (score 51+) enter the manual admin review queue; Low and Medium risk records auto-approve within 24 hours (see §2.2 amendment)
 
 ---
 

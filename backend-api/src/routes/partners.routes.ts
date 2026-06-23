@@ -1517,18 +1517,10 @@ router.put(
       }
 
       if (statusChangedTo !== undefined) {
-        // §8.2 — notify partner of the status change. Fire-and-forget.
-        const notifyTo = partner.email || partner.user?.email || null;
-        if (notifyTo) {
-          detach(emailService
-            .sendPartnerStatusChangeEmail(notifyTo, {
-              firstName: partner.user?.firstName || partner.businessName,
-              businessName: partner.businessName,
-              fromStatus: partner.status as PartnerStatus,
-              toStatus: statusChangedTo,
-              reason: null,
-            }), (err) => logger.error('[PUT /partners/:id] status-change email failed:', err));
-        }
+        // §8.2 — the status-change email is sent inside setPartnerStatus (via
+        // notificationService). Sending it here again would produce a duplicate
+        // email to the partner. Only the user-account activation path (PENDING →
+        // ACTIVE) requires additional action at the route layer.
 
         // When transitioning TO ACTIVE from a PENDING/onboarding state (first
         // activation), also activate the user account. Re-activations from

@@ -26,6 +26,9 @@ import { PartnerRequestStatus } from '@prisma/client';
 
 export const SLA_HOURS_INTERNAL = 24;
 
+/** 75% of the 24h internal SLA — "warning" threshold used both here and by the scheduler. */
+export const SLA_WARN_HOURS = 18;
+
 export type PartnerSlaState = 'ok' | 'warning' | 'overdue';
 
 export interface PartnerSla {

@@ -836,7 +836,10 @@ export interface GlobalCashbackEntry extends SubscriberCashbackEntry {
     email: string;
     firstName: string | null;
     lastName: string | null;
+    riskScore: number;
   };
+  clearedAt: Date | null;
+  specRiskLevel: string | null;
 }
 
 type WTWhere = NonNullable<Parameters<typeof prisma.walletTransaction.findMany>[0]>['where'];
@@ -980,23 +983,60 @@ export async function getAllCashbackEntries(
   search?: string,
   dateFrom?: Date,
   dateTo?: Date,
+  riskLevel?: 'Low' | 'Medium' | 'High',
 ): Promise<{ data: GlobalCashbackEntry[]; total: number; page: number; limit: number }> {
   // Spec §4.4: 7 derived states (Pending / TrialPending / Cleared / Locked / Paid / Expired / Voided).
   // We push the filter to Prisma so true DB pagination + count work for all states,
   // including Paid/Cleared which need the per-wallet latest completed withdrawal.
   const now = new Date();
 
-  // Build user search sub-filter (join on wallet → user)
-  const userWhere = search
+  // riskLevel filter: prefer per-entry StickerScan.specRiskLevel (spec §2.1 five-signal
+  // classification written at scan time). Fall back to current user.riskScore bands for
+  // entries that have no stickerScan or whose scan predates the specRiskLevel column.
+  const riskScoreWhere: { lte?: number; gt?: number } | undefined =
+    riskLevel === 'Low' ? { lte: 20 } :
+    riskLevel === 'Medium' ? { gt: 20, lte: 50 } :
+    riskLevel === 'High' ? { gt: 50 } :
+    undefined;
+
+  // Top-level riskLevel WHERE — runs at WalletTransaction level so it can reach
+  // both stickerScan.specRiskLevel (per-entry) and wallet.user.riskScore (fallback).
+  const riskLevelWhere: WTWhere | undefined = riskLevel
     ? {
-        wallet: {
-          user: {
-            OR: [
-              { email: { contains: search, mode: 'insensitive' as const } },
-              { firstName: { contains: search, mode: 'insensitive' as const } },
-              { lastName: { contains: search, mode: 'insensitive' as const } },
+        OR: [
+          // Entry has a per-scan classification — match it directly
+          { stickerScan: { specRiskLevel: riskLevel } },
+          // No per-scan classification (receipt-only or legacy) — fall back to user band
+          {
+            AND: [
+              {
+                OR: [
+                  { stickerScan: null },
+                  { stickerScan: { specRiskLevel: null } },
+                ],
+              },
+              { wallet: { user: { riskScore: riskScoreWhere } } },
             ],
           },
+        ],
+      }
+    : undefined;
+
+  // Build user search sub-filter (join on wallet → user)
+  const userFilterConditions: Record<string, any>[] = [];
+  if (search) {
+    userFilterConditions.push({
+      OR: [
+        { email: { contains: search, mode: 'insensitive' as const } },
+        { firstName: { contains: search, mode: 'insensitive' as const } },
+        { lastName: { contains: search, mode: 'insensitive' as const } },
+      ],
+    });
+  }
+  const userWhere = userFilterConditions.length > 0
+    ? {
+        wallet: {
+          user: userFilterConditions[0],
         },
       }
     : undefined;
@@ -1013,6 +1053,7 @@ export async function getAllCashbackEntries(
     type: 'CASHBACK_CREDIT',
     ...userWhere,
     ...dateWhere,
+    ...riskLevelWhere,
   };
   const where: WTWhere = statusFilter
     ? { AND: [baseWhere, await buildStateWhere(statusFilter, now)] }
@@ -1031,6 +1072,7 @@ export async function getAllCashbackEntries(
         cashbackStatus: true,
         cashbackExpiresAt: true,
         cashbackPaidAt: true,
+        clearedAt: true,
         voidedAt: true,
         voidedReason: true,
         description: true,
@@ -1039,7 +1081,7 @@ export async function getAllCashbackEntries(
           select: {
             userId: true,
             user: {
-              select: { id: true, email: true, firstName: true, lastName: true },
+              select: { id: true, email: true, firstName: true, lastName: true, riskScore: true },
             },
           },
         },
@@ -1057,6 +1099,7 @@ export async function getAllCashbackEntries(
         },
         stickerScan: {
           select: {
+            specRiskLevel: true,
             venue: {
               select: {
                 partner: { select: { id: true, businessName: true } },
@@ -1108,6 +1151,7 @@ export async function getAllCashbackEntries(
       status,
       rawStatus: e.status,
       cashbackExpiresAt: e.cashbackExpiresAt,
+      clearedAt: (e as any).clearedAt ?? null,
       daysUntilExpiry,
       description: e.description,
       createdAt: e.createdAt,
@@ -1118,6 +1162,7 @@ export async function getAllCashbackEntries(
         : null,
       partner: e.receipt?.venue?.partner ?? e.stickerScan?.venue?.partner ?? null,
       user: e.wallet.user,
+      specRiskLevel: e.stickerScan?.specRiskLevel ?? null,
     };
   });
 
@@ -1255,11 +1300,13 @@ export async function voidEntry(entryId: string, adminUserId: string, reason: st
   if (entry.cashbackStatus === 'TRIAL_PENDING' || entry.status === 'TRIAL_PENDING') {
     throw new AppError('Cannot manually void a TrialPending record — only the scheduler resolves these.', 400);
   }
-  // H1 / Spec §1.3 + §8.1 rule 2: EXPIRED (and the other terminal states) cannot
-  // transition out. Reject EXPIRED here for a clean 400 before branching; the
-  // non-LOCKED path's markVoided also guards EXPIRED as defense in depth.
+  // Spec §1.3 + §8.1 rule 2: terminal states (EXPIRED, VOIDED, PAID) cannot transition out.
+  // Reject here for a clean 400 before branching.
   if (entry.cashbackStatus === 'EXPIRED') {
     throw new AppError('Cannot void an EXPIRED cashback entry — EXPIRED is terminal (§1.3).', 400);
+  }
+  if (entry.cashbackStatus === PrismaCashbackEntryStatus.VOIDED) {
+    throw new AppError('Cannot void an already-VOIDED cashback entry — VOIDED is terminal (§1.3).', 400);
   }
 
   // Spec §1.3 + §3.4: Locked → Voided is a supported transition. markVoided
@@ -1544,6 +1591,63 @@ export async function payEntry(entryId: string, adminUserId: string): Promise<vo
     after: { cashbackStatus: 'PAID', notes: 'Locked → Paid (payout complete)' },
   }).catch((err) => logger.error('[adminCashback.payEntry] audit write failed:', err));
   logger.info(`Admin ${adminUserId} marked cashback entry ${entryId} as paid`);
+}
+
+// ─── CSV Export (spec §3.4) ───────────────────────────────────────────────────
+
+/**
+ * Derive a display riskLevel label from a numeric riskScore using the same
+ * band thresholds as the subscribers listing and the /entries riskLevel filter:
+ *   Low   ≤ 20
+ *   Medium 21–50
+ *   High   > 50
+ */
+function deriveRiskLevel(riskScore: number): 'Low' | 'Medium' | 'High' {
+  if (riskScore <= 20) return 'Low';
+  if (riskScore <= 50) return 'Medium';
+  return 'High';
+}
+
+/** Escape a CSV field value: wrap in double-quotes if it contains comma, quote, or newline. */
+function csvField(value: string | number | null | undefined): string {
+  const str = value == null ? '' : String(value);
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
+/**
+ * Spec §3.4 — "Export by status." Converts an array of GlobalCashbackEntry rows
+ * to a CSV string. Columns: id, userId, userEmail, amount, status, riskLevel,
+ * clearedAt, expiresAt, voidedReason, createdAt. Capped at 10,000 rows by the
+ * caller (getAllCashbackEntries maxLimit=10000).
+ */
+export function exportCashbackEntriesCsv(entries: GlobalCashbackEntry[]): string {
+  const header = [
+    'id', 'userId', 'userEmail', 'amount', 'status', 'riskLevel',
+    'clearedAt', 'expiresAt', 'voidedReason', 'createdAt',
+  ].join(',');
+
+  const rows = entries.map((e) => {
+    // Prefer per-entry specRiskLevel (set at scan time per spec §2.1); fall back
+    // to current user.riskScore band for receipt-only or legacy entries.
+    const riskLevel = e.specRiskLevel ?? deriveRiskLevel(e.user.riskScore);
+    return [
+      csvField(e.id),
+      csvField(e.user.id),
+      csvField(e.user.email),
+      csvField(e.amount),
+      csvField(e.status),
+      csvField(riskLevel),
+      csvField(e.clearedAt?.toISOString() ?? null),
+      csvField(e.cashbackExpiresAt?.toISOString() ?? null),
+      csvField(e.voidedReason),
+      csvField(e.createdAt.toISOString()),
+    ].join(',');
+  });
+
+  return [header, ...rows].join('\n');
 }
 
 /**

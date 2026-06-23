@@ -218,9 +218,10 @@ class StickerService {
    * when the new subscription is created, so in practice the most-recent check
    * is sufficient.
    *
-   * PAST_DUE (Stripe-internal retry state) does NOT block scanning — it is not
-   * a terminal state in §4.2 and Stripe may recover the subscription without
-   * user action.
+   * PAST_DUE is blocked — it matches none of the allow branches below and falls
+   * through to the generic SUBSCRIPTION_INACTIVE throw. It is a Stripe-internal
+   * dunning state; §1.2's terminal block-states include Failed Payment, and
+   * PAST_DUE precedes that state.
    */
   async assertSubscriptionAllowsScanning(userId: string): Promise<void> {
     // Spec §1.3 / §8.2 — user.status gate MUST be checked BEFORE subscription status.
@@ -258,17 +259,15 @@ class StickerService {
     const now = new Date();
     const status = latest.status;
 
-    // L1 (Spec §1.2) — the source spec DEFERS the admin handling of the Stripe-
+    // (Spec §1.2) — the source spec DEFERS the admin handling of the Stripe-
     // mapped statuses (TRIALING, PAST_DUE, PAUSED, etc.) to product confirmation.
     // Decisions made here, documented as the current spec-aligned defaults:
     //   • TRIALING ≡ Active: a user in the Stripe trial has a live, paid-intent
     //     subscription, so scanning is allowed (treated identically to ACTIVE).
-    //   • PAST_DUE does NOT block scanning (handled below by NOT matching any
-    //     blocking branch → falls through to the generic SUBSCRIPTION_INACTIVE
-    //     guard only if it is also not ACTIVE/TRIALING/CANCELLED-in-period). It is
-    //     a Stripe-internal dunning state that may self-recover without user action;
-    //     §1.2's terminal block-states are Expired / Failed Payment / Cancelled-
-    //     post-period only.
+    //   • PAST_DUE is blocked — it matches none of the allow branches below and
+    //     falls through to the generic SUBSCRIPTION_INACTIVE throw at the end of
+    //     this function. It is a Stripe-internal dunning state; §1.2's terminal
+    //     block-states include Failed Payment, and PAST_DUE precedes that state.
     //   • PAUSED blocks payout (enforced in wallet.service, not here) but is not a
     //     scan state in §1.2.
     // If product later defines different rules, change these branches and update
@@ -1534,10 +1533,10 @@ class StickerService {
       data: { specRiskLevel: specRisk.riskLevel },
     }).catch((err: unknown) => logger.error(`[uploadReceipt] failed to store spec risk level:`, err));
 
-    // Spec §9.4 (amendment 2026-06-04): only High risk → manual review queue.
+    // Spec §2.2/§3.4 (amendment 2026-06-24): only High risk → manual review queue.
     // Low and Medium auto-process via the auto-approval (within 24h) path.
     if (!specRisk.requiresManualReview) {
-      // ── Auto-approve path (Spec §9.4: Low/Medium risk auto-approve) ───────
+      // ── Auto-approve path (Spec §2.2/§3.4: Low/Medium risk auto-approve) ──
       // riskLevel=Low or Medium → auto-approve within 24h.
       // Transition to MANUAL_REVIEW first so approveScan() accepts the scan,
       // then immediately promote. This reuses all cashback-credit, wallet,
@@ -1597,7 +1596,7 @@ class StickerService {
       }) as unknown as StickerScan;
     }
 
-    // ── Manual review path (Spec §9.4: High risk only → manual queue) ─────
+    // ── Manual review path (Spec §2.2/§3.4: High risk only → manual queue) ─
     // Spec §2.1 thresholds: High = 51+. Only High-risk submissions enter the
     // admin queue; Medium (21–50) and Low (0–20) take the auto-process path.
     const finalScan = await prisma.stickerScan.update({
@@ -2472,9 +2471,10 @@ class StickerService {
       fraudReasons.push('RAPID_SUBMISSIONS');
     }
 
-    // Spec §2.1: 0-20 = LOW, 21-50 = MEDIUM, 51+ = HIGH. autoApproveThreshold
-    // default is 20 so scores 0–20 (LOW) auto-approve and 21+ require review.
-    const autoApproveThreshold = config.autoApproveThreshold ?? 20;
+    // Spec §2.1: 0-20 = LOW, 21-50 = MEDIUM, 51+ = HIGH.
+    // Per spec §2.2 (amendment 2026-06-24): Low AND Medium auto-approve; only High enters
+    // manual review. Default threshold=50 means scores 0–50 auto-approve, 51+ require review.
+    const autoApproveThreshold = config.autoApproveThreshold ?? 50;
 
     let riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
     if (fraudScore <= 20) {

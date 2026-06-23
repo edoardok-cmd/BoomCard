@@ -54,8 +54,8 @@ import { receiptTemplateService } from './receiptTemplate.service';
  * - Internal multi-signal fraud score used for admin triage
  * - Spec §2.1 five-signal additive risk level drives the manual-review gate:
  *   Low (0–20) and Medium (21–50) → auto-approve within 24h; High (51+) → manual review queue
- *   F-010 / BC-USER-SPEC-FIX-010: only High-risk requires manual review per spec §9.4
- *   amendment (2026-06-04). Medium now auto-processes alongside Low.
+ *   Per spec §2.2/§3.4 (amendment 2026-06-24): only High-risk requires manual review.
+ *   Medium auto-processes alongside Low.
  */
 
 // Spec §2.1 five-signal risk scoring constants (additive model, canonical set)
@@ -79,10 +79,9 @@ export interface SpecRiskResult {
   riskLevel: SpecRiskLevel;
   /**
    * True when riskLevel is High only — High-risk submissions require admin manual review.
-   * F-010 / BC-USER-SPEC-FIX-010: only High-risk requires manual review per spec §9.4
-   * amendment (2026-06-04). The prior rule routing Medium to the same manual workflow as
-   * High is superseded.
-   * False (Low and Medium) → eligible for automatic approval within 24h (spec §9.4).
+   * Per spec §2.2/§3.4 (amendment 2026-06-24): only High-risk requires manual review.
+   * The prior rule routing Medium to the same manual workflow as High is superseded.
+   * False (Low and Medium) → eligible for automatic approval within 24h.
    */
   requiresManualReview: boolean;
   /** Human-readable reasons for each signal that fired. */
@@ -920,10 +919,10 @@ class FraudDetectionService {
    * fraud score (checkReceipt) and is the authoritative gate for manual review.
    *
    * Risk level drives the PENDING → review decision (F-010 / BC-USER-SPEC-FIX-010:
-   * only High-risk requires manual review per spec §9.4 amendment 2026-06-04):
-   *   Low  (0–20)    → auto-approve within 24h (spec §9.4)
-   *   Medium (21–50) → auto-approve within 24h (spec §9.4 amendment — no longer manual)
-   *   High (51+)     → manual review queue (spec §9.4)
+   * only High-risk requires manual review per spec §2.2/§3.4 (amendment 2026-06-24)):
+   *   Low  (0–20)    → auto-approve within 24h
+   *   Medium (21–50) → auto-approve within 24h (no longer manual)
+   *   High (51+)     → manual review queue
    *
    * Signal 2 (receipt match confidence) maps to ocrConfidence: a value below
    * 60% triggers the +30 signal. Pass the OCR confidence as a percentage (0–100).
@@ -999,8 +998,8 @@ class FraudDetectionService {
       riskLevel = 'Low';
     }
 
-    // F-010 / BC-USER-SPEC-FIX-010: only High-risk requires manual review per spec §9.4
-    // amendment (2026-06-04). Low and Medium auto-process (auto-approval within 24h).
+    // Spec §2.2/§3.4 (amendment 2026-06-24): only High-risk requires manual review.
+    // Low and Medium auto-process (auto-approval within 24h).
     const requiresManualReview = riskLevel === 'High';
 
     return { riskScore, riskLevel, requiresManualReview, riskSignals };

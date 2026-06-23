@@ -273,10 +273,14 @@ export class ActivationLinkService {
         throw new ActivationLinkError('INVALID_TOKEN', 'Invalid activation link');
       }
 
-      // Spec §5.2 — the activation link is the canonical hand-off for
-      // admin-onboarded partners too. If they are still PENDING (admin
-      // onboarded without a separate approve), bring them online.
-      if (consumed.partner.status === PartnerStatus.PENDING) {
+      // Spec §1.6 / §3.5 / §5.2 — the activation link is the canonical
+      // hand-off for all approval flows. The approve endpoint now leaves
+      // the partner at their current status (PENDING) and does NOT set ACTIVE
+      // prematurely; this consume step is the single place that transitions
+      // to ACTIVE. Covers PENDING (standard first-time activation) and any
+      // other non-terminal, non-archived status (e.g. INACTIVE on re-approval).
+      // verifiedAt is already handled above (stamped on first activation only).
+      if (consumed.partner.status !== PartnerStatus.ACTIVE) {
         partnerUpdate.status = PartnerStatus.ACTIVE;
       }
       if (Object.keys(partnerUpdate).length > 0) {
