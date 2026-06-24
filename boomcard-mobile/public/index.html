@@ -24,15 +24,7 @@
     <meta name="description" content="Loyalty rewards and smart payments" />
 
     <!-- Service worker registration -->
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function () {
-          navigator.serviceWorker.register('/sw.js').catch(function (err) {
-            console.warn('[SW] Registration failed:', err);
-          });
-        });
-      }
-    </script>
+    <script src="/sw-register.js"></script>
 
     <!-- The `react-native-web` recommended style reset -->
     <style id="expo-reset">
