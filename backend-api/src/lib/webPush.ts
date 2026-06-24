@@ -1,5 +1,6 @@
 import webpush from 'web-push';
 import { prisma } from './prisma';
+import { logger } from '../utils/logger';
 
 /**
  * Web Push (VAPID) helper.
@@ -15,17 +16,12 @@ import { prisma } from './prisma';
  * must never block the surrounding DB write / in-app notification.
  */
 
-let configured = false;
-
-function configure(): boolean {
-  if (configured) return true;
+function getVapidKeys(): { publicKey: string; privateKey: string; subject: string } | null {
   const publicKey = process.env.VAPID_PUBLIC_KEY;
   const privateKey = process.env.VAPID_PRIVATE_KEY;
   const subject = process.env.VAPID_SUBJECT;
-  if (!publicKey || !privateKey || !subject) return false;
-  webpush.setVapidDetails(subject, publicKey, privateKey);
-  configured = true;
-  return true;
+  if (!publicKey || !privateKey || !subject) return null;
+  return { publicKey, privateKey, subject };
 }
 
 export function getVapidPublicKey(): string | null {
@@ -43,10 +39,12 @@ export async function sendWebPushToUser(
   userId: string,
   payload: WebPushPayload
 ): Promise<{ sent: number; invalidated: number }> {
-  if (!configure()) {
-    console.warn('[webPush] VAPID keys not set — skipping web push send');
+  const keys = getVapidKeys();
+  if (!keys) {
+    logger.warn('[webPush] VAPID keys not set — skipping web push send');
     return { sent: 0, invalidated: 0 };
   }
+  webpush.setVapidDetails(keys.subject, keys.publicKey, keys.privateKey);
 
   const tokens = await prisma.pushToken.findMany({
     where: { userId, platform: 'web', isActive: true },
@@ -85,7 +83,7 @@ export async function sendWebPushToUser(
           });
           invalidated++;
         } else {
-          console.error('[webPush] send failed', {
+          logger.error('[webPush] send failed', {
             userId,
             tokenId: row.id,
             statusCode,

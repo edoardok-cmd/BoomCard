@@ -338,10 +338,13 @@ export class NotificationService {
 
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { email: true, firstName: true },
+        select: { email: true, firstName: true, marketingConsentEmail: true },
       });
 
       if (!user || !user.email) return;
+
+      // Spec §6.3: daily digest is a scheduled marketing email — gate on consent.
+      if (!user.marketingConsentEmail) return;
 
       const totalCashback = receipts
         .filter((r) => r.status === 'APPROVED')
@@ -521,6 +524,13 @@ export class NotificationService {
         priority: 'high',
       });
 
+      await this.sendPushNotification({
+        userId,
+        title: 'Плащането не успя',
+        body: `Плащането ви от ${amount.toFixed(2).replace('.', ',')} ${currency} не можа да бъде обработено. Моля, актуализирайте метода си на плащане.`,
+        data: { type: 'payment_failed', url: '/subscription' },
+      }).catch((err) => logger.error('[notifyPaymentFailed] push failed:', err));
+
       // Send email notification
       const user = await prisma.user.findUnique({
         where: { id: userId },
@@ -532,8 +542,8 @@ export class NotificationService {
           to: user.email,
           subject: 'Action Required: Payment Failed',
           html: `
-            <p>Hi ${user.firstName || 'there'},</p>
-            <p>Your payment of <strong>${amount.toFixed(2)} ${currency}</strong> could not be processed.</p>
+            <p>Hi ${escapeHtml(user.firstName || 'there')},</p>
+            <p>Your payment of <strong>${amount.toFixed(2)} ${escapeHtml(currency)}</strong> could not be processed.</p>
             <p>Please update your payment method in the app to avoid any interruption to your subscription.</p>
             <p>— The BoomCard Team</p>
           `,
@@ -565,7 +575,7 @@ export class NotificationService {
 
       await this.createNotification({
         userId,
-        type: 'PAYMENT_SUCCESS' as any,
+        type: 'PAYMENT_SUCCESS',
         title: titleEn,
         titleBg,
         message: messageEn,
@@ -722,6 +732,12 @@ export class NotificationService {
         actionTextBg: 'Виж профила',
         data: { businessName, fromStatus: canonicalFromStatus, toStatus },
       });
+      await this.sendPushNotification({
+        userId: partnerUserId,
+        title: 'Статусът на акаунта е променен',
+        body: `Акаунтът ви за ${businessName} е сега ${toLabelBg}.`,
+        data: { type: 'partner_status_change', toStatus, url: '/partners/profile' },
+      }).catch((err) => logger.error('[notifyPartnerStatusChange] push failed:', err));
     } catch (error) {
       logger.error('❌ Error sending partner status change notification:', error);
     }
@@ -869,7 +885,6 @@ export class NotificationService {
   async notifyPartnerWelcome(params: {
     partnerUserId: string;
     businessName: string;
-    temporaryPassword?: string;
     isBulkImport?: boolean;
   }): Promise<void> {
     try {
@@ -902,8 +917,8 @@ export class NotificationService {
             to: user.email,
             subject: `Welcome to BoomCard, ${params.businessName}`,
             html: `
-              <p>Hi ${user.firstName || params.businessName},</p>
-              <p>Your BoomCard partner account for <strong>${params.businessName}</strong> has been set up by our team.</p>
+              <p>Hi ${escapeHtml(user.firstName || params.businessName)},</p>
+              <p>Your BoomCard partner account for <strong>${escapeHtml(params.businessName)}</strong> has been set up by our team.</p>
               <p>Use the link below to set your password and sign in. The link is valid for 72 hours.</p>
               <p>Sign in at <a href="${process.env.PARTNER_DASHBOARD_URL || 'https://partners.boomcard.bg'}">the partner dashboard</a> to complete your profile, upload your menu, and start earning from BoomCard members.</p>
               <p>— The BoomCard Team</p>
@@ -984,7 +999,7 @@ export class NotificationService {
       if (user?.email) {
         const balanceFmt = params.availableBalance.toFixed(2).replace('.', ',');
         const thresholdFmt = params.threshold.toFixed(2).replace('.', ',');
-        const greeting = user.firstName ? `Здравейте, ${user.firstName}!` : 'Здравейте!';
+        const greeting = user.firstName ? `Здравейте, ${escapeHtml(user.firstName)}!` : 'Здравейте!';
         detach(emailService.sendEmail({
           to: user.email,
           subject: 'Готови за изтегляне — BoomCard',
@@ -1056,6 +1071,16 @@ export class NotificationService {
         actionTextBg: 'Добавете сметка',
         data: { availableBalance: params.availableBalance, threshold: params.threshold, reason: 'no_iban' },
       });
+      // Spec §8.3 — payout threshold reached requires Email + in-app + push.
+      // This is the no-IBAN path of the same threshold-crossing event; push must
+      // fire here for parity with notifyPayoutReady (the IBAN-present path).
+      await this.sendPushNotification({
+        userId: params.userId,
+        title: 'Добавете IBAN за изплащане',
+        body: `${params.availableBalance.toFixed(2).replace('.', ',')} лв. са готови — добавете банкова сметка.`,
+        data: { type: 'payout_held_no_iban', url: '/profile/bank' },
+      }).catch((err) => logger.error('[notifyPayoutHeldNoIban] push failed:', err));
+
       // Email notification
       const user = await prisma.user.findUnique({
         where: { id: params.userId },
@@ -1063,7 +1088,7 @@ export class NotificationService {
       });
       if (user?.email) {
         const balanceFmt = params.availableBalance.toFixed(2).replace('.', ',');
-        const greeting = user.firstName ? `Здравейте, ${user.firstName}!` : 'Здравейте!';
+        const greeting = user.firstName ? `Здравейте, ${escapeHtml(user.firstName)}!` : 'Здравейте!';
         detach(emailService.sendEmail({
           to: user.email,
           subject: 'Добавете IBAN за изплащане — BoomCard',
@@ -1089,59 +1114,65 @@ export class NotificationService {
     }
   }
 
-  // Spec §8.3 — subscription expiry reminder in-app channel (Email + in-app).
-  // Called by the renewal-reminders job alongside the email send.
+  // Spec §8.3 — subscription expiry reminder in-app channel (in-app + push only).
+  // EMAIL for this notification is intentionally sent by the CALLER (renewal-reminders job)
+  // via emailService.sendSubscriptionExpiryEmail — do NOT add an email send here.
+  // Future callers must also send the email themselves to maintain the required dual-channel.
   async notifySubscriptionExpiringSoon(params: {
     userId: string;
     bucket: '3d' | '1d' | 'dayOf';
     periodEnd: Date;
   }): Promise<void> {
-    const dateStr = params.periodEnd.toLocaleDateString('bg-BG', { timeZone: 'Europe/Sofia' });
-    const { title, titleBg, message, messageBg } = {
-      '3d': {
-        title: 'Subscription expiring in 3 days',
-        titleBg: 'Абонаментът изтича след 3 дни',
-        message: `Your BoomCard subscription expires on ${dateStr}. Auto-renewal is off — renew manually to keep access.`,
-        messageBg: `Абонаментът ви BoomCard изтича на ${dateStr} (след 3 дни). Автоматичното подновяване е изключено.`,
-      },
-      '1d': {
-        title: 'Subscription expiring tomorrow',
-        titleBg: 'Абонаментът изтича утре',
-        message: `Your BoomCard subscription expires tomorrow (${dateStr}). Renew now to avoid interruption.`,
-        messageBg: `Абонаментът ви BoomCard изтича утре, ${dateStr}.`,
-      },
-      'dayOf': {
-        title: 'Subscription expires today',
-        titleBg: 'Абонаментът изтича днес',
-        message: `Your BoomCard subscription expires today (${dateStr}). Renew now to keep access.`,
-        messageBg: `Абонаментът ви BoomCard изтича днес, ${dateStr}.`,
-      },
-    }[params.bucket];
+    try {
+      const dateStr = params.periodEnd.toLocaleDateString('bg-BG', { timeZone: 'Europe/Sofia' });
+      const { title, titleBg, message, messageBg } = {
+        '3d': {
+          title: 'Subscription expiring in 3 days',
+          titleBg: 'Абонаментът изтича след 3 дни',
+          message: `Your BoomCard subscription expires on ${dateStr}. Auto-renewal is off — renew manually to keep access.`,
+          messageBg: `Абонаментът ви BoomCard изтича на ${dateStr} (след 3 дни). Автоматичното подновяване е изключено.`,
+        },
+        '1d': {
+          title: 'Subscription expiring tomorrow',
+          titleBg: 'Абонаментът изтича утре',
+          message: `Your BoomCard subscription expires tomorrow (${dateStr}). Renew now to avoid interruption.`,
+          messageBg: `Абонаментът ви BoomCard изтича утре, ${dateStr}.`,
+        },
+        'dayOf': {
+          title: 'Subscription expires today',
+          titleBg: 'Абонаментът изтича днес',
+          message: `Your BoomCard subscription expires today (${dateStr}). Renew now to keep access.`,
+          messageBg: `Абонаментът ви BoomCard изтича днес, ${dateStr}.`,
+        },
+      }[params.bucket];
 
-    await this.createNotification({
-      userId: params.userId,
-      type: 'SUBSCRIPTION_EXPIRING',
-      title,
-      titleBg,
-      message,
-      messageBg,
-      priority: params.bucket === 'dayOf' ? 'high' : 'medium',
-      actionUrl: '/subscription',
-      actionText: 'Renew',
-      actionTextBg: 'Поднови',
-    });
+      await this.createNotification({
+        userId: params.userId,
+        type: 'SYSTEM', // SUBSCRIPTION_EXPIRING not yet in NotificationType enum — use SYSTEM until migration adds it
+        title,
+        titleBg,
+        message,
+        messageBg,
+        priority: params.bucket === 'dayOf' ? 'high' : 'medium',
+        actionUrl: '/subscription',
+        actionText: 'Renew',
+        actionTextBg: 'Поднови',
+      });
 
-    // §13 — push mirrors the in-app notification on mobile/web.
-    // Non-fatal: a push failure must not prevent the bitmask update
-    // in the caller (renewal-reminders job).
-    await this.sendPushNotification({
-      userId: params.userId,
-      title: titleBg,
-      body: messageBg,
-      data: { type: 'subscription_expiring', bucket: params.bucket, url: '/subscription' },
-    }).catch((err) =>
-      logger.error('[notifySubscriptionExpiringSoon] push failed:', err),
-    );
+      // §13 — push mirrors the in-app notification on mobile/web.
+      // Non-fatal: a push failure must not prevent the bitmask update
+      // in the caller (renewal-reminders job).
+      await this.sendPushNotification({
+        userId: params.userId,
+        title: titleBg,
+        body: messageBg,
+        data: { type: 'subscription_expiring', bucket: params.bucket, url: '/subscription' },
+      }).catch((err) =>
+        logger.error('[notifySubscriptionExpiringSoon] push failed:', err),
+      );
+    } catch (error) {
+      logger.error('[notifySubscriptionExpiringSoon] failed:', error);
+    }
   }
 
   /**
@@ -1158,7 +1189,7 @@ export class NotificationService {
       const dateStr = params.pauseEndsAt.toLocaleDateString('bg-BG', { timeZone: 'Europe/Sofia' });
       await this.createNotification({
         userId: params.userId,
-        type: 'SUBSCRIPTION_EXPIRING',
+        type: 'SYSTEM', // SUBSCRIPTION_EXPIRING not yet in NotificationType enum — use SYSTEM until migration adds it
         title: 'Subscription paused',
         titleBg: 'Абонаментът е спрян',
         message: `Your BoomCard subscription has been paused. Renew before ${dateStr} to avoid cancellation.`,
@@ -1433,8 +1464,8 @@ export class NotificationService {
           to: user.email,
           subject: `${params.businessName} — ${params.month} statement`,
           html: `
-            <p>Hi ${user.firstName || params.businessName},</p>
-            <p>Your BoomCard statement for <strong>${params.month}</strong> is available.</p>
+            <p>Hi ${escapeHtml(user.firstName || params.businessName)},</p>
+            <p>Your BoomCard statement for <strong>${escapeHtml(params.month)}</strong> is available.</p>
             <ul>
               <li>Receipts processed: <strong>${params.receipts}</strong></li>
               <li>Tracked revenue: <strong>${params.revenueBGN.toFixed(2)} BGN</strong></li>
@@ -1481,6 +1512,12 @@ export class NotificationService {
         relatedEntityId: params.ticketId,
         data: { ticketId: params.ticketId, subject: params.subject, fromStatus: params.fromStatus, toStatus: params.toStatus },
       });
+      await this.sendPushNotification({
+        userId: params.partnerUserId,
+        title: 'Вашата заявка е актуализирана',
+        body: `„${params.subject}" е преминала на статус ${params.toStatus}.`,
+        data: { type: 'partner_request_update', ticketId: params.ticketId, url: '/partners/help' },
+      }).catch((err) => logger.error('[notifyPartnerRequestUpdate] push failed:', err));
     } catch (error) {
       logger.error('❌ Error sending partner request-update notification:', error);
     }
@@ -1515,6 +1552,12 @@ export class NotificationService {
         // fieldChanged only — old/new cashback%/margin% values are internal-only (spec §11.3).
         data: { businessName: params.businessName, fieldChanged: params.fieldChanged },
       });
+      await this.sendPushNotification({
+        userId: params.partnerUserId,
+        title: 'Условията на договора са променени',
+        body: `${params.fieldChanged} за ${params.businessName} е актуализирано.`,
+        data: { type: 'partner_contract_change', url: '/partners/profile' },
+      }).catch((err) => logger.error('[notifyPartnerContractChange] push failed:', err));
     } catch (error) {
       logger.error('❌ Error sending partner contract-change notification:', error);
     }
@@ -1569,6 +1612,13 @@ export class NotificationService {
         data: params,
       });
 
+      await this.sendPushNotification({
+        userId: params.userId,
+        title: 'Абонаментът е прекратен — плащането не е получено',
+        body: `Абонаментът ви ${params.planName} е прекратен, тъй като не успяхме да получим плащане. Можете да го активирате отново от страницата за фактуриране.`,
+        data: { type: 'subscription_access_ended', url: '/dashboard/subscription' },
+      }).catch((err) => logger.error('[notifySubscriptionAccessEnded] push failed:', err));
+
       const user = await prisma.user.findUnique({
         where: { id: params.userId },
         select: { email: true, firstName: true },
@@ -1578,8 +1628,8 @@ export class NotificationService {
           to: user.email,
           subject: 'Your BoomCard subscription has ended',
           html: `
-            <p>Hi ${user.firstName || 'there'},</p>
-            <p>Your <strong>${params.planName}</strong> BoomCard subscription has ended because we were unable to collect payment after multiple attempts.</p>
+            <p>Hi ${escapeHtml(user.firstName || 'there')},</p>
+            <p>Your <strong>${escapeHtml(params.planName)}</strong> BoomCard subscription has ended because we were unable to collect payment after multiple attempts.</p>
             <p>You can reactivate your subscription at any time from the <a href="${process.env.PARTNER_DASHBOARD_URL || 'https://partners.boomcard.bg'}/dashboard/subscription">billing page</a>.</p>
             <p>— The BoomCard Team</p>
           `,
@@ -1616,36 +1666,42 @@ export class NotificationService {
      *  the bell when the underlying condition persists across multiple runs. */
     cooldownHours?: number;
   }): Promise<void> {
-    if (params.cooldownHours) {
-      const since = new Date(Date.now() - params.cooldownHours * 3_600_000);
-      // Use a word-boundary-safe JSON string match to avoid substring collisions
-      // (e.g. 'partner_signup' must NOT suppress 'partner_signup_bulk').
-      // We match '"opsType":"<value>",' with a trailing comma or closing brace so
-      // 'partner_signup' cannot match 'partner_signup_bulk'.
-      // Two patterns cover both "last key" (no trailing comma) and "non-last key" forms.
-      const exactPattern1 = `"opsType":"${params.opsType}",`;  // non-last key
-      const exactPattern2 = `"opsType":"${params.opsType}"}`;  // last key before }
-      const recent = await prisma.notification.findFirst({
-        where: {
-          OR: [
-            { data: { contains: exactPattern1 }, createdAt: { gte: since } },
-            { data: { contains: exactPattern2 }, createdAt: { gte: since } },
-          ],
-        },
-        select: { id: true },
-      });
-      if (recent) {
-        logger.info(`[admin-ops] Cooldown active for opsType=${params.opsType} — skipping duplicate notification.`);
-        return;
-      }
-    }
-
-    const severity = params.severity ?? 'info';
-    // Map severity to notification priority — admin dashboards escalate 'high'/'urgent'.
-    const priority: 'low' | 'medium' | 'high' | 'urgent' =
-      severity === 'critical' ? 'urgent' : severity === 'warning' ? 'high' : 'medium';
-
     try {
+      // Sanitize opsType so LIKE-pattern wildcards (%, _) in a caller-supplied value
+      // cannot suppress unrelated admin notifications via the Prisma `contains` query.
+      // The sanitized form is used in the cooldown patterns AND stored in the data
+      // payload so the query and the stored value always match.
+      const safeOpsType = params.opsType.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+
+      if (params.cooldownHours) {
+        const since = new Date(Date.now() - params.cooldownHours * 3_600_000);
+        // Use a word-boundary-safe JSON string match to avoid substring collisions
+        // (e.g. 'partner_signup' must NOT suppress 'partner_signup_bulk').
+        // We match '"opsType":"<value>",' with a trailing comma or closing brace so
+        // 'partner_signup' cannot match 'partner_signup_bulk'.
+        // Two patterns cover both "last key" (no trailing comma) and "non-last key" forms.
+        const exactPattern1 = `"opsType":"${safeOpsType}",`;  // non-last key
+        const exactPattern2 = `"opsType":"${safeOpsType}"}`;  // last key before }
+        const recent = await prisma.notification.findFirst({
+          where: {
+            OR: [
+              { data: { contains: exactPattern1 }, createdAt: { gte: since } },
+              { data: { contains: exactPattern2 }, createdAt: { gte: since } },
+            ],
+          },
+          select: { id: true },
+        });
+        if (recent) {
+          logger.info(`[admin-ops] Cooldown active for opsType=${safeOpsType} — skipping duplicate notification.`);
+          return;
+        }
+      }
+
+      const severity = params.severity ?? 'info';
+      // Map severity to notification priority — admin dashboards escalate 'high'/'urgent'.
+      const priority: 'low' | 'medium' | 'high' | 'urgent' =
+        severity === 'critical' ? 'urgent' : severity === 'warning' ? 'high' : 'medium';
+
       const admins = await this.getAdminUsers();
 
       await Promise.all(
@@ -1659,7 +1715,7 @@ export class NotificationService {
             actionUrl: params.actionUrl,
             relatedEntityType: params.relatedEntityType,
             relatedEntityId: params.relatedEntityId,
-            data: { opsType: params.opsType, severity, fields: params.fields },
+            data: { opsType: safeOpsType, severity, fields: params.fields },
           }).catch((err) => logger.error(`[admin-ops] In-app notify failed for admin ${admin.id}:`, err))
         )
       );
@@ -1677,7 +1733,7 @@ export class NotificationService {
           <p><strong>${escapeHtml(params.title)}</strong></p>
           <p>${escapeHtml(params.message)}</p>
           ${fieldLines ? `<ul>${fieldLines}</ul>` : ''}
-          ${params.actionUrl ? `<p><a href="${escapeHtml(params.actionUrl)}">Open in dashboard</a></p>` : ''}
+          ${params.actionUrl ? (() => { const safeHref = (/^https?:\/\//.test(params.actionUrl!) || params.actionUrl!.startsWith('/')) ? params.actionUrl!.replace(/"/g, '%22') : '#'; return `<p><a href="${safeHref}">Open in dashboard</a></p>`; })() : ''}
         `;
         await Promise.all(
           admins
@@ -2098,7 +2154,7 @@ export class NotificationService {
       </head>
       <body>
         <div class="container">
-          <h1>Hi ${data.firstName}!</h1>
+          <h1>Hi ${escapeHtml(data.firstName)}!</h1>
           <p>Here's your receipt summary for today:</p>
 
           <div class="stats">
@@ -2134,7 +2190,7 @@ export class NotificationService {
                 </div>
                 <div style="font-size: 14px; color: #6b7280; margin-top: 5px;">
                   Amount: ${r.totalAmount?.toFixed(2) || '0.00'} BGN
-                  ${r.status === 'APPROVED' ? `• Cashback: ${r.cashbackAmount.toFixed(2)} BGN` : ''}
+                  ${r.status === 'APPROVED' && r.cashbackAmount != null ? `• Cashback: ${r.cashbackAmount.toFixed(2)} BGN` : ''}
                 </div>
               </div>
             `
@@ -2145,11 +2201,11 @@ export class NotificationService {
           <div class="footer">
             <p>Keep scanning receipts to earn more cashback!</p>
             <p style="margin-top: 15px;">
-              <a href="https://boomcard.com/receipts" style="color: #10b981; text-decoration: none;">View All Receipts</a>
+              <a href="${process.env.APP_URL || 'https://mobile.boomcard.bg'}/receipts" style="color: #10b981; text-decoration: none;">View All Receipts</a>
             </p>
             <p style="margin-top: 20px; font-size: 12px;">
               You're receiving this email because you submitted receipts today.
-              <a href="https://boomcard.com/settings/notifications" style="color: #6b7280;">Manage preferences</a>
+              <a href="${process.env.APP_URL || 'https://mobile.boomcard.bg'}/settings/notifications" style="color: #6b7280;">Manage preferences</a>
             </p>
           </div>
         </div>
@@ -2182,6 +2238,13 @@ export class NotificationService {
         relatedEntityId: stickerId,
         data: { stickerId, type: 'qr_session_opened' },
       });
+
+      await this.sendPushNotification({
+        userId,
+        title: 'Бележката е получена',
+        body: 'Вашата бележка е получена и се преглежда. Ще получите известие, когато кешбекът бъде потвърден.',
+        data: { stickerId, type: 'qr_session_opened', url: '/wallet' },
+      }).catch((err) => logger.error('[notifyQRSessionOpened] push failed:', err));
     } catch (error) {
       logger.error('[notifyQRSessionOpened] failed:', error);
     }
@@ -2225,7 +2288,7 @@ export class NotificationService {
           to: payoutUser.email,
           subject: 'Action Required: Payout failed — BoomCard',
           html: `
-            <p>Hi ${payoutUser.firstName || 'there'},</p>
+            <p>Hi ${escapeHtml(payoutUser.firstName || 'there')},</p>
             <p>Your BoomCard cashback payout could not be processed. This is often caused by an incorrect or invalid IBAN.</p>
             <p>Please open the app and update your bank account details, then your next payout will be processed automatically.</p>
             <p>— The BoomCard Team</p>
@@ -2279,7 +2342,7 @@ export class NotificationService {
           to: payoutUser.email,
           subject: 'Payout failed — BoomCard',
           html: `
-            <p>Hi ${payoutUser.firstName || 'there'},</p>
+            <p>Hi ${escapeHtml(payoutUser.firstName || 'there')},</p>
             <p>Your BoomCard cashback payout could not be processed and some action may be required on your side.</p>
             <p>Your balance has been restored. Please open the app to review your payout details and try again.</p>
             <p>— The BoomCard Team</p>
@@ -2335,6 +2398,13 @@ export class NotificationService {
         data: { type: 'subscription_cancelled' },
       });
 
+      await this.sendPushNotification({
+        userId,
+        title: 'Отмяната на абонамента е потвърдена',
+        body: 'Абонаментът ви BoomCard е отменен. Ще запазите достъп до края на платения период.',
+        data: { type: 'subscription_cancelled', url: '/subscription' },
+      }).catch((err) => logger.error('[notifySubscriptionCancelledInApp] push failed:', err));
+
       // Mandatory Payment-category email (§11.2). Best-effort send — the in-app
       // record above is the durable record; the email is the second channel.
       const user = await prisma.user.findUnique({
@@ -2346,7 +2416,7 @@ export class NotificationService {
           to: user.email,
           subject: 'Your BoomCard subscription has been cancelled',
           html: `
-            <p>Hi ${user.firstName || ''},</p>
+            <p>Hi ${escapeHtml(user.firstName || 'there')},</p>
             <p>This confirms that your BoomCard subscription has been cancelled.</p>
             <p>You will retain access until the end of your current billing period.</p>
             <p>You can review your subscription status any time on your <a href="${process.env.APP_URL || 'https://mobile.boomcard.bg'}/subscription">subscription page</a>.</p>
@@ -2372,7 +2442,7 @@ export class NotificationService {
       const dateStr = expiryDate.toLocaleDateString('bg-BG', { timeZone: 'Europe/Sofia' });
       await this.createNotification({
         userId,
-        type: 'SUBSCRIPTION_EXPIRING',
+        type: 'SYSTEM', // SUBSCRIPTION_EXPIRING not yet in NotificationType enum — use SYSTEM until migration adds it
         title: 'Cashback expiring soon',
         titleBg: 'Кешбекът изтича скоро',
         message: `You have cashback that expires on ${dateStr}. Request a payout now to avoid losing it.`,
@@ -2430,14 +2500,15 @@ export class NotificationService {
    * Get all user notifications (paginated)
    */
   async getNotifications(userId: string, page: number = 1, limit: number = 20) {
-    const skip = (page - 1) * limit;
+    const cappedLimit = Math.min(limit, 200);
+    const skip = (page - 1) * cappedLimit;
 
     const [notifications, total] = await Promise.all([
       prisma.notification.findMany({
         where: { userId },
         orderBy: { createdAt: 'desc' },
         skip,
-        take: limit,
+        take: cappedLimit,
       }),
       prisma.notification.count({ where: { userId } }),
     ]);
@@ -2446,7 +2517,7 @@ export class NotificationService {
       notifications,
       total,
       page,
-      pages: Math.ceil(total / limit),
+      pages: Math.ceil(total / cappedLimit),
     };
   }
 

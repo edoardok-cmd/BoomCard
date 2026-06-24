@@ -73,9 +73,12 @@ export async function sendExpoPushToUser(
     const chunkValid = valid.slice(offset, offset + CHUNK_SIZE);
 
     let resp: Response;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10_000);
     try {
       resp = await fetch(EXPO_PUSH_URL, {
         method: 'POST',
+        signal: controller.signal,
         headers: {
           Accept: 'application/json',
           'Accept-Encoding': 'gzip, deflate',
@@ -84,8 +87,11 @@ export async function sendExpoPushToUser(
         body: JSON.stringify(chunkMessages),
       });
     } catch (err) {
+      clearTimeout(timeoutId);
       logger.error('[expoPush] Network error sending push notifications', { err: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined, offset });
       continue;
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     if (!resp.ok) {

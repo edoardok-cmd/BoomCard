@@ -227,7 +227,7 @@ describe('§10 notifySubscriptionPaused', () => {
     const data = calls[calls.length - 1][0].data;
     expect(data.userId).toBe('u-6');
     expect(data.priority).toBe('high');
-    expect(data.type).toBe('SUBSCRIPTION_EXPIRING');
+    expect(data.type).toBe('SYSTEM'); // SUBSCRIPTION_EXPIRING not in NotificationType enum; SYSTEM is the valid fallback
   });
 
   it('fires push with the grace period date in the body', async () => {
