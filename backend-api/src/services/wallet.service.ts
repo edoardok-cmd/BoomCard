@@ -12,6 +12,7 @@ import { cashbackLifecycleService } from './cashbackLifecycle.service';
 import { AppError } from '../middleware/error.middleware';
 import { detach } from '../utils/detach';
 import { reasonIndicatesIbanProblem } from '../utils/payoutFailureReason';
+import { resolvePayoutEligibility } from './payoutEligibility.service';
 
 // ── User-facing payout-status masking (Spec §3.2 / §3.7) ─────────────────────
 // Spec §3.7 (line 461): on the SECOND failed payout the record routes to manual
@@ -421,13 +422,15 @@ export class WalletService {
       try {
         const preCreditAvailable = updatedWallet.availableBalance - amount;
         if (updatedWallet.availableBalance > 0 && !updatedWallet.isLocked) {
-          const subscription = await prisma.subscription.findFirst({
-            where: { userId, status: { in: ['ACTIVE', 'TRIALING'] } },
-            orderBy: { createdAt: 'desc' },
-          });
-          const plan: SubscriptionPlan = subscription?.plan ?? 'PREMIUM_WEEKLY';
-          const threshold = await getPayoutThresholdBGN(plan);
-          if (preCreditAvailable < threshold && updatedWallet.availableBalance >= threshold) {
+          // Resolve the eligible subscription + plan threshold the same way
+          // requestPayout() / getBalance() / the auto-payout scheduler do via the
+          // shared resolvePayoutEligibility() helper: ACTIVE / TRIALING, or
+          // CANCELLED-within-paid-period (spec §7.2), AND honouring the latest-sub
+          // FAILED_PAYMENT hard-block. A user whose NEWEST subscription is
+          // FAILED_PAYMENT is NOT payout-eligible — requestPayout() would refuse —
+          // so we must not prompt them to add an IBAN / tell them they're cashable.
+          const { eligible, threshold } = await resolvePayoutEligibility(userId);
+          if (eligible && preCreditAvailable < threshold && updatedWallet.availableBalance >= threshold) {
             // Spec §3.7 — if no IBAN on file when threshold is crossed, hold payout
             // and notify user to add their bank details before requesting a payout.
             const hasIban = !!updatedWallet.payoutIban && updatedWallet.payoutIban.trim().length > 0;

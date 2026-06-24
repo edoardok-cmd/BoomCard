@@ -322,6 +322,19 @@ const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { login, loginWithOAuth, isLoading, twoFactorRequired, twoFactorEmail, submitTwoFactor, clearTwoFactorRequired } = useAuth();
+
+  // Single source of truth for the post-login destination. Callers (e.g. the
+  // checkout "Log in" link) pass `from` as a location-like object; preserve its
+  // `search` so query params (planId/planCode/billing) survive the round-trip
+  // and the user lands back on the exact in-progress page. Every success path
+  // (password, 2FA, Google, Facebook) must use this so they can't drift apart.
+  const resolveFrom = (): string => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fromState = (location.state as any)?.from;
+    return fromState?.pathname
+      ? `${fromState.pathname}${fromState.search || ''}`
+      : '/';
+  };
   const { t, language } = useLanguage();
 
   const [formData, setFormData] = useState({
@@ -432,8 +445,9 @@ const LoginPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const from = (location.state as any)?.from?.pathname || '/';
+    // Resolve the post-login destination from router state (shared helper so the
+    // password, 2FA, Google and Facebook success paths stay in lock-step).
+    const from = resolveFrom();
 
     // ── 2FA second-factor step ───────────────────────────────────────────────
     // When the code field is shown, the credentials live in AuthContext (in a
@@ -544,8 +558,7 @@ const LoginPage: React.FC = () => {
 
       await loginWithOAuth(oauthData);
 
-      const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/dashboard';
-      navigate(from, { replace: true });
+      navigate(resolveFrom(), { replace: true });
     } catch (error) {
       console.error('Google login error:', error);
       // LOW-1 fix (review r2ab): surface caught errors to the user — Google success
@@ -580,8 +593,7 @@ const LoginPage: React.FC = () => {
 
       await loginWithOAuth(oauthData);
 
-      const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/dashboard';
-      navigate(from, { replace: true });
+      navigate(resolveFrom(), { replace: true });
     } catch (error) {
       console.error('Facebook login error:', error);
       // LOW-1 fix: surface caught errors to the user — Facebook success path was

@@ -177,7 +177,7 @@ export class ApiClient {
         await new Promise(resolve => setTimeout(resolve, delay));
         return this.refreshAccessToken(retryCount + 1);
       }
-      console.error('Token refresh failed:', error);
+      if (__DEV__) console.error('Token refresh failed:', error);
       throw new Error('Session expired. Please login again.');
     }
   }

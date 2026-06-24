@@ -8,6 +8,13 @@ import { detach } from '../utils/detach';
 
 type NotificationSeverity = 'info' | 'warning' | 'critical';
 
+// Cooldown for the "add your IBAN to receive payout" prompt. This prompt is
+// fired both reactively (threshold-crossing credit) and by the nightly
+// auto-payout scan, which would otherwise re-prompt an over-threshold-no-IBAN
+// wallet every single night until an IBAN is saved. 23h keeps it to at most one
+// per nightly cron run while still re-prompting roughly daily if still unmet.
+const NO_IBAN_PROMPT_COOLDOWN_HOURS = 23;
+
 /**
  * Minimal HTML escaper — prevents admin email content injection when
  * partner-controlled values (businessName, category, etc.) are interpolated
@@ -1012,6 +1019,30 @@ export class NotificationService {
     threshold: number;
   }): Promise<void> {
     try {
+      // Idempotency guard — this no-IBAN prompt is fired both reactively on a
+      // threshold-crossing credit AND on every nightly auto-payout scan, so the
+      // same over-threshold-no-IBAN wallet would otherwise be re-prompted every
+      // single night until an IBAN is saved. Skip if an equivalent no-IBAN prompt
+      // was already created for this user within the cooldown window. We match on
+      // the `"reason":"no_iban"` marker written into `data` below, using the same
+      // word-boundary-safe contains-on-JSON idiom as notifyAdminOps' cooldown.
+      const since = new Date(Date.now() - NO_IBAN_PROMPT_COOLDOWN_HOURS * 3_600_000);
+      const recent = await prisma.notification.findFirst({
+        where: {
+          userId: params.userId,
+          createdAt: { gte: since },
+          OR: [
+            { data: { contains: '"reason":"no_iban",' } }, // non-last key
+            { data: { contains: '"reason":"no_iban"}' } }, // last key before }
+          ],
+        },
+        select: { id: true },
+      });
+      if (recent) {
+        logger.info(`[notifyPayoutHeldNoIban] Cooldown active for user ${params.userId} — skipping duplicate no-IBAN prompt.`);
+        return;
+      }
+
       await this.createNotification({
         userId: params.userId,
         type: 'CASHBACK_CREDITED',

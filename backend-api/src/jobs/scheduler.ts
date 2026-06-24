@@ -33,7 +33,7 @@
  */
 
 import cron from 'node-cron';
-import { WalletTransactionType, WalletTransactionStatus, SubscriptionStatus, SubscriptionPlan, CashbackEntryStatus, PartnerRequestStatus, ScanStatus, StickerStatus, PartnerStatus } from '@prisma/client';
+import { WalletTransactionType, WalletTransactionStatus, SubscriptionStatus, CashbackEntryStatus, PartnerRequestStatus, ScanStatus, StickerStatus, PartnerStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { stickerService } from '../services/sticker.service';
 import { logger } from '../utils/logger';
@@ -45,6 +45,7 @@ import { runRenewalReminders } from './renewal-reminders';
 import { runUserRiskSweep } from './user-risk-sweep';
 import { fireAutomation } from '../lib/automationDispatcher';
 import { getPayoutThresholdBGN } from '../utils/payoutThreshold';
+import { resolvePayoutEligibility } from '../services/payoutEligibility.service';
 import { getSystemSettingInt } from '../utils/systemSettings';
 import { CASHBACK_VALIDITY_DAYS } from '../constants/receipt.constants';
 import { writeAudit } from '../middleware/audit.middleware';
@@ -940,15 +941,16 @@ async function resolveTrialPendingCashback(): Promise<void> {
 
       // Fire payout-ready notification if the release crosses the plan's payout threshold.
       try {
-        const sub = await prisma.subscription.findFirst({
-          where: { userId: wallet.userId, status: { in: ['ACTIVE', 'PAUSED'] } },
-          orderBy: { createdAt: 'desc' },
-          select: { plan: true, metadata: true },
-        });
-        const plan: SubscriptionPlan = sub?.plan ?? 'PREMIUM_WEEKLY';
-        const threshold = await getPayoutThresholdBGN(plan);
+        // Resolve eligibility + plan threshold through the shared helper so this
+        // edge uses the SAME canonical rule as requestPayout()/getBalance()/the
+        // auto-payout loop: ACTIVE / TRIALING or CANCELLED-within-paid-period, AND
+        // the latest-sub FAILED_PAYMENT hard-block. The previous status IN
+        // ('ACTIVE','PAUSED') clause was inconsistent (it counted PAUSED, which
+        // requestPayout blocks, and ignored TRIALING / CANCELLED-in-period and the
+        // FAILED_PAYMENT exclusion) — so it could prompt a payout-ineligible user.
+        const { eligible, threshold } = await resolvePayoutEligibility(wallet.userId, new Date());
         const preBal = updatedWallet.availableBalance - totalAmount;
-        if (preBal < threshold && updatedWallet.availableBalance >= threshold) {
+        if (eligible && preBal < threshold && updatedWallet.availableBalance >= threshold) {
           // Spec §3.7 / §7.3 / §11.2 — if no IBAN on file when the threshold is
           // crossed, hold the payout and prompt the user to add bank details
           // instead of telling them they can cash out (auto-payout cron filters
@@ -1074,6 +1076,78 @@ async function runAutoPayouts(): Promise<void> {
   }
 
   logger.info(`[auto-payout] Done — initiated ${initiated} payout(s), skipped ${skipped}`);
+
+  // ── No-IBAN hold + prompt (spec §6.5) ──────────────────────────────────────
+  // The payout loop above pre-filters `payoutIban: { not: null }`, so a wallet
+  // that is over its plan threshold WITHOUT an IBAN is excluded from the payout
+  // candidate set and would otherwise never be paid AND never prompted. Spec
+  // §6.5 requires holding the payout and prompting the user to add an IBAN.
+  // The two credit-time threshold-crossing edges only fire on the single credit
+  // that crosses the threshold — pre-existing over-threshold-no-IBAN wallets,
+  // post-failure cases, and any dropped best-effort notify stay dark. This scan
+  // closes that gap. It runs independently of the payout loop above: a failure
+  // prompting one wallet must never abort the rest (per-wallet try/catch), and
+  // it never initiates a payout (there is no IBAN to pay to). Idempotency is
+  // enforced inside notifyPayoutHeldNoIban() via its own cooldown guard, so a
+  // wallet that stays over-threshold without an IBAN is not re-prompted nightly.
+  const noIbanCandidates = await prisma.wallet.findMany({
+    where: {
+      isLocked: false,
+      availableBalance: { gt: 0 },
+      OR: [
+        { payoutIban: null },
+        { payoutIban: '' },
+      ],
+    },
+    select: { id: true, userId: true, availableBalance: true, payoutIban: true },
+  });
+
+  let prompted = 0;
+  let promptSkipped = 0;
+  for (const wallet of noIbanCandidates) {
+    try {
+      // Defensive: skip any wallet that actually has a usable IBAN (whitespace-
+      // only strings slip past the `''` filter above). Mirrors the hasIban check
+      // used in the credit path and trial-pending release path.
+      const hasIban = !!wallet.payoutIban && wallet.payoutIban.trim().length > 0;
+      if (hasIban) {
+        promptSkipped++;
+        continue;
+      }
+
+      // Resolve eligibility + plan threshold through the shared helper — the same
+      // canonical rule requestPayout()/getBalance()/the payout loop use: ACTIVE /
+      // TRIALING or CANCELLED-within-paid-period, AND the latest-sub FAILED_PAYMENT
+      // hard-block. Without the FAILED_PAYMENT exclusion a user whose NEWEST sub is
+      // FAILED_PAYMENT but who still has an older in-period row would be prompted to
+      // add an IBAN — yet requestPayout() would then refuse (403), so the prompt
+      // leads nowhere. Gating on `eligible` keeps the prompt and the payout aligned.
+      const { eligible, threshold } = await resolvePayoutEligibility(wallet.userId, now);
+      if (!eligible) {
+        promptSkipped++;
+        continue;
+      }
+      if (wallet.availableBalance < threshold) {
+        promptSkipped++;
+        continue;
+      }
+
+      // notifyPayoutHeldNoIban() owns the dedup/cooldown — if a recent no-IBAN
+      // prompt already exists for this user it returns without writing a row, so
+      // the wallet is not spammed every nightly run.
+      await notificationService.notifyPayoutHeldNoIban({
+        userId: wallet.userId,
+        availableBalance: wallet.availableBalance,
+        threshold,
+      });
+      prompted++;
+    } catch (err: any) {
+      promptSkipped++;
+      logger.warn(`[auto-payout] No-IBAN prompt skipped for user ${wallet.userId}: ${err?.message ?? err}`);
+    }
+  }
+
+  logger.info(`[auto-payout] No-IBAN holds — prompted ${prompted}, skipped ${promptSkipped}`);
 }
 
 async function checkPaymentFailureSpike(): Promise<void> {

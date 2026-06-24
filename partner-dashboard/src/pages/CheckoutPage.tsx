@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, useLocation, Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { ArrowLeft, Lock, Check, Loader2 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { plansService, Plan } from '../services/plans.service';
 import { convertEURToBGN } from '../utils/helpers';
+import { useCurrencyDisplay, formatWithCurrency } from '../utils/currencyDisplay';
 import Button from '../components/common/Button/Button';
 
 
@@ -334,6 +335,39 @@ const ErrorMessage = styled.div`
   border-radius: 1rem;
 `;
 
+// M2 fix: inline "this plan/billing combo is not purchasable" notice, styled to
+// match the page's existing error-display patterns (red-on-tinted surface).
+const UnavailableNotice = styled.div`
+  padding: 1rem 1.25rem;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 0.5rem;
+  color: #dc2626;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+`;
+
+// Primary-styled link back to the plans grid, used by the M2 unavailable state.
+const BackToPlansButton = styled(Link)`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0.875rem 1.5rem;
+  border-radius: 0.5rem;
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: 600;
+  font-size: 1rem;
+  text-decoration: none;
+  transition: background 0.2s;
+
+  &:hover {
+    background: var(--color-primary-hover);
+  }
+`;
+
 const LoginPromptText = styled.p`
   color: var(--color-text-secondary);
   margin-bottom: 1rem;
@@ -402,8 +436,13 @@ const GuestDivider = styled.div`
 
 const CheckoutPage: React.FC = () => {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const { language } = useLanguage();
   const { isAuthenticated } = useAuth();
+  // Clash 12.1 / §8.1 rule 4 — single source of truth for monetary display.
+  // Plan prices come from the API in EUR; the util takes a BGN basis, so amounts
+  // are converted to BGN before formatting. Today the mode resolves to EUR_ONLY.
+  const currencyMode = useCurrencyDisplay();
 
   const planId = searchParams.get('planId');
   const planCode = searchParams.get('planCode');
@@ -478,7 +517,33 @@ const CheckoutPage: React.FC = () => {
   };
 
   const displayPrice = getDisplayPrice();
+
+  // M2 fix: the selected billing period is only purchasable when (a) the plan
+  // actually offers it and (b) a positive price exists for it. PlanPricing's
+  // weekly/monthly are nullable, so a missing/zero price must NOT be coalesced
+  // to a payable "Pay €0.00". `billing` comes straight from the URL and was
+  // never validated against the plan's billingOptions, so guard both here.
+  const billingOffered = (() => {
+    if (!plan) return false;
+    switch (billingPeriod) {
+      case 'weekly':
+        return plan.billingOptions.hasWeekly;
+      case 'yearly':
+        return plan.billingOptions.hasYearly;
+      default:
+        return plan.billingOptions.hasMonthly;
+    }
+  })();
+  const priceUnavailable =
+    !!plan && (!billingOffered || displayPrice === null || !(displayPrice > 0));
+
   const displayPriceBGN = displayPrice ? convertEURToBGN(displayPrice) : 0;
+  // Currency-aware price string (EUR-only today; dual if the window reopens).
+  // When the price is unavailable for the selected period, show an em-dash
+  // instead of a misleading "€0.00" in the order summary (M2 fix).
+  const formattedPrice = priceUnavailable
+    ? '—'
+    : formatWithCurrency(displayPriceBGN, currencyMode, language === 'bg' ? 'bg' : 'en');
 
   const getPeriodLabel = () => {
     switch (billingPeriod) {
@@ -493,6 +558,10 @@ const CheckoutPage: React.FC = () => {
 
   const handlePayment = async () => {
     if (!plan || !resolvedPlanId || !selectedMethod) return;
+
+    // M2 fix: never start a payment for a billing period the plan does not offer
+    // or that has no valid price (would otherwise post a €0.00 order).
+    if (priceUnavailable) return;
 
     // Unauthenticated users must register first — the button below navigates them
     if (!isAuthenticated) return;
@@ -533,6 +602,8 @@ const CheckoutPage: React.FC = () => {
 
   const handleGuestPayment = async () => {
     if (!validateGuestForm() || !resolvedPlanId || !plan) return;
+    // M2 fix: block guest checkout for an unavailable billing period / price.
+    if (priceUnavailable) return;
     setIsProcessing(true);
     try {
       const result = await plansService.createAnonymousSubscriptionPayment({
@@ -609,7 +680,21 @@ const CheckoutPage: React.FC = () => {
 
         <CheckoutGrid>
           <PaymentSection>
-            {!isAuthenticated ? (
+            {priceUnavailable ? (
+              /* M2 fix: the selected billing period is not offered by this plan
+                 (or carries no valid price). Show an unavailable state and a way
+                 back to the plans instead of a payable "Pay €0.00" button. */
+              <>
+                <UnavailableNotice>
+                  {language === 'bg'
+                    ? 'Този план не предлага избрания период на плащане. Моля, изберете друг план или период.'
+                    : 'This plan is not available for the selected billing period. Please choose a different plan or period.'}
+                </UnavailableNotice>
+                <BackToPlansButton to="/#subscription-plans">
+                  {language === 'bg' ? 'Обратно към плановете' : 'Back to plans'}
+                </BackToPlansButton>
+              </>
+            ) : !isAuthenticated ? (
               <>
                 <GuestForm>
                   <GuestRow>
@@ -692,8 +777,8 @@ const CheckoutPage: React.FC = () => {
                     </>
                   ) : (
                     language === 'bg'
-                      ? `Плати €${displayPrice} ${getPeriodLabel()}`
-                      : `Pay €${displayPrice} ${getPeriodLabel()}`
+                      ? `Плати ${formattedPrice} ${getPeriodLabel()}`
+                      : `Pay ${formattedPrice} ${getPeriodLabel()}`
                   )}
                 </Button>
 
@@ -702,7 +787,16 @@ const CheckoutPage: React.FC = () => {
                 <div style={{ textAlign: 'center' }}>
                   <LoginPromptText style={{ marginBottom: 0 }}>
                     {language === 'bg' ? 'Вече имате акаунт?' : 'Already have an account?'}{' '}
-                    <Link to={`/login?redirect=/checkout?planId=${planId}&billing=${billingPeriod}`} style={{ color: 'var(--color-primary)', fontWeight: 600 }}>
+                    {/* M1 fix: LoginPage redirects via `location.state.from`, NOT a
+                        `redirect` query param. Pass the in-progress checkout URL
+                        (pathname + the original planId/planCode/billing search
+                        params, intact) as router state so a returning subscriber
+                        lands back on the exact plan they were buying. */}
+                    <Link
+                      to="/login"
+                      state={{ from: { pathname: location.pathname, search: location.search } }}
+                      style={{ color: 'var(--color-primary)', fontWeight: 600 }}
+                    >
                       {language === 'bg' ? 'Вход' : 'Log in'}
                     </Link>
                   </LoginPromptText>
@@ -726,8 +820,8 @@ const CheckoutPage: React.FC = () => {
                     </>
                   ) : (
                     language === 'bg'
-                      ? `Плати €${displayPrice} ${getPeriodLabel()}`
-                      : `Pay €${displayPrice} ${getPeriodLabel()}`
+                      ? `Плати ${formattedPrice} ${getPeriodLabel()}`
+                      : `Pay ${formattedPrice} ${getPeriodLabel()}`
                   )}
                 </Button>
               </>
@@ -761,7 +855,7 @@ const CheckoutPage: React.FC = () => {
                   {language === 'bg' ? plan.displayNameBg : plan.displayName}
                 </PlanName>
                 <CardPriceDisplay $type={plan.cardType}>
-                  <span style={{ fontSize: '0.8rem', opacity: 0.85 }}>{displayPriceBGN.toFixed(2)} {language === 'bg' ? 'лв.' : 'BGN'} /</span> €{displayPrice}
+                  {formattedPrice}
                   <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>
                     {getPeriodLabel()}
                   </span>
@@ -779,10 +873,7 @@ const CheckoutPage: React.FC = () => {
             <TotalRow>
               <TotalLabel>{language === 'bg' ? 'Общо' : 'Total'}</TotalLabel>
               <div style={{ textAlign: 'right' }}>
-                <TotalValue>€{displayPrice}</TotalValue>
-                <div style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
-                  {displayPriceBGN.toFixed(2)} {language === 'bg' ? 'лв.' : 'BGN'}
-                </div>
+                <TotalValue>{formattedPrice}</TotalValue>
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-tertiary)' }}>
                   {getPeriodLabel()}
                 </div>

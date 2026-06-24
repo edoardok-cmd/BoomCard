@@ -326,25 +326,6 @@ const LoginPrompt = styled.p`
   }
 `;
 
-const SwitchAccountType = styled.p`
-  text-align: center;
-  margin-top: 1rem;
-  font-size: 0.875rem;
-  color: var(--color-text-secondary);
-  transition: color var(--transition-normal);
-
-  a {
-    color: var(--color-info);
-    font-weight: 600;
-    text-decoration: none;
-    transition: color var(--transition-normal);
-
-    &:hover {
-      color: var(--color-primary);
-    }
-  }
-`;
-
 const Textarea = styled.textarea<{ $hasError?: boolean }>`
   width: 100%;
   padding: 0.75rem 1rem;
@@ -410,13 +391,12 @@ const RegisterPartnerPage: React.FC = () => {
   const { register, isLoading } = useAuth();
   const { t, language } = useLanguage();
 
-  const categories = [
-    { value: '', label: t('partnerRegistration.selectCategory') },
-    ...[...placesCategories, ...experiencesCategories].map(cat => ({
-      value: cat.id,
-      label: cat.name[language as 'en' | 'bg'] ?? cat.name.bg,
-    })),
-  ];
+  // Spec §2 (line 34) — "Категория" is a multi-select field. The selectable
+  // category options (no empty placeholder; selection is via toggleable chips).
+  const categoryOptions = [...placesCategories, ...experiencesCategories].map(cat => ({
+    value: cat.id,
+    label: cat.name[language as 'en' | 'bg'] ?? cat.name.bg,
+  }));
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -425,7 +405,6 @@ const RegisterPartnerPage: React.FC = () => {
     phone: '',
     businessName: '',
     businessNameBg: '',
-    businessCategory: '',
     taxId: '',
     website: '',
     city: '',
@@ -445,6 +424,8 @@ const RegisterPartnerPage: React.FC = () => {
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  // Spec §2 (line 34) — "Категория" is multi-select. Selected parent-category ids.
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedSubcategories, setSelectedSubcategories] = useState<string[]>([]);
   // BC-PARTNER-FU1 — resolved venue coordinates (null until the partner geocodes
   // the address or drops a pin). Submitted as latitude/longitude numbers.
@@ -476,9 +457,34 @@ const RegisterPartnerPage: React.FC = () => {
     }
   };
 
-  const subcategoriesForCategory = formData.businessCategory
-    ? findCategory(formData.businessCategory)?.subcategories ?? []
-    : [];
+  // Subcategories aggregate across every selected parent category (preserving
+  // selection order), so multi-category partners see all relevant sub-options.
+  const subcategoriesForCategory = selectedCategories.flatMap(
+    id => findCategory(id)?.subcategories ?? [],
+  );
+
+  // Spec §2 (line 34) — validate the multi-select category field: at least one
+  // category must be chosen.
+  const validateCategories = (selection: string[]): string | undefined => {
+    if (selection.length === 0) {
+      return t('partnerRegistration.businessCategoryRequired');
+    }
+    return undefined;
+  };
+
+  const toggleCategory = (id: string) => {
+    setSelectedCategories(prev => {
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+      // Drop any selected subcategories whose parent category is no longer chosen.
+      setSelectedSubcategories(subs =>
+        subs.filter(subId => next.some(catId => subId.startsWith(`${catId}/`))),
+      );
+      if (touched.businessCategory) {
+        setErrors(e => ({ ...e, businessCategory: validateCategories(next) }));
+      }
+      return next;
+    });
+  };
 
   const toggleSubcategory = (id: string) => {
     setSelectedSubcategories(prev =>
@@ -525,10 +531,6 @@ const RegisterPartnerPage: React.FC = () => {
       case 'businessName':
         if (!value) return t('partnerRegistration.businessNameRequired');
         if (strVal.length < 3) return t('partnerRegistration.businessNameMinLength');
-        return undefined;
-
-      case 'businessCategory':
-        if (!value) return t('partnerRegistration.businessCategoryRequired');
         return undefined;
 
       case 'city':
@@ -592,12 +594,6 @@ const RegisterPartnerPage: React.FC = () => {
 
     setFormData(prev => ({ ...prev, [name]: newValue }));
 
-    // Reset selected subcategories when the main category changes — subs are
-    // scoped to a single parent category.
-    if (name === 'businessCategory') {
-      setSelectedSubcategories([]);
-    }
-
     // Real-time validation for touched fields
     if (touched[name]) {
       const error = validateField(name, newValue);
@@ -613,7 +609,7 @@ const RegisterPartnerPage: React.FC = () => {
     const newErrors: FormErrors = {};
     const requiredFields = [
       'firstName', 'lastName', 'email', 'phone',
-      'businessName', 'businessCategory', 'city', 'address',
+      'businessName', 'city', 'address',
       'requestObjectCount',
       // Spec §2.3 — Ниво на участие is required
       'participationLevel',
@@ -627,9 +623,13 @@ const RegisterPartnerPage: React.FC = () => {
       if (error) newErrors[field as keyof FormErrors] = error;
     });
 
-    // Spec §2.3 — Подкатегория is required when the selected category exposes
-    // sub-options.
-    if (subcategoriesForCategory.length > 0 && selectedSubcategories.length === 0) {
+    // Spec §2 (line 34) — at least one category is required (multi-select).
+    const categoryError = validateCategories(selectedCategories);
+    if (categoryError) {
+      newErrors.businessCategory = categoryError;
+    } else if (subcategoriesForCategory.length > 0 && selectedSubcategories.length === 0) {
+      // Spec §2.3 — Подкатегория is required when a selected category exposes
+      // sub-options.
       newErrors.businessCategory = language === 'bg'
         ? 'Изберете поне една подкатегория'
         : 'Please select at least one subcategory';
@@ -647,6 +647,7 @@ const RegisterPartnerPage: React.FC = () => {
       newTouched[field] = true;
     });
     newTouched.coordinates = true;
+    newTouched.businessCategory = true;
     setTouched(newTouched);
 
     // If there are errors, don't submit
@@ -670,7 +671,14 @@ const RegisterPartnerPage: React.FC = () => {
         businessInfo: {
           businessName: formData.businessName,
           businessNameBg: formData.businessNameBg || undefined,
-          businessCategory: formData.businessCategory,
+          // Spec §2 (line 34) — category is multi-select. The backend
+          // (auth.validator.ts / auth.service.ts) currently persists a SINGLE
+          // `businessCategory` string and has no `businessCategories[]` field, so
+          // we keep sending the first selected id as the backward-compatible
+          // primary AND forward the full selection as `businessCategories` for
+          // when the backend adds multi-category support. See cross-boundary note.
+          businessCategory: selectedCategories[0],
+          businessCategories: selectedCategories,
           businessSubcategories: selectedSubcategories.length > 0 ? selectedSubcategories : undefined,
           taxId: formData.taxId || undefined,
           website: formData.website || undefined,
@@ -924,36 +932,47 @@ const RegisterPartnerPage: React.FC = () => {
               </FormGroup>
             </FormRow>
 
-            <FormRow>
-              <FormGroup>
-                <Label htmlFor="businessCategory">
-                  {t('partnerRegistration.businessCategory')} *
-                </Label>
-                <Select
-                  id="businessCategory"
-                  name="businessCategory"
-                  value={formData.businessCategory}
-                  onChange={handleChange}
-                  onBlur={() => handleBlur('businessCategory')}
-                  $hasError={touched.businessCategory && !!errors.businessCategory}
-                  disabled={isLoading}
-                >
-                  {categories.map(cat => (
-                    <option key={cat.value} value={cat.value}>
-                      {cat.label}
-                    </option>
-                  ))}
-                </Select>
-                {touched.businessCategory && errors.businessCategory && (
-                  <ErrorMessage
-                    initial={{ opacity: 0, y: -5 }}
-                    animate={{ opacity: 1, y: 0 }}
+            {/* Spec §2 (line 34) — "Категория" is multi-select. Rendered as a
+                toggleable chip group (reusing the subcategory chip pattern)
+                instead of a single-select dropdown. */}
+            <FormGroup>
+              <Label as="span" id="businessCategoryLabel">
+                {t('partnerRegistration.businessCategory')} *
+              </Label>
+              <SubcategoryGroup
+                role="group"
+                aria-labelledby="businessCategoryLabel"
+              >
+                {categoryOptions.map(cat => (
+                  <SubcategoryChip
+                    key={cat.value}
+                    type="button"
+                    aria-pressed={selectedCategories.includes(cat.value)}
+                    $selected={selectedCategories.includes(cat.value)}
+                    onClick={() => toggleCategory(cat.value)}
+                    disabled={isLoading}
                   >
-                    {errors.businessCategory}
-                  </ErrorMessage>
-                )}
-              </FormGroup>
+                    {cat.label}
+                  </SubcategoryChip>
+                ))}
+              </SubcategoryGroup>
+              <SubcategoryHelp>
+                {t('partnerRegistration.businessCategoryHelp') ||
+                  (language === 'bg'
+                    ? 'Изберете една или повече категории.'
+                    : 'Select one or more categories.')}
+              </SubcategoryHelp>
+              {touched.businessCategory && errors.businessCategory && (
+                <ErrorMessage
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  {errors.businessCategory}
+                </ErrorMessage>
+              )}
+            </FormGroup>
 
+            <FormRow>
               <FormGroup>
                 <Label htmlFor="taxId">
                   {t('partnerRegistration.taxId')}

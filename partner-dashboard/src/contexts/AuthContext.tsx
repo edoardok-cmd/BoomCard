@@ -200,7 +200,13 @@ export interface RegisterData {
   businessInfo?: {
     businessName: string;
     businessNameBg?: string;
+    /** Spec §2 (line 34) — primary/backward-compatible single category id.
+     * The backend persists this single value today. */
     businessCategory: string;
+    /** Spec §2 (line 34) — full multi-select category selection. The backend
+     * currently ignores this (no validator/service support yet); sent so the
+     * spec-mandated selection is preserved once backend multi-category lands. */
+    businessCategories?: string[];
     businessSubcategory?: string;
     businessSubcategories?: string[];
     taxId?: string;

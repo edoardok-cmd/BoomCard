@@ -76,7 +76,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(storedUser);
       }
     } catch (error) {
-      console.error('Error loading user from storage:', error);
+      if (__DEV__) console.error('Error loading user from storage:', error);
     } finally {
       setIsLoading(false);
     }
