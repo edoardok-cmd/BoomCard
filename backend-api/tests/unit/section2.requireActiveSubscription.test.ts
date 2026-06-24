@@ -86,9 +86,35 @@ describe('F-005 requireActiveSubscription — USER gating', () => {
     expect(where.OR).toEqual(
       expect.arrayContaining([
         { status: { in: ['ACTIVE', 'TRIALING'] } },
-        expect.objectContaining({ status: 'CANCELLED' }),
+        // Spec §3.2: Cancelled-within-paid-period only — must include the
+        // currentPeriodEnd guard so a Cancelled-post-period row is NOT admitted.
+        { status: 'CANCELLED', currentPeriodEnd: { gt: expect.any(Date) } },
       ]),
     );
+  });
+
+  it('blocks a USER with a Cancelled-post-period subscription (currentPeriodEnd guard)', async () => {
+    // The query must NOT match a CANCELLED row whose period has ended.
+    // We verify this by checking that the OR clause's CANCELLED branch carries
+    // currentPeriodEnd: { gt: <date> } — so a past-period row falls outside the
+    // WHERE and findFirst returns null → 402.
+    subscriptionFindFirst.mockResolvedValue(null); // period ended → query returns null
+    const req = makeReq({ id: 'u3', role: 'USER' });
+    const next = jest.fn() as unknown as NextFunction;
+
+    await requireActiveSubscription(req, {} as Response, next);
+
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).statusCode).toBe(402);
+
+    // Verify the query that produced null includes the currentPeriodEnd guard.
+    const where = subscriptionFindFirst.mock.calls[0][0].where;
+    const cancelledClause = (where.OR as any[]).find(
+      (c: any) => c.status === 'CANCELLED',
+    );
+    expect(cancelledClause).toBeDefined();
+    expect(cancelledClause.currentPeriodEnd).toEqual({ gt: expect.any(Date) });
   });
 
   it('blocks a pre-payment USER (no subscription) with typed 402 SUBSCRIPTION_REQUIRED', async () => {
