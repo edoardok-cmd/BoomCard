@@ -1504,6 +1504,7 @@ export class NotificationService {
         type: 'SYSTEM',
         title: 'Your request has been updated',
         titleBg: 'Вашата заявка е актуализирана',
+        // Plain-text in-app field only — not used in HTML email bodies; no escaping needed.
         message: `Your request "${params.subject}" has moved from ${params.fromStatus} to ${params.toStatus}.`,
         messageBg: `Вашата заявка „${params.subject}" е преминала от статус ${params.fromStatus} на ${params.toStatus}.`,
         priority: 'medium',
@@ -1686,6 +1687,13 @@ export class NotificationService {
         const exactPattern2 = `"opsType":"${safeOpsType}"}`;  // last key before }
         const recent = await prisma.notification.findFirst({
           where: {
+            // Scope to active admin users only — a deleted or deactivated admin's
+            // notification row must never suppress future ops alerts within the
+            // cooldown window.
+            user: {
+              role: { in: ['ADMIN', 'SUPER_ADMIN'] as any[] },
+              status: 'ACTIVE' as any,
+            },
             OR: [
               { data: { contains: exactPattern1 }, createdAt: { gte: since } },
               { data: { contains: exactPattern2 }, createdAt: { gte: since } },

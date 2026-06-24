@@ -2398,7 +2398,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
     const isBg = data.language !== 'en';
     const planName = isBg ? (data.planNameBg || data.planName) : data.planName;
     const subject = isBg ? 'Завършете настройката на вашия BoomCard акаунт' : 'Complete your BoomCard account setup';
-    const heading = isBg ? 'Завършете настройката на акаунта си' : 'Complete Your Account Setup';
+    const heading = isBg ? 'Плащането е потвърдено — завършете настройката на акаунта си' : 'Payment confirmed — complete your account setup';
     const subheading = isBg ? 'Плащането беше успешно — направете последната стъпка' : 'Payment successful — one last step';
     const greeting = isBg ? 'Здравейте,' : 'Hi there,';
     const body = isBg
@@ -2426,6 +2426,7 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
           <p style="margin:0 0 20px;color:#666;font-size:16px;line-height:1.6;">${body}</p>
           ${(data.orderId || data.amount != null) ? `
           <div style="background:#f8f9fa;border-radius:6px;padding:16px;margin:0 0 20px;">
+            <p style="margin:0 0 8px;color:#555;font-size:14px;"><strong>${isBg ? 'План' : 'Plan'}:</strong> ${isBg ? data.planNameBg || data.planName : data.planName}</p>
             ${data.amount != null ? `<p style="margin:0 0 8px;color:#555;font-size:14px;"><strong>${isBg ? 'Сума' : 'Amount'}:</strong> ${data.amount.toFixed(2)} ${data.currency || 'EUR'}</p>` : ''}
             ${data.orderId ? `<p style="margin:0;color:#555;font-size:14px;"><strong>${isBg ? 'Поръчка №' : 'Order #'}:</strong> ${data.orderId}</p>` : ''}
           </div>` : ''}
@@ -2445,8 +2446,8 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
 </html>`;
     const receiptText = (data.orderId || data.amount != null)
       ? (isBg
-          ? `${data.amount != null ? `Сума: ${data.amount.toFixed(2)} ${data.currency || 'EUR'}\n` : ''}${data.orderId ? `Поръчка №: ${data.orderId}\n` : ''}\n`
-          : `${data.amount != null ? `Amount: ${data.amount.toFixed(2)} ${data.currency || 'EUR'}\n` : ''}${data.orderId ? `Order #: ${data.orderId}\n` : ''}\n`)
+          ? `План: ${data.planNameBg || data.planName}\n${data.amount != null ? `Сума: ${data.amount.toFixed(2)} ${data.currency || 'EUR'}\n` : ''}${data.orderId ? `Поръчка №: ${data.orderId}\n` : ''}\n`
+          : `Plan: ${data.planName}\n${data.amount != null ? `Amount: ${data.amount.toFixed(2)} ${data.currency || 'EUR'}\n` : ''}${data.orderId ? `Order #: ${data.orderId}\n` : ''}\n`)
       : '';
     const text = isBg
       ? `Завършете настройката на акаунта си за план ${planName} (връзката е валидна 30 мин):\n${data.completeProfileUrl}\n\n${receiptText}Въпроси? office@boomcard.bg`

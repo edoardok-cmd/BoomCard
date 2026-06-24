@@ -307,7 +307,7 @@ export class PayseraService {
     try {
       const expectedSs1 = this.generateSign(callback.data);
       if (callback.ss1 !== expectedSs1) {
-        logger.warn('Invalid MD5 signature (ss1)');
+        logger.warn('Invalid MD5 signature (ss1)', { dataPrefix: callback.data.slice(0, 64) });
         return false;
       }
       logger.info('Callback signature verified (ss1)');

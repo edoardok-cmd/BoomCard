@@ -1256,7 +1256,6 @@ class ReceiptService {
             venueId: receipt.venueId,
             receiptId: receipt.id,
             totalAmount: updated.totalAmount || 0,
-            cashbackAmount,
           });
         } catch (partnerNotifyError) {
           logger.error(`Failed to notify partner of receipt ${params.receiptId}:`, partnerNotifyError);

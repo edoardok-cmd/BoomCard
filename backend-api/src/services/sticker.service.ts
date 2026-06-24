@@ -2135,7 +2135,6 @@ class StickerService {
         venueId: scan.venueId,
         scanId,
         billAmount: effectiveBillAmount,
-        cashbackAmount: effectiveCashbackAmount,
       });
     } catch (partnerNotifyError) {
       logger.error(`Failed to notify partner of scan ${scanId}:`, partnerNotifyError);
