@@ -544,13 +544,24 @@ export class AuthService {
     // It must be sent after payment, from the complete-profile route (POST /api/auth/complete-profile).
     // Sending it at registration would reach users who have not yet paid.
 
-    // F-005 ARCHITECTURAL NOTICE (BC-USER-SPEC-GAP-001 F-005):
-    // JWT issued at registration before subscription per implementation design.
-    // Spec §2 requires subscription/payment to precede operational access.
-    // This is tracked at BC-USER-SPEC-FIX-001 F-005 and requires a full flow redesign
-    // before it can be safely changed. For now the token is issued immediately to support
-    // the existing onboarding flow. Operational access gates (payout, scanning) are
-    // enforced at the subscription check level on each individual endpoint.
+    // F-005 ENFORCEMENT (BC-USER-SPEC-GAP-001 F-005 / BC-USER-SPEC-FIX-005-CODE):
+    // The spec §2 sequence (Account Creation → Plan Selection → Payment →
+    // Active subscription → full operational access) is enforced WITHOUT changing
+    // the token shape, so the deployed Expo mobile client (boomcard-mobile) keeps
+    // working. Two layers enforce it:
+    //   1. This register-issued JWT is INERT for operational use: the user is created
+    //      with status=PENDING_VERIFICATION, and the authenticate middleware
+    //      (auth.middleware.ts) 401s PENDING_VERIFICATION / PENDING_PAYMENT users on
+    //      every authenticated request. The token only becomes usable once the
+    //      payment-gated complete-profile flow flips the account to ACTIVE.
+    //   2. The reusable requireActiveSubscription gate (auth.middleware.ts) blocks
+    //      USER operational/write endpoints (QR session/scan/receipt-upload) until an
+    //      Active (or Cancelled-within-paid-period) subscription exists, returning a
+    //      typed 402 SUBSCRIPTION_REQUIRED that directs the user to complete plan
+    //      selection + payment. Payout is independently subscription-gated in
+    //      walletService.requestPayout (402 SUBSCRIPTION_INACTIVE).
+    // The onboarding/payment endpoints (this register, plan selection, checkout,
+    // complete-profile) remain reachable so the flow still works end to end.
     const tokens = await this.generateTokens(user);
     return { user, ...tokens };
   }

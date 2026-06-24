@@ -47,6 +47,10 @@ jest.mock('../../src/middleware/auth.middleware', () => ({
       next();
     },
   requirePermission: () => (_req: any, _res: any, next: any) => next(),
+  // F-005: new subscription gate added to stickers.routes; this suite mocks auth
+  // out entirely (it tests routing/handler logic, not subscription gating), so a
+  // pass-through keeps the route stack intact.
+  requireActiveSubscription: (_req: any, _res: any, next: any) => next(),
   AuthRequest: {},
 }));
 

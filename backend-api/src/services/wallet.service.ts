@@ -275,14 +275,19 @@ export class WalletService {
     const cashbackValidityDays = await getSystemSettingInt('cashback_expiry_days', CASHBACK_VALIDITY_DAYS);
     const now = new Date();
 
-    // F-004 DEVIATION NOTICE (BC-USER-SPEC-GAP-001 F-004):
-    // TRIAL_PENDING intermediate state deviates from spec §2.1 which requires all
-    // trial cashback to be visible. This implementation stores trial-period cashback
-    // as TRIAL_PENDING and keeps it out of availableBalance (not fully visible to
-    // the user as a withdrawable amount). The entry IS visible in balance but NOT
-    // in availableBalance, creating an intermediate state not disclosed to the user.
-    // This implementation requires explicit product sign-off per the spec.
-    // See gap report BC-USER-SPEC-GAP-001 F-004.
+    // F-004 APPROVED INTERPRETATION (BC-USER-SPEC-GAP-001 F-004, product sign-off
+    // 2026-06-04 — spec §2.1 product-decision note):
+    // Trial-period cashback is held as TRIAL_PENDING and surfaced to the user as
+    // part of the "In Review / Pending verification" (pendingBalance) display — it
+    // is fully VISIBLE, so this is NOT a hidden intermediate state. It is
+    // intentionally excluded from the spendable/withdrawable availableBalance until
+    // the 24h trial-refund window closes, because a trial refund within that window
+    // voids this exact cashback (voidTrialPendingCashback); counting it as spendable
+    // would allow a withdraw-then-refund clawback driving the wallet negative.
+    // This "visible-as-Pending, not-yet-spendable" behaviour is the APPROVED
+    // interpretation of §2.1 and is the canonical implementation — it is no longer
+    // treated as a deviation requiring further sign-off. See spec §2.1
+    // product-decision note (2026-06-04) and gap report BC-USER-SPEC-GAP-001 F-004.
     //
     // If the user is within their 24h trial refund window, hold cashback as
     // TRIAL_PENDING: it shows in balance but is not yet spendable/withdrawable.
@@ -312,11 +317,15 @@ export class WalletService {
     // CLEARED (and stamps clearedAt + cashbackExpiresAt) once the trial window
     // closes. This keeps the 60-day clock honest — it starts when the cashback
     // becomes Available, not when the transaction was originally scanned.
-    // F-010 DEVIATION NOTICE (BC-USER-SPEC-GAP-001 F-010):
-    // Fast-path creates cashback as CLEARED directly, skipping the PENDING
-    // 'In Review' state. Spec §9.5 requires all submissions to show In Review first.
-    // This deviation is tracked at BC-USER-SPEC-FIX-001 F-010 and requires product
-    // sign-off before the intermediate PENDING state can be removed from the spec flow.
+    // F-010 SPEC-COMPLIANT (BC-USER-SPEC-GAP-001 F-010, spec amended 2026-06-04 —
+    // §9.4/§9.5/§4.3):
+    // Per the 2026-06-04 product decision, ONLY High-risk submissions show the
+    // "In Review / Pending verification" state; Low and Medium risk auto-process
+    // (automatic approval within 24h). This non-risk fast-path therefore correctly
+    // creates Low/Medium cashback directly as CLEARED — there is no longer a
+    // requirement for all submissions to dwell in an In-Review state. The risk-scored
+    // path (recordPendingForRiskReview) still routes High-risk to PENDING. See spec
+    // §9.4/§9.5/§4.3 amendments and gap report BC-USER-SPEC-GAP-001 F-010.
     const isClearedCashback = type === WalletTransactionType.CASHBACK_CREDIT && !isTrialPending;
     const cashbackExpiresAt = isClearedCashback
       ? new Date(now.getTime() + cashbackValidityDays * 24 * 60 * 60 * 1000)
@@ -1264,7 +1273,8 @@ export class WalletService {
           const threshold = await getPayoutThresholdBGN(plan);
           if (updatedWallet.availableBalance >= threshold) {
             // spec §7.3 auto-trigger on IBAN save — enqueue payout asynchronously.
-            // Non-fatal: if the auto-payout fails, the user can still request manually.
+            // Non-fatal: if the auto-payout fails, the nightly payout scheduler
+            // retries it (there is no user-initiated payout path — see F-013).
             detach(this.requestPayout(userId, { iban: opts.iban, beneficiaryName: opts.beneficiaryName })
               .then(() => logger.info(`[updatePayoutAccount] Auto-payout enqueued for user ${userId} (spec §7.3)`)), (err) => logger.error(`[updatePayoutAccount] Auto-payout failed for user ${userId} (spec §7.3):`, err));
           }

@@ -7,7 +7,7 @@ import {
   SUSPICIOUS_EXACT_CODES,
   SUSPICIOUS_PREFIX_CODES,
 } from '../services/adminAlerts.service';
-import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
+import { authenticate, authorize, requirePermission, requireActiveSubscription, AuthRequest } from '../middleware/auth.middleware';
 import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
 import { imageUploadService } from '../services/imageUpload.service';
 import { LocationType, ScanStatus } from '@prisma/client';
@@ -46,7 +46,9 @@ const router = Router();
  * the receipt is submitted.
  * Requires authentication.
  */
-router.post('/session', authenticate, async (req: Request, res: Response) => {
+// F-005: gate behind an Active subscription — a pre-payment USER cannot open a
+// QR session (spec §2 sequence: payment → Active → operational access).
+router.post('/session', authenticate, requireActiveSubscription, async (req: Request, res: Response) => {
   try {
     const { stickerId, cardId, latitude, longitude, payloadVenueId, payloadVersion, deviceFingerprint: rawDeviceFp } = req.body;
     const userId = (req as any).user.id;
@@ -100,7 +102,8 @@ router.post('/session', authenticate, async (req: Request, res: Response) => {
  * If not: legacy flow — creates session + scan in one call (backward compat).
  * Requires authentication.
  */
-router.post('/scan', authenticate, async (req: Request, res: Response) => {
+// F-005: gate behind an Active subscription (spec §2 sequence).
+router.post('/scan', authenticate, requireActiveSubscription, async (req: Request, res: Response) => {
   try {
     const { stickerId, cardId, billAmount, latitude, longitude, sessionId, payloadVenueId, payloadVersion, deviceFingerprint: rawDeviceFpScan } = req.body;
     const userId = (req as any).user.id;
@@ -203,7 +206,9 @@ router.post('/scan', authenticate, async (req: Request, res: Response) => {
  * Upload receipt image and OCR data for a scan
  * Requires authentication
  */
-router.post('/scan/:scanId/receipt', authenticate, uploadSingle, validateMagicBytes, async (req: AuthRequest, res: Response) => {
+// F-005: gate behind an Active subscription (spec §2 sequence). Runs before the
+// multipart upload so a pre-payment user is rejected without processing an image.
+router.post('/scan/:scanId/receipt', authenticate, requireActiveSubscription, uploadSingle, validateMagicBytes, async (req: AuthRequest, res: Response) => {
   try {
     const { scanId } = req.params;
     const userId = req.user!.id;

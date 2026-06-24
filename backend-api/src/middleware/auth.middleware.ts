@@ -299,3 +299,95 @@ export const requirePermission = (key: string | string[]) => {
     next();
   };
 };
+
+/**
+ * F-005 (BC-USER-SPEC-GAP-001 / BC-USER-SPEC-FIX-005-CODE) — enforce the spec §2
+ * registration sequence at the access-control layer.
+ *
+ * Spec §2 mandates the order: Account Creation → Plan Selection → Payment
+ * (subscription becomes Active on successful charge) → full operational access.
+ * Spec §2 note (line 95) further requires "no profile created before successful
+ * payment" to be respected at the implementation level, i.e. a freshly-registered,
+ * unpaid USER must NOT have operational/write access before a subscription is Active.
+ *
+ * Rather than change the JWT *shape* (which would break the deployed Expo mobile
+ * client — boomcard-mobile — and every issued token), this is a reusable
+ * server-side gate. Mount it on USER-facing operational/write endpoints (scan,
+ * receipt upload, wallet writes). It leaves onboarding/payment endpoints
+ * (register, complete-profile, subscription plan-selection + checkout) reachable
+ * so the existing account-creation → plan → payment flow still works end to end.
+ *
+ * Enforcement (USER role only — ADMIN/PARTNER pass through untouched):
+ *   - ACTIVE / TRIALING subscription                    → allow.
+ *   - CANCELLED but still within the paid period        → allow (spec §3.2/§8.3
+ *                                                          earned-rights window).
+ *   - No subscription, or Expired / Failed-Payment /    → block with a typed
+ *     Cancelled-post-period                                402 SUBSCRIPTION_REQUIRED
+ *                                                          (NOT a generic 500),
+ *                                                          directing the user to
+ *                                                          complete plan selection
+ *                                                          and payment.
+ *
+ * NOTE: the auth middleware above already 401s PENDING_VERIFICATION / PENDING_PAYMENT
+ * users (their register-issued token is inert until complete-profile flips them to
+ * ACTIVE). This gate closes the remaining §2 gap generally: a logged-in USER whose
+ * status is ACTIVE but who has no Active subscription (e.g. lapsed/expired) still
+ * cannot reach operational/write endpoints, and receives an actionable,
+ * payment-directing error instead of a deep service-layer throw or a 500.
+ */
+export const requireActiveSubscription = async (
+  req: AuthRequest,
+  _res: Response,
+  next: NextFunction,
+) => {
+  if (!req.user) {
+    return next(new AppError('Not authenticated', 401));
+  }
+
+  // Only USER accounts are subscription-gated. Admin/partner operational access is
+  // governed by their own role/status rules (spec §1.5 / §5.3), not by a customer
+  // subscription, so they pass through here.
+  if (req.user.role !== 'USER') {
+    return next();
+  }
+
+  try {
+    const now = new Date();
+    const eligible = await prisma.subscription.findFirst({
+      where: {
+        userId: req.user.id,
+        OR: [
+          // Active or trialing — full operational access (spec §2 post-payment state).
+          { status: { in: ['ACTIVE', 'TRIALING'] } },
+          // Cancelled within the still-paid period — access continues through the
+          // last paid day (spec §3.2 "Cancelled within paid period", §8.3).
+          { status: 'CANCELLED', currentPeriodEnd: { gt: now } },
+        ],
+      },
+      select: { id: true },
+    });
+
+    if (!eligible) {
+      return next(
+        new AppError(
+          'SUBSCRIPTION_REQUIRED: За да използвате тази функция, изберете план и завършете плащането от менюто „Абонамент и плащания". ' +
+          '(Select a subscription plan and complete payment to use this feature.)',
+          402,
+          { code: 'SUBSCRIPTION_REQUIRED' },
+        ),
+      );
+    }
+
+    return next();
+  } catch (err) {
+    // A DB error here must not silently fall open (that would re-open the §2 gap)
+    // nor surface a raw 500. Map to a typed, retryable error.
+    return next(
+      new AppError(
+        'Could not verify your subscription status. Please try again.',
+        503,
+        { code: 'SUBSCRIPTION_CHECK_FAILED' },
+      ),
+    );
+  }
+};
