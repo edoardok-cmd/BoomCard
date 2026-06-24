@@ -7,10 +7,10 @@
   "framework": "vite",
   "redirects": [
     {
-      "source": "/(.*)",
+      "source": "/:path*",
       "has": [{ "type": "host", "value": "boomcard.eu" }],
-      "destination": "https://boomcard.bg/$1?$query&lang=en",
-      "permanent": false
+      "destination": "https://boomcard.bg/:path*",
+      "permanent": true
     }
   ],
   "rewrites": [
@@ -61,13 +61,13 @@
     }
   ],
   "env": {
-    "VITE_API_URL": "https://boomcard-api.fly.dev",
-    "VITE_API_BASE_URL": "https://boomcard-api.fly.dev/api"
+    "VITE_API_BASE_URL": "https://boomcard-api.fly.dev/api",
+    "VITE_WS_URL": "wss://boomcard-api.fly.dev"
   },
   "build": {
     "env": {
-      "VITE_API_URL": "https://boomcard-api.fly.dev",
-      "VITE_API_BASE_URL": "https://boomcard-api.fly.dev/api"
+      "VITE_API_BASE_URL": "https://boomcard-api.fly.dev/api",
+      "VITE_WS_URL": "wss://boomcard-api.fly.dev"
     }
   }
 }

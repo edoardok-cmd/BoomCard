@@ -33,20 +33,6 @@ export const getAuthHeaders = (): Record<string, string> => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
-export const buildApiUrl = (endpoint: string, params?: Record<string, unknown>): string => {
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
-  const url = new URL(endpoint, baseUrl);
-  
-  if (params) {
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        url.searchParams.append(key, String(value));
-      }
-    });
-  }
-  
-  return url.toString();
-};
 
 export const parseApiResponse = <T>(response: { data?: T } | T): T => {
   if (response && typeof response === 'object' && 'data' in response && response.data !== undefined) {
