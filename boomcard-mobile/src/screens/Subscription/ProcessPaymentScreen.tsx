@@ -48,9 +48,9 @@ const ProcessPaymentScreen = ({ navigation }: any) => {
           navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
           return;
         }
-        await SecureStore.deleteItemAsync(STORAGE_KEYS.PENDING_PAYMENT);
         pending = JSON.parse(pendingData);
         pendingRef.current = pending;
+        await SecureStore.deleteItemAsync(STORAGE_KEYS.PENDING_PAYMENT);
       }
 
       const { planId, billingPeriod } = pending!;
