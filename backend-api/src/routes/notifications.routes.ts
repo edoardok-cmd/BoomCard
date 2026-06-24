@@ -383,7 +383,7 @@ router.get(
   authenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
-    const { page, limit, skip } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
+    const { page, limit, skip } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 200 });
 
     const where = buildWhere(userId, req.query);
 

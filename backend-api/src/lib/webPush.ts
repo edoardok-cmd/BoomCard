@@ -16,12 +16,29 @@ import { logger } from '../utils/logger';
  * must never block the surrounding DB write / in-app notification.
  */
 
-function getVapidKeys(): { publicKey: string; privateKey: string; subject: string } | null {
+let cachedKeys: { publicKey: string; privateKey: string; subject: string } | null = null;
+
+/**
+ * Configure webpush VAPID details, caching the last-used keys so that
+ * `setVapidDetails` (which mutates global singleton state) is only called
+ * when the keys actually change. This avoids last-write-wins races during
+ * concurrent sends while a key rotation is in progress.
+ */
+function getAndConfigureVapid(): boolean {
   const publicKey = process.env.VAPID_PUBLIC_KEY;
   const privateKey = process.env.VAPID_PRIVATE_KEY;
   const subject = process.env.VAPID_SUBJECT;
-  if (!publicKey || !privateKey || !subject) return null;
-  return { publicKey, privateKey, subject };
+  if (!publicKey || !privateKey || !subject) return false;
+  if (
+    !cachedKeys ||
+    cachedKeys.publicKey !== publicKey ||
+    cachedKeys.privateKey !== privateKey ||
+    cachedKeys.subject !== subject
+  ) {
+    webpush.setVapidDetails(subject, publicKey, privateKey);
+    cachedKeys = { publicKey, privateKey, subject };
+  }
+  return true;
 }
 
 export function getVapidPublicKey(): string | null {
@@ -39,12 +56,10 @@ export async function sendWebPushToUser(
   userId: string,
   payload: WebPushPayload
 ): Promise<{ sent: number; invalidated: number }> {
-  const keys = getVapidKeys();
-  if (!keys) {
+  if (!getAndConfigureVapid()) {
     logger.warn('[webPush] VAPID keys not set — skipping web push send');
     return { sent: 0, invalidated: 0 };
   }
-  webpush.setVapidDetails(keys.subject, keys.publicKey, keys.privateKey);
 
   const tokens = await prisma.pushToken.findMany({
     where: { userId, platform: 'web', isActive: true },
@@ -82,6 +97,7 @@ export async function sendWebPushToUser(
             data: { isActive: false },
           });
           invalidated++;
+          logger.warn('[webPush] push subscription stale (404/410)', { userId, tokenId: row.id });
         } else {
           logger.error('[webPush] send failed', {
             userId,
