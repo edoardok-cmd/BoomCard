@@ -849,9 +849,9 @@ export class AuthService {
     // NOTE: `INACTIVE` maps to spec §1.5 "Inactive admin" (login allowed, read-only).
     // `SUSPENDED` maps to spec §1.5 "Archived admin" (no login). `ARCHIVED` is the
     // dedicated enum value added in schema migration BC-SCHEMA-1.
-    if ((user.status as string) === 'SUSPENDED' || user.status === 'ARCHIVED') {
-      const failReason = user.status === 'ARCHIVED' ? 'archived' : 'suspended';
-      const message = user.status === 'ARCHIVED' ? 'Account has been archived' : 'Account has been suspended';
+    if (user.status === UserStatus.DELETED || (user.status as string) === 'SUSPENDED' || user.status === 'ARCHIVED') {
+      const failReason = user.status === UserStatus.DELETED ? 'deleted' : user.status === 'ARCHIVED' ? 'archived' : 'suspended';
+      const message = user.status === UserStatus.DELETED ? 'This account has been deleted' : user.status === 'ARCHIVED' ? 'Account has been archived' : 'Account has been suspended';
       detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason } }), (err) => logger.error('loginHistory.create failed', { err }));
       throw new AppError(message, 403);
     }
@@ -1103,9 +1103,20 @@ export class AuthService {
       }
 
       // Check if user is active
-      if ((storedToken.user.status as string) === 'SUSPENDED' || storedToken.user.status === 'ARCHIVED') {
+      if (
+        storedToken.user.status === UserStatus.DELETED ||
+        (storedToken.user.status as string) === 'SUSPENDED' ||
+        storedToken.user.status === 'ARCHIVED'
+      ) {
         await prisma.refreshToken.delete({ where: { id: storedToken.id } });
-        throw new AppError(storedToken.user.status === 'ARCHIVED' ? 'Account has been archived' : 'Account has been suspended', 403);
+        throw new AppError(
+          storedToken.user.status === UserStatus.DELETED
+            ? 'This account has been deleted'
+            : storedToken.user.status === 'ARCHIVED'
+              ? 'Account has been archived'
+              : 'Account has been suspended',
+          403,
+        );
       }
 
       // Mobile surface is customer-only. Reject refresh if this token was
@@ -1825,8 +1836,13 @@ export class AuthService {
     const multipleAccounts = users.length > 1;
 
     for (const user of users) {
-      // Security: do not issue OTPs for suspended accounts. Silently skip.
+      // SUSPENDED: do not issue OTPs for suspended accounts — silently skip.
+      // DELETED: the soft-delete Prisma extension (lib/prisma.ts) already excludes
+      //          deletedAt != null rows from findMany, so this guard never fires for
+      //          DELETED; the extension is the authoritative protection.
       // ARCHIVED is intentionally allowed — it is the reactivation path per spec §14.
+      // Step 1: user resets password (allowed when ARCHIVED). Step 2: admin sets status
+      // to ACTIVE. Login stays blocked until step 2.
       if ((user.status as string) === 'SUSPENDED') {
         continue;
       }
@@ -1842,6 +1858,11 @@ export class AuthService {
           : user.role === 'PARTNER'
             ? SECURITY_CONFIG.SECURITY.PASSWORD_RESET_EXPIRY_PARTNER_MS
             : SECURITY_CONFIG.SECURITY.PASSWORD_RESET_EXPIRY_USER_MS;
+      const expiryHours = Math.round(expiryMs / (60 * 60 * 1000));
+      const expiryLabel =
+        expiryHours === 1
+          ? { en: '1 hour', bg: '1 час' }
+          : { en: `${expiryHours} hours`, bg: `${expiryHours} часа` };
       const expires = new Date(Date.now() + expiryMs);
 
       await prisma.user.update({
@@ -1868,6 +1889,7 @@ export class AuthService {
         otp,
         accountLabel,
         language: (user as any).preferredLanguage === 'en' ? 'en' : 'bg',
+        expiryLabel,
       });
 
       if (!emailResult.success) {
@@ -2339,12 +2361,12 @@ export class AuthService {
   private static async fetchSwitchableAccounts(accountIds: string[]): Promise<SwitchableAccount[]> {
     if (accountIds.length === 0) return [];
 
-    // Exclude SUSPENDED/INACTIVE: listing them in the switcher only lets the
-    // user click a row that then 403s in switchAccount — hide them instead.
+    // Exclude SUSPENDED/INACTIVE/ARCHIVED/DELETED: listing them in the switcher
+    // only lets the user click a row that then 403s in switchAccount — hide them instead.
     const users = await prisma.user.findMany({
       where: {
         id: { in: accountIds },
-        status: { notIn: ['INACTIVE', 'ARCHIVED'] as any },
+        status: { notIn: ['INACTIVE', 'SUSPENDED', 'ARCHIVED', 'DELETED'] as any },
       },
       select: {
         id: true,
@@ -2453,7 +2475,12 @@ export class AuthService {
       throw new AppError('Target account no longer exists', 404);
     }
 
-    if ((target.status as string) === 'SUSPENDED' || target.status === 'INACTIVE' || target.status === 'ARCHIVED') {
+    if (
+      target.status === UserStatus.SUSPENDED ||
+      target.status === UserStatus.INACTIVE ||
+      target.status === UserStatus.ARCHIVED ||
+      target.status === UserStatus.DELETED
+    ) {
       throw new AppError('Target account is not available', 403);
     }
 

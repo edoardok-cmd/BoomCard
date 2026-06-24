@@ -473,7 +473,7 @@ export class EmailService {
   /**
    * Send password reset OTP email
    */
-  async sendPasswordResetEmail(data: { customerName: string; email: string; otp: string; accountLabel?: string; language?: 'bg' | 'en' }): Promise<{ success: boolean }> {
+  async sendPasswordResetEmail(data: { customerName: string; email: string; otp: string; accountLabel?: string; language?: 'bg' | 'en'; expiryLabel: { en: string; bg: string } }): Promise<{ success: boolean }> {
     const isBg = data.language !== 'en';
     // accountLabel is set only when the same email backs more than one account,
     // so the recipient can tell which OTP belongs to which account.
@@ -486,9 +486,11 @@ export class EmailService {
       : (isBg ? 'Вашият BoomCard код за смяна на парола' : 'Your BoomCard password reset code');
 
     const heading = isBg ? 'Смяна на парола' : 'Reset your password';
+    const expiryEn = data.expiryLabel.en;
+    const expiryBg = data.expiryLabel.bg;
     const body = isBg
-      ? `Здравейте, ${data.customerName}! Използвайте кода по-долу, за да смените паролата си в BoomCard. Кодът изтича след <strong>15 минути</strong>.`
-      : `Hi ${data.customerName}, use the code below to reset your BoomCard password. It expires in <strong>15 minutes</strong>.`;
+      ? `Здравейте, ${data.customerName}! Използвайте кода по-долу, за да смените паролата си в BoomCard. Кодът изтича след <strong>${expiryBg}</strong>.`
+      : `Hi ${data.customerName}, use the code below to reset your BoomCard password. It expires in <strong>${expiryEn}</strong>.`;
     const ignoreText = isBg
       ? 'Ако не сте поискали смяна на парола, просто игнорирайте този имейл.'
       : "If you didn't request this, you can safely ignore this email.";
@@ -505,8 +507,8 @@ export class EmailService {
       </div>`;
 
     const textBody = isBg
-      ? `${labelText}Вашият BoomCard код за смяна на парола е: ${data.otp}\n\nИзтича след 15 минути.\n\n${ignoreText}`
-      : `${labelText}Your BoomCard password reset code is: ${data.otp}\n\nIt expires in 15 minutes.\n\nIf you didn't request this, ignore this email.`;
+      ? `${labelText}Вашият BoomCard код за смяна на парола е: ${data.otp}\n\nИзтича след ${expiryBg}.\n\n${ignoreText}`
+      : `${labelText}Your BoomCard password reset code is: ${data.otp}\n\nIt expires in ${expiryEn}.\n\nIf you didn't request this, ignore this email.`;
 
     return this.sendEmail({ to: data.email, subject, html, text: textBody });
   }
