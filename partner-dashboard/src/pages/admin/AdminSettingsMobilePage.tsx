@@ -49,6 +49,23 @@ const TextInput = styled.input`
 
 const UrlInput = styled(TextInput)`max-width: 28rem;`;
 
+const CardTitleRow = styled.div`display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem;`;
+const SentryLink = styled.a`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: ${palette.accent};
+  text-decoration: none;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid ${palette.accent};
+  border-radius: 0.375rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+  &:hover { background: ${palette.accentSoft}; }
+`;
+
 const Select = styled.select`
   padding: 0.5rem 0.875rem;
   border: 1px solid ${palette.border};
@@ -720,7 +737,16 @@ export default function AdminSettingsMobilePage() {
 
           {/* ── Лог на грешки — конфигурация ── */}
           <Card>
-            <CardTitle>Лог на грешки — конфигурация</CardTitle>
+            <CardTitleRow>
+              <CardTitle>Лог на грешки — конфигурация</CardTitle>
+              <SentryLink
+                href="https://boomcard.sentry.io/projects/boomcard-mobile/"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Sentry ↗
+              </SentryLink>
+            </CardTitleRow>
             <CardSubtitle>
               При зададен URL приложението изпраща копие на всяка грешка и към посочената
               външна услуга (напр. Sentry, Datadog), допълнително към вградения лог по-долу.
@@ -767,7 +793,16 @@ export default function AdminSettingsMobilePage() {
         <Card>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
             <div>
-              <CardTitle style={{ marginBottom: '0.25rem' }}>Последни грешки от приложението</CardTitle>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
+                <CardTitle style={{ marginBottom: 0 }}>Последни грешки от приложението</CardTitle>
+                <SentryLink
+                  href="https://boomcard.sentry.io/projects/boomcard-mobile/issues/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Sentry Issues ↗
+                </SentryLink>
+              </div>
               <CardSubtitle style={{ marginBottom: 0 }}>
                 Последните 50 грешки, докладвани директно от мобилното приложение. Обновява се автоматично на всяка минута.
               </CardSubtitle>

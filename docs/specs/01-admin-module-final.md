@@ -418,6 +418,26 @@ Rolling валидност от 60 дни за всеки Cleared cashback recor
 
 Версии, статус, feature toggles, push известия и основни грешки.
 
+### **Лог на грешки — конфигурация**
+
+Полето **URL за лог на грешки (външна услуга)** приема HTTP(S) POST endpoint. При зададен URL мобилното приложение изпраща копие на всяка грешка и към тази услуга (допълнително към вградения лог). Промяната влиза в сила при следващото стартиране на приложението.
+
+> **Активен доставчик:** [Sentry](https://boomcard.sentry.io/projects/boomcard-mobile/) — конфигуриран чрез build-time env var `EXPO_PUBLIC_SENTRY_DSN` (Vercel Production). Проектът е `boomcard-mobile` в org `boomcard`. Sentry улавя грешки от payment flow и нехванати JavaScript изключения в mobile web билда. DSN не се въвежда в полето „URL за лог на грешки" — то е за алтернативни HTTP POST endpoint-и.
+
+Бутонът **Sentry ↗** в хедъра на секцията отваря Sentry dashboard директно.
+
+### **Вграден лог на грешки**
+
+Показва последните 50 грешки, докладвани от мобилното приложение (`errorReporter.ts` → `/api/mobile/errors`). Обновява се автоматично на всяка минута. Бутонът **Sentry Issues ↗** до заглавието отваря Sentry Issues за задълбочен анализ. Бутонът **Изчисти всички** е необратимо действие и изисква потвърждение.
+
+| Поле | Описание |
+|------|----------|
+| platform | `ios` / `android` / `web` |
+| appVersion | Версия от `app.json` |
+| errorType | `crash` / `api_error` / `render_error` / `network_error` / `unknown` |
+| message | Текст на грешката (макс. 5 000 символа за stack trace) |
+| timestamp | UTC timestamp от момента на доклада |
+
 ## **9.5 Системни настройки**
 
 | АКТУАЛИЗИРАНО |
