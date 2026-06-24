@@ -25,6 +25,7 @@ import { STORAGE_KEYS } from '../../constants/config';
 import { plansService } from '../../services/plans.service';
 import { paymentService } from '../../services/payment.service';
 import { useTheme } from '../../contexts/ThemeContext';
+import { captureError } from '../../utils/sentry';
 
 const ProcessPaymentScreen = ({ navigation }: any) => {
   const { i18n } = useTranslation();
@@ -71,6 +72,7 @@ const ProcessPaymentScreen = ({ navigation }: any) => {
         navigation.replace('SubscriptionCancel', { orderId: payment.orderId });
       }
     } catch (err: any) {
+      captureError(err, { screen: 'ProcessPaymentScreen', planId: pendingRef.current?.planId });
       console.warn('Payment processing error:', err);
       setError(
         err?.response?.data?.message ||
