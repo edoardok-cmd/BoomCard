@@ -406,7 +406,7 @@ router.get(
       unreadCount,
       page,
       limit,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.max(1, Math.ceil(total / limit)),
     });
   })
 );
