@@ -600,7 +600,8 @@ export class NotificationService {
     venueId: string;
     scanId: string;
     billAmount: number;
-    cashbackAmount: number;
+    // cashbackAmount intentionally excluded — spec §11.3 prohibits exposing
+    // the internal cashback figure to partners via any notification channel.
   }): Promise<void> {
     try {
       const venue = await this.getVenuePartnerOwner(params.venueId);
@@ -634,7 +635,8 @@ export class NotificationService {
     venueId: string;
     receiptId: string;
     totalAmount: number;
-    cashbackAmount: number;
+    // cashbackAmount intentionally excluded — spec §11.3 prohibits exposing
+    // the internal cashback figure to partners via any notification channel.
   }): Promise<void> {
     try {
       const venue = await this.getVenuePartnerOwner(params.venueId);
@@ -2500,8 +2502,9 @@ export class NotificationService {
    * Get all user notifications (paginated)
    */
   async getNotifications(userId: string, page: number = 1, limit: number = 20) {
-    const cappedLimit = Math.min(limit, 200);
-    const skip = (page - 1) * cappedLimit;
+    const safePage = Math.max(1, Math.floor(page));
+    const cappedLimit = Math.max(1, Math.min(Math.floor(limit), 200));
+    const skip = (safePage - 1) * cappedLimit;
 
     const [notifications, total] = await Promise.all([
       prisma.notification.findMany({
@@ -2516,8 +2519,8 @@ export class NotificationService {
     return {
       notifications,
       total,
-      page,
-      pages: Math.ceil(total / cappedLimit),
+      page: safePage,
+      pages: Math.max(1, Math.ceil(total / cappedLimit)),
     };
   }
 

@@ -95,18 +95,29 @@ export async function sendExpoPushToUser(
     }
 
     if (!resp.ok) {
-      logger.error('[expoPush] HTTP error from Expo push API', { status: resp.status, body: await resp.text(), offset });
+      const bodyText = await Promise.race([
+        resp.text(),
+        new Promise<string>((_, reject) =>
+          setTimeout(() => reject(new Error('response body read timeout')), 3_000)
+        ),
+      ]).catch(() => '<body read timed out or failed>');
+      logger.error('[expoPush] HTTP error from Expo push API', { status: resp.status, body: bodyText, offset });
       continue;
     }
 
-    let tickets: ExpoTicket[] = [];
+    let jsonResult: { data: ExpoTicket[] };
     try {
-      const result = (await resp.json()) as { data: ExpoTicket[] };
-      tickets = result.data ?? [];
+      jsonResult = await Promise.race([
+        resp.json() as Promise<{ data: ExpoTicket[] }>,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('response JSON read timeout')), 3_000)
+        ),
+      ]);
     } catch (err) {
       logger.error('[expoPush] Failed to parse Expo response', { err: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined, offset });
       continue;
     }
+    const tickets: ExpoTicket[] = jsonResult.data ?? [];
 
     tickets.forEach((ticket, i) => {
       if (ticket.status === 'ok') {
