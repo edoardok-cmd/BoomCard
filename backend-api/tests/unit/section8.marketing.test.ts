@@ -224,12 +224,12 @@ describe('NotificationService.notifySubscriptionExpiringSoon — §8.3 in-app ch
     ['3d', /3 дни/i],
     ['1d', /утре/i],
     ['dayOf', /днес/i],
-  ] as const)('creates SUBSCRIPTION_EXPIRING notification for bucket %s', async (bucket, bodyPattern) => {
+  ] as const)('creates SYSTEM notification for bucket %s', async (bucket, bodyPattern) => {
     await service.notifySubscriptionExpiringSoon({ userId: 'u-1', bucket, periodEnd });
 
     expect(notificationCreateCalls).toHaveLength(1);
     const notif = notificationCreateCalls[0];
-    expect(notif.type).toBe('SUBSCRIPTION_EXPIRING');
+    expect(notif.type).toBe('SYSTEM'); // SUBSCRIPTION_EXPIRING absent from NotificationType enum; SYSTEM is the valid value
     expect(notif.userId).toBe('u-1');
     expect(notif.messageBg).toMatch(bodyPattern);
     expect(notif.actionUrl).toBe('/subscription');
@@ -279,7 +279,7 @@ describe('runRenewalReminders — in-app notification alongside email', () => {
     userRow = makeUser();
   });
 
-  it('creates an in-app SUBSCRIPTION_EXPIRING notification for each reminded subscription', async () => {
+  it('creates an in-app SYSTEM notification for each reminded subscription', async () => {
     await runRenewalReminders();
 
     // Email must have been sent
@@ -288,7 +288,7 @@ describe('runRenewalReminders — in-app notification alongside email', () => {
 
     // In-app notification must also have been created
     const inAppCalls = notificationCreateCalls.filter(
-      (n: any) => n.type === 'SUBSCRIPTION_EXPIRING',
+      (n: any) => n.type === 'SYSTEM', // SUBSCRIPTION_EXPIRING absent from enum; service emits SYSTEM
     );
     expect(inAppCalls.length).toBeGreaterThan(0);
     expect(inAppCalls[0].userId).toBe('u-1');
