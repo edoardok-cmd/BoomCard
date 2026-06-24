@@ -785,7 +785,9 @@ router.get('/pending', requirePermission('subscriptions.read'), async (req, res,
 /**
  * POST /api/admin/subscriptions/pending/:id/resend-token
  * Regenerate the profile-completion token and re-send the email.
- * Only valid for rows in PAID state that have not yet been completed or expired.
+ * Only valid for rows in PAID state that have not yet been completed.
+ * If the checkout session has expired, it is extended by 24 h so the user
+ * can still complete their profile after an admin-triggered resend.
  */
 router.post('/pending/:id/resend-token', requirePermission('subscriptions.write'), async (req, res, next) => {
   try {
@@ -821,20 +823,36 @@ router.post('/pending/:id/resend-token', requirePermission('subscriptions.write'
       data: { token, tokenExpiresAt, expiresAt: extendedExpiresAt },
     });
 
-    await emailService.sendCompleteProfileEmail(row.email, {
+    const { success: emailSent } = await emailService.sendCompleteProfileEmail(row.email, {
       planName: row.plan?.displayName ?? row.planId,
       planNameBg: row.plan?.displayNameBg,
       completeProfileUrl: `${FRONTEND_URL}/complete-profile?token=${token}`,
       language: (row.language === 'en' ? 'en' : 'bg') as 'bg' | 'en',
     });
 
-    await writeAudit({
-      actorUserId: (req as any).user?.id ?? null,
-      action: 'pending_subscription.resend_token',
-      objectType: 'PendingSubscription',
-      objectId: id,
-      after: { email: row.email, tokenExpiresAt: tokenExpiresAt.toISOString() },
-    });
+    // Write audit log after the email attempt so the outcome is captured.
+    // Wrapped defensively — a writeAudit failure must not mask the real response.
+    try {
+      await writeAudit({
+        actorUserId: (req as any).user?.id ?? null,
+        action: 'pending_subscription.resend_token',
+        objectType: 'PendingSubscription',
+        objectId: id,
+        after: {
+          email: row.email,
+          tokenExpiresAt: tokenExpiresAt.toISOString(),
+          expiresAt: extendedExpiresAt.toISOString(),
+          emailDelivered: emailSent,
+        },
+      });
+    } catch (auditErr) {
+      logger.error('writeAudit failed for pending_subscription.resend_token %s: %o', id, auditErr);
+    }
+
+    if (!emailSent) {
+      res.status(502).json({ error: 'Token rotated but email delivery failed — retry or check email configuration.' });
+      return;
+    }
 
     res.json({ sent: true, email: row.email });
   } catch (err) {
