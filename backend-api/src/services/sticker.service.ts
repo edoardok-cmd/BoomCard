@@ -1,4 +1,4 @@
-import { Sticker, StickerScan, StickerLocation, VenueStickerConfig, ScanStatus, StickerStatus, LocationType, TransactionStatus, TransactionType, PaymentMethod, SubscriptionStatus, WalletTransactionType } from '@prisma/client';
+import { Sticker, StickerScan, StickerLocation, VenueStickerConfig, ScanStatus, StickerStatus, LocationType, TransactionStatus, TransactionType, PaymentMethod, SubscriptionStatus, WalletTransactionType, VenueStatus } from '@prisma/client';
 import QRCode from 'qrcode';
 import { prisma } from '../lib/prisma';
 import { walletService } from './wallet.service';
@@ -47,6 +47,15 @@ export interface StickerQRData {
   stickerId: string; // Format: "BAR32-MASA04"
   locationType: LocationType;
   version: string;
+}
+
+export interface StickerStatusHistoryEntry {
+  stickerId: string;
+  fromStatus: string;
+  toStatus: string;
+  changedBy: string | null;
+  changedAt: Date;
+  reason: string;
 }
 
 export interface CreateStickerLocationData {
@@ -438,6 +447,16 @@ class StickerService {
       },
     });
 
+    // HIGH #4: Record creation in audit log so status timeline is complete (from PENDING).
+    detach(writeAudit({
+      actorUserId: null,
+      action: 'STICKER_CREATED',
+      objectType: 'Sticker',
+      objectId: sticker.id,
+      before: null,
+      after: { status: StickerStatus.PENDING, stickerId: sticker.stickerId },
+    }), (err) => logger.error('[sticker.generateSticker] audit write failed:', err));
+
     return sticker;
   }
 
@@ -491,11 +510,15 @@ class StickerService {
    * QR codes cannot be manually activated while the partner's status is
    * Inactive or Archived. We resolve venue → partner here and block activation
    * before writing the status change (r2c B1).
+   *
+   * M1 requirement: activation endpoint gates on canWrite = SUPER_ADMIN || permissions('stickers.write'),
+   * enforced at the route layer. This method is called only by authorized admins.
    */
-  async activateSticker(stickerId: string): Promise<Sticker> {
+  async activateSticker(stickerId: string, actorUserId?: string | null): Promise<Sticker> {
     const sticker = await prisma.sticker.findUnique({
       where: { stickerId },
       select: {
+        id: true,
         status: true,
         venue: {
           select: {
@@ -509,11 +532,25 @@ class StickerService {
     if (!activatable.includes(sticker.status)) {
       throw new Error(`Sticker ${stickerId} cannot be activated from ${sticker.status} state`);
     }
+
+    // HIGH #3: Prevent race between activate and replace (if replace just happened, audit log will show it).
+    // Check if a STICKER_REPLACED or STICKER_REPLACED entry was logged in the last 30 seconds.
+    const recentReplace = await prisma.auditLog.findFirst({
+      where: {
+        objectId: sticker.id,
+        action: { in: ['STICKER_REPLACED', 'STICKER_REPLACING'] },
+        createdAt: { gte: new Date(Date.now() - 30000) },
+      },
+    });
+    if (recentReplace) {
+      throw new Error('Sticker was recently replaced — cannot activate. Please retry after a moment.');
+    }
     // Spec §1.5 rule 4: block activation when the owning partner is non-operational.
     if (sticker.venue?.partner && !isPartnerOperationallyActive(sticker.venue.partner)) {
       throw new Error('Cannot activate QR code while partner status is not Active');
     }
-    return prisma.sticker.update({
+    const oldStatus = sticker.status;
+    const updated = await prisma.sticker.update({
       where: { stickerId },
       data: {
         status: StickerStatus.ACTIVE,
@@ -521,6 +558,16 @@ class StickerService {
         activatedAt: new Date(),
       },
     });
+    // Audit trail for QR activation (M4 requirement: status-history tracking)
+    detach(writeAudit({
+      actorUserId: actorUserId ?? null,
+      action: 'STICKER_ACTIVATED',
+      objectType: 'Sticker',
+      objectId: sticker.id,
+      before: { status: oldStatus },
+      after: { status: StickerStatus.ACTIVE },
+    }), (err) => logger.error('[sticker.activateSticker] audit write failed:', err));
+    return updated;
   }
 
   /**
@@ -748,6 +795,7 @@ class StickerService {
             id: true,
             name: true,
             stickerConfig: true,
+            venueStatus: true,
             // discountRate and maxDiscountRate omitted — internal Business Formula components
             // (spec §11.3, Clash 10.6). isPartnerOperationallyActive only needs status+verifiedAt.
             partner: { select: { id: true, status: true, verifiedAt: true } },
@@ -791,6 +839,14 @@ class StickerService {
       return {
         valid: false,
         message: 'PARTNER_NOT_ACCEPTING: Този обект временно не приема BoomCard транзакции.',
+      };
+    }
+
+    // Spec §H1: venue must be operationally active
+    if (sticker.venue.venueStatus !== VenueStatus.ACTIVE) {
+      return {
+        valid: false,
+        message: 'VENUE_SUSPENDED: Този обект временно не е активен.',
       };
     }
 
@@ -876,6 +932,7 @@ class StickerService {
     const partner = await prisma.partner.findFirst({
       where: { venues: { some: { id: sticker.venueId } } },
       select: { id: true, partnerTypeId: true, status: true, verifiedAt: true },
+      orderBy: { createdAt: 'asc' },
     });
 
     // Spec §5.3 v1.1 — QR auto-deactivates when partner leaves ACTIVE status.
@@ -888,6 +945,11 @@ class StickerService {
     // which the spec treats as not operational.
     if (partner && !isPartnerOperationallyActive(partner)) {
       throw new Error('PARTNER_NOT_ACCEPTING: Този обект временно не приема BoomCard транзакции.');
+    }
+
+    // Spec §H1: venue must be operationally active
+    if (sticker.venue.venueStatus !== VenueStatus.ACTIVE) {
+      throw new Error('VENUE_SUSPENDED: Този обект временно не е активен.');
     }
 
     if (partner?.partnerTypeId) {
@@ -1017,6 +1079,11 @@ class StickerService {
       // re-onboarding) means the partner is no longer operationally active.
       if (sessionPartner && !isPartnerOperationallyActive(sessionPartner)) {
         throw new Error('PARTNER_NOT_ACCEPTING: Този обект временно не приема BoomCard транзакции.');
+      }
+
+      // Re-check venue status: a venue can be suspended between session-open and receipt-upload
+      if (existing.sticker.venue.venueStatus !== VenueStatus.ACTIVE) {
+        throw new Error('VENUE_SUSPENDED: Този обект временно не е активен.');
       }
 
       // Server-side deadline: receipts must be submitted by 6:00 AM the next calendar morning
@@ -1185,11 +1252,17 @@ class StickerService {
     const partner = await prisma.partner.findFirst({
       where: { venues: { some: { id: sticker.venueId } } },
       select: { id: true, partnerTypeId: true, status: true, verifiedAt: true },
+      orderBy: { createdAt: 'asc' },
     });
 
     // Spec §5.3 — partner status + verifiedAt gate (see createSession for full note).
     if (partner && !isPartnerOperationallyActive(partner)) {
       throw new Error('PARTNER_NOT_ACCEPTING: Този обект временно не приема BoomCard транзакции.');
+    }
+
+    // Spec §H1: venue must be operationally active
+    if (sticker.venue.venueStatus !== VenueStatus.ACTIVE) {
+      throw new Error('VENUE_SUSPENDED: Този обект временно не е активен.');
     }
 
     if (partner && partner.partnerTypeId) {
@@ -2848,6 +2921,99 @@ class StickerService {
       rejected: rejectedToday,
       avgFraudScore,
     };
+  }
+
+  /**
+   * Get QR status history for a specific sticker (M4 requirement).
+   *
+   * Returns a timeline of status changes derived from audit logs, showing
+   * when the QR code transitioned between states (PENDING → PROCESSING → ACTIVE, etc.),
+   * who initiated the change, and the reason (if any).
+   *
+   * Spec §5.4 v1.1 — status-history endpoint for QR lifecycle tracking. Partners
+   * have read-only access to their own venue's sticker history; admins can read any.
+   */
+  async getStickerStatusHistory(stickerId: string): Promise<StickerStatusHistoryEntry[]> {
+    // Fetch the sticker to ensure it exists and to get internal db id
+    const sticker = await prisma.sticker.findUnique({
+      where: { stickerId },
+      select: { id: true, stickerId: true, locationId: true, venueId: true },
+    });
+
+    if (!sticker) {
+      throw new Error(`Sticker ${stickerId} not found`);
+    }
+
+    // Query audit logs for all STICKER_* actions on this sticker
+    // MEDIUM #6: Parse the before/after status fields from the JSON metadata with error handling
+    const auditEntries = await prisma.auditLog.findMany({
+      where: {
+        objectType: 'Sticker',
+        objectId: sticker.id,
+        action: { in: ['STICKER_CREATED', 'STICKER_PROCESSING', 'STICKER_ACTIVATED', 'STICKER_REACTIVATED', 'STICKER_REPLACED'] },
+      },
+      select: {
+        id: true,
+        action: true,
+        createdAt: true,
+        actorUserId: true,
+        before: true,
+        after: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // Build the history timeline with safe JSON parsing
+    const timeline: StickerStatusHistoryEntry[] = [];
+
+    for (const entry of auditEntries) {
+      let before, after;
+      try {
+        before = typeof entry.before === 'string' ? JSON.parse(entry.before) : entry.before;
+        after = typeof entry.after === 'string' ? JSON.parse(entry.after) : entry.after;
+      } catch (parseError) {
+        logger.warn(`[getStickerStatusHistory] Failed to parse audit JSON for ${entry.id}:`, parseError);
+        before = null;
+        after = null;
+      }
+
+      let fromStatus = 'UNKNOWN';
+      let toStatus = 'UNKNOWN';
+      let reason = '';
+
+      if (entry.action === 'STICKER_CREATED') {
+        fromStatus = 'NEW';
+        toStatus = after?.status || StickerStatus.PENDING;
+        reason = 'QR code generated and created';
+      } else if (entry.action === 'STICKER_PROCESSING') {
+        fromStatus = before?.status || StickerStatus.PENDING;
+        toStatus = after?.status || StickerStatus.PROCESSING;
+        reason = 'Label printed and dispatched for deployment';
+      } else if (entry.action === 'STICKER_ACTIVATED') {
+        fromStatus = before?.status || 'UNKNOWN';
+        toStatus = StickerStatus.ACTIVE;
+        reason = 'QR code activated';
+      } else if (entry.action === 'STICKER_REACTIVATED') {
+        fromStatus = before?.status || StickerStatus.INACTIVE;
+        toStatus = after?.status || StickerStatus.ACTIVE;
+        reason = 'Reactivated after partner reactivation';
+      } else if (entry.action === 'STICKER_REPLACED') {
+        fromStatus = before?.status || 'UNKNOWN';
+        toStatus = after?.status || StickerStatus.REPLACED;
+        reason = 'QR code replaced (physical label damaged or lost)';
+      }
+
+      timeline.push({
+        stickerId: sticker.stickerId,
+        fromStatus,
+        toStatus,
+        changedBy: entry.actorUserId ?? null,
+        changedAt: entry.createdAt,
+        reason,
+      });
+    }
+
+    return timeline;
   }
 }
 
