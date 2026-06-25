@@ -31,20 +31,45 @@ type SubGateResult =
   | { eligible: false; reason: 'NO_SUBSCRIPTION' | 'INELIGIBLE_STATUS'; status?: SubscriptionStatus };
 
 async function checkSubscriptionGate(userId: string): Promise<SubGateResult> {
-  // Look at the most recent subscription regardless of status so we can tell
-  // "user never subscribed" apart from "subscription lapsed / failed payment".
-  const sub = await prisma.subscription.findFirst({
+  // Fix D — check all subscriptions for eligibility, not just the newest.
+  // A user is eligible if they have:
+  //   1. Any ACTIVE or TRIALING subscription (current or past), OR
+  //   2. Any CANCELLED subscription with currentPeriodEnd still in the future
+  //        (earned-rights model: access continues through last paid day).
+  // This prevents a wrongly ineligible FAILED_PAYMENT/EXPIRED row from blocking
+  // a user who has an older eligible subscription (§8.1 Clash 4.1).
+  //
+  // To distinguish "never subscribed" from "had subscriptions but all ineligible",
+  // we first check if any subscription row exists for this user.
+  const allSubs = await prisma.subscription.findMany({
     where: { userId },
-    orderBy: { createdAt: 'desc' },
     select: { status: true, currentPeriodEnd: true },
   });
-  if (!sub) return { eligible: false, reason: 'NO_SUBSCRIPTION' };
-  // Spec §4.1 Clash 4.1 — Active and Trialing subscriptions allow new payouts.
-  if (sub.status === 'ACTIVE' || sub.status === 'TRIALING') return { eligible: true };
-  // Spec §4.1 Clash 4.1 — Cancelled-within-paid-period also allows new payouts
-  // (access continues through last paid day; earned-rights model).
-  if (sub.status === 'CANCELLED' && sub.currentPeriodEnd != null && sub.currentPeriodEnd > new Date()) return { eligible: true };
-  return { eligible: false, reason: 'INELIGIBLE_STATUS', status: sub.status };
+
+  if (allSubs.length === 0) {
+    return { eligible: false, reason: 'NO_SUBSCRIPTION' };
+  }
+
+  const now = new Date();
+  for (const sub of allSubs) {
+    // Spec §4.1 Clash 4.1 — Active and Trialing subscriptions allow new payouts.
+    if (sub.status === 'ACTIVE' || sub.status === 'TRIALING') {
+      return { eligible: true };
+    }
+    // Spec §4.1 Clash 4.1 — Cancelled-within-paid-period also allows new payouts
+    // (access continues through last paid day; earned-rights model).
+    if (sub.status === 'CANCELLED' && sub.currentPeriodEnd != null && sub.currentPeriodEnd > now) {
+      return { eligible: true };
+    }
+  }
+
+  // No eligible subscription found — return the status of the newest one for the message.
+  const newest = allSubs.reduce((prev, curr) => {
+    // Can't directly compare createdAt here, so we return the last one in the array.
+    // The findMany default is createdAt asc, so the last is the newest.
+    return curr;
+  });
+  return { eligible: false, reason: 'INELIGIBLE_STATUS', status: newest.status as SubscriptionStatus };
 }
 
 const SUB_STATUS_BG: Record<string, string> = {
@@ -327,11 +352,14 @@ router.patch(
         include: { wallet: { include: { user: { select: { id: true } } } } },
       });
 
-      const skippedNoIban = pending.filter(p => !p.wallet.payoutIban).length;
+      // Fix C — no-IBAN payouts are held+notified, not skipped.
+      // Separate them so we can hold them and fire user notifications.
+      const noIbanPayouts = pending.filter(p => !p.wallet.payoutIban);
       const withIban = pending.filter(p => p.wallet.payoutIban);
 
-      // §6.1 v1.1 subscription gate — check LATEST subscription per user so a new
-      // FAILED_PAYMENT sub always blocks even if an older ACTIVE one exists in the DB.
+      // §6.1 v1.1 subscription gate — check eligibility across all subscriptions
+      // so a CANCELLED-within-paid-period user is not wrongly blocked by a newer
+      // ineligible row (Fix D).
       const userIds = Array.from(new Set(withIban.map(p => p.wallet.user.id)));
       const subGates = await Promise.all(userIds.map(uid => checkSubscriptionGate(uid)));
       const eligibleUserIds = new Set(userIds.filter((_, i) => subGates[i].eligible));
@@ -341,6 +369,31 @@ router.patch(
       let approved         = 0;  // newly transitioned PENDING → PROCESSING by this call
       let alreadyProcessed = 0;  // claimed by a concurrent caller (still counts as in-flight)
       let failed           = 0;
+      let held             = 0;  // newly held due to no-IBAN (Fix C)
+
+      // Fix C — hold no-IBAN payouts and notify users to add their bank details.
+      for (const payout of noIbanPayouts) {
+        try {
+          await prisma.walletTransaction.update({
+            where: { id: payout.id },
+            data: {
+              status: 'RISK_HOLD',
+              description: 'Задържано - липсва банкова сметка (IBAN). Моля добавете вашу IBAN преди повторно одобрение.',
+            },
+          });
+          held++;
+          // Spec §3.2 / §6.1 — notify user to add their bank details.
+          detach(notificationService
+            .notifyPayoutHeldNoIban({
+              userId: payout.wallet.user.id,
+              availableBalance: payout.amount, // absolute value of the held amount
+              threshold: 0, // n/a for this context
+            }), (err) => logger.error(`[bulk-approve] no-IBAN notification failed for user ${payout.wallet.user.id}:`, err));
+        } catch (err) {
+          logger.error(`[bulk-approve] failed to hold no-IBAN payout ${payout.id}:`, err);
+          failed++;
+        }
+      }
 
       // §6.1 v1.1 — delegate the atomic PENDING → PROCESSING transition to
       // executePayoutTransfer so we share the same race-safe path the single
@@ -377,10 +430,10 @@ router.patch(
         approved,
         alreadyProcessed,
         failed,
-        skippedNoIban,
+        held,
         skippedNoSub,
         // Aggregate kept for backwards compatibility with any older callers.
-        skipped: skippedNoIban + skippedNoSub + failed,
+        skipped: held + skippedNoSub + failed,
         total: pending.length,
       });
     } catch (error) {
@@ -409,10 +462,37 @@ router.patch(
         res.status(400).json({ message: 'Only PENDING payouts can be approved' });
         return;
       }
+
+      // Fix C — no-IBAN payouts are held+notified, not rejected with 422.
+      // This allows users to fix their IBAN and retry the payout (spec §3.2 / §6.1).
       if (!payout.wallet.payoutIban) {
-        res.status(422).json({ message: 'Не може да се одобри: абонатът няма регистриран IBAN', reason: 'NO_IBAN' });
+        try {
+          // Hold the payout for manual review with a description indicating no-IBAN.
+          const held = await prisma.walletTransaction.update({
+            where: { id: payout.id },
+            data: {
+              status: 'RISK_HOLD',
+              description: 'Задържано - липсва банкова сметка (IBAN). Моля добавете вашу IBAN преди повторно одобрение.',
+            },
+          });
+          // Spec §3.2 / §6.1 — notify user to add their bank details.
+          detach(notificationService
+            .notifyPayoutHeldNoIban({
+              userId: payout.wallet.userId,
+              availableBalance: Math.abs(payout.amount),
+              threshold: 0, // n/a for this context
+            }), (err) => logger.error(`[approve] no-IBAN notification failed for user ${payout.wallet.userId}:`, err));
+          res.status(202).json({
+            ...held,
+            message: 'Пayout held — user notified to add bank details (IBAN) before retry.',
+            reason: 'NO_IBAN_HELD_FOR_UPDATE',
+          });
+        } catch (err) {
+          res.status(500).json({ message: 'Failed to hold payout', reason: 'HOLD_FAILED', error: String(err) });
+        }
         return;
       }
+
       const gate = await checkSubscriptionGate(payout.wallet.userId);
       if (!gate.eligible) {
         const rejected = gate as Extract<SubGateResult, { eligible: false }>;
@@ -595,6 +675,11 @@ router.patch(
         return;
       }
 
+      // Fix A & B — stamp metadata.manualHold=true to discriminate this hold from
+      // escalated RISK_HOLD rows (which have metadata.escalatedSecondFailure=true).
+      // This allows /release to refuse escalated rows (409) and prevents manual holds
+      // from inflating the strike count.
+      const existingMeta = payout.metadata ? JSON.parse(payout.metadata) : {};
       const updated = await prisma.walletTransaction.update({
         where: { id },
         data: {
@@ -602,6 +687,7 @@ router.patch(
           description: reason
             ? `Задържано за проверка: ${reason}`
             : 'Задържано за проверка при съмнение',
+          metadata: JSON.stringify({ ...existingMeta, manualHold: true }),
         },
       });
 
@@ -628,6 +714,21 @@ router.patch(
       }
       if (payout.status !== 'RISK_HOLD') {
         res.status(400).json({ message: 'Only RISK_HOLD payouts can be released' });
+        return;
+      }
+
+      // Fix A — refuse to release escalated RISK_HOLD rows (second-failure escalations).
+      // Escalated rows have metadata.escalatedSecondFailure=true and MUST be resolved
+      // via /reject (restore balance + revert cashback) or /complete (mark PAID).
+      // Releasing them back to PENDING would cause a double-spend: /approve would
+      // fire a fresh Paysera transfer for cashback already debited twice before.
+      const meta = payout.metadata ? JSON.parse(payout.metadata) : {};
+      if (meta.escalatedSecondFailure === true) {
+        res.status(409).json({
+          message: 'Cannot release: this payout was escalated after repeated failures. Resolve via /reject (revert) or /complete (mark paid) only.',
+          reason: 'ESCALATED_RISK_HOLD',
+          escalatedAt: meta.escalatedAt ?? 'unknown',
+        });
         return;
       }
 
@@ -694,9 +795,9 @@ router.patch(
       // Two concurrent /fail calls can no longer both read count=0 and both take
       // the first-failure path.
       //
-      // Fix A (riskScore): read the user's current riskScore inside the transaction
-      // and write Math.max(currentRiskScore, 61) so a higher pre-existing score is
-      // never silently downgraded to 61.
+      // Fix B (scope): count only genuine payout failures, excluding manual holds.
+      // Manual holds have metadata.manualHold=true; escalated second-failures have
+      // metadata.escalatedSecondFailure=true. Only rows WITHOUT manualHold=true count.
       //
       // Side-effectful calls (revertCashbackLockForWithdrawal, notifySubscriber) are
       // DB-independent and remain outside the transaction callback after the branch
@@ -706,17 +807,25 @@ router.patch(
       let txResult: { isSecondFailure: boolean };
       try {
         txResult = await prisma.$transaction(async (tx) => {
-          // Fix B — count inside the transaction.
+          // Fix B — count inside the transaction AND exclude manual holds.
+          // Only count genuine payout failures, not administrative holds.
           // M4 — count BOTH FAILED and RISK_HOLD prior withdrawals so the strike
           // count stays consistent with the Paysera auto-fail path (a prior
           // second-strike produces a RISK_HOLD row, not a FAILED one).
-          const previousFailedCount = await tx.walletTransaction.count({
+          const allFailedRows = await tx.walletTransaction.findMany({
             where: {
               walletId: payout.walletId,
               type: 'WITHDRAWAL',
               status: { in: ['FAILED', 'RISK_HOLD'] as WalletTransactionStatus[] },
             },
+            select: { metadata: true },
           });
+          // Filter out manual holds (metadata.manualHold=true) and only count genuine failures.
+          const genuineFailures = allFailedRows.filter((row) => {
+            const meta = row.metadata ? JSON.parse(row.metadata) : {};
+            return meta.manualHold !== true;
+          });
+          const previousFailedCount = genuineFailures.length;
 
           if (previousFailedCount >= 1) {
             // Second (or subsequent) failure: escalate to manual review + mark HIGH risk.
@@ -725,6 +834,7 @@ router.patch(
             // Cashback stays LOCKED — it will be released or consumed when an admin
             // resolves the RISK_HOLD via /reject (revert) or /complete (mark PAID).
 
+            const existingMeta = payout.metadata ? JSON.parse(payout.metadata) : {};
             await tx.walletTransaction.update({
               where: { id },
               data: {
@@ -732,14 +842,21 @@ router.patch(
                 description: reason
                   ? `Ескалирано за ръчен преглед след повторен неуспех: ${reason}`
                   : 'Ескалирано за ръчен преглед след повторен неуспех на банков превод',
+                // Fix A — stamp metadata.escalatedSecondFailure=true so /release can
+                // distinguish this from a manual hold and refuse to re-arm it.
+                metadata: JSON.stringify({
+                  ...existingMeta,
+                  escalatedSecondFailure: true,
+                  escalatedAt: new Date().toISOString(),
+                }),
               },
             });
             // Mark the user as HIGH risk per spec §3.7 / §2.1. Shared two-strike
-            // helper floors riskScore at 61 (never downgrades a higher score) and
-            // uses updateMany so a user soft-deleted between the outer findFirst
-            // and this transaction body is a no-op rather than a P2025 that would
-            // roll back the whole transaction and leave the payout stuck. Runs on
-            // the transaction client so it shares this Serializable transaction.
+            // helper floors riskScore at 51 (canonical boundary) and uses updateMany
+            // so a user soft-deleted between the outer findFirst and this transaction
+            // body is a no-op rather than a P2025 that would roll back the whole
+            // transaction and leave the payout stuck. Runs on the transaction client
+            // so it shares this Serializable transaction.
             await walletService.escalateRiskAfterRepeatedPayoutFailure(payout.wallet.userId, tx);
 
             return { isSecondFailure: true };

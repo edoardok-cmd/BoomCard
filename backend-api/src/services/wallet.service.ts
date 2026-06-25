@@ -925,7 +925,10 @@ export class WalletService {
       where: { id: userId },
       select: { riskScore: true },
     });
-    const safeRiskScore = Math.max(current?.riskScore ?? 0, 61);
+    // Fix E — use the canonical RISK_HOLD_FLOOR_SCORE (51) from userRisk.service.ts
+    // instead of the non-spec-compliant 61. Never downgrades a higher pre-existing score.
+    const RISK_HOLD_FLOOR_SCORE = 51;
+    const safeRiskScore = Math.max(current?.riskScore ?? 0, RISK_HOLD_FLOOR_SCORE);
     await client.user.updateMany({
       where: { id: userId },
       data: { riskBucket: 'HIGH_51_PLUS', riskScore: safeRiskScore },
@@ -1084,14 +1087,23 @@ export class WalletService {
       // not yet in either bucket.
       let isSecondFailure = false;
       try {
-        const priorFailureCount = await prisma.walletTransaction.count({
+        // Fix B — count only genuine payout failures, excluding manual holds.
+        // Manual holds have metadata.manualHold=true; escalated second-failures have
+        // metadata.escalatedSecondFailure=true. Only rows WITHOUT manualHold=true count.
+        const allFailedRows = await prisma.walletTransaction.findMany({
           where: {
             walletId,
             type: WalletTransactionType.WITHDRAWAL,
             status: { in: [WalletTransactionStatus.FAILED, WalletTransactionStatus.RISK_HOLD] },
           },
+          select: { metadata: true },
         });
-        isSecondFailure = priorFailureCount >= 1;
+        // Filter out manual holds (metadata.manualHold=true) and only count genuine failures.
+        const genuineFailures = allFailedRows.filter((row) => {
+          const meta = row.metadata ? JSON.parse(row.metadata) : {};
+          return meta.manualHold !== true;
+        });
+        isSecondFailure = genuineFailures.length >= 1;
       } catch (countErr) {
         logger.error(`[executePayoutTransfer] failed to count prior payout failures for user ${userId}:`, countErr);
       }
@@ -1101,14 +1113,22 @@ export class WalletService {
         // balance and do NOT revert cashback — the balance/cashback are released
         // (or consumed) when an admin resolves the RISK_HOLD via the payouts route.
         try {
+          const existingMeta = meta;
           await prisma.walletTransaction.update({
             where: { id: walletTransactionId },
             data: {
               status: WalletTransactionStatus.RISK_HOLD,
               description: `Ескалирано за ръчен преглед след повторен неуспех: ${transferError.message}`,
+              // Fix A — stamp metadata.escalatedSecondFailure=true so /release can
+              // distinguish this from a manual hold and refuse to re-arm it.
+              metadata: JSON.stringify({
+                ...existingMeta,
+                escalatedSecondFailure: true,
+                escalatedAt: new Date().toISOString(),
+              }),
             },
           });
-          // Flag user HIGH risk (floors riskScore at 61, never downgrades).
+          // Flag user HIGH risk (floors riskScore at 51, canonical boundary, never downgrades).
           await this.escalateRiskAfterRepeatedPayoutFailure(userId)
             .catch((err) => logger.error(`[executePayoutTransfer] risk flag update failed for user ${userId}:`, err));
         } catch (holdErr: any) {
