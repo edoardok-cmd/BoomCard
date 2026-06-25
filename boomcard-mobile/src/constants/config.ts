@@ -76,8 +76,6 @@ export const API_CONFIG = {
     // Partners
     PARTNERS: {
       BASE: '/api/partners',
-      ME: '/api/partners/me',
-      TIER_INFO: '/api/partners/:id/tier-info',
     },
     // Cards
     CARDS: {
@@ -105,11 +103,11 @@ export const API_CONFIG = {
       BASE: '/api/plans',
       BY_CODE: '/api/plans/code',
     },
-    // Loyalty
+    // Loyalty — only ACCOUNT is served by the backend (GET /api/loyalty/accounts/me → 501).
+    // All other loyalty routes (/transactions, /rewards, /redemptions, /summary, /tiers)
+    // are not implemented on the server and have been removed (F-4 contract fix).
     LOYALTY: {
       ACCOUNT: '/api/loyalty/accounts/me',
-      TRANSACTIONS: '/api/loyalty/transactions',
-      REWARDS: '/api/loyalty/rewards',
     },
   },
 

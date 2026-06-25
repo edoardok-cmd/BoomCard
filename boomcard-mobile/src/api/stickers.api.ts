@@ -98,17 +98,6 @@ export class StickersApi {
   }
 
   /**
-   * Get single scan by ID
-   */
-  static async getScanById(
-    scanId: string
-  ): Promise<ApiResponse<StickerScan>> {
-    return await apiClient.get<StickerScan>(
-      `${API_CONFIG.ENDPOINTS.STICKERS.SCAN}/${scanId}`
-    );
-  }
-
-  /**
    * Validate QR code before scanning
    */
   static async validateSticker(

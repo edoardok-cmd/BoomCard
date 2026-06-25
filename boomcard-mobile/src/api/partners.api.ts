@@ -49,29 +49,6 @@ export class PartnersApi {
   }
 
   /**
-   * Get the current partner user's own profile (authenticated PARTNER role only).
-   * Includes tierMaxDiscountPercent — the max offer discount allowed by their tier.
-   */
-  static async getMyPartnerProfile(): Promise<ApiResponse<Partner & { tierMaxDiscountPercent: number }>> {
-    return apiClient.get<Partner & { tierMaxDiscountPercent: number }>(
-      API_CONFIG.ENDPOINTS.PARTNERS.ME,
-    );
-  }
-
-  /**
-   * Get tier constraints for a specific partner (owner or admin only).
-   */
-  static async getPartnerTierInfo(partnerId: string): Promise<ApiResponse<{
-    partnerId: string;
-    businessName: string;
-    tier: string;
-    tierMaxDiscountPercent: number;
-    tierDescription: string;
-  }>> {
-    return apiClient.get(`${API_CONFIG.ENDPOINTS.PARTNERS.BASE}/${partnerId}/tier-info`);
-  }
-
-  /**
    * Search partners by name (filtered by current user's plan).
    */
   static async searchPartners(
