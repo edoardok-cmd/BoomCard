@@ -295,6 +295,9 @@ router.get(
           nameBg: pending.plan.displayNameBg,
         },
         billingPeriod: pending.billingPeriod ?? null,
+        // Spec §4.1 (O-7): Include language so frontend can pass it to /complete-profile
+        // for correct welcome email localization
+        language: pending.language ?? 'bg',
       },
     });
   })

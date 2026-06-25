@@ -984,49 +984,61 @@ class StripeService {
 
       // Upsert the invoice payment as a transaction — Stripe may retry the webhook,
       // and a blind create would hit the unique constraint on stripePaymentId.
+      // Wrap in Serializable transaction to ensure idempotency and prevent duplicate emails.
       const amount = (invoice.amount_paid ?? 0) / 100;
       const invoiceStripePaymentId = (invoice.payment_intent as string) ?? invoice.id;
-      await prisma.transaction.upsert({
-        where: { stripePaymentId: invoiceStripePaymentId },
-        create: {
-          userId: dbSub.userId,
-          type: 'SUBSCRIPTION' as any,
-          status: 'COMPLETED',
-          amount,
-          finalAmount: amount,
-          currency: (invoice.currency ?? 'bgn').toUpperCase(),
-          paymentMethod: 'CARD',
-          stripePaymentId: invoiceStripePaymentId,
-          paymentIntentId: (invoice.payment_intent as string) ?? null,
-          metadata: JSON.stringify({
-            invoiceId: invoice.id,
-            subscriptionId,
-            billingReason: invoice.billing_reason,
-          }),
-          completedAt: new Date(),
-        },
-        update: {
-          status: 'COMPLETED',
-          completedAt: new Date(),
-        },
-      });
 
-      // Spec §3.1: send renewal confirmation email for recurring payments
-      if (invoice.billing_reason === 'subscription_cycle' && dbSub.user?.email) {
-        const lang = (dbSub.user.preferredLanguage === 'en' ? 'en' : 'bg') as 'bg' | 'en';
-        detach(emailService
-          .sendPaymentConfirmation(
-            dbSub.user.email,
-            {
-              customerName: dbSub.user.firstName || 'Customer',
-              orderId: invoiceStripePaymentId,
-              amount,
-              currency: (invoice.currency ?? 'bgn').toUpperCase(),
-              date: new Date(),
-            },
-            lang,
-          ), (err: unknown) => logger.error(`Failed to send renewal confirmation email for sub ${dbSub.id}:`, err));
-      }
+      await prisma.$transaction(async (tx) => {
+        // Check if transaction already exists before upsert
+        const existingTransaction = await tx.transaction.findUnique({
+          where: { stripePaymentId: invoiceStripePaymentId }
+        });
+        const isFirstTransaction = !existingTransaction;
+
+        // Upsert within transaction
+        await tx.transaction.upsert({
+          where: { stripePaymentId: invoiceStripePaymentId },
+          create: {
+            userId: dbSub.userId,
+            type: 'SUBSCRIPTION' as any,
+            status: 'COMPLETED',
+            amount,
+            finalAmount: amount,
+            currency: (invoice.currency ?? 'bgn').toUpperCase(),
+            paymentMethod: 'CARD',
+            stripePaymentId: invoiceStripePaymentId,
+            paymentIntentId: (invoice.payment_intent as string) ?? null,
+            metadata: JSON.stringify({
+              invoiceId: invoice.id,
+              subscriptionId,
+              billingReason: invoice.billing_reason,
+            }),
+            completedAt: new Date(),
+          },
+          update: {
+            status: 'COMPLETED',
+            completedAt: new Date(),
+          },
+        });
+
+        // Spec §3.1: send renewal confirmation email for recurring payments
+        // Only send if this is the first time processing this payment
+        if (isFirstTransaction && invoice.billing_reason === 'subscription_cycle' && dbSub.user?.email) {
+          const lang = (dbSub.user.preferredLanguage === 'en' ? 'en' : 'bg') as 'bg' | 'en';
+          detach(emailService
+            .sendPaymentConfirmation(
+              dbSub.user.email,
+              {
+                customerName: dbSub.user.firstName || 'Customer',
+                orderId: invoiceStripePaymentId,
+                amount,
+                currency: (invoice.currency ?? 'bgn').toUpperCase(),
+                date: new Date(),
+              },
+              lang,
+            ), (err: unknown) => logger.error(`Failed to send renewal confirmation email for sub ${dbSub.id}:`, err));
+        }
+      }, { isolationLevel: 'Serializable' });
 
       // If this payment clears a previously failed renewal, recover to ACTIVE
       if (dbSub.retryAttempt > 0 || dbSub.status === 'PAST_DUE' || dbSub.status === 'FAILED_PAYMENT') {
