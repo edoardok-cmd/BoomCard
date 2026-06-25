@@ -13,6 +13,7 @@ import { AppError } from '../middleware/error.middleware';
 import { detach } from '../utils/detach';
 import { reasonIndicatesIbanProblem } from '../utils/payoutFailureReason';
 import { resolvePayoutEligibility } from './payoutEligibility.service';
+import { RISK_HOLD_FLOOR_SCORE } from './userRisk.service';
 
 // ── User-facing payout-status masking (Spec §3.2 / §3.7) ─────────────────────
 // Spec §3.7 (line 461): on the SECOND failed payout the record routes to manual
@@ -927,7 +928,6 @@ export class WalletService {
     });
     // Fix E — use the canonical RISK_HOLD_FLOOR_SCORE (51) from userRisk.service.ts
     // instead of the non-spec-compliant 61. Never downgrades a higher pre-existing score.
-    const RISK_HOLD_FLOOR_SCORE = 51;
     const safeRiskScore = Math.max(current?.riskScore ?? 0, RISK_HOLD_FLOOR_SCORE);
     await client.user.updateMany({
       where: { id: userId },

@@ -386,7 +386,7 @@ router.patch(
           detach(notificationService
             .notifyPayoutHeldNoIban({
               userId: payout.wallet.user.id,
-              availableBalance: payout.amount, // absolute value of the held amount
+              availableBalance: Math.abs(payout.amount), // absolute value of the held amount
               threshold: 0, // n/a for this context
             }), (err) => logger.error(`[bulk-approve] no-IBAN notification failed for user ${payout.wallet.user.id}:`, err));
         } catch (err) {

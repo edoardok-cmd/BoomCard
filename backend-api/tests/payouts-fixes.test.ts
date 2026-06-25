@@ -265,7 +265,27 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
       expect(genuineFailures.length).toBe(0);
 
       // The /fail call should treat this as a first failure, not second
-      // (In a real scenario, this would revert cashback and restore balance)
+      // Call the /fail endpoint to verify end-to-end filtering behavior
+      const failResponse = await request(app)
+        .post(`/api/admin/payouts/${secondPayout.id}/fail`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          reason: 'INSUFFICIENT_FUNDS',
+          notifyUser: true,
+        });
+
+      // Should succeed with 200 (not error)
+      expect(failResponse.status).toBe(200);
+
+      // Verify the payout is now marked FAILED (first failure, not escalated RISK_HOLD)
+      const updatedPayout = await prisma.walletTransaction.findUnique({
+        where: { id: secondPayout.id },
+      });
+
+      expect(updatedPayout?.status).toBe('FAILED');
+      // Confirm it was not escalated despite the manual hold existing
+      const meta = updatedPayout?.metadata ? JSON.parse(updatedPayout.metadata as string) : {};
+      expect(meta.escalatedSecondFailure).not.toBe(true);
     });
   });
 

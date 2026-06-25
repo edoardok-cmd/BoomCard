@@ -127,9 +127,12 @@ export async function computeRiskForUsers(users: UserSlice[]): Promise<Map<strin
         },
         _count: { _all: true },
       }),
-      // Signal 4: count of Voided cashback records per user (3+ fires).
+      // Signal 4: count of Voided cashback records per USER (3+ across all wallets fires).
+      // BC-ADMIN-AUDIT-FIX-002 DEFECT C: spec §2.1 defines as per-user (sum across wallets),
+      // not per-wallet. Changed groupBy to userId so a user with 2 voided in wallet A + 1 in
+      // wallet B = 3 total and fires. Matches fraudDetection.service.ts logic.
       prisma.walletTransaction.groupBy({
-        by: ['walletId'],
+        by: ['wallet.userId'],
         where: {
           cashbackStatus: 'VOIDED',
           wallet: { userId: { in: ids } },
@@ -137,10 +140,14 @@ export async function computeRiskForUsers(users: UserSlice[]): Promise<Map<strin
         _count: { _all: true },
       }),
       // Signal 5: users who scanned at a venue whose partner has an active risk flag.
+      // BC-ADMIN-AUDIT-FIX-002 DEFECT D: added createdAt filter (30-day window) for
+      // consistency with Signals 2 & 3. Prevents a single historic scan at a now-flagged
+      // partner from pinning a user at +10 forever.
       prisma.stickerScan.findMany({
         where: {
           userId: { in: ids },
           venue: { partner: { hasRiskFlag: true } },
+          createdAt: { gte: lookbackFrom },
         },
         select: { userId: true },
         distinct: ['userId'],
@@ -175,19 +182,15 @@ export async function computeRiskForUsers(users: UserSlice[]): Promise<Map<strin
     }
   }
 
-  // Signal 4: 3+ Voided records. groupBy is keyed by walletId, so map back to userId.
-  if (voidedCounts.length > 0) {
-    const flaggedWalletIds = voidedCounts
-      .filter((r) => r._count._all >= 3)
-      .map((r) => r.walletId);
-    if (flaggedWalletIds.length > 0) {
-      const wallets = await prisma.wallet.findMany({
-        where: { id: { in: flaggedWalletIds } },
-        select: { id: true, userId: true },
-      });
-      for (const w of wallets) {
-        apply(w.userId, RULES.USER_HAS_3_PLUS_VOIDED, '3+ voided cashback records');
-      }
+  // Signal 4: 3+ Voided records (per user, summed across all wallets).
+  // BC-ADMIN-AUDIT-FIX-002 DEFECT C: groupBy now uses wallet.userId so result keys are userId
+  // directly, and we no longer need a secondary wallet lookup.
+  for (const r of voidedCounts) {
+    if (r._count._all >= 3) {
+      // Prisma groupBy with by: ['wallet.userId'] returns result with
+      // wallet_userId property (underscore-separated path), so we access it.
+      const userId = (r as any).wallet_userId;
+      apply(userId, RULES.USER_HAS_3_PLUS_VOIDED, '3+ voided cashback records');
     }
   }
 
@@ -223,7 +226,7 @@ export async function computeRiskForUsers(users: UserSlice[]): Promise<Map<strin
 // 51 is the correct lowest score that still lands the user in HIGH.
 // Used as the RISK_HOLD floor: a user with an open RISK_HOLD payout must not be
 // downgraded below HIGH by periodic recomputes (spec §3.7 / FIX-B).
-const RISK_HOLD_FLOOR_SCORE = 51;
+export const RISK_HOLD_FLOOR_SCORE = 51;
 
 const PERSIST_CONCURRENCY = 10;
 
