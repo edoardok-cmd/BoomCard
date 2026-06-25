@@ -512,6 +512,84 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
       // Should succeed (the CANCELLED-within-paid-period subscription is eligible)
       expect([200, 202]).toContain(res.status); // 200 on success, 202 on hold for other reasons (not subscription)
     });
+
+    it('should reject payout when latest subscription is FAILED_PAYMENT, even with older ACTIVE', async () => {
+      // Create user with multiple subscriptions: older ACTIVE, newer FAILED_PAYMENT
+      const testUser = await prisma.user.create({
+        data: {
+          email: 'failed-payment@test.local',
+          firstName: 'FailedPay',
+          lastName: 'Test',
+          status: 'ACTIVE',
+          emailVerified: true,
+        },
+      });
+
+      const testWallet = await prisma.wallet.create({
+        data: {
+          userId: testUser.id,
+          balance: 500,
+          availableBalance: 500,
+          pendingBalance: 0,
+          currency: 'BGN',
+          payoutIban: 'DE89370400440532013000',
+          payoutBeneficiaryName: 'Test User',
+        },
+      });
+
+      // Create older ACTIVE subscription
+      const activeSub = await prisma.subscription.create({
+        data: {
+          userId: testUser.id,
+          status: 'ACTIVE',
+          plan: 'PREMIUM_WEEKLY',
+          currentPeriodStart: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
+          currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        },
+      });
+
+      // Create newer FAILED_PAYMENT subscription (latest)
+      const failedPaymentSub = await prisma.subscription.create({
+        data: {
+          userId: testUser.id,
+          status: 'FAILED_PAYMENT',
+          plan: 'PREMIUM_WEEKLY',
+          currentPeriodStart: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+          currentPeriodEnd: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000),
+        },
+      });
+
+      // Create a PENDING payout
+      const payout = await prisma.walletTransaction.create({
+        data: {
+          walletId: testWallet.id,
+          type: 'WITHDRAWAL',
+          amount: -250,
+          balanceBefore: 500,
+          balanceAfter: 250,
+          status: 'PENDING',
+          currency: 'BGN',
+          metadata: JSON.stringify({
+            plan: 'PREMIUM_WEEKLY',
+            thresholdBGN: 100,
+            beneficiaryIban: 'DE89370400440532013000',
+            beneficiaryName: 'Test User',
+            callbackSecret: 'test-secret-123',
+            requestedAt: new Date().toISOString(),
+            lockedCashbackIds: [],
+          }),
+        },
+      });
+
+      // Try to approve — should fail because latest subscription is FAILED_PAYMENT
+      const res = await request(app)
+        .patch(`/api/admin/payouts/${payout.id}/approve`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      // Should reject with 422 due to FAILED_PAYMENT latest subscription
+      expect(res.status).toBe(422);
+      expect(res.body.reason).toBe('FAILED_PAYMENT');
+    });
   });
 
   describe('DEFECT E: Uses canonical RISK_HOLD_FLOOR_SCORE (51)', () => {

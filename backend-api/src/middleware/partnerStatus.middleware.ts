@@ -17,10 +17,11 @@
  * Support/help endpoints intentionally do NOT mount this — Inactive partners
  * keep the ability to submit support tickets per the spec matrix.
  *
- * Audit-pass [3.1]: mounted on ALL partner-writable routers (partners,
- * venues, stickers/locations) — not just /api/partners. Spec §5.3
- * "read-only operational режим" is broader than the original /api/partners
- * mount implied.
+ * Audit-pass [3.1]: mounted on partner-writable routers — specifically
+ * partners.routes.ts and receipts.enhanced.routes.ts. Venues/stickers
+ * write paths are currently restricted to ADMIN/SUPER_ADMIN only (PARTNER
+ * role has no write access), so the partner-active gate is intentionally
+ * not mounted there. Spec §5.3 "read-only operational режим" scope.
  *
  * Audit-pass [3.2]: fails CLOSED on DB error rather than fall-through.
  * A transient Prisma exception used to bypass the gate silently; now we

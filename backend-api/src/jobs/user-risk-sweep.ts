@@ -50,9 +50,20 @@ export async function runUserRiskSweep(): Promise<{ processed: number; updated: 
     cursor = batch[batch.length - 1].id;
     processed += batch.length;
 
-    const assessments = await computeRiskForUsers(
-      batch.map((u) => ({ id: u.id, createdAt: u.createdAt, ibanLastChangedAt: u.ibanLastChangedAt })),
-    );
+    let assessments: Awaited<ReturnType<typeof computeRiskForUsers>>;
+    try {
+      assessments = await computeRiskForUsers(
+        batch.map((u) => ({ id: u.id, createdAt: u.createdAt, ibanLastChangedAt: u.ibanLastChangedAt })),
+      );
+    } catch (err) {
+      // Log the error and skip this batch — the sweep continues and processes
+      // the remaining users. Individual batch failure does not abort the entire
+      // nightly cron (per spec §7.2).
+      logger.error(
+        `[user-risk-sweep] Failed to compute risk for batch starting at ${cursor}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      continue;
+    }
 
     // Only count rows that actually need a write — persistRiskAssessments will
     // skip writes for unchanged rows via its `where` guard, but we want a real

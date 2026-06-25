@@ -907,13 +907,13 @@ export class WalletService {
    *
    * Single source of truth for the two-strike risk-flagging math, shared by the
    * admin `/:id/fail` route and the automatic Paysera-failure path in
-   * `executePayoutTransfer`. Floors riskScore at 61 and never downgrades a higher
-   * existing score, so the persisted score always stays inside the HIGH_51_PLUS
-   * bucket (spec §2.1) and never inflates unbounded across repeated failures
-   * (the prior `riskScore += 40` Paysera path could exceed 100 and drift away
-   * from the bucket boundary). Uses `updateMany` so a user soft-deleted between
-   * the read and the write is a no-op rather than a P2025 that would abort a
-   * caller's transaction.
+   * `executePayoutTransfer`. Floors riskScore at RISK_HOLD_FLOOR_SCORE (51) and
+   * never downgrades a higher existing score, so the persisted score always stays
+   * inside the HIGH_51_PLUS bucket (spec §2.1) and never inflates unbounded
+   * across repeated failures (the prior `riskScore += 40` Paysera path could
+   * exceed 100 and drift away from the bucket boundary). Uses `updateMany` so a
+   * user soft-deleted between the read and the write is a no-op rather than a
+   * P2025 that would abort a caller's transaction.
    *
    * Pass a transaction client to run inside an existing `$transaction`; defaults
    * to the shared prisma client for fire-outside-tx callers.

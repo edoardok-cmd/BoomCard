@@ -128,13 +128,28 @@ describe('userRisk.service (spec §2.1 canonical five signals)', () => {
       expect(out.get('u1')!.reasons).toContain('3+ voided cashback records');
     });
 
+    it('sums voided records across multiple wallets for the same user', async () => {
+      // User u1 has wallet w1 with 2 voids + wallet w2 with 1 void = 3 total → fires.
+      mockedPrisma.walletTransaction.groupBy.mockResolvedValueOnce([
+        { walletId: 'w1', _count: { _all: 2 } },
+        { walletId: 'w2', _count: { _all: 1 } },
+      ]);
+      mockedPrisma.wallet.findMany.mockResolvedValueOnce([
+        { id: 'w1', userId: 'u1' },
+        { id: 'w2', userId: 'u1' },
+      ]);
+      const out = await computeRiskForUsers([baseUser()]);
+      expect(out.get('u1')!.score).toBe(20);
+      expect(out.get('u1')!.reasons).toContain('3+ voided cashback records');
+    });
+
     it('does not fire the voided signal below 3 records', async () => {
       mockedPrisma.walletTransaction.groupBy.mockResolvedValueOnce([
         { walletId: 'w1', _count: { _all: 2 } },
       ]);
+      mockedPrisma.wallet.findMany.mockResolvedValueOnce([{ id: 'w1', userId: 'u1' }]);
       const out = await computeRiskForUsers([baseUser()]);
       expect(out.get('u1')!.score).toBe(0);
-      expect(mockedPrisma.wallet.findMany).not.toHaveBeenCalled();
     });
 
     // Signal 5 — partner active risk flag → +10
@@ -156,7 +171,7 @@ describe('userRisk.service (spec §2.1 canonical five signals)', () => {
     it('caps the score at 100 when every signal fires (sum 120)', async () => {
       mockedPrisma.receipt.groupBy.mockResolvedValueOnce([{ userId: 'u1', _count: { _all: 1 } }]);          // +30
       mockedPrisma.stickerScan.groupBy.mockResolvedValueOnce([{ userId: 'u1', _count: { _all: 1 } }]);      // +20
-      mockedPrisma.walletTransaction.groupBy.mockResolvedValueOnce([{ walletId: 'w1', _count: { _all: 5 } }]); // +20
+      mockedPrisma.walletTransaction.groupBy.mockResolvedValueOnce([{ walletId: 'w1', _count: { _all: 5 } }]); // +20 (5 voids >= 3)
       mockedPrisma.wallet.findMany.mockResolvedValueOnce([{ id: 'w1', userId: 'u1' }]);
       mockedPrisma.stickerScan.findMany.mockResolvedValueOnce([{ userId: 'u1' }]);                          // +10
       const u = baseUser({ ibanLastChangedAt: new Date(Date.now() - 1 * 60 * 60 * 1000) });                // +40

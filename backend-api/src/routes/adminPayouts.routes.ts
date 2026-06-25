@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma';
 import { emailService } from '../services/email.service';
 import { walletService } from '../services/wallet.service';
 import { notificationService } from '../services/notification.service';
+import { resolvePayoutEligibility } from '../services/payoutEligibility.service';
 import { logger } from '../utils/logger';
 import { runWithConcurrency } from '../utils/concurrency';
 import { parsePagination } from '../utils/pagination';
@@ -19,57 +20,39 @@ router.use(auditMiddleware);
 
 // Spec §3.7 / §4.1 / Clash 4.1 — payout eligibility for NEW payouts:
 //   Allowed: Active subscription OR Cancelled-within-paid-period (currentPeriodEnd still in the future).
-//   Blocked: Cancelled post-period, Failed Payment, Expired.
+//   Blocked: Latest subscription is Failed Payment, or Cancelled post-period, or Expired.
 //   In-flight payouts: always continue regardless of subscription status (earned-rights model).
 //
 // Note: TRIALING is included as an operationally-Active equivalent so trial-period
 // subscribers can also receive payouts (not in the spec source but consistent with
 // the TRIALING subscription representing an active billing relationship).
+//
+// The admin-approval gate intentionally routes through resolvePayoutEligibility
+// (the canonical single source of truth per payoutEligibility.service.ts) so that
+// eligibility checks are identical across request → approve → in-flight paths.
+// Earned-rights (Clash 4.1) ensures in-flight payouts continue regardless of
+// later subscription status changes, so the approval of an already-enqueued
+// payout sees the same FAILED_PAYMENT hard-block that requestPayout() did.
 
 type SubGateResult =
   | { eligible: true }
-  | { eligible: false; reason: 'NO_SUBSCRIPTION' | 'INELIGIBLE_STATUS'; status?: SubscriptionStatus };
+  | { eligible: false; reason: 'NO_SUBSCRIPTION' | 'FAILED_PAYMENT'; status?: SubscriptionStatus };
 
 async function checkSubscriptionGate(userId: string): Promise<SubGateResult> {
-  // Fix D — check all subscriptions for eligibility, not just the newest.
-  // A user is eligible if they have:
-  //   1. Any ACTIVE or TRIALING subscription (current or past), OR
-  //   2. Any CANCELLED subscription with currentPeriodEnd still in the future
-  //        (earned-rights model: access continues through last paid day).
-  // This prevents a wrongly ineligible FAILED_PAYMENT/EXPIRED row from blocking
-  // a user who has an older eligible subscription (§8.1 Clash 4.1).
-  //
-  // To distinguish "never subscribed" from "had subscriptions but all ineligible",
-  // we first check if any subscription row exists for this user.
-  const allSubs = await prisma.subscription.findMany({
-    where: { userId },
-    select: { status: true, currentPeriodEnd: true },
-  });
+  // Single source of truth: route through resolvePayoutEligibility so all three
+  // eligibility paths (request → approve → in-flight) share identical logic.
+  // This prevents drift between routes on the documented FAILED_PAYMENT hard-block.
+  const eligibility = await resolvePayoutEligibility(userId);
 
-  if (allSubs.length === 0) {
+  if (!eligibility.eligible) {
+    if (eligibility.hasFailedPayment) {
+      return { eligible: false, reason: 'FAILED_PAYMENT', status: 'FAILED_PAYMENT' };
+    }
+    // No active/trialing/cancelled-in-period subscription found
     return { eligible: false, reason: 'NO_SUBSCRIPTION' };
   }
 
-  const now = new Date();
-  for (const sub of allSubs) {
-    // Spec §4.1 Clash 4.1 — Active and Trialing subscriptions allow new payouts.
-    if (sub.status === 'ACTIVE' || sub.status === 'TRIALING') {
-      return { eligible: true };
-    }
-    // Spec §4.1 Clash 4.1 — Cancelled-within-paid-period also allows new payouts
-    // (access continues through last paid day; earned-rights model).
-    if (sub.status === 'CANCELLED' && sub.currentPeriodEnd != null && sub.currentPeriodEnd > now) {
-      return { eligible: true };
-    }
-  }
-
-  // No eligible subscription found — return the status of the newest one for the message.
-  const newest = allSubs.reduce((prev, curr) => {
-    // Can't directly compare createdAt here, so we return the last one in the array.
-    // The findMany default is createdAt asc, so the last is the newest.
-    return curr;
-  });
-  return { eligible: false, reason: 'INELIGIBLE_STATUS', status: newest.status as SubscriptionStatus };
+  return { eligible: true };
 }
 
 const SUB_STATUS_BG: Record<string, string> = {
@@ -89,6 +72,9 @@ function subGateMessage(gate: SubGateResult): string {
   const rejected = gate as Extract<SubGateResult, { eligible: false }>;
   if (rejected.reason === 'NO_SUBSCRIPTION') {
     return 'Не може да се одобри: абонатът няма регистриран абонамент. Изплащане е възможно само при активен абонамент (§6.1).';
+  }
+  if (rejected.reason === 'FAILED_PAYMENT') {
+    return 'Не може да се одобри: последната подписка е "неуспешно плащане". Payout се задържа до възстановяване на абонамента (§6.1).';
   }
   const label = rejected.status ? (SUB_STATUS_BG[rejected.status] ?? rejected.status) : 'неактивен';
   return `Не може да се одобри: абонаментът е „${label}". Payout се задържа до възстановяване на абонамента (§6.1).`;
@@ -378,7 +364,7 @@ router.patch(
             where: { id: payout.id },
             data: {
               status: 'RISK_HOLD',
-              description: 'Задържано - липсва банкова сметка (IBAN). Моля добавете вашу IBAN преди повторно одобрение.',
+              description: 'Задържано - липсва банкова сметка (IBAN). Моля добавете вашия IBAN преди повторно одобрение.',
             },
           });
           held++;
@@ -472,7 +458,7 @@ router.patch(
             where: { id: payout.id },
             data: {
               status: 'RISK_HOLD',
-              description: 'Задържано - липсва банкова сметка (IBAN). Моля добавете вашу IBAN преди повторно одобрение.',
+              description: 'Задържано - липсва банкова сметка (IBAN). Моля добавете вашия IBAN преди повторно одобрение.',
             },
           });
           // Spec §3.2 / §6.1 — notify user to add their bank details.
@@ -484,7 +470,7 @@ router.patch(
             }), (err) => logger.error(`[approve] no-IBAN notification failed for user ${payout.wallet.userId}:`, err));
           res.status(202).json({
             ...held,
-            message: 'Пayout held — user notified to add bank details (IBAN) before retry.',
+            message: 'Payout held — user notified to add bank details (IBAN) before retry.',
             reason: 'NO_IBAN_HELD_FOR_UPDATE',
           });
         } catch (err) {

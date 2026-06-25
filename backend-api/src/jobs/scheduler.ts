@@ -7,7 +7,7 @@
  * Schedule (Europe/Sofia unless noted):
  *   subscription-expiry              — 30 1 * * *   (1:30 AM daily)
  *   cashback-expiry                  — 0 2 * * *    (2:00 AM daily)
- *   stale-pending-cashback-expiry    — 5 2 * * *    (2:05 AM daily — expire PENDING entries >60d old)
+ *   stale-pending-cashback-expiry    — 5 2 * * *    (2:05 AM daily — no-op placeholder; spec §1.3/§8.2 PENDING never expires)
  *   cashback-expiring-warning        — 0 3 * * *    (3:00 AM daily — warn users 7 days before expiry)
  *   upload-token-cleanup             — 30 3 * * *   (3:30 AM daily)
  *   pending-subscription-cleanup     — 30 3 * * *   (3:30 AM daily)
@@ -1840,10 +1840,10 @@ export function registerScheduledJobs(): void {
 
   // 2:05 AM every day — stale-pending-cashback-expiry job slot.
   // Spec §8.2 / §1.3: Pending cashback NEVER expires — only Cleared cashback has
-  // a 60-day countdown (from clearedAt). expireStalePendingCashback() intentionally
-  // throws so this cron is a safe no-op. The cron registration is kept in case
-  // the spec position changes; alertSchedulerFailure records the throw for ops
-  // visibility. No Pending entries are modified by this run.
+  // a 60-day countdown (from clearedAt). expireStalePendingCashback() is a true no-op:
+  // it returns { count: 0 } and does not throw. This cron produces no failure alerts
+  // (it runs cleanly every day, zero entries modified). The cron registration is kept
+  // in case the spec position changes. No Pending entries are modified by this run.
   cron.schedule('5 2 * * *', () => {
     expireStalePendingCashback(null).catch((err) => alertSchedulerFailure('stale-pending-cashback-expiry', err));
   }, { timezone: 'Europe/Sofia' });

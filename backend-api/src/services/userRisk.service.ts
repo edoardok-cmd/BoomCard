@@ -129,16 +129,45 @@ export async function computeRiskForUsers(users: UserSlice[]): Promise<Map<strin
       }),
       // Signal 4: count of Voided cashback records per USER (3+ across all wallets fires).
       // BC-ADMIN-AUDIT-FIX-002 DEFECT C: spec §2.1 defines as per-user (sum across wallets),
-      // not per-wallet. Changed groupBy to userId so a user with 2 voided in wallet A + 1 in
+      // not per-wallet. Groupby walletId (scalar field), then map walletId→userId via
+      // secondary wallet lookup. This allows a user with 2 voided in wallet A + 1 in
       // wallet B = 3 total and fires. Matches fraudDetection.service.ts logic.
-      prisma.walletTransaction.groupBy({
-        by: ['wallet.userId'],
-        where: {
-          cashbackStatus: 'VOIDED',
-          wallet: { userId: { in: ids } },
-        },
-        _count: { _all: true },
-      }),
+      (async () => {
+        const voidedByWallet = await prisma.walletTransaction.groupBy({
+          by: ['walletId'],
+          where: {
+            cashbackStatus: 'VOIDED',
+            wallet: { userId: { in: ids } },
+          },
+          _count: { _all: true },
+        });
+
+        if (voidedByWallet.length === 0) return [];
+
+        // Map walletIds back to userIds via a single wallet lookup.
+        const walletIds = voidedByWallet.map((r) => r.walletId);
+        const wallets = await prisma.wallet.findMany({
+          where: { id: { in: walletIds } },
+          select: { id: true, userId: true },
+        });
+
+        const walletIdToUserId = new Map(wallets.map((w) => [w.id, w.userId]));
+
+        // Aggregate counts per userId (sum across all wallets for each user).
+        const voidedByUser = new Map<string, number>();
+        for (const row of voidedByWallet) {
+          const userId = walletIdToUserId.get(row.walletId);
+          if (userId) {
+            voidedByUser.set(userId, (voidedByUser.get(userId) ?? 0) + row._count._all);
+          }
+        }
+
+        // Return in the same format as other groupBy queries for consistency.
+        return Array.from(voidedByUser.entries()).map(([userId, count]) => ({
+          userId,
+          _count: { _all: count },
+        }));
+      })(),
       // Signal 5: users who scanned at a venue whose partner has an active risk flag.
       // BC-ADMIN-AUDIT-FIX-002 DEFECT D: added createdAt filter (30-day window) for
       // consistency with Signals 2 & 3. Prevents a single historic scan at a now-flagged
@@ -183,14 +212,12 @@ export async function computeRiskForUsers(users: UserSlice[]): Promise<Map<strin
   }
 
   // Signal 4: 3+ Voided records (per user, summed across all wallets).
-  // BC-ADMIN-AUDIT-FIX-002 DEFECT C: groupBy now uses wallet.userId so result keys are userId
-  // directly, and we no longer need a secondary wallet lookup.
+  // BC-ADMIN-AUDIT-FIX-002 DEFECT C: groupBy by walletId (scalar), then aggregate
+  // counts per userId via secondary wallet lookup. A user with voided records across
+  // multiple wallets has counts summed and fires if total >= 3.
   for (const r of voidedCounts) {
     if (r._count._all >= 3) {
-      // Prisma groupBy with by: ['wallet.userId'] returns result with
-      // wallet_userId property (underscore-separated path), so we access it.
-      const userId = (r as any).wallet_userId;
-      apply(userId, RULES.USER_HAS_3_PLUS_VOIDED, '3+ voided cashback records');
+      apply(r.userId, RULES.USER_HAS_3_PLUS_VOIDED, '3+ voided cashback records');
     }
   }
 
