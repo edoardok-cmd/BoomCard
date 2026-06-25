@@ -1583,7 +1583,20 @@ router.post(
       return res.status(400).json({ success: false, error: 'No pending changes to approve' });
     }
 
-    const applyData = partner.pendingChanges as Record<string, unknown>;
+    const pendingChanges = partner.pendingChanges as Record<string, unknown>;
+
+    // Spec §5.1 / §5.4 / §10.7 / §12 rules 3 & 4: filter pendingChanges to allow
+    // ONLY the self-service public-content display fields (description,
+    // descriptionBg, amenities, openingHours). This mirrors the validation done
+    // when the partner submits changes; it is an extra guard to prevent
+    // bypassing the whitelist if pendingChanges somehow gets polluted.
+    const ALLOWED_FIELDS = new Set(['description', 'descriptionBg', 'amenities', 'openingHours']);
+    const applyData: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(pendingChanges)) {
+      if (ALLOWED_FIELDS.has(key)) {
+        applyData[key] = value;
+      }
+    }
 
     const updated = await prisma.partner.update({
       where: { id: req.params.id },

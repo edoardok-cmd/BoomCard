@@ -182,6 +182,17 @@ export class ActivationLinkService {
       throw new ActivationLinkError('INVALID_TOKEN', 'Invalid activation link');
     }
 
+    // Validate password BEFORE entering the transaction. This ensures that
+    // if the password is weak, we fail fast without consuming the token.
+    // The transaction will re-validate this (defensive, belt-and-braces) but
+    // the early exit here prevents wasteful token consumption on bad input.
+    if (opts.password) {
+      const policyError = validatePasswordPolicy(opts.password);
+      if (policyError) {
+        throw new ActivationLinkError('PASSWORD_TOO_SHORT', policyError);
+      }
+    }
+
     for (let attempt = 0; attempt < SERIALIZATION_RETRY_LIMIT; attempt++) {
       try {
         return await this.consumeOnce(token, opts);

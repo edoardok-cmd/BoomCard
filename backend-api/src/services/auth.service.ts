@@ -908,8 +908,22 @@ export class AuthService {
       // for pre-activation records of those statuses too.
       const BLOCKED_WITHOUT_VERIFIED_AT = new Set(['ACTIVE', 'INACTIVE', 'SUSPENDED', 'PAUSED', 'PENDING']);
       if (partner && !partner.verifiedAt && BLOCKED_WITHOUT_VERIFIED_AT.has(partner.status)) {
+        // Check if an unconsumed activation link exists for this partner.
+        // This differentiates between "never issued" and "issued but not yet consumed".
+        const unconsumedLink = await prisma.activationLink.findFirst({
+          where: {
+            partnerId: partner.id,
+            consumedAt: null,
+            invalidatedAt: null,
+          },
+        });
+
         detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'awaiting_activation' } }), (err) => logger.error('loginHistory.create failed', { err }));
-        throw new AppError('Вашият партньорски акаунт очаква активиране. Моля проверете имейла си за активационен линк.', 403);
+
+        const errorMessage = unconsumedLink
+          ? 'Активационния линк е изпратен до вашия имейл. Моля проверете спама или го потърсете отново.'
+          : 'Вашият партньорски акаунт очаква активиране. Моля проверете имейла си за активационен линк.';
+        throw new AppError(errorMessage, 403);
       }
       if (partner?.status === 'ARCHIVED') {
         detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'partner_archived' } }), (err) => logger.error('loginHistory.create failed', { err }));
