@@ -4,6 +4,12 @@
   "outputDirectory": "partner-dashboard/dist",
   "redirects": [
     {
+      "source": "/",
+      "has": [{ "type": "host", "value": "boomcard.eu" }],
+      "destination": "https://boomcard.bg/",
+      "permanent": true
+    },
+    {
       "source": "/:path*",
       "has": [{ "type": "host", "value": "boomcard.eu" }],
       "destination": "https://boomcard.bg/:path*",
