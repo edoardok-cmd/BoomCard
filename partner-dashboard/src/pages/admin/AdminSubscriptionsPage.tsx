@@ -4,7 +4,9 @@ import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useCurrencyDisplay } from '../../contexts/CurrencyDisplayContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
+import { formatMoneyByMode } from '../../utils/helpers';
 import {
   adminSubscriptionsService,
   AdminSubscription,
@@ -572,6 +574,7 @@ const isAutoRenewalEffective = (row: { autoRenewal: boolean; cancelAtPeriodEnd: 
 /* ─── Component ───────────────────────────────────────────────────────────── */
 export default function AdminSubscriptionsPage() {
   const { language } = useLanguage();
+  const { currencyDisplayMode } = useCurrencyDisplay();
   const lang = (language === 'bg' ? 'bg' : 'en') as Lang;
   const queryClient = useQueryClient();
 
@@ -739,6 +742,9 @@ export default function AdminSubscriptionsPage() {
       maximumFractionDigits: 2,
     }).format(amount);
 
+  // Format amount using the current currency display mode
+  const fmtAmount = (amount: number) => formatMoneyByMode(amount, currencyDisplayMode, language);
+
   const planLabel = (p: SubscriptionPlan) => sharedPlanLabel(p, lang);
   const statusLabel = (s: SubscriptionStatus) => sharedSubStatusLabel(s, lang);
   const cycleLabel = (c?: BillingCycle) => (c ? tr(T.cycle[c], lang) : '');
@@ -888,7 +894,7 @@ export default function AdminSubscriptionsPage() {
         if (count === 0) return <ProviderTag>{tr(T.noValue, lang)}</ProviderTag>;
         return (
           <PaymentsCell>
-            <PaymentsTotal>{fmtMoney(total)}</PaymentsTotal>
+            <PaymentsTotal>{fmtAmount(total)}</PaymentsTotal>
             <MetaLine>{count}×</MetaLine>
             {row.lastPaymentAt && <MetaLine title="Last successful payment">{fmtDate(row.lastPaymentAt)}</MetaLine>}
           </PaymentsCell>
@@ -1101,7 +1107,7 @@ export default function AdminSubscriptionsPage() {
                   <DrawerStat>
                     <DrawerStatLabel>{tr(T.drawerPaymentsLabel, lang)}</DrawerStatLabel>
                     <DrawerStatValue>
-                      {fmtMoney(historyData.paymentSummary.totalAmount)} ({historyData.paymentSummary.count})
+                      {fmtAmount(historyData.paymentSummary.totalAmount)} ({historyData.paymentSummary.count})
                     </DrawerStatValue>
                   </DrawerStat>
                   {historyData.paymentSummary.lastPaymentAt && (

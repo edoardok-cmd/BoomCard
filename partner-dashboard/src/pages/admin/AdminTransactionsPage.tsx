@@ -4,7 +4,9 @@ import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useCurrencyDisplay } from '../../contexts/CurrencyDisplayContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
+import { formatMoneyByMode } from '../../utils/helpers';
 import {
   adminTransactionsService,
   AdminTransaction,
@@ -552,8 +554,8 @@ const T = {
   allTypes: { bg: 'Всички типове', en: 'All types' },
   allStatuses: { bg: 'Всички статуси', en: 'All statuses' },
   allRisk: { bg: 'Целият риск', en: 'All risk' },
-  riskReview: { bg: 'За преглед (31+)', en: 'Review (31+)' },
-  riskHigh: { bg: 'Висок (61+)', en: 'High (61+)' },
+  riskReview: { bg: 'За преглед (21+)', en: 'Review (21+)' },
+  riskHigh: { bg: 'Висок (51+)', en: 'High (51+)' },
   // Wallet TYPE dropdown
   typeTopUp: { bg: 'Захранване', en: 'Top-up' },
   typeWithdrawal: { bg: 'Теглене', en: 'Withdrawal' },
@@ -754,6 +756,7 @@ const PAGE_SIZE = 20;
 /* ─── Component ───────────────────────────────────────────────────────────── */
 export default function AdminTransactionsPage() {
   const { language } = useLanguage();
+  const { currencyDisplayMode } = useCurrencyDisplay();
   const lang: Lang = language === 'bg' ? 'bg' : 'en';
   const queryClient = useQueryClient();
   const locale = lang === 'bg' ? 'bg-BG' : 'en-GB';
@@ -1050,6 +1053,9 @@ export default function AdminTransactionsPage() {
   const fmtTime = (iso: string) =>
     new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
 
+  // Format amount using the current currency display mode
+  const fmtAmount = (amount: number) => formatMoneyByMode(amount, currencyDisplayMode, language);
+
   // Switch view, scrubbing every filter that is enum-specific to the previous view.
   // Search / dates / minAmount carry over because they have the same semantics in both;
   // status / type / risk are dropped since the dropdown values differ.
@@ -1089,8 +1095,8 @@ export default function AdminTransactionsPage() {
         const isNeg = NEGATIVE_TYPES.includes(row.type) || (row.type === 'ADJUSTMENT' && row.amount < 0);
         return (
           <AmountCell $negative={isNeg}>
-            {isNeg ? '−' : '+'}{Math.abs(row.amount).toFixed(2)} {row.currency}
-            <MetaLine>{row.balanceBefore.toFixed(2)} → {row.balanceAfter.toFixed(2)}</MetaLine>
+            {isNeg ? '−' : '+'}{fmtAmount(Math.abs(row.amount))}
+            <MetaLine>{fmtAmount(row.balanceBefore)} → {fmtAmount(row.balanceAfter)}</MetaLine>
           </AmountCell>
         );
       },
@@ -1173,7 +1179,7 @@ export default function AdminTransactionsPage() {
       header: t('colAmount', lang),
       render: (row) => (
         <AmountCell $negative={false}>
-          {row.amount.toFixed(2)} {row.currency}
+          {fmtAmount(row.amount)}
         </AmountCell>
       ),
     },
@@ -1183,7 +1189,7 @@ export default function AdminTransactionsPage() {
       render: (row) => (
         <>
           <div style={{ color: palette.teal, fontWeight: 600 }}>
-            {row.cashbackAmount != null ? `${row.cashbackAmount.toFixed(2)} ${row.currency}` : '—'}
+            {row.cashbackAmount != null ? fmtAmount(row.cashbackAmount) : '—'}
           </div>
           {row.cashbackStatus && (
             <MetaLine>
@@ -1210,7 +1216,7 @@ export default function AdminTransactionsPage() {
         return (
           <span style={{ color, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
             {row.margin >= 0 ? '+' : ''}
-            {row.margin.toFixed(2)} {row.currency}
+            {fmtAmount(row.margin)}
             {row.partnerDiscountRate != null && (
               <MetaLine>{row.partnerDiscountRate.toFixed(0)}%</MetaLine>
             )}
@@ -1328,13 +1334,13 @@ export default function AdminTransactionsPage() {
                 </MetaLine>
               </DetailRow>
               <DetailRow label={t('colAmount', lang)}>
-                <strong>{detailTx.amount.toFixed(2)} {detailTx.currency}</strong>
+                <strong>{fmtAmount(detailTx.amount)}</strong>
                 <MetaLine>{t('paymentMethod', lang)}: {detailTx.paymentMethod}</MetaLine>
               </DetailRow>
               <DetailRow label={t('colCashback', lang)}>
                 <span style={{ color: palette.teal, fontWeight: 600 }}>
                   {detailTx.cashbackAmount != null
-                    ? `${detailTx.cashbackAmount.toFixed(2)} ${detailTx.currency}`
+                    ? fmtAmount(detailTx.cashbackAmount)
                     : '—'}
                 </span>
                 {detailTx.cashbackStatus && (
@@ -1362,12 +1368,12 @@ export default function AdminTransactionsPage() {
                       }}
                     >
                       {detailTx.margin >= 0 ? '+' : ''}
-                      {detailTx.margin.toFixed(2)} {detailTx.currency}
+                      {fmtAmount(detailTx.margin)}
                     </span>
                     {detailTx.partnerDiscountRate != null && (
                       <MetaLine>
-                        ({detailTx.partnerDiscountRate.toFixed(0)}% × {detailTx.amount.toFixed(2)} −{' '}
-                        {(detailTx.cashbackAmount ?? 0).toFixed(2)})
+                        ({detailTx.partnerDiscountRate.toFixed(0)}% × {fmtAmount(detailTx.amount)} −{' '}
+                        {fmtAmount(detailTx.cashbackAmount ?? 0)})
                       </MetaLine>
                     )}
                   </>
@@ -1393,10 +1399,10 @@ export default function AdminTransactionsPage() {
                   {txStatusLabel(detailTx.status, lang)}
                 </StatusBadge>
               </DetailRow>
-              {detailTx.riskScore > 30 && (
+              {detailTx.riskScore > 20 && (
                 <DetailRow label={t('riskReviewLabel', lang)}>
                   <a
-                    href={`/admin/control/risk?bucket=${detailTx.riskScore >= 61 ? 'HIGH_61_PLUS' : 'REVIEW_31_60'}&status=active`}
+                    href={`/admin/control/risk?bucket=${detailTx.riskScore >= 51 ? 'HIGH_51_PLUS' : detailTx.riskScore >= 21 ? 'MEDIUM_21_50' : 'LOW_0_20'}&status=active`}
                     style={{ color: palette.accent, fontWeight: 600, fontSize: '0.875rem' }}
                   >
                     {t('riskReviewLink', lang)}

@@ -104,6 +104,32 @@ export const generateQueryString = (params: Record<string, unknown>): string => 
     .filter(([_, value]) => value !== undefined && value !== null && value !== '')
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
     .join('&');
-  
+
   return queryString ? `?${queryString}` : '';
+};
+
+/**
+ * Format an amount based on the currency display mode.
+ * - In 'dual' mode: returns "X.XX лв. / €Y.YY"
+ * - In 'eur_only' mode: returns "€Y.YY"
+ *
+ * @param amountBGN The amount in BGN
+ * @param mode The currency display mode: 'dual' or 'eur_only'
+ * @param language The language for labels: 'en' (BGN) or 'bg' (лв.)
+ * @returns Formatted currency string
+ */
+export const formatMoneyByMode = (
+  amountBGN: number,
+  mode: 'dual' | 'eur_only',
+  language: 'en' | 'bg' = 'en'
+): string => {
+  const amountEUR = convertBGNToEUR(amountBGN);
+  const bgnLabel = language === 'bg' ? 'лв.' : 'BGN';
+
+  if (mode === 'dual') {
+    return `${amountBGN.toFixed(2)} ${bgnLabel} / €${amountEUR.toFixed(2)}`;
+  } else {
+    // eur_only mode
+    return `€${amountEUR.toFixed(2)}`;
+  }
 };

@@ -4,7 +4,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useCurrencyDisplay } from '../../contexts/CurrencyDisplayContext';
 import { DataTable, ColumnDef, RowAction } from '../../components/admin/DataTable/DataTable';
+import { formatMoneyByMode } from '../../utils/helpers';
 import {
   adminPayoutsService,
   AdminPayout,
@@ -568,6 +570,7 @@ const EMPTY_FILTERED_SUMMARY: PayoutsFilteredSummary = {
 
 export default function AdminPayoutsPage() {
   const { language } = useLanguage();
+  const { currencyDisplayMode } = useCurrencyDisplay();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -737,6 +740,7 @@ export default function AdminPayoutsPage() {
     });
 
   const fmtBgn = (n: number) => `${n.toFixed(2)} BGN`;
+  const fmtAmount = (amount: number) => formatMoneyByMode(amount, currencyDisplayMode, language);
 
   const thresholds = thresholdsData?.data ?? {};
 
@@ -784,7 +788,7 @@ export default function AdminPayoutsPage() {
             {row.wallet.user.phone && <MetaLine>{row.wallet.user.phone}</MetaLine>}
             {threshold !== undefined && (
               <ThresholdTag title="Минимален праг за изплащане">
-                Мин. праг: {threshold.toFixed(2)} BGN
+                Мин. праг: {fmtAmount(threshold)}
               </ThresholdTag>
             )}
           </UserCell>
@@ -796,9 +800,9 @@ export default function AdminPayoutsPage() {
       header: 'Сума',
       render: (row) => (
         <AmountCell>
-          {Math.abs(row.amount).toFixed(2)} {row.currency}
+          {fmtAmount(Math.abs(row.amount))}
           <MetaLine>
-            Баланс: {Math.abs(row.balanceBefore).toFixed(2)} → {Math.abs(row.balanceAfter).toFixed(2)}
+            Баланс: {fmtAmount(Math.abs(row.balanceBefore))} → {fmtAmount(Math.abs(row.balanceAfter))}
           </MetaLine>
         </AmountCell>
       ),

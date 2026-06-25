@@ -6,6 +6,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { FavoritesProvider } from './contexts/FavoritesContext';
 import { LanguageProvider } from './contexts/LanguageContext';
+import { CurrencyDisplayProvider } from './contexts/CurrencyDisplayContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { CookieConsentProvider } from './contexts/CookieConsentContext';
 import { LocationProvider } from './contexts/LocationContext';
@@ -247,11 +248,12 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <LanguageProvider>
-          <CookieConsentProvider>
-          <AuthProvider>
-            <FavoritesProvider>
-              <LocationProvider>
-              <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <CurrencyDisplayProvider>
+            <CookieConsentProvider>
+            <AuthProvider>
+              <FavoritesProvider>
+                <LocationProvider>
+                <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
                 <ScrollToTop />
               <Suspense fallback={<Loading fullScreen />}>
                 <Routes>
@@ -850,13 +852,14 @@ function App() {
             <ScrollToTopButton />
             <CookieConsentBanner />
             <CookiePreferencesModal />
-              </LocationProvider>
-          </FavoritesProvider>
-        </AuthProvider>
-          </CookieConsentProvider>
-      </LanguageProvider>
-    </ThemeProvider>
-    </QueryClientProvider>
+                </LocationProvider>
+              </FavoritesProvider>
+            </AuthProvider>
+              </CookieConsentProvider>
+          </CurrencyDisplayProvider>
+        </LanguageProvider>
+      </ThemeProvider>
+      </QueryClientProvider>
   );
 }
 

@@ -4,8 +4,10 @@ import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useCurrencyDisplay } from '../../contexts/CurrencyDisplayContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import { palette } from '../../styles/adminTheme';
+import { formatMoneyByMode } from '../../utils/helpers';
 import {
   adminCashbackService,
   CashbackEntry,
@@ -67,11 +69,22 @@ const I18N = {
   actionMarkPaid:   { en: 'Mark as paid',      bg: 'Маркирай платен' },
   actionExpire:     { en: 'Expire',            bg: 'Изтечи' },
   actionVoid:       { en: 'Void…',             bg: 'Анулирай…' },
-  promptVoidReason: { en: 'Reason for voiding (visible to user):',
-                      bg: 'Причина за анулиране (видима за абоната):' },
   confirmVoid:      { en: 'Void cashback for {email}?\nAmount: {amount} BGN\nReason: {reason}\nThe user will see this entry as "Voided" with the reason.',
                       bg: 'Анулирай кешбек за {email}?\nСума: {amount} лв.\nПричина: {reason}\nАбонатът ще види записа като „Анулиран" с причината.' },
   voidedReasonLabel:{ en: 'Voided:',            bg: 'Анулиран:' },
+  // Void reason modal labels
+  voidModalTitle:   { en: 'Void Cashback Entry', bg: 'Анулирай кешбек запис' },
+  voidCategoryLabel:{ en: 'Reason category (required):', bg: 'Категория причина (задължително):' },
+  voidNoteLabel:    { en: 'Additional details (optional):', bg: 'Допълнителни детайли (по избор):' },
+  voidNotePlaceholder: { en: 'Enter additional notes…', bg: 'Въведи допълнителни бележки…' },
+  voidReasonDuplicate: { en: 'DUPLICATE — Duplicate transaction', bg: 'DUPLICATE — Дублиран запис' },
+  voidReasonFraud:  { en: 'FRAUD — Fraudulent activity', bg: 'FRAUD — Мошеническа дейност' },
+  voidReasonSystemError: { en: 'SYSTEM_ERROR — System error', bg: 'SYSTEM_ERROR — Системна грешка' },
+  voidReasonAdminCorrection: { en: 'ADMIN_CORRECTION — Admin correction', bg: 'ADMIN_CORRECTION — Администраторска корекция' },
+  voidReasonPartnerDispute: { en: 'PARTNER_DISPUTE — Partner dispute', bg: 'PARTNER_DISPUTE — Спор с партньор' },
+  voidReasonOther:  { en: 'OTHER — Other reason', bg: 'OTHER — Друга причина' },
+  voidCancel:       { en: 'Cancel',            bg: 'Отмени' },
+  voidSubmit:       { en: 'Void Entry',        bg: 'Анулирай запис' },
   // Confirm dialogs
   confirmApprove:   { en: 'Approve cashback entry for {email}?\nAmount: {amount} BGN',
                       bg: 'Одобри кешбек записа за {email}?\nСума: {amount} лв.' },
@@ -264,6 +277,102 @@ const ExportBtn = styled.button`
   &:disabled { opacity: 0.5; cursor: default; }
 `;
 
+/* ─── Void reason modal ──────────────────────────────────────────────────── */
+const ModalOverlay = styled.div<{ $visible: boolean }>`
+  display: ${({ $visible }) => $visible ? 'flex' : 'none'};
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+`;
+
+const ModalContent = styled.div`
+  background: ${palette.surface};
+  border: 1px solid ${palette.border};
+  border-radius: 0.75rem;
+  padding: 2rem;
+  max-width: 32rem;
+  width: 100%;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+`;
+
+const ModalTitle = styled.h2`
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: ${palette.text};
+  margin: 0 0 1.5rem;
+`;
+
+const FormGroup = styled.div`
+  margin-bottom: 1.25rem;
+  &:last-child { margin-bottom: 0; }
+`;
+
+const FormLabel = styled.label`
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: ${palette.text};
+  margin-bottom: 0.5rem;
+`;
+
+const FormSelect = styled.select`
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background: ${palette.bg};
+  color: ${palette.text};
+  outline: none;
+  cursor: pointer;
+  &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
+`;
+
+const FormTextarea = styled.textarea`
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid ${palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-family: inherit;
+  background: ${palette.bg};
+  color: ${palette.text};
+  outline: none;
+  resize: vertical;
+  min-height: 5rem;
+  &:focus { border-color: ${palette.accent}; box-shadow: 0 0 0 2px ${palette.accentSoft}; }
+`;
+
+const FormActions = styled.div`
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  margin-top: 1.5rem;
+`;
+
+const ModalBtn = styled.button<{ $primary?: boolean }>`
+  padding: 0.625rem 1.25rem;
+  border: 1px solid ${({ $primary }) => $primary ? palette.accent : palette.border};
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: ${({ $primary }) => $primary ? palette.accent : 'transparent'};
+  color: ${({ $primary }) => $primary ? palette.surface : palette.text};
+  cursor: pointer;
+  transition: all 0.2s ease;
+  &:hover {
+    background: ${({ $primary }) => $primary ? palette.accentDark : palette.bg};
+    border-color: ${({ $primary }) => $primary ? palette.accentDark : palette.text};
+  }
+  &:disabled { opacity: 0.5; cursor: default; }
+`;
+
 /* ─── Cell helpers ──────────────────────────────────────────────────────────── */
 const SubscriberCell = styled(Link)`
   display: block;
@@ -314,9 +423,92 @@ function fmtMoney(n: number | null | undefined, locale: string): string {
   return (n ?? 0).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/* ─── Void Reason Modal Component ──────────────────────────────────────── */
+interface VoidReasonModalProps {
+  visible: boolean;
+  onCancel: () => void;
+  onSubmit: (reason: string) => void;
+  lang: Lang;
+  triggerButtonRef?: React.RefObject<HTMLButtonElement>;
+}
+
+function VoidReasonModal({ visible, onCancel, onSubmit, lang, triggerButtonRef }: VoidReasonModalProps) {
+  const T = (key: I18NKey, vars?: Record<string, string | number>) => tr(key, lang, vars);
+  const [category, setCategory] = useState('');
+  const [note, setNote] = useState('');
+  const voidCategoryRef = useRef<HTMLSelectElement>(null);
+
+  // Focus trap: focus category dropdown when modal opens, restore focus when it closes
+  useEffect(() => {
+    if (visible) {
+      // Focus the category dropdown on modal open
+      voidCategoryRef.current?.focus();
+    } else if (triggerButtonRef?.current) {
+      // Restore focus to the trigger button on modal close
+      triggerButtonRef.current.focus();
+    }
+  }, [visible, triggerButtonRef]);
+
+  const handleSubmit = () => {
+    if (!category) return;
+    const reason = note.trim() ? `${category}: ${note.trim()}` : category;
+    onSubmit(reason);
+    // Reset form
+    setCategory('');
+    setNote('');
+  };
+
+  const handleCancel = () => {
+    setCategory('');
+    setNote('');
+    onCancel();
+  };
+
+  return (
+    <ModalOverlay $visible={visible}>
+      <ModalContent>
+        <ModalTitle>{T('voidModalTitle')}</ModalTitle>
+        <FormGroup>
+          <FormLabel htmlFor="voidCategory">{T('voidCategoryLabel')}</FormLabel>
+          <FormSelect
+            id="voidCategory"
+            ref={voidCategoryRef}
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+          >
+            <option value="">{T('voidCategoryLabel').replace(':*', '')}</option>
+            <option value="DUPLICATE">{T('voidReasonDuplicate')}</option>
+            <option value="FRAUD">{T('voidReasonFraud')}</option>
+            <option value="SYSTEM_ERROR">{T('voidReasonSystemError')}</option>
+            <option value="ADMIN_CORRECTION">{T('voidReasonAdminCorrection')}</option>
+            <option value="PARTNER_DISPUTE">{T('voidReasonPartnerDispute')}</option>
+            <option value="OTHER">{T('voidReasonOther')}</option>
+          </FormSelect>
+        </FormGroup>
+        <FormGroup>
+          <FormLabel htmlFor="voidNote">{T('voidNoteLabel')}</FormLabel>
+          <FormTextarea
+            id="voidNote"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={T('voidNotePlaceholder')}
+          />
+        </FormGroup>
+        <FormActions>
+          <ModalBtn onClick={handleCancel}>{T('voidCancel')}</ModalBtn>
+          <ModalBtn $primary disabled={!category} onClick={handleSubmit}>
+            {T('voidSubmit')}
+          </ModalBtn>
+        </FormActions>
+      </ModalContent>
+    </ModalOverlay>
+  );
+}
+
 /* ─── Component ─────────────────────────────────────────────────────────────── */
 export default function AdminCashbackPage() {
   const { language } = useLanguage();
+  const { currencyDisplayMode } = useCurrencyDisplay();
   const queryClient = useQueryClient();
   const lang: Lang = language === 'bg' ? 'bg' : 'en';
   const locale = language === 'bg' ? 'bg-BG' : 'en-GB';
@@ -330,7 +522,10 @@ export default function AdminCashbackPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [voidModalVisible, setVoidModalVisible] = useState(false);
+  const [voidModalEntry, setVoidModalEntry] = useState<CashbackEntry | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voidTriggerRef = useRef<HTMLButtonElement>(null);
 
   // Debounce subscriber search — server-side across all pages
   useEffect(() => {
@@ -351,6 +546,9 @@ export default function AdminCashbackPage() {
 
   const fmt = (n: number | null | undefined) => fmtMoney(n, locale);
   const bgn = T('bgn');
+
+  // Format amount for dialogs using the current currency display mode
+  const fmtAmount = (amount: number) => formatMoneyByMode(amount, currencyDisplayMode, language);
 
   const { data: stats } = useQuery({
     queryKey: ['admin-cashback-stats'],
@@ -473,7 +671,11 @@ export default function AdminCashbackPage() {
     {
       key: 'amount',
       header: T('colAmount'),
-      render: (row) => <span style={{ fontWeight: 700, color: palette.text }}>{fmt(row.amount)} {bgn}</span>,
+      render: (row) => (
+        <span style={{ fontWeight: 700, color: palette.text }}>
+          {formatMoneyByMode(row.amount, currencyDisplayMode, language)}
+        </span>
+      ),
     },
     {
       key: 'state',
@@ -667,7 +869,7 @@ export default function AdminCashbackPage() {
               label: T('actionApprove'),
               hidden: (row) => row.status !== 'Pending',
               onClick: (row) => {
-                if (!window.confirm(T('confirmApprove', { email: row.user.email, amount: fmt(row.amount) }))) return;
+                if (!window.confirm(T('confirmApprove', { email: row.user.email, amount: fmtAmount(row.amount) }))) return;
                 approveMutation.mutate(row.id);
               },
             },
@@ -675,7 +877,7 @@ export default function AdminCashbackPage() {
               label: T('actionLock'),
               hidden: (row) => row.status !== 'Cleared',
               onClick: (row) => {
-                if (!window.confirm(T('confirmLock', { email: row.user.email, amount: fmt(row.amount) }))) return;
+                if (!window.confirm(T('confirmLock', { email: row.user.email, amount: fmtAmount(row.amount) }))) return;
                 lockMutation.mutate(row.id);
               },
             },
@@ -683,7 +885,7 @@ export default function AdminCashbackPage() {
               label: T('actionMarkPaid'),
               hidden: (row) => row.status !== 'Locked' || ['ANNULLED', 'FAILED'].includes(row.rawStatus),
               onClick: (row) => {
-                if (!window.confirm(T('confirmPay', { email: row.user.email, amount: fmt(row.amount) }))) return;
+                if (!window.confirm(T('confirmPay', { email: row.user.email, amount: fmtAmount(row.amount) }))) return;
                 payMutation.mutate(row.id);
               },
             },
@@ -692,7 +894,7 @@ export default function AdminCashbackPage() {
               hidden: (row) => ['Paid', 'Expired', 'Voided'].includes(row.status) || ['ANNULLED', 'FAILED'].includes(row.rawStatus),
               onClick: (row) => {
                 const warning = row.status === 'Locked' ? T('lockedWarning') : '';
-                if (!window.confirm(T('confirmExpire', { email: row.user.email, amount: fmt(row.amount), warning }))) return;
+                if (!window.confirm(T('confirmExpire', { email: row.user.email, amount: fmtAmount(row.amount), warning }))) return;
                 expireMutation.mutate(row.id);
               },
             },
@@ -702,10 +904,10 @@ export default function AdminCashbackPage() {
               label: T('actionVoid'),
               hidden: (row) => !['Pending', 'TrialPending', 'Cleared', 'Locked'].includes(row.status),
               onClick: (row) => {
-                const reason = window.prompt(T('promptVoidReason'));
-                if (!reason || !reason.trim()) return;
-                if (!window.confirm(T('confirmVoid', { email: row.user.email, amount: fmt(row.amount), reason: reason.trim() }))) return;
-                voidMutation.mutate({ entryId: row.id, reason: reason.trim() });
+                // Store the void trigger button reference for focus restoration after modal closes
+                voidTriggerRef.current = document.activeElement as HTMLButtonElement;
+                setVoidModalEntry(row);
+                setVoidModalVisible(true);
               },
             },
           ]}
@@ -717,6 +919,26 @@ export default function AdminCashbackPage() {
           </div>
         )}
       </Card>
+
+      <VoidReasonModal
+        visible={voidModalVisible}
+        onCancel={() => {
+          setVoidModalVisible(false);
+          setVoidModalEntry(null);
+        }}
+        onSubmit={(reason) => {
+          if (!voidModalEntry) return;
+          setVoidModalVisible(false);
+          if (!window.confirm(T('confirmVoid', { email: voidModalEntry.user.email, amount: fmtAmount(voidModalEntry.amount), reason }))) {
+            setVoidModalEntry(null);
+            return;
+          }
+          voidMutation.mutate({ entryId: voidModalEntry.id, reason });
+          setVoidModalEntry(null);
+        }}
+        lang={lang}
+        triggerButtonRef={voidTriggerRef}
+      />
     </PageShell>
   );
 }

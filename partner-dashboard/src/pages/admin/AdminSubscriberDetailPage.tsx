@@ -4,6 +4,8 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useCurrencyDisplay } from '../../contexts/CurrencyDisplayContext';
+import { formatMoneyByMode } from '../../utils/helpers';
 import {
   adminSubscribersService,
   SubscriptionPlan,
@@ -13,7 +15,7 @@ import {
 import { adminSubscriptionsService } from '../../services/adminSubscriptions.service';
 import { adminTransactionsService, type BusinessTransaction } from '../../services/adminTransactions.service';
 import { apiService } from '../../services/api.service';
-import { planLabel, subStatusLabel, userStatusLabel, riskLabel, riskBucket, type RiskBucket, type Lang } from '../../utils/planLabels';
+import { planLabel, subStatusLabel, userStatusLabel, riskLabel, getRiskLevel, type RiskLevel, type Lang } from '../../utils/planLabels';
 import { formatPhoneBG } from '../../utils/validators';
 
 import { palette } from '../../styles/adminTheme';
@@ -499,7 +501,7 @@ const UserStatusBadge = styled.span<{ $status: UserAccountStatus }>`
   }}
 `;
 
-const RiskBadge = styled.span<{ $level: RiskBucket }>`
+const RiskBadge = styled.span<{ $level: RiskLevel }>`
   display: inline-flex;
   align-items: center;
   font-size: 0.7rem;
@@ -510,8 +512,8 @@ const RiskBadge = styled.span<{ $level: RiskBucket }>`
   padding: 0.2rem 0.6rem;
 
   ${({ $level }) => {
-    if ($level === 'auto') return `background: ${palette.successSoft}; color: ${palette.success};`;
-    if ($level === 'review') return `background: ${palette.warningSoft}; color: ${palette.warning};`;
+    if ($level === 'low') return `background: ${palette.successSoft}; color: ${palette.success};`;
+    if ($level === 'medium') return `background: ${palette.warningSoft}; color: ${palette.warning};`;
     return `background: ${palette.dangerSoft}; color: ${palette.danger};`;
   }}
 `;
@@ -581,6 +583,7 @@ type CashbackStatus = typeof CASHBACK_STATUSES[number];
 export default function AdminSubscriberDetailPage() {
   const { userId } = useParams<{ userId: string }>();
   const { language } = useLanguage();
+  const { currencyDisplayMode } = useCurrencyDisplay();
   const queryClient = useQueryClient();
   const locale = language === 'bg' ? 'bg-BG' : 'en-GB';
   const lang: 'en' | 'bg' = language === 'bg' ? 'bg' : 'en';
@@ -594,6 +597,9 @@ export default function AdminSubscriberDetailPage() {
 
   const fmtDateTime = (iso: string) =>
     new Date(iso).toLocaleString(locale, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  // Format amount using the current currency display mode
+  const fmtAmount = (amount: number) => formatMoneyByMode(amount, currencyDisplayMode, language);
 
   /* ── Modal state ── */
   const [showCancelSub, setShowCancelSub]         = useState(false);
@@ -1041,7 +1047,7 @@ export default function AdminSubscriberDetailPage() {
             <BadgeRow>
               <UserStatusBadge $status={accountStatus}>{userStatusLabel(accountStatus, lang)}</UserStatusBadge>
               {data.riskScore != null && (
-                <RiskBadge $level={riskBucket(data.riskScore)}>
+                <RiskBadge $level={getRiskLevel(data.riskScore)}>
                   {T('risk')}: {riskLabel(data.riskScore, lang)} ({data.riskScore})
                 </RiskBadge>
               )}
@@ -1202,13 +1208,13 @@ export default function AdminSubscriberDetailPage() {
                       ) : '—'}
                     </Td>
                     <Td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: palette.text }}>
-                      {tx.amount.toFixed(2)} {tx.currency}
+                      {fmtAmount(tx.amount)}
                     </Td>
                     <Td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: tx.cashbackAmount ? palette.success : palette.textSubtle }}>
-                      {tx.cashbackAmount != null ? `${tx.cashbackAmount.toFixed(2)} ${tx.currency}` : '—'}
+                      {tx.cashbackAmount != null ? fmtAmount(tx.cashbackAmount) : '—'}
                     </Td>
                     <Td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: palette.textMuted }}>
-                      {tx.margin != null ? `${tx.margin.toFixed(2)} ${tx.currency}` : '—'}
+                      {tx.margin != null ? fmtAmount(tx.margin) : '—'}
                     </Td>
                     <Td style={{ textAlign: 'center' }}>
                       <span style={{
@@ -1217,8 +1223,11 @@ export default function AdminSubscriberDetailPage() {
                         fontWeight: 700,
                         borderRadius: '9999px',
                         padding: '0.15rem 0.5rem',
-                        background: tx.riskScore <= 30 ? palette.successSoft : tx.riskScore <= 60 ? palette.warningSoft : palette.dangerSoft,
-                        color: tx.riskScore <= 30 ? palette.success : tx.riskScore <= 60 ? palette.warning : palette.danger,
+                        ...(getRiskLevel(tx.riskScore) === 'low'
+                          ? { background: palette.successSoft, color: palette.success }
+                          : getRiskLevel(tx.riskScore) === 'medium'
+                          ? { background: palette.warningSoft, color: palette.warning }
+                          : { background: palette.dangerSoft, color: palette.danger }),
                       }}>
                         {tx.riskScore}
                       </span>
@@ -1284,7 +1293,7 @@ export default function AdminSubscriberDetailPage() {
                         </span>
                       </Td>
                       <Td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{row.count}</Td>
-                      <Td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{row.amount.toFixed(2)} BGN</Td>
+                      <Td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtAmount(row.amount)}</Td>
                     </tr>
                   );
                 })}
@@ -1314,7 +1323,7 @@ export default function AdminSubscriberDetailPage() {
                   <tbody>
                     {voidedEntries.slice(0, 10).map((v) => (
                       <tr key={v.id}>
-                        <Td style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{v.amount.toFixed(2)} BGN</Td>
+                        <Td style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmtAmount(v.amount)}</Td>
                         <Td style={{ color: palette.textMuted, fontSize: '0.8125rem' }}>{v.voidedReason ?? '—'}</Td>
                       </tr>
                     ))}
