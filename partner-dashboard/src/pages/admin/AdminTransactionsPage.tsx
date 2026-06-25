@@ -1596,18 +1596,18 @@ export default function AdminTransactionsPage() {
         <StatsBar>
           <StatCard>
             <StatLabel>{t('totalVolume', lang)}</StatLabel>
-            <StatValue>{stats ? `${stats.totalVolume.toFixed(2)} BGN` : '—'}</StatValue>
+            <StatValue>{stats ? fmtAmount(stats.totalVolume) : '—'}</StatValue>
           </StatCard>
           <StatCard $bg={palette.tealSoft}>
             <StatLabel>{t('cashbackCredited', lang)}</StatLabel>
             <StatValue $color={palette.teal}>
-              {stats ? `${stats.totalCashback.toFixed(2)} BGN` : '—'}
+              {stats ? fmtAmount(stats.totalCashback) : '—'}
             </StatValue>
           </StatCard>
           <StatCard $bg={palette.warningSoft}>
             <StatLabel>{t('withdrawals', lang)}</StatLabel>
             <StatValue $color={palette.warning}>
-              {stats ? `${stats.totalWithdrawals.toFixed(2)} BGN` : '—'}
+              {stats ? fmtAmount(stats.totalWithdrawals) : '—'}
             </StatValue>
           </StatCard>
         </StatsBar>
@@ -1629,19 +1629,19 @@ export default function AdminTransactionsPage() {
           <StatCard>
             <StatLabel>{t('totalVolume', lang)}</StatLabel>
             <StatValue>
-              {businessStats ? `${businessStats.totalVolume.toFixed(2)} BGN` : '—'}
+              {businessStats ? fmtAmount(businessStats.totalVolume) : '—'}
             </StatValue>
           </StatCard>
           <StatCard $bg={palette.tealSoft}>
             <StatLabel>{t('averageValue', lang)}</StatLabel>
             <StatValue $color={palette.teal}>
-              {businessStats ? `${businessStats.averageValue.toFixed(2)} BGN` : '—'}
+              {businessStats ? fmtAmount(businessStats.averageValue) : '—'}
             </StatValue>
           </StatCard>
           <StatCard $bg={palette.accentSoft}>
             <StatLabel>{t('cashbackCredited', lang)}</StatLabel>
             <StatValue $color={palette.accent}>
-              {businessStats ? `${businessStats.totalCashback.toFixed(2)} BGN` : '—'}
+              {businessStats ? fmtAmount(businessStats.totalCashback) : '—'}
             </StatValue>
           </StatCard>
         </StatsBar>

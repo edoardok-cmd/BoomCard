@@ -213,11 +213,11 @@ async function resolveLatestSubUserIds(
   return { userIds, truncated };
 }
 
-// Mirror the outer filter so the embedded subscription matches what the admin
-// filtered on, not just the chronologically latest record.
-function subscriptionInclude(hasSubFilter: boolean, subFilter: Record<string, unknown>) {
+// Return the latest subscription with no filter — the outer query has already
+// constrained the user set via resolveLatestSubUserIds, so we surface the actual
+// latest subscription for each result row (not a filtered view).
+function subscriptionInclude() {
   return {
-    where: hasSubFilter ? (subFilter as SubWhere) : undefined,
     orderBy: { createdAt: 'desc' as const },
     take: 1,
     select: {
@@ -278,8 +278,6 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
         ? [{ lastActivityAt: { sort: dir, nulls: 'last' } }, { createdAt: 'desc' }]
         : { createdAt: dir };
 
-    // When the sub filter was resolved into where.id we pass hasSubFilter=false so
-    // subscriptionInclude shows the absolute latest subscription (not filtered by plan/status).
     const [users, total] = await Promise.all([
       prisma.user.findMany({
         where,
@@ -288,7 +286,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
         orderBy,
         select: {
           ...SUBSCRIBER_SELECT,
-          subscriptions: subscriptionInclude(false, {}),
+          subscriptions: subscriptionInclude(),
         },
       }),
       prisma.user.count({ where }),
@@ -361,7 +359,7 @@ router.get('/export', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePe
       orderBy: { createdAt: 'desc' },
       select: {
         ...SUBSCRIBER_SELECT,
-        subscriptions: subscriptionInclude(false, {}),
+        subscriptions: subscriptionInclude(),
       },
     });
     if (truncatedCandidates) {
@@ -674,9 +672,9 @@ router.patch('/:userId/profile', authenticate, authorize('ADMIN', 'SUPER_ADMIN')
     let riskValueChanged = false;
     if (body.riskScore !== undefined) {
       const score = Number(body.riskScore);
-      // DEFECT C fix: cap at 110 (additive max of five signals; see spec §2.1)
-      if (!Number.isFinite(score) || !Number.isInteger(score) || score < 0 || score > 110) {
-        return res.status(400).json({ error: 'riskScore must be an integer between 0 and 110' });
+      // DEFECT C fix: cap at 120 (additive max of five signals; see spec §2.1: IBAN +40, receipt rate +30, location +20, void +20, fraud +10 = 120)
+      if (!Number.isFinite(score) || !Number.isInteger(score) || score < 0 || score > 120) {
+        return res.status(400).json({ error: 'riskScore must be an integer between 0 and 120' });
       }
       data.riskScore = score;
       before.riskScore = user.riskScore;
@@ -826,12 +824,12 @@ router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
     // non-terminal subscription. Picking the latest by createdAt silently guesses
     // which concurrent sub to cancel; that can cancel the wrong one. Return 409 with
     // the candidate IDs so the caller re-issues with an explicit subscriptionId.
-    const NON_TERMINAL_SUB_STATUSES = ['CANCELLED', 'EXPIRED', 'INCOMPLETE_EXPIRED'] as const;
+    const TERMINAL_SUB_STATUSES = ['CANCELLED', 'EXPIRED', 'INCOMPLETE_EXPIRED'] as const;
     const explicitSubId = typeof (req.body as { subscriptionId?: unknown })?.subscriptionId === 'string'
       ? (req.body as { subscriptionId: string }).subscriptionId
       : undefined;
     const candidateSubs = await prisma.subscription.findMany({
-      where: { userId, status: { notIn: [...NON_TERMINAL_SUB_STATUSES] } },
+      where: { userId, status: { notIn: [...TERMINAL_SUB_STATUSES] } },
       orderBy: { createdAt: 'desc' },
       select: { id: true, plan: true, status: true, createdAt: true, currentPeriodEnd: true },
     });

@@ -206,6 +206,11 @@ router.post('/rates', requirePermission('cashback.write'), async (req: AuthReque
 // DELETE /api/admin/cashback/rates/snapshot/:iso
 // Cancels a future-scheduled rate snapshot by its effectiveFrom timestamp.
 // Returns 409 if the snapshot is already past/current (active rates cannot be deleted).
+//
+// DEFECT C FIX: Robust timestamp matching. The stored effectiveFrom may have
+// millisecond precision; the client's ISO string (e.g., from GET /rates) may
+// truncate or reformat. Match within a 1-second tolerance window to avoid
+// confusing 404 when a snapshot exists but doesn't match exactly.
 // ------------------------------------------------------------------
 router.delete('/rates/snapshot/:iso', requirePermission('cashback.write'), async (req: AuthRequest, res: Response) => {
   try {
@@ -222,12 +227,19 @@ router.delete('/rates/snapshot/:iso', requirePermission('cashback.write'), async
       });
     }
 
+    // Match any snapshot within ±500ms of targetDate (1-second tolerance window).
+    // This accommodates client-side ISO round-trip artifacts while remaining strict
+    // enough to catch accidental mismatches. If multiple snapshots exist within the
+    // window (highly unlikely), delete all of them atomically (all or nothing).
+    const windowStart = new Date(targetDate.getTime() - 500);
+    const windowEnd = new Date(targetDate.getTime() + 500);
+
     const { count } = await prisma.cashbackRate.deleteMany({
-      where: { effectiveFrom: targetDate },
+      where: { effectiveFrom: { gte: windowStart, lte: windowEnd } },
     });
 
     if (count === 0) {
-      return res.status(404).json({ success: false, error: 'No snapshot found for this date' });
+      return res.status(404).json({ success: false, error: 'No snapshot found within 1 second of this timestamp' });
     }
 
     logger.info(`Admin ${req.user!.id} cancelled future snapshot ${targetDate.toISOString()} (${count} rows deleted)`);

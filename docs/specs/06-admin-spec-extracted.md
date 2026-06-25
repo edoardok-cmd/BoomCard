@@ -374,7 +374,7 @@ Auto-approval occurs within 24 hours of the Pending record being created.
 | Action | Transition | Conditions | Route |
 |--------|-----------|-----------|-------|
 | Approve | Pending → Cleared | Starts 60-day countdown from approval date | `POST /cashback/entries/:id/approve` (requires `cashback.write`) |
-| Lock | Cleared → Locked | Initiates payout pipeline; Locked persists until paid | `POST /cashback/entries/:id/lock` (requires `cashback.write`) |
+| Lock | Cleared → Locked | Initiates payout pipeline; Locked persists until paid. **Restricted to SUPER_ADMIN:** This endpoint is for internal/system use (payout pipeline automation). Manual lock by regular admins outside the pipeline context is not permitted. | `POST /cashback/entries/:id/lock` (requires `SUPER_ADMIN` role) |
 | Pay | Locked → Paid | Marks payout complete; terminal state | `POST /cashback/entries/:id/pay` (requires `cashback.write`) |
 | Expire | any active → Expired *(implementation extension — not in source spec §1.3; spec defines Cleared→Expired only via 60-day auto-timer; source: `adminCashback.routes.ts` line 353)* | Admin manual override of auto-expiry | `POST /cashback/entries/:id/expire` (requires `cashback.write`) |
 | Void | Pending → Voided *(source spec §1.3)*; Cleared → Voided *(source spec §1.3)*; Locked → Voided *(implementation extension — not in source spec §1.3; route accepts "any active state → Voided"; source: `adminCashback.routes.ts` line 374)* | Requires reason from the canonical VOID_REASON_CATEGORIES vocabulary (DUPLICATE / FRAUD / SYSTEM_ERROR / ADMIN_CORRECTION / PARTNER_DISPUTE / OTHER; format `"CATEGORY"` or `"CATEGORY: description"`); responsible admin and timestamp recorded | `POST /cashback/entries/:id/void` (requires `cashback.write`) |

@@ -714,7 +714,7 @@ export default function AdminCashbackPage() {
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
           {row.partner?.businessName ?? row.receipt?.merchantName ?? '—'}
-          {row.receipt?.totalAmount != null && <MetaLine>{fmt(row.receipt.totalAmount)} {bgn}</MetaLine>}
+          {row.receipt?.totalAmount != null && <MetaLine>{fmtAmount(row.receipt.totalAmount)}</MetaLine>}
         </span>
       ),
     },

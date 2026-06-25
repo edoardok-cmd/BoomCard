@@ -15,9 +15,9 @@
  *   B3. ARCHIVED → ARCHIVED succeeds (no-op)
  *   B4. ACTIVE → ARCHIVED succeeds
  *
- * DEFECT C (LOW) — riskScore ceiling 110 not 120
- *   C1. riskScore=111 returns 400
- *   C2. riskScore=110 succeeds
+ * DEFECT C (LOW) — riskScore ceiling 120 (spec §2.1 additive max)
+ *   C1. riskScore=121 returns 400
+ *   C2. riskScore=120 succeeds
  *   C3. riskScore=0 succeeds
  *
  * DEFECT D (LOW) — ARCHIVED accounts block profile/IBAN edits
@@ -263,26 +263,26 @@ describe('BC-ADMIN-AUDIT-FIX-005: adminSubscribers route defect fixes', () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // DEFECT C: riskScore ceiling is 110
+  // DEFECT C: riskScore ceiling is 120 (spec §2.1 additive max: 40+30+20+20+10)
   // ─────────────────────────────────────────────────────────────────────────
 
-  describe('DEFECT C: riskScore validation (ceiling 110)', () => {
-    it('C1 — riskScore=111 returns 400', async () => {
+  describe('DEFECT C: riskScore validation (ceiling 120)', () => {
+    it('C1 — riskScore=121 returns 400', async () => {
       const res = await request(app)
         .patch(`/api/admin/subscribers/${fixtures.subscriberId}/profile`)
         .set('Authorization', `Bearer ${fixtures.superAdminToken}`)
-        .send({ riskScore: 111 });
+        .send({ riskScore: 121 });
       expect(res.status).toBe(400);
-      expect(res.body.error).toMatch(/between 0 and 110/i);
+      expect(res.body.error).toMatch(/between 0 and 120/i);
     });
 
-    it('C2 — riskScore=110 succeeds', async () => {
+    it('C2 — riskScore=120 succeeds', async () => {
       const res = await request(app)
         .patch(`/api/admin/subscribers/${fixtures.subscriberId}/profile`)
         .set('Authorization', `Bearer ${fixtures.superAdminToken}`)
-        .send({ riskScore: 110 });
+        .send({ riskScore: 120 });
       expect(res.status).toBe(200);
-      expect(res.body.subscriber.riskScore).toBe(110);
+      expect(res.body.subscriber.riskScore).toBe(120);
     });
 
     it('C3 — riskScore=0 succeeds', async () => {
@@ -300,7 +300,7 @@ describe('BC-ADMIN-AUDIT-FIX-005: adminSubscribers route defect fixes', () => {
         .set('Authorization', `Bearer ${fixtures.superAdminToken}`)
         .send({ riskScore: -1 });
       expect(res.status).toBe(400);
-      expect(res.body.error).toMatch(/between 0 and 110/i);
+      expect(res.body.error).toMatch(/between 0 and 120/i);
     });
   });
 

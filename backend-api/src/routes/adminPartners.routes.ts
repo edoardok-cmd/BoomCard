@@ -23,10 +23,12 @@
  *
  *   §5.3 Active-partner controls (partners.*)
  *   ─────────────────────────────────────────
+ *   PATCH  /:id/category                  partners.requests.write  (spec §3.5 — edit business category post-onboarding)
  *   PATCH  /:id/partner-status            partners.write           (post-onboarding status transitions)
  *   PATCH  /:id/discount-rate             partners.write           (spec §13 — ADMIN only, not PARTNER_MANAGER)
  *   POST   /:id/propose-discount-rate     partners.requests.write  (spec §13 — PARTNER_MANAGER proposal → critical-action queue)
  *   GET    /:id/status-history            partners.read            (paired with /partner-status write)
+ *   PATCH  /:id/visibility                partners.requests.write  (spec §8.1 rule 7 — ACTIVE partners only)
  *
  * The split is deliberate: §5.1/§5.2 model the *application pipeline* and use
  * the partners.requests.* namespace; §5.3 deals with *operational state* of
@@ -45,7 +47,6 @@ import { asyncHandler } from '../middleware/error.middleware';
 import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
-import { fireAutomation } from '../lib/automationDispatcher';
 import { issueActivationLink, sendActivationEmail, stampEmailOutcome } from '../services/partnerActivation.service';
 import { emailService } from '../services/email.service';
 import { partnerService, derivePartnerInactiveSubType } from '../services/partner.service';
@@ -60,6 +61,7 @@ import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
 import { fraudDetectionService } from '../services/fraudDetection.service';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
+import { isMainCategoryId, isSubcategoryId } from '../constants/categoryRegistry';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -985,7 +987,65 @@ router.post(
   })
 );
 
-// ─── Toggle visibility ────────────────────────────────────────────────────────
+// ─── Edit business category (spec §3.5 / §1.4) ────────────────────────────────
+// Allows ADMIN+ to update the partner's business category/type after onboarding.
+// Requires partners.requests.write permission.
+
+router.patch(
+  '/:id/category',
+  requirePermission('partners.requests.write'),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const { category } = req.body as { category?: string };
+
+    if (!category?.trim()) {
+      return res.status(400).json({ error: 'category (non-empty string) is required' });
+    }
+
+    const categoryTrimmed = category.trim();
+
+    // Validate category against the category registry (spec §3.5 — business category)
+    if (!isMainCategoryId(categoryTrimmed) && !isSubcategoryId(categoryTrimmed)) {
+      return res.status(400).json({
+        error: `Invalid category: "${categoryTrimmed}". Category must be a valid main category (e.g., restaurants, accommodation) or subcategory (e.g., restaurants/fast-food)`,
+      });
+    }
+
+    const partner = await prisma.partner.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, businessName: true, category: true, status: true },
+    });
+    if (!partner) return res.status(404).json({ error: 'Partner not found' });
+
+    // Spec §3.5 — category edits are only valid for ACTIVE partners
+    if (partner.status !== PartnerStatus.ACTIVE) {
+      return res.status(400).json({
+        error: `Cannot edit category of non-ACTIVE partner. Partner must be ACTIVE. Current status: ${partner.status}. Use /partner-status to change the partner's operational status first.`,
+        currentStatus: partner.status,
+      });
+    }
+
+    const updated = await prisma.partner.update({
+      where: { id: req.params.id },
+      data: { category: categoryTrimmed },
+      select: PARTNER_SELECT,
+    });
+
+    detach(writeAudit({
+      actorUserId: req.user!.id,
+      action: 'partner.category.update',
+      objectType: 'Partner',
+      objectId: req.params.id,
+      before: { category: partner.category },
+      after: { category: categoryTrimmed },
+    }), (err) => logger.error('[adminPartners] category writeAudit failed:', err));
+
+    res.json({ partner: updated });
+  })
+);
+
+// ─── Toggle visibility (spec §8.1 rule 7) ─────────────────────────────────────
+// Allows visibility control on ACTIVE partners only. Visibility has no effect
+// on non-ACTIVE partners per spec §8.1 rule 7 (status overrides visibility).
 
 router.patch(
   '/:id/visibility',
@@ -997,10 +1057,19 @@ router.patch(
     const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
     if (!partner) return res.status(404).json({ error: 'Partner not found' });
 
+    // Spec §8.1 rule 7 — visibility is meaningful only for ACTIVE partners.
+    // Reject toggle attempts on non-ACTIVE partners to maintain data hygiene.
+    if (partner.status !== PartnerStatus.ACTIVE) {
+      return res.status(400).json({
+        error: `Visibility toggle is only valid for ACTIVE partners. Current status: ${partner.status}. Use /partner-status to change the partner's operational status first.`,
+        currentStatus: partner.status,
+      });
+    }
+
     const updated = await prisma.partner.update({
       where: { id: req.params.id },
       data: { isVisible },
-      select: { id: true, businessName: true, isVisible: true },
+      select: PARTNER_SELECT,
     });
 
     detach(writeAudit({

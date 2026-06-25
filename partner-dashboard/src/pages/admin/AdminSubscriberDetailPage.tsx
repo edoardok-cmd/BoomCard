@@ -1116,27 +1116,27 @@ export default function AdminSubscriberDetailPage() {
             <WalletItem>
               <WalletLabel>{T('walletAvailable')}</WalletLabel>
               <WalletValue>
-                {data.wallet.availableBalance.toFixed(2)}<WalletUnit>BGN</WalletUnit>
+                {fmtAmount(data.wallet.availableBalance)}
               </WalletValue>
             </WalletItem>
             {(data.wallet.balance - data.wallet.availableBalance) > 0 && (
               <WalletItem>
                 <WalletLabel>{T('walletLocked')}</WalletLabel>
                 <WalletValue>
-                  {(data.wallet.balance - data.wallet.availableBalance).toFixed(2)}<WalletUnit>BGN</WalletUnit>
+                  {fmtAmount(data.wallet.balance - data.wallet.availableBalance)}
                 </WalletValue>
               </WalletItem>
             )}
             <WalletItem>
               <WalletLabel>{T('walletPending')}</WalletLabel>
               <WalletValue>
-                {data.wallet.pendingBalance.toFixed(2)}<WalletUnit>BGN</WalletUnit>
+                {fmtAmount(data.wallet.pendingBalance)}
               </WalletValue>
             </WalletItem>
             <WalletItem>
               <WalletLabel>{T('walletTotal')}</WalletLabel>
               <WalletValue>
-                {(Math.max(data.wallet.balance, data.wallet.availableBalance) + data.wallet.pendingBalance).toFixed(2)}<WalletUnit>BGN</WalletUnit>
+                {fmtAmount(Math.max(data.wallet.balance, data.wallet.availableBalance) + data.wallet.pendingBalance)}
               </WalletValue>
             </WalletItem>
           </WalletGrid>
@@ -1153,7 +1153,7 @@ export default function AdminSubscriberDetailPage() {
             <WalletItem>
               <WalletLabel>{T('payTotal')}</WalletLabel>
               <WalletValue>
-                {historyData.paymentSummary.totalAmount.toFixed(2)}<WalletUnit>BGN</WalletUnit>
+                {fmtAmount(historyData.paymentSummary.totalAmount)}
               </WalletValue>
             </WalletItem>
             <WalletItem>

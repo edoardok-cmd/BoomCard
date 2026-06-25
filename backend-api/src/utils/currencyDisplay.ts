@@ -25,9 +25,19 @@
  * so no existing consumer breaks.
  */
 import { EUR_TO_BGN_RATE } from '../constants/receipt.constants';
-import { getSystemSettingStr } from '../utils/systemSettings';
+import { getSystemSettingStr, invalidateSystemSettingCache } from '../utils/systemSettings';
 
 export const CURRENCY_TRANSITION_WINDOW_SETTING = 'currency_transition_window_open';
+
+/**
+ * Invalidate the cached currency-display window flag.
+ * Called from adminSettings.routes.ts when the currency_transition_window_open setting is updated,
+ * ensuring that GET /api/admin/settings/currency-display-mode reflects the change immediately
+ * (zero staleness) rather than waiting for the 60s TTL to expire.
+ */
+export function invalidateCurrencyDisplayCache(): void {
+  invalidateSystemSettingCache(CURRENCY_TRANSITION_WINDOW_SETTING);
+}
 
 export interface DualCurrencyAmount {
   /** BGN value — null once the transition window has closed (EUR-only display). */

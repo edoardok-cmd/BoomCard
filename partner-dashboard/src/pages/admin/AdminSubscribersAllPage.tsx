@@ -21,6 +21,7 @@ import {
   subStatusLabel as sharedSubStatusLabel,
   userStatusLabel as sharedUserStatusLabel,
   riskLabel,
+  getRiskLevel,
 } from '../../utils/planLabels';
 import { csvEscape, downloadBlob } from '../../utils/csvExport';
 import { formatPhoneBG } from '../../utils/validators';
@@ -65,9 +66,9 @@ const I18N = {
   incomplete:     { en: 'Incomplete',      bg: 'Незавършен' },
   incompleteExpired: { en: 'Incomplete expired', bg: 'Незавършен (изтекъл)' },
   expired:        { en: 'Expired',         bg: 'Изтекъл' },
-  riskAutoFilter:   { en: 'Auto-approve (0-30)', bg: 'Авто (0-30)' },
-  riskReviewFilter: { en: 'Review (31-60)',      bg: 'Преглед (31-60)' },
-  riskHighFilter:   { en: 'High risk (61+)',     bg: 'Висок риск (61+)' },
+  riskAutoFilter:   { en: 'Low risk (0-20)',   bg: 'Нисък риск (0-20)' },
+  riskReviewFilter: { en: 'Medium risk (21-50)', bg: 'Среден риск (21-50)' },
+  riskHighFilter:   { en: 'High risk (51+)',     bg: 'Висок риск (51+)' },
   colSubscriber:  { en: 'Subscriber',      bg: 'Абонат' },
   colUserId:      { en: 'User ID',         bg: 'User ID' },
   colUserStatus:  { en: 'User status',     bg: 'Статус' },
@@ -784,11 +785,6 @@ const RiskPill = styled.span<{ $level: 'low' | 'medium' | 'high' }>`
 `;
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
-function riskLevelOf(score: number): 'low' | 'medium' | 'high' {
-  if (score <= 30) return 'low';
-  if (score <= 60) return 'medium';
-  return 'high';
-}
 
 function displayName(row: AdminSubscriber): string {
   return row.firstName || row.lastName
@@ -907,7 +903,7 @@ const ACCOUNT_STATUS_OPTIONS: Array<{ value: AccountStatusFilter | ''; key: I18N
   { value: 'INACTIVE', key: 'inactive' },
 ];
 
-// Spec §7.1 — three risk tiers framed as "auto / review / high".
+// Spec §5.1 / §7.1 — three risk tiers framed as "low / medium / high".
 const RISK_OPTIONS: Array<{ value: RiskLevelFilter | ''; key: I18NKey }> = [
   { value: '', key: 'allRisk' },
   { value: 'low', key: 'riskAutoFilter' },
@@ -1306,7 +1302,7 @@ export default function AdminSubscribersAllPage() {
           <span style={{ color: palette.textSubtle }}>—</span>
         ) : (
           <RiskPill
-            $level={riskLevelOf(row.riskScore)}
+            $level={getRiskLevel(row.riskScore)}
             title={`${riskLabel(row.riskScore, lang)} · score ${row.riskScore}`}
           >
             {riskLabel(row.riskScore, lang)}

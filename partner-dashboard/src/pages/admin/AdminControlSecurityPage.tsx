@@ -38,17 +38,17 @@ const ScoreBadge = styled.span<{ $tier: 'low' | 'med' | 'high' }>`
   color: ${(p) => p.$tier === 'high' ? palette.danger : p.$tier === 'med' ? palette.warning : palette.success};
 `;
 
-type PillLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'LOW_0_30' | 'REVIEW_31_60' | 'HIGH_61_PLUS' | '—';
+type PillLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'LOW_0_20' | 'MEDIUM_21_50' | 'HIGH_51_PLUS' | '—';
 const VALID_PILL_LEVELS = new Set<PillLevel>([
-  'LOW', 'MEDIUM', 'HIGH', 'LOW_0_30', 'REVIEW_31_60', 'HIGH_61_PLUS', '—',
+  'LOW', 'MEDIUM', 'HIGH', 'LOW_0_20', 'MEDIUM_21_50', 'HIGH_51_PLUS', '—',
 ]);
 function toPillLevel(value: string | null | undefined): PillLevel {
   return value && VALID_PILL_LEVELS.has(value as PillLevel) ? (value as PillLevel) : '—';
 }
 function pillTone(level: PillLevel): 'success' | 'warning' | 'danger' | 'neutral' {
-  if (level === 'HIGH' || level === 'HIGH_61_PLUS') return 'danger';
-  if (level === 'MEDIUM' || level === 'REVIEW_31_60') return 'warning';
-  if (level === 'LOW' || level === 'LOW_0_30') return 'success';
+  if (level === 'HIGH' || level === 'HIGH_51_PLUS') return 'danger';
+  if (level === 'MEDIUM' || level === 'MEDIUM_21_50') return 'warning';
+  if (level === 'LOW' || level === 'LOW_0_20') return 'success';
   return 'neutral';
 }
 const RiskPill = styled.span<{ $level: PillLevel }>`
@@ -214,9 +214,9 @@ function tierFromScore(score: number): 'low' | 'med' | 'high' {
 }
 
 function bucketLabel(bucket: string | null | undefined, lang: 'en' | 'bg'): string {
-  if (bucket === 'LOW_0_30')      return lang === 'bg' ? 'Авто (0–30)'      : 'Auto (0–30)';
-  if (bucket === 'REVIEW_31_60')  return lang === 'bg' ? 'Преглед (31–60)'  : 'Review (31–60)';
-  if (bucket === 'HIGH_61_PLUS')  return lang === 'bg' ? 'Висок риск (61+)' : 'High risk (61+)';
+  if (bucket === 'LOW_0_20')      return lang === 'bg' ? '0–20'     : '0–20';
+  if (bucket === 'MEDIUM_21_50')  return lang === 'bg' ? '21–50'    : '21–50';
+  if (bucket === 'HIGH_51_PLUS')  return lang === 'bg' ? '51+'      : '51+';
   return lang === 'bg' ? 'неизвестен' : 'unknown';
 }
 
@@ -224,9 +224,9 @@ const T = {
   eyebrow:         { en: 'Control',                                             bg: 'Контрол' },
   title:           { en: 'Risk & Security',                                      bg: 'Риск и сигурност' },
   subtitle:        { en: 'Duplicate detection, QR/location mismatch, velocity, receipt quality, suspicious behaviour', bg: 'Дублиране, несъответствие QR/локация, честота, качество на бележка, подозрително поведение' },
-  allTiers:        { en: 'All tiers (≥31)',                                     bg: 'Всички нива (≥31)' },
-  reviewTier:      { en: 'Review (31–60)',                                      bg: 'Преглед (31–60)' },
-  highTier:        { en: 'High risk (61+)',                                     bg: 'Висок риск (61+)' },
+  allTiers:        { en: 'All tiers (≥21)',                                     bg: 'Всички нива (≥21)' },
+  reviewTier:      { en: 'Review (21–50)',                                      bg: 'Преглед (21–50)' },
+  highTier:        { en: 'High risk (51+)',                                     bg: 'Висок риск (51+)' },
   venueFilter:     { en: 'Filter by venue ID…',                                bg: 'Филтър по venue ID…' },
   statDuplicate:   { en: 'Duplicates',                                          bg: 'Дублиране' },
   statQr:          { en: 'QR / Location',                                       bg: 'QR / Локация' },
@@ -298,20 +298,20 @@ export default function AdminControlSecurityPage() {
   const [searchParams] = useSearchParams();
 
   const [page, setPage] = useState(1);
-  const [tier, setTier] = useState<'REVIEW_31_60' | 'HIGH_61_PLUS' | 'all'>('all');
+  const [tier, setTier] = useState<'MEDIUM_21_50' | 'HIGH_51_PLUS' | 'all'>('all');
   const [venueIdInput, setVenueIdInput] = useState('');
   const [venueId, setVenueId] = useState('');
   const [signalCategory, setSignalCategory] = useState('');
 
   // Hydrate filters from alert deep-link URL params (spec §3.2 → §7.1).
-  // bucket=HIGH_61_PLUS|REVIEW_31_60 → tier  (risk_transactions / medium_risk_transactions alerts)
+  // bucket=HIGH_51_PLUS|MEDIUM_21_50 → tier  (risk_transactions / medium_risk_transactions alerts)
   // signalCategory=suspicious         → signalCategory (suspicious_activity / fraud_check_errors alerts)
   // suspicious=true                   → signalCategory (legacy param kept for back-compat)
   // dateFromHours=N                   → dateFrom (suspicious_activity alert time window)
   const [dateFrom, setDateFrom] = useState('');
   useEffect(() => {
     const bucket = searchParams.get('bucket');
-    if (bucket === 'HIGH_61_PLUS' || bucket === 'REVIEW_31_60') setTier(bucket);
+    if (bucket === 'HIGH_51_PLUS' || bucket === 'MEDIUM_21_50') setTier(bucket as 'MEDIUM_21_50' | 'HIGH_51_PLUS');
     const cat = searchParams.get('signalCategory');
     const validCategories = ['duplicate', 'qrMismatch', 'velocity', 'receiptMatch', 'suspicious'];
     if (cat && validCategories.includes(cat)) setSignalCategory(cat);
@@ -745,8 +745,8 @@ export default function AdminControlSecurityPage() {
                 <FilterRow>
                   <Select value={tier} onChange={(e) => { setTier(e.target.value as typeof tier); setPage(1); }}>
                     <option value="all">{t('allTiers')}</option>
-                    <option value="REVIEW_31_60">{t('reviewTier')}</option>
-                    <option value="HIGH_61_PLUS">{t('highTier')}</option>
+                    <option value="MEDIUM_21_50">{t('reviewTier')}</option>
+                    <option value="HIGH_51_PLUS">{t('highTier')}</option>
                   </Select>
                   <TextInput
                     placeholder={t('venueFilter')}

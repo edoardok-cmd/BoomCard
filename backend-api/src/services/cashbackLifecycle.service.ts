@@ -28,6 +28,7 @@ import prisma from '../lib/prisma';
 import { writeAudit } from '../middleware/audit.middleware';
 import { getSystemSettingInt } from '../utils/systemSettings';
 import { logger } from '../utils/logger';
+import { subscriptionAllowsEarning } from './subscriptionGate';
 
 const CASHBACK_VALIDITY_DAYS_DEFAULT = 60;
 
@@ -603,7 +604,9 @@ export async function recordPendingForRiskReview(params: {
   // here, but this guard ensures the invariant holds even if a caller skips
   // those checks. A single lightweight DB read covers both the user status
   // (INACTIVE / ARCHIVED block scanning unconditionally) and the subscription
-  // status (EXPIRED / FAILED_PAYMENT / CANCELLED-past-period blocks scanning).
+  // status gates. Both user and subscription status are checked using the
+  // single-sourced allow-list in subscriptionGate.subscriptionAllowsEarning
+  // to ensure the cashback gate cannot drift from the scanning gate.
   const [user, subscription] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
@@ -623,11 +626,11 @@ export async function recordPendingForRiskReview(params: {
   if (subscription) {
     const sub = subscription;
     const now = new Date();
-    const isBlockedBySubscription =
-      sub.status === 'EXPIRED' ||
-      sub.status === 'FAILED_PAYMENT' ||
-      (sub.status === 'CANCELLED' && sub.currentPeriodEnd <= now);
-    if (isBlockedBySubscription) {
+    // Use the shared allow-list gate: ACTIVE, TRIALING, or CANCELLED-within-period
+    // are the only permissible states. All others (PAST_DUE, UNPAID, INCOMPLETE,
+    // INCOMPLETE_EXPIRED, PAUSED, EXPIRED, FAILED_PAYMENT) block earning.
+    const earningAllowed = subscriptionAllowsEarning(sub.status, sub.currentPeriodEnd, now);
+    if (!earningAllowed) {
       throw new Error('Cannot create cashback: account scanning is blocked');
     }
   }

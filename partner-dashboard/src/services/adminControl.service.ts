@@ -188,7 +188,7 @@ export const adminControlService = {
   getFraudSignals(params: {
     page?: number;
     limit?: number;
-    tier?: 'REVIEW_31_60' | 'HIGH_61_PLUS' | 'all';
+    tier?: 'MEDIUM_21_50' | 'HIGH_51_PLUS' | 'all';
     venueId?: string;
     signalCategory?: string;
     /** ISO timestamp — narrows results to scans created at or after this time (used by suspicious_activity deep-link) */

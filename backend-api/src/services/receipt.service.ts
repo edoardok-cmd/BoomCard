@@ -780,7 +780,7 @@ class ReceiptService {
       const specRisk = await fraudDetectionService.computeSpecRiskLevel({
         userId: request.userId,
         ibanChangedRecently: false, // conservative default; sticker scan path checks this directly
-        ocrConfidence: request.ocrData?.confidence || 0,
+        ocrConfidence: request.ocrData?.confidence ?? 60, // Safe default: undefined/null → 60 (matches sticker path)
         locationMismatch: false, // receipt flow has no QR location check
       });
       const requiresManualReview = specRisk.riskLevel === 'High';

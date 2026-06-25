@@ -2734,6 +2734,19 @@ export class AuthService {
       startedAt,
     });
 
+    // Audit log the impersonation start event
+    detach(writeAudit({
+      actorUserId: admin.id,
+      action: 'admin.impersonate.start',
+      objectType: target.role === 'PARTNER' ? 'partner' : 'user',
+      objectId: target.id,
+      after: {
+        targetRole: target.role,
+        targetEmail: target.email,
+        startedAt,
+      },
+    }), (err) => logger.error('[AuthService.impersonate] writeAudit failed:', err));
+
     const { passwordChangedAt: _pwc, ...targetUser } = target;
     return {
       user: targetUser,
@@ -2813,12 +2826,25 @@ export class AuthService {
       switchableAccounts = await this.getSwitchableAccounts(accountGroup, clientType);
     }
 
+    const endedAt = new Date().toISOString();
     logger.warn('Admin impersonation ended', {
       adminId: admin.id,
       adminRole: admin.role,
       impersonatedUserId: currentUserId,
-      endedAt: new Date().toISOString(),
+      endedAt,
     });
+
+    // Audit log the impersonation stop event
+    detach(writeAudit({
+      actorUserId: admin.id,
+      action: 'admin.impersonate.stop',
+      objectType: 'user', // We don't have the target role at this point, so use generic 'user'
+      objectId: currentUserId,
+      after: {
+        adminRole: admin.role,
+        endedAt,
+      },
+    }), (err) => logger.error('[AuthService.stopImpersonate] writeAudit failed:', err));
 
     const { totpEnabledAt: adminTotpEnabledAt, ...adminWithout } = admin;
     return {

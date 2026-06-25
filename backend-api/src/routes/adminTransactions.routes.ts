@@ -164,7 +164,7 @@ router.post('/adjust', requirePermission('transactions.write'), async (req, res,
       reason: string;
     };
 
-    if (!userId || typeof amount !== 'number' || amount === 0 || !isFinite(amount)) {
+    if (!userId || typeof userId !== 'string' || !userId.trim() || typeof amount !== 'number' || amount === 0 || !isFinite(amount)) {
       res.status(400).json({ error: 'userId and a finite non-zero amount are required' });
       return;
     }
@@ -242,10 +242,13 @@ router.post('/adjust', requirePermission('transactions.write'), async (req, res,
   }
 });
 
-// Build a Prisma WHERE clause for the Transaction-list endpoint.
-// Pulled out so the list, total count, stats, and full-period export use the
-// exact same filter semantics. minRisk is pushed into the DB layer (spec §7.1
-// tier ranges) so total / pagination / stats stay in sync with the rendered rows.
+// Build a Prisma WHERE clause for transaction-scoped queries.
+// CRITICAL: This function is the single source of truth for transaction filtering
+// across the /business list endpoint (line ~351), /business/stats aggregate (line ~619),
+// and /business/stats receipt fallback (line ~645). If this function changes, all three
+// query sites must produce consistent results — add a test (transactionStatsParity)
+// to catch divergence. minRisk is pushed into the DB layer (spec §7.1 tier ranges)
+// so total / pagination / stats stay in sync with the rendered rows.
 type BusinessTxWhere = NonNullable<Parameters<typeof prisma.transaction.findMany>[0]>['where'];
 
 function buildBusinessWhere(query: Record<string, unknown>): BusinessTxWhere {

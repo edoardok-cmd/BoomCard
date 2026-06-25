@@ -339,6 +339,116 @@ describe('Admin Impersonation', () => {
     });
   });
 
+  describe('Audit logging for impersonation events', () => {
+    it('writes audit logs for both start and stop events', async () => {
+      // Small delay to ensure any prior async audit writes complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const { accessToken } = await loginWeb(fx.adminEmail, ADMIN_PASSWORD);
+
+      const impRes = await request(app)
+        .post('/api/auth/impersonate')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ targetPartnerUserId: fx.partnerUserId });
+      expect(impRes.status).toBe(200);
+
+      // Small delay to ensure the async audit write completes
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const stopRes = await request(app)
+        .post('/api/auth/stop-impersonate')
+        .set('Authorization', `Bearer ${impRes.body.data.accessToken}`)
+        .send({ refreshToken: impRes.body.data.refreshToken });
+      expect(stopRes.status).toBe(200);
+
+      // Small delay to ensure the async audit write completes
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Verify START audit log
+      const startAudit = await prisma.auditLog.findFirst({
+        where: {
+          actorUserId: fx.adminId,
+          action: 'admin.impersonate.start',
+          objectId: fx.partnerUserId,
+        },
+      });
+      expect(startAudit).toBeDefined();
+      if (startAudit) {
+        expect(startAudit.objectType).toBe('partner');
+        expect(startAudit.after).toMatchObject({
+          targetRole: 'PARTNER',
+          targetEmail: fx.partnerEmail,
+        });
+      }
+
+      // Verify STOP audit log
+      const stopAudit = await prisma.auditLog.findFirst({
+        where: {
+          actorUserId: fx.adminId,
+          action: 'admin.impersonate.stop',
+          objectId: fx.partnerUserId,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(stopAudit).toBeDefined();
+      if (stopAudit) {
+        expect(stopAudit.objectType).toBe('user');
+        expect(stopAudit.after).toMatchObject({
+          adminRole: 'ADMIN',
+        });
+      }
+    });
+
+    it('writes audit logs with USER objectType when impersonating an end-user (SUPER_ADMIN)', async () => {
+      // Create a SUPER_ADMIN with permission to impersonate users
+      const superAdminEmail = `imp-super-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@boomcard.bg`;
+      const superAdminHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+
+      const superAdmin = await prisma.user.create({
+        data: {
+          email: superAdminEmail,
+          passwordHash: superAdminHash,
+          firstName: 'Super',
+          lastName: 'Admin',
+          role: 'SUPER_ADMIN',
+          status: 'ACTIVE',
+          emailVerified: true,
+        },
+      });
+      createdUserIds.push(superAdmin.id);
+
+      // Small delay to ensure any prior async writes complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const { accessToken } = await loginWeb(superAdminEmail, ADMIN_PASSWORD);
+
+      const impRes = await request(app)
+        .post('/api/auth/impersonate')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ targetUserId: fx.regularUserId });
+      expect(impRes.status).toBe(200);
+
+      // Small delay to ensure the async audit write completes
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Verify START audit log has USER objectType
+      const startAudit = await prisma.auditLog.findFirst({
+        where: {
+          actorUserId: superAdmin.id,
+          action: 'admin.impersonate.start',
+          objectId: fx.regularUserId,
+        },
+      });
+      expect(startAudit).toBeDefined();
+      if (startAudit) {
+        expect(startAudit.objectType).toBe('user');
+        expect(startAudit.after).toMatchObject({
+          targetRole: 'USER',
+        });
+      }
+    });
+  });
+
   describe('Admin pre-impersonation refresh token revocation', () => {
     it('revokes the admin refresh token when supplied in the impersonate body', async () => {
       const { accessToken, refreshToken: adminRefresh } = await loginWeb(

@@ -70,6 +70,53 @@ const RISK_PARTNER_FLAG_POINTS  = 10;  // Partner has active risk flag
 const RISK_LEVEL_MEDIUM_MIN = 21; // scores 21–50 → Medium
 const RISK_LEVEL_HIGH_MIN   = 51; // scores 51+  → High
 
+/**
+ * BC-ADMIN-AUDIT-FIX-002 — Summary of fixes for risk-scoring inconsistencies:
+ *
+ * DEFECT A (MEDIUM): Receipt OCR-confidence unsafe default
+ *   - Was: receipt.service.ts defaulted missing confidence to 0 → +30 penalty
+ *          sticker.service.ts defaulted missing confidence to 60 → no penalty
+ *   - Now: Both paths normalize at fraudDetection boundary to 60 (safe default)
+ *          computeSpecRiskLevel() receives ocrConfidence?: number|null
+ *          Treats undefined/null as 60, only fires +30 if explicitly < 60
+ *   - Receipt path (receipt.service.ts:783): changed || 0 to ?? 60
+ *   - Risk boundary (fraudDetection.service.ts:957): const confidence = params.ocrConfidence ?? 60
+ *
+ * DEFECT B (MEDIUM): Fail-open on signal-query error
+ *   - Was: Signals 4 & 5 used .catch(() => 0) and .catch(() => null)
+ *          DB errors were silently swallowed, could flip High → Low risk
+ *   - Now: Both Signal 4 & 5 fail SAFE with try-catch blocks
+ *          Any DB error forces riskLevel='High' and requiresManualReview=true
+ *          Mirrors the checkReceipt() pattern (lines 388-397)
+ *   - Signal 4: lines 972-988 (voidedCount query)
+ *   - Signal 5: lines 1000-1014 (partner flag query)
+ *
+ * DEFECT C (LOW): Per-wallet vs per-user Voided count disagreement
+ *   - Was: userRisk.service.ts Signal 4 grouped by walletId (per-wallet threshold)
+ *          fraudDetection.service.ts Signal 4 counted all wallets (per-user total)
+ *          Spec §2.1 is per-user: "User has 3+ Voided records"
+ *   - Now: userRisk.service.ts Signal 4 groups by wallet.userId (per-user)
+ *          User with 2 voided in wallet A + 1 in wallet B = 3 total → fires
+ *          Consistent with fraudDetection and spec §2.1
+ *   - userRisk.service.ts: lines 134-141 (changed by: ['walletId'] → by: ['wallet.userId'])
+ *   - userRisk.service.ts: lines 188-195 (updated processing to extract wallet_userId)
+ *
+ * DEFECT D (LOW): Signal 5 inconsistent lookback window
+ *   - Was: Signal 5 (partner risk flag) had NO createdAt filter
+ *          A single historic scan at a now-flagged partner pins user at +10 forever
+ *          Signals 2 & 3 both use 30-day lookback window
+ *   - Now: Signal 5 applies 30-day createdAt: { gte: lookbackFrom } filter
+ *          Prevents stale scans from activating the signal indefinitely
+ *          Consistent window with Signals 2 & 3
+ *   - userRisk.service.ts: lines 146-154 (added createdAt: { gte: lookbackFrom })
+ *
+ * All fixes include:
+ *   - Detailed inline comments explaining the rationale
+ *   - Comprehensive test coverage (bc-admin-audit-fix-002.test.ts)
+ *   - Risk level NEVER serialized to user-facing responses
+ *   - Safe defaults and error handling throughout
+ */
+
 export type SpecRiskLevel = 'Low' | 'Medium' | 'High';
 
 export interface SpecRiskResult {
@@ -935,8 +982,8 @@ class FraudDetectionService {
     partnerId?: string;
     /** True if the user's IBAN was changed within the last 24 hours. */
     ibanChangedRecently: boolean;
-    /** OCR confidence percentage (0–100). Below 60% → +30 points. */
-    ocrConfidence: number;
+    /** OCR confidence percentage (0–100). Below 60% → +30 points. Undefined/null defaults to 60 (safe). */
+    ocrConfidence?: number | null;
     /** True when the QR code location does not match the user's GPS location. */
     locationMismatch: boolean;
   }): Promise<SpecRiskResult> {
@@ -951,7 +998,11 @@ class FraudDetectionService {
     }
 
     // Signal 2: Receipt match confidence < 60% → +30
-    if (params.ocrConfidence < 60) {
+    // Safe default: treat undefined/null confidence as 60 (safe). Only fire +30 if
+    // explicitly below 60. Receipt path defaults confidence to 0; we now normalize
+    // at the boundary to defer to caller-level defaults (receipt.service.ts:783 also changed).
+    const confidence = params.ocrConfidence ?? 60;
+    if (confidence < 60) {
       riskScore += RISK_RECEIPT_MATCH_POINTS;
       riskSignals.push('RECEIPT_MATCH_LOW_CONFIDENCE');
     }
@@ -963,12 +1014,25 @@ class FraudDetectionService {
     }
 
     // Signal 4: User has 3+ Voided cashback records → +20
-    const voidedCount = await prisma.walletTransaction.count({
-      where: {
-        wallet: { userId: params.userId },
-        cashbackStatus: 'VOIDED',
-      },
-    }).catch(() => 0);
+    // On DB error, fail SAFE: force manual review instead of silently defaulting to 0.
+    let voidedCount: number;
+    try {
+      voidedCount = await prisma.walletTransaction.count({
+        where: {
+          wallet: { userId: params.userId },
+          cashbackStatus: 'VOIDED',
+        },
+      });
+    } catch (error) {
+      logger.error('Signal 4 (voided count) query failed, forcing manual review:', error);
+      // Fail safe: force manual review on DB error
+      return {
+        riskScore: RISK_LEVEL_HIGH_MIN,
+        riskLevel: 'High',
+        requiresManualReview: true,
+        riskSignals: ['SIGNAL_4_QUERY_FAILED'],
+      };
+    }
     if (voidedCount >= 3) {
       riskScore += RISK_USER_VOIDED_POINTS;
       riskSignals.push('USER_HAS_3_PLUS_VOIDED');
@@ -977,11 +1041,24 @@ class FraudDetectionService {
     // Signal 5: Partner has active risk flag → +10
     // Spec §2.1 defines "partner has active risk flag" as a boolean field on the
     // partner record. Reads Partner.hasRiskFlag directly (added in BC-SCHEMA-1).
+    // On DB error, fail SAFE: force manual review instead of silently defaulting to null.
     if (params.partnerId) {
-      const partner = await prisma.partner.findUnique({
-        where: { id: params.partnerId },
-        select: { hasRiskFlag: true },
-      }).catch(() => null);
+      let partner;
+      try {
+        partner = await prisma.partner.findUnique({
+          where: { id: params.partnerId },
+          select: { hasRiskFlag: true },
+        });
+      } catch (error) {
+        logger.error('Signal 5 (partner flag) query failed, forcing manual review:', error);
+        // Fail safe: force manual review on DB error
+        return {
+          riskScore: RISK_LEVEL_HIGH_MIN,
+          riskLevel: 'High',
+          requiresManualReview: true,
+          riskSignals: ['SIGNAL_5_QUERY_FAILED'],
+        };
+      }
       if (partner?.hasRiskFlag === true) {
         riskScore += RISK_PARTNER_FLAG_POINTS;
         riskSignals.push('PARTNER_ACTIVE_RISK_FLAG');

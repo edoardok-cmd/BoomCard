@@ -87,14 +87,30 @@ export function userStatusLabel(status: UserAccountStatusLabel | string, lang: L
   return USER_STATUS_LABELS[status as UserAccountStatusLabel]?.[lang] ?? String(status);
 }
 
-// Spec §7.1 frames risk buckets as Auto / Review / High (manual-review framing,
-// not generic Low / Medium / High). Thresholds match backend riskScore buckets:
-// 0-30 Auto, 31-60 Review, 61+ High.
+// Spec §5.1 (Clash) frames risk levels as Low / Medium / High. Thresholds
+// match backend riskScore buckets (adminSubscribers.routes.ts:117-119):
+// 0-20 Low, 21-50 Medium, 51+ High.
+export type RiskLevel = 'low' | 'medium' | 'high';
+
+/**
+ * Map a numeric riskScore to its corresponding risk level.
+ * Canonical thresholds per Spec §5.1 (Clash):
+ * - 0-20: Low
+ * - 21-50: Medium
+ * - 51+: High
+ */
+export function getRiskLevel(score: number): RiskLevel {
+  if (score <= 20) return 'low';
+  if (score <= 50) return 'medium';
+  return 'high';
+}
+
+// Legacy type/function for Auto/Review/High framing (kept for backward compatibility).
 export type RiskBucket = 'auto' | 'review' | 'high';
 
 export function riskBucket(score: number): RiskBucket {
-  if (score <= 30) return 'auto';
-  if (score <= 60) return 'review';
+  if (score <= 20) return 'auto';
+  if (score <= 50) return 'review';
   return 'high';
 }
 
