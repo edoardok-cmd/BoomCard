@@ -139,7 +139,11 @@ export default function MyCardScreen() {
       if (!cardData) {
         // Check if there's an active subscription — if so, create the card automatically
         const subResponse = await apiClient.get('/api/subscriptions/current');
-        const hasSub = subResponse.success && subResponse.data;
+        // /current returns {hasSubscription:false,subscription:null} when none exists (no `id`),
+        // or the flat subscription object (with `id`) when active. The envelope is truthy in both
+        // cases, so guard on `id` to avoid auto-provisioning a card for never-subscribed users.
+        const subBody = subResponse.success ? (subResponse.data as any) : null;
+        const hasSub = subBody?.id != null;
         if (hasSub) {
           try {
             cardData = await cardApi.createCard();

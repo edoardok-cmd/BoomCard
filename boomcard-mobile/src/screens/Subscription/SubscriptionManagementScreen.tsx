@@ -105,7 +105,14 @@ const SubscriptionManagementScreen = ({ navigation }: any) => {
         return;
       }
 
-      setSubscription((subRes.value.data as any)?.data ?? null);
+      // GET /api/subscriptions/current returns the subscription flat at the top
+      // level of the body ({ ...subscription, paymentMethod, benefits }) when one
+      // exists, or { hasSubscription: false, subscription: null } when none does.
+      // apiClient.get wraps the raw body in { success, data }, so subRes.value.data
+      // IS that body — no extra .data nesting. Coalesce the no-subscription
+      // envelope (which has no `id`) to null so the empty state shows correctly.
+      const subBody = subRes.value.data as any;
+      setSubscription(subBody?.id ? subBody : (subBody?.subscription ?? null));
 
       if (histRes.status === 'fulfilled' && histRes.value.success) {
         setHistory(histRes.value.data?.history || []);
@@ -196,8 +203,8 @@ const SubscriptionManagementScreen = ({ navigation }: any) => {
     try {
       const res = await apiClient.post(`/api/subscriptions/${subscription.id}/change-card`, {});
       if (res.success) {
-        // Response shape: { type:'stripe', url } | { type:'paysera', paymentUrl, orderId }
-        const body = (res.data as any)?.data ?? res.data;
+        // Response shape (top-level body): { type:'stripe', url } | { type:'paysera', paymentUrl, orderId }
+        const body = res.data as any;
         const url: string | undefined = body?.url || body?.paymentUrl;
         if (!url) {
           crossPlatformAlert(t('common.error'), t('subscription.changeCardNoUrl', 'Връзката за смяна на картата не е налична.'));

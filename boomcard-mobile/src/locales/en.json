@@ -381,6 +381,7 @@
     "outdatedQr": "This BOOM sticker is outdated. Please ask the venue for a new one.",
     "partnerNotAccepting": "This venue isn't accepting BoomCard transactions right now. Try again later or see nearby active venues.",
     "subscriptionFailedPayment": "Your subscription has a failed payment. Resume it from the “Subscription & payments” menu to keep scanning receipts.",
+    "subscriptionRequired": "To use this feature, choose a plan and complete payment from the “Subscription & payments” menu.",
     "renewSubscription": "Renew subscription",
     "stickerInvalid": "This QR code isn't active or can't be used right now.",
     "successReviewTitle": "Submitted for review",
@@ -766,7 +767,17 @@
     "fromScan": "Cashback from scan",
     "validUntil": "Valid until",
     "voidedReason": "Reason",
-    "emptyFiltered": "No cashback entries for the selected filters."
+    "emptyFiltered": "No cashback entries for the selected filters.",
+    "periodAll": "All",
+    "period7d": "7 days",
+    "period30d": "30 days",
+    "statusAll": "All",
+    "statusPending": "In Review",
+    "statusCleared": "Available",
+    "statusLocked": "Sent to payout",
+    "statusPaid": "Paid",
+    "statusExpired": "Expired",
+    "statusVoided": "Cancelled"
   },
   "nearby": {
     "title": "Nearby",

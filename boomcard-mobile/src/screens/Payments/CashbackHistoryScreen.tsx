@@ -87,18 +87,19 @@ const STATE_BG: Record<LifecycleState, string> = {
   Voided: 'rgba(239,68,68,0.12)',
 };
 
-function stateLabel(state: LifecycleState, lang: string): string {
-  if (lang === 'bg') {
-    return {
-      Pending: 'Чакащ',
-      Cleared: 'Наличен',
-      Locked: 'В обработка',
-      Paid: 'Изплатен',
-      Expired: 'Изтекъл',
-      Voided: 'Анулиран',
-    }[state];
-  }
-  return state;
+// §2 single source of truth: per-row labels reuse the same cashback.status*
+// i18n keys as the filter chips, so a state renders the SAME word everywhere.
+const STATE_LABEL_KEY: Record<LifecycleState, string> = {
+  Pending: 'cashback.statusPending',
+  Cleared: 'cashback.statusCleared',
+  Locked: 'cashback.statusLocked',
+  Paid: 'cashback.statusPaid',
+  Expired: 'cashback.statusExpired',
+  Voided: 'cashback.statusVoided',
+};
+
+function stateLabel(state: LifecycleState, t: (key: string) => string): string {
+  return t(STATE_LABEL_KEY[state]);
 }
 
 export default function CashbackHistoryScreen() {
@@ -184,7 +185,7 @@ export default function CashbackHistoryScreen() {
               style={[styles.stateChip, { backgroundColor: bg }]}
               textStyle={[styles.stateChipText, { color }]}
             >
-              {stateLabel(state, i18n.language)}
+              {stateLabel(state, t)}
             </Chip>
           </View>
         </View>

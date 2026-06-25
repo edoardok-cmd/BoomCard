@@ -242,7 +242,10 @@ const SyncAnalysisScreen = ({ navigation }: any) => {
   const fetchSubscription = useCallback(async (meta: SyncMetadata): Promise<Partial<CategoryState>> => {
     try {
       const res = await apiClient.get('/api/subscriptions/current');
-      const sub = res.success ? (res.data as any) : null;
+      // /current returns a flat subscription (with `id`) when active, or
+      // {hasSubscription:false,subscription:null} (no `id`) when none exists.
+      const subBody = res.success ? (res.data as any) : null;
+      const sub = subBody?.id ? subBody : null;
       const displayValue = sub
         ? `${sub.plan ?? sub.planCode ?? '—'} · ${sub.status ?? '—'}`
         : t('sync.noData');

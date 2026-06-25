@@ -13,7 +13,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { ReceiptsApi } from '../../api/receipts.api';
 import { useTheme } from '../../contexts/ThemeContext';
-import { APP_CONFIG } from '../../constants/config';
+import { toCanonicalStatus } from '../../utils/receiptStatus';
+import { formatDualCurrency } from '../../utils/format';
 import type { Receipt } from '../../types';
 
 const STATUS_CONFIG: Record<string, { bg: string; text: string; icon: keyof typeof Ionicons.glyphMap }> = {
@@ -75,12 +76,8 @@ const ReceiptDetailScreen = ({ route, navigation }: any) => {
     });
   };
 
-  const formatAmount = (amount: number | undefined) => {
-    if (!amount) return '0.00 лв / €0.00';
-    const bgn = `${amount.toFixed(2)} лв`;
-    const eur = `€${(amount / APP_CONFIG.EUR_EXCHANGE_RATE).toFixed(2)}`;
-    return `${bgn} / ${eur}`;
-  };
+  // AC#5 — single shared dual-currency formatter, no per-screen reimplementation.
+  const formatAmount = (amount: number | undefined) => formatDualCurrency(amount || 0);
 
   const s = getStyles(theme, isDarkMode);
 
@@ -106,6 +103,8 @@ const ReceiptDetailScreen = ({ route, navigation }: any) => {
   }
 
   const statusConfig = STATUS_CONFIG[receipt.status] || STATUS_CONFIG.EXPIRED;
+  // R5 §3.2 — collapse internal pipeline states so detail matches the list.
+  const canonicalStatus = toCanonicalStatus(receipt.status);
 
   return (
     <ScrollView style={s.container} contentContainerStyle={s.content}>
@@ -118,7 +117,7 @@ const ReceiptDetailScreen = ({ route, navigation }: any) => {
       <View style={[s.statusBanner, { backgroundColor: isDarkMode ? `${statusConfig.bg}30` : statusConfig.bg }]}>
         <Ionicons name={statusConfig.icon} size={20} color={statusConfig.text} />
         <Text style={[s.statusText, { color: statusConfig.text }]}>
-          {t(`receipts.status.${receipt.status}`) || receipt.status}
+          {t(`receipts.status.${canonicalStatus}`, t(`receipts.status.${receipt.status}`, receipt.status))}
         </Text>
       </View>
 

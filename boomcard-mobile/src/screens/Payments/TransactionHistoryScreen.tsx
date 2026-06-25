@@ -64,6 +64,26 @@ export default function TransactionHistoryScreen() {
     return colors[type] || '#64748B';
   };
 
+  // §2 single source of truth: cashback-lifecycle statuses share the SAME
+  // cashback.status* keys used by CashbackHistory, so no raw enum can leak here.
+  const CASHBACK_STATUS_KEY: Record<string, string> = {
+    PENDING: 'cashback.statusPending',
+    CLEARED: 'cashback.statusCleared',
+    LOCKED: 'cashback.statusLocked',
+    PAID: 'cashback.statusPaid',
+    EXPIRED: 'cashback.statusExpired',
+    VOIDED: 'cashback.statusVoided',
+  };
+
+  const getStatusLabel = (item: any): string => {
+    // Cashback rows carry lifecycle statuses (CLEARED/LOCKED/PAID/EXPIRED/VOIDED)
+    // that transactions.status doesn't define — route them to the §2 canonical labels.
+    if (item.type === 'CASHBACK_CREDIT' && CASHBACK_STATUS_KEY[item.status]) {
+      return String(t(CASHBACK_STATUS_KEY[item.status]));
+    }
+    return String(t(`transactions.status.${item.status}`, item.status));
+  };
+
   const getCashbackExpiryLabel = (item: any): string | null => {
     if (item.type !== 'CASHBACK_CREDIT' || !item.cashbackExpiresAt) return null;
     const expiresAt = new Date(item.cashbackExpiresAt);
@@ -105,7 +125,7 @@ export default function TransactionHistoryScreen() {
                 style={styles.statusChip}
                 textStyle={styles.statusText}
               >
-                {String(t(`transactions.status.${item.status}`, item.status))}
+                {getStatusLabel(item)}
               </Chip>
               {expiryLabel && (
                 <Text style={styles.expiryText}>{expiryLabel}</Text>

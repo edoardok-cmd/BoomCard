@@ -20,6 +20,7 @@ import apiClient from '../../api/client';
 import { useFocusEffect } from '@react-navigation/native';
 import { notificationsApi } from '../../api/notifications.api';
 import { formatDualCurrency } from '../../utils/format';
+import { toCanonicalStatus } from '../../utils/receiptStatus';
 import { DashboardSkeleton, AnimatedCounter, FadeInView } from '../../components/loading';
 import type { ReceiptStats, Receipt } from '../../types';
 
@@ -33,14 +34,14 @@ interface RecentTransaction {
   totalAmount: number;
 }
 
+// R5 §3.2 — keyed by the canonical status vocabulary (toCanonicalStatus). Internal
+// pipeline states (PROCESSING/VALIDATING/MANUAL_REVIEW/PENDING_CONFIRMATION/PENDING)
+// collapse to IN_REVIEW and never leak to the user, so color and label always agree.
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
-  APPROVED:      { bg: 'rgba(16,185,129,0.12)',  text: '#10B981' },
-  PENDING:       { bg: 'rgba(245,158,11,0.12)',   text: '#D97706' },
-  PENDING_CONFIRMATION: { bg: 'rgba(59,130,246,0.12)', text: '#3B82F6' },
-  VALIDATING:    { bg: 'rgba(139,92,246,0.12)',   text: '#8B5CF6' },
-  PROCESSING:    { bg: 'rgba(59,130,246,0.12)',   text: '#3B82F6' },
-  MANUAL_REVIEW: { bg: 'rgba(139,92,246,0.12)',   text: '#8B5CF6' },
-  REJECTED:      { bg: 'rgba(239,68,68,0.12)',    text: '#EF4444' },
+  APPROVED:  { bg: 'rgba(16,185,129,0.12)', text: '#10B981' },
+  IN_REVIEW: { bg: 'rgba(59,130,246,0.12)', text: '#3B82F6' },
+  REJECTED:  { bg: 'rgba(239,68,68,0.12)',  text: '#EF4444' },
+  EXPIRED:   { bg: 'rgba(107,114,128,0.12)', text: '#6B7280' },
 };
 
 const DashboardScreen = ({ navigation }: any) => {
@@ -92,7 +93,13 @@ const DashboardScreen = ({ navigation }: any) => {
       const subscriptionPromise = apiClient.get('/api/subscriptions/current').then((subResponse) => {
         if (!mountedRef.current) return;
         if (subResponse.success && subResponse.data) {
-          setSubscription(subResponse.data);
+          // GET /api/subscriptions/current returns the subscription flat at the
+          // top level ({ ...subscription, paymentMethod, benefits }) when one
+          // exists, or { hasSubscription: false, subscription: null } when none
+          // does. Coalesce the no-subscription envelope (which has no `id`) to
+          // null so the plan card isn't rendered for a never-subscribed user.
+          const subBody = subResponse.data as any;
+          setSubscription(subBody?.id ? subBody : (subBody?.subscription ?? null));
           anySucceeded = true;
         }
       }).catch((err) => { if (__DEV__) console.warn('Dashboard: subscription fetch failed', err); anyFailed = true; });
@@ -305,7 +312,7 @@ const DashboardScreen = ({ navigation }: any) => {
           <TouchableOpacity
             style={[s.planBanner, { borderColor: 'rgba(239,68,68,0.35)', marginBottom: 12 }]}
             activeOpacity={0.8}
-            onPress={() => navigation.navigate('Card')}
+            onPress={() => navigation.navigate('MyCard')}
           >
             <LinearGradient
               colors={isDarkMode ? ['#7f1d1d', '#991b1b'] : ['#dc2626', '#b91c1c']}
@@ -343,7 +350,7 @@ const DashboardScreen = ({ navigation }: any) => {
             },
           ]}
           activeOpacity={0.7}
-          onPress={() => navigation.navigate('Card')}
+          onPress={() => navigation.navigate('MyCard')}
         >
           <LinearGradient
             colors={
@@ -510,7 +517,7 @@ const DashboardScreen = ({ navigation }: any) => {
         <TouchableOpacity
           style={s.upgradeBanner}
           activeOpacity={0.8}
-          onPress={() => navigation.navigate('Card')}
+          onPress={() => navigation.navigate('MyCard')}
         >
           <LinearGradient
             colors={isDarkMode ? ['#1E3A8A', '#3730A3'] : ['#000000', '#1A1A1A']}
@@ -543,7 +550,10 @@ const DashboardScreen = ({ navigation }: any) => {
           </View>
 
           {recentTransactions.map((tx) => {
-            const sc = STATUS_COLORS[tx.status] || STATUS_COLORS.PENDING;
+            // R5 §3.2 — collapse internal pipeline statuses to the canonical vocabulary
+            // for BOTH the color lookup and the label so they always agree.
+            const canonical = toCanonicalStatus(tx.status);
+            const sc = STATUS_COLORS[canonical] || STATUS_COLORS.IN_REVIEW;
             return (
               <View key={tx.id} style={s.txCard}>
                 <View style={[s.txIconCircle, { backgroundColor: isDarkMode ? 'rgba(139,92,246,0.15)' : 'rgba(139,92,246,0.08)' }]}>
@@ -556,7 +566,7 @@ const DashboardScreen = ({ navigation }: any) => {
                 <View style={s.txRight}>
                   <View style={[s.txStatusBadge, { backgroundColor: isDarkMode ? `${sc.bg}` : sc.bg }]}>
                     <Text style={[s.txStatusText, { color: sc.text }]}>
-                      {t(`receipts.status.${tx.status}`, tx.status)}
+                      {t(`receipts.status.${canonical}`, t(`receipts.status.${tx.status}`, tx.status))}
                     </Text>
                   </View>
                   {tx.cashbackAmount > 0 && (

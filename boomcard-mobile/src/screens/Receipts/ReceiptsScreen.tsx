@@ -17,8 +17,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import { ReceiptsApi } from '../../api/receipts.api';
 import { useTheme } from '../../contexts/ThemeContext';
 import type { Receipt, ReceiptStats, ReceiptStatus } from '../../types';
-import { APP_CONFIG } from '../../constants/config';
 import { useFeatureFlags } from '../../store/MobileConfigContext';
+import { toCanonicalStatus } from '../../utils/receiptStatus';
+import { formatDualCurrency } from '../../utils/format';
 
 // Soft status badge colors matching website design (light bg + dark text)
 const STATUS_CONFIG: Record<string, { bg: string; text: string; icon: keyof typeof Ionicons.glyphMap }> = {
@@ -59,20 +60,6 @@ const STATUS_OPTIONS: { key: StatusFilter; labelKey: string }[] = [
 const PENDING_STATUSES = new Set(['PENDING', 'PENDING_CONFIRMATION', 'PROCESSING', 'VALIDATING', 'MANUAL_REVIEW']);
 const APPROVED_STATUSES = new Set(['APPROVED']);
 const REJECTED_STATUSES = new Set(['REJECTED', 'EXPIRED']);
-
-// R5 §3.2 — collapse internal pipeline states onto the canonical user vocabulary.
-// The user never sees PROCESSING/VALIDATING/MANUAL_REVIEW/PENDING_CONFIRMATION.
-const CANONICAL_STATUS: Record<string, string> = {
-  PENDING: 'IN_REVIEW',
-  PENDING_CONFIRMATION: 'IN_REVIEW',
-  PROCESSING: 'IN_REVIEW',
-  VALIDATING: 'IN_REVIEW',
-  MANUAL_REVIEW: 'IN_REVIEW',
-  APPROVED: 'APPROVED',
-  REJECTED: 'REJECTED',
-  EXPIRED: 'EXPIRED',
-};
-const toCanonicalStatus = (status: string): string => CANONICAL_STATUS[status] || status;
 
 const ReceiptsScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
@@ -174,13 +161,8 @@ const ReceiptsScreen = ({ navigation }: any) => {
     });
   };
 
-  const formatAmount = (amount: number | undefined) => {
-    if (!amount) return '0.00 лв / €0.00';
-    const bgnFormatted = `${amount.toFixed(2)} лв`;
-    const eurAmount = amount / APP_CONFIG.EUR_EXCHANGE_RATE;
-    const eurFormatted = `€${eurAmount.toFixed(2)}`;
-    return `${bgnFormatted} / ${eurFormatted}`;
-  };
+  // AC#5 — single shared dual-currency formatter, no per-screen reimplementation.
+  const formatAmount = (amount: number | undefined) => formatDualCurrency(amount || 0);
 
   const s = getStyles(theme, isDarkMode);
 

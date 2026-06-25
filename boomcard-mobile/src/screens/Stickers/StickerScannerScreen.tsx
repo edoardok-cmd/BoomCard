@@ -211,6 +211,25 @@ export default function StickerScannerScreen() {
               'Този обект временно не приема BoomCard транзакции. Опитайте отново по-късно или вижте близки активни обекти.'
             )
           );
+        } else if (rawErr.includes('SUBSCRIPTION_REQUIRED')) {
+          // BC-USER-SPEC-FIX-005: requireActiveSubscription throws SUBSCRIPTION_REQUIRED
+          // (HTTP 402) for users without an active/trialing/within-period subscription —
+          // this also covers never-subscribed users, so the copy invites choosing a plan
+          // rather than implying a failed payment. Routes to the same renewal CTA.
+          crossPlatformAlert(
+            t('common.info', 'Информация'),
+            t(
+              'stickers.subscriptionRequired',
+              'За да използвате тази функция, изберете план и завършете плащането от менюто „Абонамент и плащания".'
+            ),
+            [
+              { text: t('common.cancel', 'Откажи'), style: 'cancel' },
+              {
+                text: t('stickers.renewSubscription', 'Възобнови абонамент'),
+                onPress: () => (navigation as any).navigate('SubscriptionManagement'),
+              },
+            ]
+          );
         } else if (rawErr.includes('SUBSCRIPTION_FAILED_PAYMENT') || rawErr.includes('SUBSCRIPTION_PAST_DUE') || rawErr.includes('SUBSCRIPTION_INACTIVE')) {
           crossPlatformAlert(
             t('common.info', 'Информация'),
