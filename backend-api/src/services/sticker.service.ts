@@ -10,6 +10,7 @@ import { recognizeReceiptImage } from './ocr.service';
 import { imageUploadService } from './imageUpload.service';
 import { enqueueMerchantVerification } from '../queues/merchantVerification.queue';
 import { cashbackLifecycleService, VOID_REASON_CATEGORIES } from './cashbackLifecycle.service';
+import { subscriptionAllowsEarning } from './subscriptionGate';
 import { writeAudit } from '../middleware/audit.middleware';
 import { getSystemSettingStr } from '../utils/systemSettings';
 import { isPartnerOperationallyActive } from './partner.service';
@@ -268,66 +269,56 @@ class StickerService {
     const now = new Date();
     const status = latest.status;
 
+    // Use the shared allow-list gate from subscriptionGate module to ensure
+    // consistency with cashback creation gate (spec §8.1 rule 1). The gate
+    // permits ACTIVE, TRIALING, and CANCELLED-within-period; blocks all others
+    // (EXPIRED, FAILED_PAYMENT, CANCELLED-post-period, PAST_DUE, UNPAID,
+    // INCOMPLETE, INCOMPLETE_EXPIRED, PAUSED).
     // (Spec §1.2) — the source spec DEFERS the admin handling of the Stripe-
     // mapped statuses (TRIALING, PAST_DUE, PAUSED, etc.) to product confirmation.
     // Decisions made here, documented as the current spec-aligned defaults:
     //   • TRIALING ≡ Active: a user in the Stripe trial has a live, paid-intent
     //     subscription, so scanning is allowed (treated identically to ACTIVE).
-    //   • PAST_DUE is blocked — it matches none of the allow branches below and
-    //     falls through to the generic SUBSCRIPTION_INACTIVE throw at the end of
-    //     this function. It is a Stripe-internal dunning state; §1.2's terminal
-    //     block-states include Failed Payment, and PAST_DUE precedes that state.
-    //   • PAUSED blocks payout (enforced in wallet.service, not here) but is not a
-    //     scan state in §1.2.
-    // If product later defines different rules, change these branches and update
-    // this note — they are the single documented decision point for the §1.2 gap.
-    if (status === SubscriptionStatus.ACTIVE || (status as string) === 'TRIALING') {
-      return;
-    }
+    //   • PAST_DUE is blocked — it is a Stripe-internal dunning state; §1.2's
+    //     terminal block-states include Failed Payment, and PAST_DUE precedes that state.
+    //   • PAUSED blocks both scanning and earning (both enforced via subscriptionGate).
+    //     PAUSED is not a scan state in the original spec §1.2 (Stripe-specific status);
+    //     this is a product decision made in subscriptionGate.ts.
+    // If product later defines different rules, change subscriptionGate module
+    // and this note — they are the single documented decision point for the §1.2 gap.
+    if (!subscriptionAllowsEarning(status, latest.currentPeriodEnd, now)) {
+      // Block earning. Return specific error code based on status.
+      if (status === SubscriptionStatus.FAILED_PAYMENT) {
+        throw new Error(
+          'SUBSCRIPTION_FAILED_PAYMENT: Абонаментът Ви е в статус „неуспешно плащане". ' +
+          'Възобновете го от менюто „Абонамент и плащания", за да продължите да сканирате бележки.'
+        );
+      }
 
-    // Spec §1.2 / §8.1.1 — Cancelled-within-paid-period: scanning allowed through
-    // last paid day regardless of how the cancellation was initiated. The spec does
-    // not require cancelAtPeriodEnd=true; only that currentPeriodEnd is still in the
-    // future. This matches resolveCashbackTier which uses the same gate.
-    if (
-      status === SubscriptionStatus.CANCELLED &&
-      latest.currentPeriodEnd != null &&
-      latest.currentPeriodEnd > now
-    ) {
-      return;
-    }
+      if (status === SubscriptionStatus.EXPIRED) {
+        throw new Error(
+          'SUBSCRIPTION_EXPIRED: Абонаментът Ви е изтекъл. ' +
+          'Подновете го от менюто „Абонамент и плащания", за да продължите да сканирате бележки.'
+        );
+      }
 
-    if (status === SubscriptionStatus.FAILED_PAYMENT) {
+      // F-015: Distinct error code for CANCELLED post-period (paid period has ended).
+      // Mobile client needs to distinguish "cancelled and period has ended" from other
+      // inactive states so it can show the correct CTA (subscribe again vs. other action).
+      if (status === SubscriptionStatus.CANCELLED) {
+        throw new Error(
+          'SUBSCRIPTION_CANCELLED_EXPIRED: Абонаментът Ви е отменен и платеният период е приключил. ' +
+          'Абонирайте се отново от менюто „Абонамент и плащания", за да продължите да сканирате бележки.'
+        );
+      }
+
+      // Catch-all for other blocked states (PAST_DUE, UNPAID, INCOMPLETE,
+      // INCOMPLETE_EXPIRED, PAUSED, or unknown future statuses).
       throw new Error(
-        'SUBSCRIPTION_FAILED_PAYMENT: Абонаментът Ви е в статус „неуспешно плащане". ' +
+        'SUBSCRIPTION_INACTIVE: Абонаментът Ви не е активен. ' +
         'Възобновете го от менюто „Абонамент и плащания", за да продължите да сканирате бележки.'
       );
     }
-
-    if (status === SubscriptionStatus.EXPIRED) {
-      throw new Error(
-        'SUBSCRIPTION_EXPIRED: Абонаментът Ви е изтекъл. ' +
-        'Подновете го от менюто „Абонамент и плащания", за да продължите да сканирате бележки.'
-      );
-    }
-
-    // F-015: Distinct error code for CANCELLED post-period (paid period has ended).
-    // Mobile client needs to distinguish "cancelled and period has ended" from other
-    // inactive states so it can show the correct CTA (subscribe again vs. other action).
-    if (
-      status === SubscriptionStatus.CANCELLED &&
-      (latest.currentPeriodEnd == null || latest.currentPeriodEnd <= new Date())
-    ) {
-      throw new Error(
-        'SUBSCRIPTION_CANCELLED_EXPIRED: Абонаментът Ви е отменен и платеният период е приключил. ' +
-        'Абонирайте се отново от менюто „Абонамент и плащания", за да продължите да сканирате бележки.'
-      );
-    }
-
-    throw new Error(
-      'SUBSCRIPTION_INACTIVE: Абонаментът Ви не е активен. ' +
-      'Възобновете го от менюто „Абонамент и плащания", за да продължите да сканирате бележки.'
-    );
   }
 
   /**
@@ -342,7 +333,7 @@ class StickerService {
       where: {
         userId,
         OR: [
-          { status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAUSED, 'TRIALING' as any] } },
+          { status: { in: [SubscriptionStatus.ACTIVE, 'TRIALING' as any] } },
           { status: SubscriptionStatus.CANCELLED, currentPeriodEnd: { gt: now } },
         ],
       },
@@ -954,7 +945,7 @@ class StickerService {
 
     if (partner?.partnerTypeId) {
       const userSubscription = await prisma.subscription.findFirst({
-        where: { userId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAUSED] } },
+        where: { userId, status: SubscriptionStatus.ACTIVE },
         orderBy: { currentPeriodEnd: 'desc' },
       });
       const redeemableTypeIds = await partnerTypeService.getRedeemableTypeIdsForPlan(
@@ -1267,7 +1258,7 @@ class StickerService {
 
     if (partner && partner.partnerTypeId) {
       const userSubscription = await prisma.subscription.findFirst({
-        where: { userId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAUSED] } },
+        where: { userId, status: SubscriptionStatus.ACTIVE },
         orderBy: { currentPeriodEnd: 'desc' },
       });
 
@@ -1988,7 +1979,7 @@ class StickerService {
       // Spec §4.2/4.3 — snapshot the active subscription at approval time so
       // history remains queryable even after the sub is later expired/cancelled.
       const activeSub = await prisma.subscription.findFirst({
-        where: { userId: scan.userId, status: { in: ['ACTIVE', 'TRIALING', 'PAUSED'] } },
+        where: { userId: scan.userId, status: { in: ['ACTIVE', 'TRIALING'] } },
         orderBy: { createdAt: 'desc' },
         select: { id: true },
       });
