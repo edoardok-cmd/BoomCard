@@ -353,6 +353,10 @@ export const requireActiveSubscription = async (
 
   try {
     const now = new Date();
+    // NOTE: PAUSED is intentionally treated as NON-operational here, matching
+    // sticker.service.assertSubscriptionAllowsScanning. (PAUSED still earns a cashback
+    // tier elsewhere, but cannot open a session/scan.) Keep these two gates aligned —
+    // if product decides PAUSED retains grace-window access, add PAUSED to BOTH.
     const eligible = await prisma.subscription.findFirst({
       where: {
         userId: req.user.id,
