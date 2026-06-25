@@ -330,6 +330,10 @@ router.get('/export', requirePermission('subscriptions.read'), async (req, res, 
 // subscription ever held by one user, oldest first. Powers the "history"
 // drawer per spec §4.2 ("Един потребител може да има история от различни
 // абонаменти във времето").
+//
+// BC-ADMIN-AUDIT-FIX-006: now includes per-subscription payment history.
+// Transactions are attributed via subscriptionId FK (backfilled in migration),
+// enabling per-subscription payment display (spec §3.3).
 router.get('/user/:userId/history', requirePermission('subscriptions.read'), async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({
@@ -344,20 +348,48 @@ router.get('/user/:userId/history', requirePermission('subscriptions.read'), asy
       select: SUBSCRIPTION_LIST_SELECT,
     });
 
-    // Transaction rows of type SUBSCRIPTION don't carry a foreign key to the
-    // Subscription row (each Subscription is the rolling current-period state,
-    // not a per-charge ledger), so we aggregate at user level rather than
-    // per-row. The drawer surfaces this as a header summary instead of a
-    // misleading per-row count derived from a fuzzy createdAt window.
-    const userPaymentAgg = await prisma.transaction.aggregate({
-      where: {
-        userId: user.id,
-        type: TransactionType.SUBSCRIPTION,
-        status: TransactionStatus.COMPLETED,
-      },
-      _count: { _all: true },
-      _sum: { amount: true },
-      _max: { createdAt: true },
+    // BC-ADMIN-AUDIT-FIX-006: Fetch payments grouped per subscription.
+    // Each subscription can now have its own payment list via the subscriptionId FK.
+    // Aggregate at user level for a summary banner, and per-subscription for detail rows.
+    const [userPaymentAgg, subscriptionPayments] = await Promise.all([
+      prisma.transaction.aggregate({
+        where: {
+          userId: user.id,
+          type: TransactionType.SUBSCRIPTION,
+          status: TransactionStatus.COMPLETED,
+        },
+        _count: { _all: true },
+        _sum: { amount: true },
+        _max: { createdAt: true },
+      }),
+      prisma.transaction.findMany({
+        where: {
+          userId: user.id,
+          type: TransactionType.SUBSCRIPTION,
+          status: TransactionStatus.COMPLETED,
+        },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          subscriptionId: true,
+          amount: true,
+          currency: true,
+          createdAt: true,
+          completedAt: true,
+          paymentMethod: true,
+          stripePaymentId: true,
+        },
+      }),
+    ]);
+
+    // Build a map of subscriptionId -> payments array for quick lookup
+    const paymentsBySubscriptionId = new Map<string | null, typeof subscriptionPayments>();
+    subscriptionPayments.forEach((payment) => {
+      const key = payment.subscriptionId ?? '__unattributed__';
+      if (!paymentsBySubscriptionId.has(key)) {
+        paymentsBySubscriptionId.set(key, []);
+      }
+      paymentsBySubscriptionId.get(key)!.push(payment);
     });
 
     const result = subscriptions.map((s) => ({
@@ -377,6 +409,8 @@ router.get('/user/:userId/history', requirePermission('subscriptions.read'), asy
       failedPaymentClearedAt: s.failedPaymentClearedAt,
       billingCycle: billingCycleFromPeriod(s.currentPeriodStart, s.currentPeriodEnd),
       planDisplayName: planDisplayName(s.plan),
+      // BC-ADMIN-AUDIT-FIX-006: Include per-subscription payment array
+      payments: paymentsBySubscriptionId.get(s.id) ?? [],
     }));
 
     res.json({
