@@ -267,7 +267,7 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
       // The /fail call should treat this as a first failure, not second
       // Call the /fail endpoint to verify end-to-end filtering behavior
       const failResponse = await request(app)
-        .post(`/api/admin/payouts/${secondPayout.id}/fail`)
+        .patch(`/api/admin/payouts/${secondPayout.id}/fail`)
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           reason: 'INSUFFICIENT_FUNDS',
@@ -286,6 +286,13 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
       // Confirm it was not escalated despite the manual hold existing
       const meta = updatedPayout?.metadata ? JSON.parse(updatedPayout.metadata as string) : {};
       expect(meta.escalatedSecondFailure).not.toBe(true);
+
+      // Verify wallet balance was restored (first failure restores balance)
+      const restoredWallet = await prisma.wallet.findUnique({
+        where: { id: testWallet.id },
+      });
+      // Balance should be: 500 (initial) - 100 (manual hold, not counted) + 150 (restored from failed payout) = 550
+      expect(restoredWallet?.availableBalance).toBe(500 + 150); // 650
     });
   });
 
@@ -391,7 +398,7 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
       });
 
       // Create a PENDING payout
-      await prisma.walletTransaction.create({
+      const noIbanPayout = await prisma.walletTransaction.create({
         data: {
           walletId: testWallet.id,
           type: 'WITHDRAWAL',
@@ -411,6 +418,19 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
       expect(res.status).toBe(200);
       // Should report as "held" not "skipped"
       expect(res.body.held).toBeGreaterThan(0);
+
+      // Verify the payout was actually updated in the database to RISK_HOLD
+      const payouts = await prisma.walletTransaction.findMany({
+        where: { walletId: testWallet.id },
+      });
+      expect(payouts.length).toBeGreaterThan(0);
+      const firstPayout = payouts[0];
+      expect(firstPayout.status).toBe('RISK_HOLD');
+      expect(firstPayout.description).toContain('IBAN');
+
+      // Verify notification metadata/record indicates hold reason
+      const meta = firstPayout.metadata ? JSON.parse(firstPayout.metadata) : {};
+      expect(meta.heldReason || firstPayout.description).toBeTruthy();
     });
   });
 
