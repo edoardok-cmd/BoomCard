@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "dev:worker": "ts-node-dev --respawn --transpile-only src/worker.ts",
-    "build": "prisma generate && (tsc || true)",
+    "build": "prisma generate && tsc",
     "start": "node dist/server.js",
     "start:worker": "node dist/worker.js",
     "deploy": "prisma migrate deploy && npm run start",

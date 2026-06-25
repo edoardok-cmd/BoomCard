@@ -894,7 +894,7 @@ export class AuthService {
       // "archived without ever activating" cohort is empirically empty.
       const partner = await prisma.partner.findUnique({
         where: { userId: user.id },
-        select: { status: true, verifiedAt: true },
+        select: { id: true, status: true, verifiedAt: true },
       });
       // Compute canonical status for the login payload. Statuses that throw below
       // (ARCHIVED/REJECTED/awaiting-activation) never reach the return, so this is
