@@ -1397,6 +1397,15 @@ router.delete('/:userId/account', authenticate, authorize('ADMIN', 'SUPER_ADMIN'
       // Revoke all active sessions immediately so a deleted user cannot
       // continue making API requests with their existing refresh tokens.
       prisma.refreshToken.deleteMany({ where: { userId } }),
+      // Cancel any non-terminal subscription so a deleted account stops
+      // auto-renewing/billing and is no longer counted as an active subscriber.
+      // Mirrors AuthService.deleteAccount().
+      prisma.subscription.updateMany({
+        where: { userId, status: { in: ['ACTIVE', 'TRIALING', 'PAUSED'] } },
+        data: { status: 'CANCELLED', canceledAt: new Date(), cancelAtPeriodEnd: true },
+      }),
+      // User row is soft-deleted, so the PushToken onDelete cascade won't fire.
+      prisma.pushToken.updateMany({ where: { userId }, data: { isActive: false } }),
     ]);
 
     res.json({ ok: true, userId, reason: reason ?? null });

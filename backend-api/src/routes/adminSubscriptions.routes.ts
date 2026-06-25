@@ -812,8 +812,13 @@ router.post('/pending/:id/resend-token', requirePermission('subscriptions.write'
     }
     const token = crypto.randomBytes(32).toString('hex');
     const tokenExpiresAt = new Date(Date.now() + 30 * 60 * 1000);
-    // When an admin explicitly resends, extend the checkout session window so
-    // the user can still complete their profile even if the original expiry passed.
+    // Re-enabling profile completion is done purely by rotating `token` +
+    // `tokenExpiresAt` above (complete-profile gates on those, NOT on `expiresAt`).
+    // We additionally bump `expiresAt` when it has already passed so the row's
+    // session window stays consistent with the freshly issued token. Side effect:
+    // this re-arms the in-flight-checkout guard in pending-checkout.routes
+    // (a new checkout for this email is blocked until the extended expiresAt) —
+    // intended, since the admin wants the user to finish THIS paid session.
     const extendedExpiresAt = row.expiresAt <= new Date()
       ? new Date(Date.now() + 24 * 60 * 60 * 1000)
       : row.expiresAt;

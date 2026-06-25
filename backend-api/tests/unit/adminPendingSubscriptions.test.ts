@@ -229,14 +229,31 @@ describe('POST /api/admin/subscriptions/pending/:id/resend-token', () => {
     expect(sendCompleteProfileEmail).not.toHaveBeenCalled();
   });
 
-  it('400: checkout session has expired', async () => {
+  it('200: expired session is extended, token rotated, email sent', async () => {
     pendingFindUnique.mockResolvedValue(makePendingSub({ expiresAt: oneDayAgo }));
     const res = await request(app)
       .post('/api/admin/subscriptions/pending/ps-1/resend-token')
       .send({});
-    expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/expired/);
-    expect(sendCompleteProfileEmail).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ sent: true, email: 'user@example.com' });
+    expect(sendCompleteProfileEmail).toHaveBeenCalled();
+    // Redemption is re-enabled by rotating token + tokenExpiresAt; expiresAt is bumped
+    // into the future when it had already passed.
+    const updateArg = pendingUpdate.mock.calls[0][0];
+    expect(updateArg.data.token).toEqual(expect.any(String));
+    expect(updateArg.data.tokenExpiresAt).toEqual(expect.any(Date));
+    expect(updateArg.data.expiresAt.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('502: expired-session resend rotates the token even when email delivery fails', async () => {
+    pendingFindUnique.mockResolvedValue(makePendingSub({ expiresAt: oneDayAgo }));
+    sendCompleteProfileEmail.mockResolvedValueOnce({ success: false });
+    const res = await request(app)
+      .post('/api/admin/subscriptions/pending/ps-1/resend-token')
+      .send({});
+    expect(res.status).toBe(502);
+    expect(res.body.error).toMatch(/email delivery failed/i);
+    expect(pendingUpdate).toHaveBeenCalled(); // token still rotated in DB
   });
 
   it('404: unknown id', async () => {

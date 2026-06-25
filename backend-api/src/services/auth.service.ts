@@ -1502,7 +1502,7 @@ export class AuthService {
         passwordHash: true,
         firstName: true,
         subscriptions: {
-          where: { status: 'ACTIVE' },
+          where: { status: { in: ['ACTIVE', 'TRIALING', 'PAUSED'] } },
           select: { id: true, stripeSubscriptionId: true, payseraOrderId: true },
         },
         wallet: {
@@ -1837,13 +1837,14 @@ export class AuthService {
 
     for (const user of users) {
       // SUSPENDED: do not issue OTPs for suspended accounts — silently skip.
-      // DELETED: the soft-delete Prisma extension (lib/prisma.ts) already excludes
-      //          deletedAt != null rows from findMany, so this guard never fires for
-      //          DELETED; the extension is the authoritative protection.
+      // DELETED: guarded explicitly below. The soft-delete Prisma extension also
+      //          excludes deletedAt != null rows from findMany, but it keys on
+      //          deletedAt, NOT status — so the explicit status check is required to
+      //          stay safe if a row ever has status=DELETED without deletedAt set.
       // ARCHIVED is intentionally allowed — it is the reactivation path per spec §14.
       // Step 1: user resets password (allowed when ARCHIVED). Step 2: admin sets status
       // to ACTIVE. Login stays blocked until step 2.
-      if ((user.status as string) === 'SUSPENDED') {
+      if ((user.status as string) === 'SUSPENDED' || (user.status as string) === 'DELETED') {
         continue;
       }
 
