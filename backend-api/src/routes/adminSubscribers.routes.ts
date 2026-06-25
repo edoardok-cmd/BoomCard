@@ -77,11 +77,21 @@ function buildSubscriberQuery(q: Record<string, string | undefined>) {
 
   // Date range applies to user.createdAt (account registration) so that
   // never-subscribed users are not silently dropped from the result.
+  // DEFECT A fix: validate dates to return 400 on invalid input (not 500).
   if (dateFrom || dateTo) {
     const createdAt: Record<string, Date> = {};
-    if (dateFrom) createdAt.gte = new Date(dateFrom);
+    if (dateFrom) {
+      const from = new Date(dateFrom);
+      if (isNaN(from.getTime())) {
+        throw { status: 400, msg: 'dateFrom must be a valid date' };
+      }
+      createdAt.gte = from;
+    }
     if (dateTo) {
       const to = new Date(dateTo);
+      if (isNaN(to.getTime())) {
+        throw { status: 400, msg: 'dateTo must be a valid date' };
+      }
       to.setUTCHours(23, 59, 59, 999);
       createdAt.lte = to;
     }
@@ -240,7 +250,13 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
     const { sortBy, sortOrder, ...filters } = req.query as Record<string, string>;
     const { skip, page: pageNum, limit: limitNum } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
-    const { where, subFilter, hasSubFilter } = buildSubscriberQuery(filters);
+    let queryResult: ReturnType<typeof buildSubscriberQuery>;
+    try {
+      queryResult = buildSubscriberQuery(filters);
+    } catch (e: any) {
+      return res.status(e.status ?? 400).json({ error: e.msg ?? 'Invalid query parameters' });
+    }
+    const { where, subFilter, hasSubFilter } = queryResult;
 
     // Subscription plan/status filter: restrict to users whose LATEST subscription
     // matches — not any historical one. resolveLatestSubUserIds() handles this via
@@ -326,7 +342,13 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
 const EXPORT_MAX = 10000;
 router.get('/export', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.read'), async (req, res, next) => {
   try {
-    const { where, subFilter, hasSubFilter } = buildSubscriberQuery(req.query as Record<string, string>);
+    let queryResult: ReturnType<typeof buildSubscriberQuery>;
+    try {
+      queryResult = buildSubscriberQuery(req.query as Record<string, string>);
+    } catch (e: any) {
+      return res.status(e.status ?? 400).json({ error: e.msg ?? 'Invalid query parameters' });
+    }
+    const { where, subFilter, hasSubFilter } = queryResult;
     let truncatedCandidates = false;
     if (hasSubFilter) {
       const resolved = await resolveLatestSubUserIds(subFilter);
@@ -475,6 +497,7 @@ router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
 //   INACTIVE → Temporary pause; login allowed, scanning blocked.
 //   ARCHIVED → Terminal for operational purposes; no login, no scanning.
 // Spec §6.6 Clash 6.6 — users are NOT notified of account status changes (intentional).
+// DEFECT B fix: ARCHIVED is terminal — cannot flip back to ACTIVE/INACTIVE.
 router.patch('/:userId/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.write'), async (req, res, next) => {
   try {
     const { userId } = req.params;
@@ -491,6 +514,10 @@ router.patch('/:userId/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
     }
     if (user.deletedAt) {
       return res.status(400).json({ error: 'Cannot change status of a deleted account' });
+    }
+    // ARCHIVED is terminal: once a user enters ARCHIVED state, they cannot be reverted to ACTIVE or INACTIVE.
+    if (user.status === 'ARCHIVED' && status !== 'ARCHIVED') {
+      return res.status(400).json({ error: 'Cannot revert an archived account to ACTIVE or INACTIVE. Archived accounts are terminal.' });
     }
 
     const [updated] = await Promise.all([
@@ -561,6 +588,15 @@ router.patch('/:userId/profile', authenticate, authorize('ADMIN', 'SUPER_ADMIN')
     }
     if (user.deletedAt) {
       return res.status(400).json({ error: 'Cannot edit a deleted account' });
+    }
+    // DEFECT D fix: ARCHIVED accounts are terminal — no profile/IBAN edits allowed
+    // (except risk profile, which is allowed per spec §3.2 to enable compliance workflows).
+    // Check if ANY profile field (not risk-only) is being edited.
+    const hasProfileEdit = body.firstName !== undefined || body.lastName !== undefined ||
+      body.email !== undefined || body.phone !== undefined || body.address !== undefined ||
+      body.iban !== undefined;
+    if (user.status === 'ARCHIVED' && hasProfileEdit) {
+      return res.status(400).json({ error: 'Cannot edit profile fields on an archived account. Archived accounts are terminal.' });
     }
 
     const data: Record<string, unknown> = {};
@@ -638,8 +674,9 @@ router.patch('/:userId/profile', authenticate, authorize('ADMIN', 'SUPER_ADMIN')
     let riskValueChanged = false;
     if (body.riskScore !== undefined) {
       const score = Number(body.riskScore);
-      if (!Number.isFinite(score) || !Number.isInteger(score) || score < 0 || score > 120) {
-        return res.status(400).json({ error: 'riskScore must be an integer between 0 and 120' });
+      // DEFECT C fix: cap at 110 (additive max of five signals; see spec §2.1)
+      if (!Number.isFinite(score) || !Number.isInteger(score) || score < 0 || score > 110) {
+        return res.status(400).json({ error: 'riskScore must be an integer between 0 and 110' });
       }
       data.riskScore = score;
       before.riskScore = user.riskScore;
