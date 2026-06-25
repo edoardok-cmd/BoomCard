@@ -16,6 +16,7 @@ import { AppError } from '../middleware/error.middleware';
 import { emailService } from './email.service';
 import { CASHBACK_MATRIX, CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
 import { cashbackLifecycleService, assertVoidReasonCategory } from './cashbackLifecycle.service';
+import { resolvePayoutEligibility } from './payoutEligibility.service';
 import { writeAudit } from '../middleware/audit.middleware';
 import { getSystemSettingInt } from '../utils/systemSettings';
 
@@ -1381,6 +1382,12 @@ export async function voidEntry(entryId: string, adminUserId: string, reason: st
 /**
  * Lock a Cleared cashback entry (COMPLETED → CANCELLED with future expiresAt → shows as Locked).
  * Rejects entries in "Paid" derived state (COMPLETED but createdAt ≤ wallet's latest payout).
+ *
+ * Spec §8.1 rule 3 (payout eligibility): Before locking, verify the owning user's subscription
+ * status and IBAN. Only users with Active/TRIALING subscriptions or Cancelled-within-paid-period,
+ * plus a valid IBAN, may have cashback locked for payout. This guard prevents manually locking
+ * entries for users who are ineligible — the automated pipeline already enforces this, but manual
+ * lock is a SUPER_ADMIN override that must respect the same earned-rights gate.
  */
 export async function lockEntry(entryId: string, adminUserId: string): Promise<void> {
   const entry = await prisma.walletTransaction.findUnique({
@@ -1389,6 +1396,7 @@ export async function lockEntry(entryId: string, adminUserId: string): Promise<v
       id: true, type: true, status: true, cashbackExpiresAt: true,
       createdAt: true, walletId: true,
       cashbackStatus: true, cashbackPaidAt: true,
+      wallet: { select: { userId: true } },
     },
   });
   if (!entry) throw new AppError('Entry not found', 404);
@@ -1421,6 +1429,32 @@ export async function lockEntry(entryId: string, adminUserId: string): Promise<v
   if (latestWithdrawal && entry.createdAt <= latestWithdrawal.createdAt) {
     throw new AppError('Cannot lock a paid-out entry', 400);
   }
+
+  // DEFECT B FIX: Verify payout eligibility before locking.
+  // Import resolvePayoutEligibility at the top of the file if needed.
+  const { eligible, hasFailedPayment } = await resolvePayoutEligibility(entry.wallet.userId);
+  if (!eligible) {
+    const reason = hasFailedPayment
+      ? 'user has FAILED_PAYMENT subscription status'
+      : 'user does not have an eligible subscription';
+    throw new AppError(
+      `Cannot lock cashback entry — payout ineligible (${reason}). Spec §8.1 rule 3: payout eligibility required.`,
+      409,
+    );
+  }
+
+  // Also verify the user has an IBAN on file (not enforced by resolvePayoutEligibility but required for actual payout).
+  const userIban = await prisma.user.findUnique({
+    where: { id: entry.wallet.userId },
+    select: { iban: true },
+  });
+  if (!userIban?.iban) {
+    throw new AppError(
+      'Cannot lock cashback entry — user has no IBAN on file. Spec §3.7: IBAN required before payout.',
+      409,
+    );
+  }
+
   const now = new Date();
   const keepExpiresAt = entry.cashbackExpiresAt && entry.cashbackExpiresAt > now
     ? entry.cashbackExpiresAt
