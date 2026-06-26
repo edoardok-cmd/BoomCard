@@ -972,6 +972,17 @@ router.post(
           changedById: req.user!.id,
         },
       }),
+      // Spec §1.6 / §3.5 step 6: Invalidate unconsumed activation links when rejecting
+      // a partner. This mirrors the logic in setPartnerStatus (lines 261-271) and prevents
+      // the scheduler's remindExpiringActivationLinks from emailing the rejected applicant.
+      prisma.activationLink.updateMany({
+        where: {
+          partnerId: req.params.id,
+          consumedAt: null,
+          invalidatedAt: null,
+        },
+        data: { invalidatedAt: new Date() },
+      }),
     ]);
 
     detach(writeAudit({
