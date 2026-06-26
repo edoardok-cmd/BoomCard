@@ -218,14 +218,14 @@ describe('userRisk.service (spec §2.1 canonical five signals)', () => {
       expect(updatedIds).toEqual(expect.arrayContaining(['u1', 'u2']));
     });
 
-    it('preserves the RISK_HOLD floor (61/HIGH) for non-overridden users with an open hold', async () => {
-      // u1 has an open RISK_HOLD payout and a low live score → floored to 61/HIGH.
+    it('preserves the RISK_HOLD floor (51/HIGH) for non-overridden users with an open hold', async () => {
+      // u1 has an open RISK_HOLD payout and a low live score → floored to 51/HIGH.
       mockedPrisma.user.findMany.mockResolvedValueOnce([]); // no overrides
       mockedPrisma.walletTransaction.findMany.mockResolvedValueOnce([{ wallet: { userId: 'u1' } }]);
       await persistRiskAssessments([assess('u1', 10)]);
 
       const call = mockedPrisma.user.updateMany.mock.calls.find((c) => c[0].where.id === 'u1');
-      expect(call?.[0].data).toEqual({ riskScore: 61, riskBucket: 'HIGH_51_PLUS' });
+      expect(call?.[0].data).toEqual({ riskScore: 51, riskBucket: 'HIGH_51_PLUS' });
     });
 
     it('does NOT apply the RISK_HOLD floor to an overridden user (override wins)', async () => {
