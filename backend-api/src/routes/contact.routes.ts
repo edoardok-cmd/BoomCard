@@ -110,7 +110,7 @@ router.post('/', contactRateLimiter, asyncHandler(async (req: Request, res: Resp
     });
 
     logger.info(`Contact form submitted by ${email} → ticket ${ticketId}`);
-    return res.json({ success: true });
+    return res.json({ success: true, ticketId });
   } catch (err) {
     logger.error('Contact form help ticket creation failed', { email, name, error: err });
     return res.status(502).json({ success: false, error: 'Failed to create help request' });

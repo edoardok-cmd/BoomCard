@@ -1630,6 +1630,7 @@ model HelpTicket {
   linkingTickets HelpTicket[]      @relation("TicketLink")
   disputes       Dispute[]         @relation("DisputeTicket")
   replies        TicketReply[]
+  ccs            TicketCC[]
 
   @@index([userId])
   @@index([assigneeId])
@@ -1668,6 +1669,22 @@ model TicketReply {
 
   @@index([ticketId])
   @@index([inReplyTo])
+}
+
+// Spec §11.2 — CC'd admins ("cc-нати админи") recorded per ticket so that an
+// inbound reply from a CC'd address threads into the original ticket instead of
+// being treated as a spoofer. A join table is used for per-row provenance
+// (createdAt) and to support multiple CCs per ticket. Email is stored lowercased
+// and compared case-insensitively by the inbound spoof check.
+model TicketCC {
+  id        String     @id @default(uuid())
+  ticketId  String
+  email     String // stored lowercased
+  createdAt DateTime   @default(now())
+  ticket    HelpTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, email])
+  @@index([ticketId])
 }
 
 model MarketingTemplate {

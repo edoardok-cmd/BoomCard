@@ -678,22 +678,11 @@ router.patch('/:userId/profile', authenticate, authorize('ADMIN', 'SUPER_ADMIN')
       }
       data.riskScore = score;
       before.riskScore = user.riskScore;
-      // Keep the bucket consistent with the score unless an explicit bucket is also
-      // supplied below (which overrides this derivation).
+      // Always derive the bucket from the score to ensure the score/bucket pair
+      // remains consistent with spec §2.1 (0–20 Low, 21–50 Medium, 51+ High).
+      // Any explicit riskBucket in the request body is ignored.
       data.riskBucket = bucketForScore(score);
-      riskValueChanged = true;
-    }
-    if (body.riskBucket !== undefined) {
-      if (body.riskBucket === null) {
-        data.riskBucket = null;
-        before.riskBucket = user.riskBucket;
-      } else {
-        if (typeof body.riskBucket !== 'string' || !RISK_BUCKETS.includes(body.riskBucket as RiskBucketValue)) {
-          return res.status(400).json({ error: `riskBucket must be one of: ${RISK_BUCKETS.join(', ')}` });
-        }
-        data.riskBucket = body.riskBucket;
-        before.riskBucket = user.riskBucket;
-      }
+      before.riskBucket = user.riskBucket;
       riskValueChanged = true;
     }
 

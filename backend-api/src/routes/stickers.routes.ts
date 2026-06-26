@@ -379,7 +379,7 @@ router.get('/validate/:stickerId', async (req: Request, res: Response) => {
  * Create a new sticker location for a venue
  * Spec §5.4 — admin-only management; partners have read-only visibility.
  */
-router.post('/locations', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+router.post('/locations', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('stickers.write'), async (req: Request, res: Response) => {
   try {
     const { venueId, name, nameBg, locationType, locationNumber, capacity, floor, section } = req.body;
 
@@ -419,7 +419,7 @@ router.post('/locations', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async
  * Create multiple sticker locations at once
  * Spec §5.4 — admin-only management; partners have read-only visibility.
  */
-router.post('/locations/bulk', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+router.post('/locations/bulk', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('stickers.write'), async (req: Request, res: Response) => {
   try {
     const { locations } = req.body;
 
@@ -453,7 +453,7 @@ router.post('/locations/bulk', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), 
  * NOTE: must be registered BEFORE /generate/:locationId so Express does not
  * greedily match the literal "bulk" as a locationId parameter value.
  */
-router.post('/generate/bulk', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+router.post('/generate/bulk', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('stickers.write'), async (req: Request, res: Response) => {
   try {
     const { locationIds } = req.body;
 
@@ -485,7 +485,7 @@ router.post('/generate/bulk', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), a
  * Generate a sticker with QR code for a location
  * Spec §5.4 — admin-only management; partners have read-only visibility.
  */
-router.post('/generate/:locationId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+router.post('/generate/:locationId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('stickers.write'), async (req: Request, res: Response) => {
   try {
     const { locationId } = req.params;
 
@@ -509,7 +509,7 @@ router.post('/generate/:locationId', authenticate, authorize('ADMIN', 'SUPER_ADM
  * Mark sticker as printed and active
  * Spec §5.4 — admin-only management; partners have read-only visibility.
  */
-router.post('/activate/:stickerId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+router.post('/activate/:stickerId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('stickers.write'), async (req: Request, res: Response) => {
   try {
     const { stickerId } = req.params;
 
@@ -733,7 +733,7 @@ router.get('/venue/:venueId/config', authenticate, authorize('PARTNER', 'ADMIN',
  * Update venue sticker configuration
  * Spec §5.4 — admin-only management; partners have read-only visibility.
  */
-router.put('/venue/:venueId/config', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
+router.put('/venue/:venueId/config', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('stickers.write'), async (req: AuthRequest, res: Response) => {
   try {
     const { venueId } = req.params;
     const config = req.body;

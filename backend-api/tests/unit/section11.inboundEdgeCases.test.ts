@@ -33,6 +33,7 @@ let ticketReplyPriorMessages: any[] = [];  // prior system messageIds (threading
 let ticketReplyExternalFrom: any[] = [];   // prior externalFrom rows (spoof guard)
 let userRows: Record<string, any> = {};    // keyed by id
 let bounceCountValue = 0;                  // returned by inboundBounce.count
+let ticketCcRows: any[] = [];             // returned by ticketCC.findMany (recorded CC'd admins)
 
 // ─── Prisma mock ─────────────────────────────────────────────────────────────
 
@@ -92,6 +93,30 @@ jest.mock('../../src/lib/prisma', () => {
       }
       return null;
     }),
+    // resolveAdminCcEmails: where.email.in (list) + role.in (ADMIN/SUPER_ADMIN)
+    findMany: jest.fn(async (args: any) => {
+      const emails: string[] | undefined = args?.where?.email?.in;
+      const roles: string[] | undefined = args?.where?.role?.in;
+      if (!emails) return [];
+      return Object.values(userRows).filter(
+        (u: any) =>
+          emails.map((e) => e.toLowerCase()).includes((u.email || '').toLowerCase()) &&
+          (!roles || roles.includes(u.role))
+      );
+    }),
+  };
+
+  const ticketCC = {
+    findMany: jest.fn(async (_args: any) => ticketCcRows),
+    createMany: jest.fn(async (args: any) => {
+      const rows = args?.data ?? [];
+      for (const r of rows) {
+        if (!ticketCcRows.some((c) => c.ticketId === r.ticketId && c.email === r.email)) {
+          ticketCcRows.push(r);
+        }
+      }
+      return { count: rows.length };
+    }),
   };
 
   const inboundBounce = {
@@ -115,6 +140,7 @@ jest.mock('../../src/lib/prisma', () => {
     helpTicket,
     ticketReply,
     user,
+    ticketCC,
     inboundBounce,
     orphanInboundEmail,
     unsubscribeToken,
@@ -163,7 +189,7 @@ jest.mock('../../src/lib/unsubscribeToken', () => ({
 
 // ─── Subject under test ───────────────────────────────────────────────────────
 
-import { ingestInboundEmail } from '../../src/services/ticketInbound.service';
+import { ingestInboundEmail, recordTicketCcs } from '../../src/services/ticketInbound.service';
 
 // ─── Fixture helpers ──────────────────────────────────────────────────────────
 
@@ -210,6 +236,7 @@ beforeEach(() => {
   ticketReplyExternalFrom = [];
   userRows = {};
   bounceCountValue = 0;
+  ticketCcRows = [];
   emailSendCalls.length = 0;
   notifyOpsCalls.length = 0;
   auditCalls.length = 0;
@@ -757,5 +784,173 @@ describe('Gap 8 — new ticket creation from raw email (source=EMAIL)', () => {
     const createdAudit = auditCalls.find((a) => a.action === 'TICKET_INBOUND_CREATED');
     expect(createdAudit).toBeDefined();
     expect(createdAudit.objectType).toBe('HelpTicket');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BC-REAUDIT-TICKET-CC-1 — CC'd-admin spoof-allowlist (TicketCC)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("BC-REAUDIT-TICKET-CC-1 — CC'd admins thread into the original ticket", () => {
+  const TICKET_ID = 'ticket-cc-1';
+
+  beforeEach(() => {
+    userRows['owner-cc'] = makeUser('owner-cc', { email: 'owner@example.com' });
+    // System admin so the spoof guard can assign a linked-ticket owner if needed.
+    userRows['sys-admin'] = makeUser('sys-admin', {
+      email: 'admin@boomcard.bg',
+      role: 'SUPER_ADMIN',
+    });
+    helpTicketRow = makeTicket({
+      id: TICKET_ID,
+      userId: 'owner-cc',
+      externalEmail: 'owner@example.com',
+    });
+  });
+
+  it('records only CC addresses that resolve to an ADMIN account, ignoring non-admin CCs', async () => {
+    // Two CCs: one is an admin User, one is a random non-admin address.
+    userRows['cc-admin'] = makeUser('cc-admin', {
+      email: 'cc-admin@boomcard.bg',
+      role: 'ADMIN',
+    });
+    const { prisma: mock } = jest.requireMock('../../src/lib/prisma');
+
+    await ingestInboundEmail({
+      ...baseReplyPayload,
+      xBoomCardTicketId: TICKET_ID,
+      from: 'owner@example.com', // legitimate sender so we reach the matched-ticket reply path
+      cc: ['Admin Person <cc-admin@boomcard.bg>', 'random-bystander@example.com'],
+    });
+
+    // Only the admin CC is persisted (non-admin filtered out at the call site).
+    expect(mock.ticketCC.createMany).toHaveBeenCalledTimes(1);
+    const submitted = mock.ticketCC.createMany.mock.calls[0][0].data;
+    expect(submitted).toEqual([{ ticketId: TICKET_ID, email: 'cc-admin@boomcard.bg' }]);
+    expect(mock.ticketCC.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skipDuplicates: true })
+    );
+  });
+
+  it('does NOT record any CC when none of the CCs are admins', async () => {
+    const { prisma: mock } = jest.requireMock('../../src/lib/prisma');
+
+    await ingestInboundEmail({
+      ...baseReplyPayload,
+      xBoomCardTicketId: TICKET_ID,
+      from: 'owner@example.com',
+      cc: ['someone@example.com', 'another@example.com'],
+    });
+
+    expect(mock.ticketCC.createMany).not.toHaveBeenCalled();
+  });
+
+  it('accepts a reply from an address already recorded as a CC (threads into the original ticket)', async () => {
+    // A CC'd admin was recorded on a prior inbound.
+    ticketCcRows = [{ ticketId: TICKET_ID, email: 'cc-admin@boomcard.bg' }];
+    const { prisma: mock } = jest.requireMock('../../src/lib/prisma');
+
+    const result = await ingestInboundEmail({
+      ...baseReplyPayload,
+      xBoomCardTicketId: TICKET_ID,
+      from: 'cc-admin@boomcard.bg', // not owner/assignee/externalEmail — only allowed via TicketCC
+    });
+
+    // Threaded onto the ORIGINAL ticket as a normal reply — NOT shunted to a linked ticket.
+    expect(mock.helpTicket.create).not.toHaveBeenCalled();
+    expect(result.created).toBe(false);
+    expect(result.ticketId).toBe(TICKET_ID);
+    // A real reply was attached to the original ticket.
+    const replyOnOriginal = mock.ticketReply.create.mock.calls.some(
+      ([args]: [any]) => args?.data?.ticketId === TICKET_ID && !args?.data?.isAutoReply
+    );
+    expect(replyOnOriginal).toBe(true);
+  });
+
+  it('CC match is case-insensitive', async () => {
+    ticketCcRows = [{ ticketId: TICKET_ID, email: 'cc-admin@boomcard.bg' }];
+    const { prisma: mock } = jest.requireMock('../../src/lib/prisma');
+
+    const result = await ingestInboundEmail({
+      ...baseReplyPayload,
+      xBoomCardTicketId: TICKET_ID,
+      from: 'CC-Admin@BoomCard.BG', // uppercase variant
+    });
+
+    expect(mock.helpTicket.create).not.toHaveBeenCalled();
+    expect(result.ticketId).toBe(TICKET_ID);
+    expect(result.created).toBe(false);
+  });
+
+  it('an unknown, non-CC sender is still rejected to a linked ticket', async () => {
+    // No CC rows; sender is neither owner, assignee, externalEmail, nor a recorded CC.
+    ticketCcRows = [];
+    const { prisma: mock } = jest.requireMock('../../src/lib/prisma');
+    mock.helpTicket.create.mockResolvedValueOnce({
+      id: 'linked-noncc',
+      linkedTicketId: TICKET_ID,
+      subject: 'Re: Test Ticket',
+      source: 'EMAIL',
+      externalEmail: 'stranger@attacker.com',
+      status: 'OPEN',
+      userId: 'sys-admin',
+      createdAt: new Date(),
+    });
+
+    const result = await ingestInboundEmail({
+      ...baseReplyPayload,
+      xBoomCardTicketId: TICKET_ID,
+      from: 'stranger@attacker.com',
+    });
+
+    // Spoof guard fires → new linked ticket, NOT a reply on the original.
+    expect(mock.helpTicket.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ linkedTicketId: TICKET_ID }),
+      })
+    );
+    expect(result.ticketId).toBe('linked-noncc');
+    expect(result.created).toBe(true);
+    const injectedIntoOriginal = mock.ticketReply.create.mock.calls.some(
+      ([args]: [any]) => args?.data?.ticketId === TICKET_ID && !args?.data?.isAutoReply
+    );
+    expect(injectedIntoOriginal).toBe(false);
+  });
+
+  describe('recordTicketCcs helper (normalize / dedupe / idempotency)', () => {
+    it('normalizes, de-dupes and persists with skipDuplicates', async () => {
+      const { prisma: mock } = jest.requireMock('../../src/lib/prisma');
+
+      const count = await recordTicketCcs(TICKET_ID, [
+        'Foo Bar <Foo@Example.com>',
+        '  foo@example.com  ', // duplicate after normalize
+        'bar@example.com',
+      ]);
+
+      expect(count).toBe(2); // foo + bar (deduped)
+      const submitted = mock.ticketCC.createMany.mock.calls[0][0].data;
+      expect(submitted).toEqual([
+        { ticketId: TICKET_ID, email: 'foo@example.com' },
+        { ticketId: TICKET_ID, email: 'bar@example.com' },
+      ]);
+    });
+
+    it('drops syntactically invalid addresses', async () => {
+      const { prisma: mock } = jest.requireMock('../../src/lib/prisma');
+
+      const count = await recordTicketCcs(TICKET_ID, ['not-an-email', '@nope', 'ok@valid.com']);
+
+      expect(count).toBe(1);
+      expect(mock.ticketCC.createMany.mock.calls[0][0].data).toEqual([
+        { ticketId: TICKET_ID, email: 'ok@valid.com' },
+      ]);
+    });
+
+    it('is a no-op on empty input (no DB write)', async () => {
+      const { prisma: mock } = jest.requireMock('../../src/lib/prisma');
+
+      expect(await recordTicketCcs(TICKET_ID, [])).toBe(0);
+      expect(mock.ticketCC.createMany).not.toHaveBeenCalled();
+    });
   });
 });

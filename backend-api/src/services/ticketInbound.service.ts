@@ -62,6 +62,16 @@ export interface InboundEmailPayload {
   xBoomCardRequestId?: string;
   /** RFC 3834 Auto-Submitted ("auto-replied" → out-of-office) */
   autoSubmitted?: string;
+  /**
+   * CC recipient addresses on the inbound message (bare email or "Name <email>").
+   * Spec §11.2 lists "cc-нати админи" (CC'd admins) as an allowed inbound-sender
+   * group. When this inbound threads into an existing ticket, the addresses here
+   * that resolve to an ADMIN/SUPER_ADMIN account are persisted to TicketCC so a
+   * later reply from that admin threads into the ticket instead of being treated
+   * as a spoofer. Non-admin CC addresses are intentionally NOT recorded — that
+   * would let any sender authorise arbitrary addresses to thread (spoof bypass).
+   */
+  cc?: string[];
 }
 
 // M5 / Spec §6.2 + Clash 7.1: the canonical subject-fallback marker is `[#XXXX]`
@@ -79,6 +89,62 @@ function normalizeAddress(raw: string): string {
   if (!raw) return '';
   const m = raw.match(/<([^>]+)>/);
   return (m ? m[1] : raw).trim().toLowerCase();
+}
+
+// Basic RFC 5322-ish syntactic email check — enough to reject obvious junk
+// (empty, no @, whitespace) before persisting. Address authority/role is
+// validated separately at the call site (admin filter); this is purely a
+// shape guard so we never write a malformed row.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Spec §11.2 — persist a set of CC addresses against a ticket so a later inbound
+ * reply from one of those addresses threads into the original ticket (it is added
+ * to the spoof-protection allow-set, see the matched-ticket branch below).
+ *
+ * Generic normalize+persist helper: it does NOT itself decide WHO is authorised
+ * to be recorded — the caller is responsible for restricting the input list
+ * (e.g. to CC'd admins). It normalizes each address via {@link normalizeAddress}
+ * (bare addr from "Name <addr>", trimmed, lowercased), drops syntactically
+ * invalid addresses, de-dupes, and writes via createMany({ skipDuplicates }) so
+ * it is idempotent against the @@unique([ticketId, email]) constraint.
+ *
+ * Returns the number of rows submitted to createMany (post-normalize/dedupe).
+ * No-op (returns 0) on empty/whitespace-only input.
+ */
+export async function recordTicketCcs(ticketId: string, emails: string[]): Promise<number> {
+  if (!ticketId || !emails?.length) return 0;
+  const normalized = Array.from(
+    new Set(
+      emails
+        .map((e) => normalizeAddress(e))
+        .filter((e) => EMAIL_RE.test(e))
+    )
+  );
+  if (!normalized.length) return 0;
+  await prisma.ticketCC.createMany({
+    data: normalized.map((email) => ({ ticketId, email })),
+    skipDuplicates: true,
+  });
+  return normalized.length;
+}
+
+/**
+ * Resolve which of the given CC addresses belong to an ADMIN/SUPER_ADMIN account.
+ * Mirrors the role set used by getSystemOwnerId(). Returns lowercased emails of
+ * the matched admin accounts (deduped). Used to gate TicketCC population so only
+ * CC'd admins — not arbitrary CC recipients — can be authorised to thread.
+ */
+async function resolveAdminCcEmails(ccEmails: string[]): Promise<string[]> {
+  const normalized = Array.from(
+    new Set(ccEmails.map((e) => normalizeAddress(e)).filter((e) => EMAIL_RE.test(e)))
+  );
+  if (!normalized.length) return [];
+  const admins = await prisma.user.findMany({
+    where: { email: { in: normalized }, role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
+    select: { email: true },
+  });
+  return Array.from(new Set(admins.map((a) => a.email.toLowerCase())));
 }
 
 /** Detect bounce / DSN messages by subject or sender heuristics. */
@@ -152,12 +218,12 @@ async function resolveTicket(payload: InboundEmailPayload): Promise<{
   // shortRef from the local-part and resolve the ticket via the indexed column.
   // This path survives forwarding chains that strip custom headers.
   //
-  // NOTE: spec §11.2 also lists "cc-нати админи" as an allowed sender group in
-  // the spoof-protection check (below). The HelpTicket model has no CC field, so
-  // CC-admin authorisation is not implemented — adding it requires a schema change
-  // (e.g. a TicketCC join table). The current allowed-set (owner + assignee +
-  // externalEmail + prior externalFrom senders) is strictly more permissive for
-  // known participants and is an acceptable interim posture.
+  // Spec §11.2 also lists "cc-нати админи" (CC'd admins) as an allowed sender
+  // group in the spoof-protection check (matched-ticket branch below). That is
+  // now implemented via the TicketCC table: when an inbound threads into an
+  // existing ticket, any CC addresses that resolve to an ADMIN/SUPER_ADMIN
+  // account are recorded against the ticket (see ingestInboundEmail), and the
+  // spoof check folds those addresses into the allowed set.
   // H3 (Spec Part 6 / Clash 7.1): plus-addressing is DEFERRED to v1.3. In v1.2
   // (the default, flag OFF) this resolution path is disabled entirely so threading
   // relies ONLY on the header (Priority 1) and subject (Priority 4) fallbacks.
@@ -550,11 +616,32 @@ export async function ingestInboundEmail(
   // ── Matched an existing ticket ────────────────────────────────────────
   const t = resolved.ticket;
 
+  // ── Record CC'd admins (§11.2) BEFORE the spoof check ─────────────────────
+  // Spec §11.2 authorises "cc-нати админи" (CC'd ADMINS) to thread into the
+  // ticket. We persist only CC addresses that resolve to an ADMIN/SUPER_ADMIN
+  // account — recording arbitrary CC recipients would let any sender authorise
+  // arbitrary addresses to thread, defeating the spoof guard. The filter +
+  // population run here (on the matched-ticket path) so a reply CC'ing an admin
+  // makes that admin's address an allowed sender for subsequent inbounds.
+  if (payload.cc?.length) {
+    try {
+      const adminCcEmails = await resolveAdminCcEmails(payload.cc);
+      if (adminCcEmails.length) {
+        await recordTicketCcs(t.id, adminCcEmails);
+      }
+    } catch (err) {
+      // CC population is best-effort: a failure must not block threading the reply.
+      logger.error(`[ticketInbound] failed to record CC admins for ticket ${t.id}:`, err);
+    }
+  }
+
   // Spoof protection (§11.2): sender must be the ticket owner, the assigned
-  // admin, the captured externalEmail, or any prior reply's externalFrom.
-  // Spec: "owner OR assignee OR cc-нати админи". Anyone else → create a
-  // linked ticket so we never inject into someone else's conversation.
-  const [ownerRecord, assigneeRecord, priorExternal] = await Promise.all([
+  // admin, the captured externalEmail, any prior reply's externalFrom, or a
+  // recorded CC'd admin (TicketCC). Spec: "owner OR assignee OR cc-нати админи".
+  // Anyone else → create a linked ticket so we never inject into someone else's
+  // conversation. All entries are lowercased and fromEmail is lowercased upstream
+  // by normalizeAddress, so matching is case-insensitive.
+  const [ownerRecord, assigneeRecord, priorExternal, ccRecords] = await Promise.all([
     prisma.user.findUnique({ where: { id: t.userId }, select: { email: true } }),
     t.assigneeId
       ? prisma.user.findUnique({ where: { id: t.assigneeId }, select: { email: true } })
@@ -563,6 +650,10 @@ export async function ingestInboundEmail(
       where: { ticketId: t.id, externalFrom: { not: null } },
       select: { externalFrom: true },
     }),
+    prisma.ticketCC.findMany({
+      where: { ticketId: t.id },
+      select: { email: true },
+    }),
   ]);
   const allowed = new Set<string>(
     [
@@ -570,6 +661,7 @@ export async function ingestInboundEmail(
       assigneeRecord?.email,
       t.externalEmail,
       ...priorExternal.map((r) => r.externalFrom),
+      ...ccRecords.map((c) => c.email),
     ]
       .filter((x): x is string => !!x)
       .map((x) => x.toLowerCase())
