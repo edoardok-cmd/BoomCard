@@ -1207,6 +1207,7 @@ router.post(
       isImpersonation: req.user!.imp === true,
       clientType: resolveClientType(req),
       currentRefreshToken: refreshToken,
+      tokenIssuedAt: req.user!.iat,
     });
 
     res.json({

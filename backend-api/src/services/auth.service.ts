@@ -2800,8 +2800,9 @@ export class AuthService {
     isImpersonation: boolean;
     clientType: 'mobile' | 'web' | undefined;
     currentRefreshToken?: string;
+    tokenIssuedAt?: number;
   }) {
-    const { currentUserId, impersonatedBy, impersonatedByAg, isImpersonation, clientType, currentRefreshToken } = input;
+    const { currentUserId, impersonatedBy, impersonatedByAg, isImpersonation, clientType, currentRefreshToken, tokenIssuedAt } = input;
 
     if (!isImpersonation || !impersonatedBy) {
       throw new AppError('Not an impersonation session', 400);
@@ -2819,6 +2820,7 @@ export class AuthService {
         avatar: true,
         mustChangePassword: true,
         totpEnabledAt: true,
+        rolesUpdatedAt: true,
       },
     });
 
@@ -2828,6 +2830,16 @@ export class AuthService {
     }
     if (admin.status !== 'ACTIVE') {
       throw new AppError('Admin account is not active', 403);
+    }
+    // rolesUpdatedAt bump after token issuance invalidates the impersonation.
+    // Mirror the middleware check (ms vs iat*1000) so units match exactly.
+    // Only perform this check if tokenIssuedAt is provided.
+    if (
+      tokenIssuedAt &&
+      admin.rolesUpdatedAt &&
+      admin.rolesUpdatedAt.getTime() > tokenIssuedAt * 1000
+    ) {
+      throw new AppError('Your admin privileges have changed — please sign in again', 401);
     }
 
     // Restore the admin's original accountGroup from the `impAg` claim we

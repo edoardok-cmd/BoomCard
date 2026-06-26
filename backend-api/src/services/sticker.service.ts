@@ -345,6 +345,10 @@ class StickerService {
     if (plan === 'PREMIUM_WEEKLY' || plan === 'BASIC' || plan === 'PREMIUM_MONTHLY') {
       return plan as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY';
     }
+
+    // If we reach here, the plan is not one of the known cashback tiers.
+    // Log a warning so we can detect if new plan types are added without updating this enum.
+    logger.warn(`Unexpected subscription plan encountered: ${plan} for user ${userId}. Defaulting to null cashback.`);
     return null;
   }
 
@@ -951,6 +955,11 @@ class StickerService {
       // Per spec §1.2 + §8.1, users must retain access at their ACTUAL PLAN level,
       // not be downgraded to PREMIUM_WEEKLY due to subscription state transitions.
       const userPlan = await this.getPlanForAccessGate(userId);
+      if (userPlan === null) {
+        // This should not happen if assertSubscriptionAllowsScanning worked correctly,
+        // but defense-in-depth: if somehow we have no eligible subscription here, block
+        throw new Error('SUBSCRIPTION_INACTIVE: Your subscription does not support this action.');
+      }
       const redeemableTypeIds = await partnerTypeService.getRedeemableTypeIdsForPlan(userPlan);
       if (!redeemableTypeIds.includes(partner.partnerTypeId)) {
         throw new Error(
@@ -1262,6 +1271,11 @@ class StickerService {
       // Per spec §1.2 + §8.1, users must retain access at their ACTUAL PLAN level,
       // not be downgraded to PREMIUM_WEEKLY due to subscription state transitions.
       const userPlan = await this.getPlanForAccessGate(userId);
+      if (userPlan === null) {
+        // This should not happen if assertSubscriptionAllowsScanning worked correctly,
+        // but defense-in-depth: if somehow we have no eligible subscription here, block
+        throw new Error('SUBSCRIPTION_INACTIVE: Your subscription does not support scanning.');
+      }
       const redeemableTypeIds = await partnerTypeService.getRedeemableTypeIdsForPlan(userPlan);
 
       if (!redeemableTypeIds.includes(partner.partnerTypeId)) {
