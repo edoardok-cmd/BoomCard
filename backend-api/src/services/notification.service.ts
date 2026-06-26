@@ -1932,6 +1932,34 @@ export class NotificationService {
   // + spike thresholds + rate-limit interplay). Add the helper back when the
   // audit model lands.
 
+  /**
+   * Daily digest of informational alerts (new registrations, partner activations,
+   * completed onboarding). Spec §3.1: Informational tier routes to "Daily digest".
+   * Fired by scheduler at 8 AM Sofia; includes counts from the preceding 24h window.
+   */
+  async notifyAdminInformationalDigest(params: {
+    newRegistrations: number;
+    activatedPartners: number;
+    completedOnboarding: number;
+  }): Promise<void> {
+    return this.notifyAdminOps({
+      opsType: 'informational_digest',
+      title: 'Daily informational digest',
+      message: `${params.newRegistrations} new registration(s), ${params.activatedPartners} activated partner(s), ${params.completedOnboarding} completed onboarding(s).`,
+      severity: 'info',
+      fields: [
+        { label: 'New registrations', value: String(params.newRegistrations) },
+        { label: 'Activated partners', value: String(params.activatedPartners) },
+        { label: 'Completed onboardings', value: String(params.completedOnboarding) },
+      ],
+      actionUrl: `${process.env.PARTNER_DASHBOARD_URL || ''}/admin/dashboard`,
+      // 20h cooldown prevents duplicate digests within a 24h window if the cron
+      // runs twice (e.g. during deploy or timezone transitions) while still
+      // allowing a daily digest every evening.
+      cooldownHours: 20,
+    });
+  }
+
   // ===== Internal helpers for partner lookup =====
 
   /**

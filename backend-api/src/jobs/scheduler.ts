@@ -17,6 +17,7 @@
  *   paysera-renewal                  — 0 6 * * *    (6:00 AM UTC daily)
  *   renewal-reminders                — 0 7 * * *    (7:00 AM daily — auto-renew OFF 3d/1d/0d cadence)
  *   stale-session-cleanup            — 15 7 * * *   (7:15 AM daily)
+ *   admin-informational-digest       — 0 8 * * *    (8:00 AM daily)
  *   partner-daily-digest             — 0 8 * * *    (8:00 AM daily)
  *   partner-onboarding-nudge         — 0 9 * * *    (9:00 AM daily)
  *   partner-monthly-statement        — 0 10 1 * *   (10:00 AM on 1st of month)
@@ -584,6 +585,41 @@ async function expireStaleMenuSubmissions(): Promise<void> {
     `[menu-expiry] Done — expired ${processed} submission(s)` +
     (failed > 0 ? `, ${failed} failed` : '')
   );
+}
+
+// ── Admin informational digest ────────────────────────────────────────────────
+// Daily roll-up of informational alerts (new registrations, partner activations,
+// completed onboarding) sent to all active admins. Spec §3.1: Informational tier
+// routes to "Daily digest". Skipped silently if all counts are zero (no activity).
+
+async function sendAdminInformationalDigest(): Promise<void> {
+  const now = new Date();
+  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  logger.info(`[admin-informational-digest] Starting run at ${now.toISOString()} for window ${oneDayAgo.toISOString()} → ${now.toISOString()}`);
+
+  // Import the shared helper to avoid drift between the GET /alerts counts
+  // and the scheduled digest counts.
+  const { getInformationalCounts } = await import('../services/adminAlerts.service');
+  const counts = await getInformationalCounts(oneDayAgo);
+
+  // Early return: no activity → skip notification. Avoids sending empty digests
+  // and lets the cooldown mechanism keep subsequent runs clean.
+  if (counts.newRegistrations === 0 && counts.activatedPartners === 0 && counts.completedOnboarding === 0) {
+    logger.info('[admin-informational-digest] No informational activity in window; skipping');
+    return;
+  }
+
+  try {
+    await notificationService.notifyAdminInformationalDigest(counts);
+    logger.info(
+      `[admin-informational-digest] Sent digest: ${counts.newRegistrations} registrations, ` +
+      `${counts.activatedPartners} activations, ${counts.completedOnboarding} completions`
+    );
+  } catch (err) {
+    logger.error('[admin-informational-digest] Failed to send digest:', err);
+    throw err;
+  }
 }
 
 // ── Partner daily digest ──────────────────────────────────────────────────────
@@ -1937,6 +1973,13 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: menu-expiry (0 5 * * *)');
+
+  // 8 AM every day — admin informational digest (spec §3.1: routes Informational tier to Daily digest)
+  cron.schedule('0 8 * * *', () => {
+    sendAdminInformationalDigest().catch((err) => alertSchedulerFailure('admin-informational-digest', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: admin-informational-digest (0 8 * * *)');
 
   // 8 AM every day — partner daily digest of yesterday's activity per venue
   cron.schedule('0 8 * * *', () => {

@@ -98,6 +98,35 @@ export const ACTIVE_SCAN_STATUSES: ScanStatus[] = [
 // this value to the page so the page filter mirrors the alert count exactly.
 export const SUSPICIOUS_ACTIVITY_WINDOW_HOURS = 24;
 
+/**
+ * Extract informational counters for use by both the GET /alerts endpoint
+ * and the admin-informational-digest scheduled job. Returns the three counts
+ * computed over a 24h rolling window.
+ */
+export async function getInformationalCounts(oneDayAgo: Date): Promise<{
+  newRegistrations: number;
+  activatedPartners: number;
+  completedOnboarding: number;
+}> {
+  const [newRegistrations, activatedPartners, completedOnboarding] = await Promise.all([
+    prisma.user.count({
+      where: { createdAt: { gte: oneDayAgo }, status: { not: 'DELETED' }, role: 'USER' },
+    }),
+    prisma.partner.count({
+      where: { status: 'ACTIVE', verifiedAt: { gte: oneDayAgo } },
+    }),
+    prisma.partner.count({
+      where: { onboardingCompletedAt: { gte: oneDayAgo } },
+    }),
+  ]);
+
+  return {
+    newRegistrations,
+    activatedPartners,
+    completedOnboarding,
+  };
+}
+
 export async function getAlerts(): Promise<AdminAlertsResult> {
   const now = new Date();
   const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -169,9 +198,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     fraudCheckErrorScans,
     walletsAtThreshold,
     largePendingTx,
-    newRegistrations,
-    activatedPartners,
-    completedOnboarding,
+    informationalCounts,
   ] = await Promise.all([
     prisma.partner.count({ where: { status: 'PENDING' } }),
     prisma.stickerScan.count({ where: { status: 'MANUAL_REVIEW' } }),
@@ -243,15 +270,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     prisma.walletTransaction.count({
       where: { type: 'WITHDRAWAL', status: 'PENDING', amount: { lte: -LARGE_TX_THRESHOLD } },
     }),
-    prisma.user.count({
-      where: { createdAt: { gte: oneDayAgo }, status: { not: 'DELETED' }, role: 'USER' },
-    }),
-    prisma.partner.count({
-      where: { status: 'ACTIVE', verifiedAt: { gte: oneDayAgo } },
-    }),
-    prisma.partner.count({
-      where: { onboardingCompletedAt: { gte: oneDayAgo } },
-    }),
+    getInformationalCounts(oneDayAgo),
   ]);
 
   const suspiciousScans = Number(suspiciousScanRows[0]?.count ?? 0n);
@@ -475,38 +494,38 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
   }
 
   // ── Informational ────────────────────────────────────────────────────────────
-  if (newRegistrations > 0) {
+  if (informationalCounts.newRegistrations > 0) {
     informational.push({
       id: 'new_registrations',
       type: 'NEW_REGISTRATIONS',
       tier: 'informational',
       title: 'Нови регистрации (последните 24ч)',
-      count: newRegistrations,
+      count: informationalCounts.newRegistrations,
       // dateFrom param pre-filters the subscriber list to the 24h window so the
       // landing page count matches the badge. Handled by AdminSubscribersAllPage
       // URL-param hydration (dateFrom → account creation date filter).
       link: `/admin/subscribers/all?dateFrom=${oneDayAgo.toISOString()}`,
     });
   }
-  if (activatedPartners > 0) {
+  if (informationalCounts.activatedPartners > 0) {
     informational.push({
       id: 'activated_partners',
       type: 'ACTIVATED_PARTNERS',
       tier: 'informational',
       title: 'Активирани партньори (последните 24ч)',
-      count: activatedPartners,
+      count: informationalCounts.activatedPartners,
       // verifiedAfter pre-filters the active partners list to partners activated
       // within the counted window. Handled by AdminPartnersPage URL-param hydration.
       link: `/admin/partners/active?verifiedAfter=${oneDayAgo.toISOString()}`,
     });
   }
-  if (completedOnboarding > 0) {
+  if (informationalCounts.completedOnboarding > 0) {
     informational.push({
       id: 'completed_onboarding',
       type: 'COMPLETED_ONBOARDING',
       tier: 'informational',
       title: 'Завършен онбординг (последните 24ч)',
-      count: completedOnboarding,
+      count: informationalCounts.completedOnboarding,
       // Distinct destination from activated_partners. onboardingCompletedAfter
       // filters the active partners list to the counted window.
       link: `/admin/partners/active?onboardingCompletedAfter=${oneDayAgo.toISOString()}`,
