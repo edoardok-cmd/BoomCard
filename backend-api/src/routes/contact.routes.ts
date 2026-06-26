@@ -60,6 +60,7 @@ router.post('/', contactRateLimiter, asyncHandler(async (req: Request, res: Resp
         : `Inquiry from ${name}`,
       body: message,
       source: 'WEB',
+      language,
     });
 
     // Optional: send admin notification email (targets office@ instead of partner@)
@@ -71,10 +72,13 @@ router.post('/', contactRateLimiter, asyncHandler(async (req: Request, res: Resp
     const safeEmail = escapeHtml(email);
     const safeMessage = escapeHtml(message).replace(/\n/g, '<br>');
 
+    // Extract shortRef from ticketId (remove dashes, take first 8 chars)
+    const shortRef = ticketId.replace(/-/g, '').slice(0, 8);
+
     const adminHtml = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #111;">New contact form submission</h2>
-        <p style="color: #666; font-size: 13px;">Ticket ID: <strong>${ticketId}</strong></p>
+        <p style="color: #666; font-size: 13px;">Ticket ID: <strong>[#${shortRef}]</strong></p>
         <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
           <tr>
             <td style="padding: 8px 12px; background: #f8f9fa; font-weight: 600; width: 120px;">Name</td>

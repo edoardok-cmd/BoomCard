@@ -236,15 +236,18 @@ describe('POST /contact form → Help Ticket creation', () => {
       where: { externalEmail: submitterEmail.toLowerCase() },
     });
 
-    // Find the admin notification call (should include the ticket ID)
+    // Extract shortRef (same format as in the route)
+    const shortRef = ticket!.id.replace(/-/g, '').slice(0, 8);
+
+    // Find the admin notification call (should include the shortRef)
     const calls = (emailService.sendEmail as jest.Mock).mock.calls;
     const adminNotifyCall = calls.find((call: any[]) =>
-      call[0]?.text?.includes(ticket!.id)
+      call[0]?.text?.includes(`Ticket ID: ${ticket!.id}`)
     );
 
     expect(adminNotifyCall).toBeDefined();
-    expect(adminNotifyCall[0].html).toContain(`Ticket ID: ${ticket!.id}`);
-    expect(adminNotifyCall[0].text).toContain(`Ticket ID: ${ticket!.id}`);
+    expect(adminNotifyCall[0].html).toContain(`Ticket ID: <strong>[#${shortRef}]</strong>`);
+    expect(adminNotifyCall[0].text).toContain(`Ticket ID: ${ticket!.id}`); // text still has full UUID
 
     ticketIds.push(ticket!.id);
   });
@@ -453,6 +456,70 @@ describe('POST /contact form → Help Ticket creation', () => {
     expect(replyViaMessageId).toBeDefined();
     expect(replyViaMessageId?.ticketId).toBe(ticket!.id);
 
+    ticketIds.push(ticket!.id);
+  });
+
+  it('auto-reply respects language parameter (Bulgarian)', async () => {
+    // Ensure we have an admin to own the ticket
+    await createAdmin();
+
+    const submitterEmail = `contact-lang-bg-${uid()}@example.com`;
+    await request(app)
+      .post('/contact')
+      .send({
+        name: 'Bulgarian User',
+        email: submitterEmail,
+        message: 'Имам въпрос',
+        language: 'bg',
+      });
+
+    // Get the auto-reply call
+    const calls = (emailService.sendEmail as jest.Mock).mock.calls;
+    const autoReplyCall = calls.find((call: any[]) =>
+      call[0]?.to === submitterEmail && call[0]?.headers?.['X-BoomCard-Request-ID']
+    );
+
+    expect(autoReplyCall).toBeDefined();
+    // Bulgarian auto-reply should contain Bulgarian text
+    expect(autoReplyCall[0].html).toContain('Здравейте');
+    expect(autoReplyCall[0].html).toContain('Получихме вашата заявка');
+    expect(autoReplyCall[0].text).toContain('Здравейте');
+
+    const ticket = await prisma.helpTicket.findFirst({
+      where: { externalEmail: submitterEmail.toLowerCase() },
+    });
+    ticketIds.push(ticket!.id);
+  });
+
+  it('auto-reply respects language parameter (English)', async () => {
+    // Ensure we have an admin to own the ticket
+    await createAdmin();
+
+    const submitterEmail = `contact-lang-en-${uid()}@example.com`;
+    await request(app)
+      .post('/contact')
+      .send({
+        name: 'English User',
+        email: submitterEmail,
+        message: 'I have a question',
+        language: 'en',
+      });
+
+    // Get the auto-reply call
+    const calls = (emailService.sendEmail as jest.Mock).mock.calls;
+    const autoReplyCall = calls.find((call: any[]) =>
+      call[0]?.to === submitterEmail && call[0]?.headers?.['X-BoomCard-Request-ID']
+    );
+
+    expect(autoReplyCall).toBeDefined();
+    // English auto-reply should contain English text
+    expect(autoReplyCall[0].html).toContain('Hello');
+    expect(autoReplyCall[0].html).toContain("We've received your request");
+    expect(autoReplyCall[0].text).toContain('Hello');
+
+    const ticket = await prisma.helpTicket.findFirst({
+      where: { externalEmail: submitterEmail.toLowerCase() },
+    });
     ticketIds.push(ticket!.id);
   });
 });

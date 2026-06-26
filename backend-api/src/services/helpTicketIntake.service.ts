@@ -32,6 +32,8 @@ export interface HelpTicketIntakeArgs {
   body: string;
   /** Source identifier (default: 'WEB' for web form submissions) */
   source?: string;
+  /** Form submission language (determines auto-reply template language) */
+  language?: 'bg' | 'en';
 }
 
 /**
@@ -58,6 +60,7 @@ async function sendWebFormAutoReply(args: {
   ticketId: string;
   to: string;
   originalSubject: string;
+  language?: 'bg' | 'en';
 }): Promise<void> {
   const threading = buildTicketHeaders({
     ticketId: args.ticketId,
@@ -65,8 +68,15 @@ async function sendWebFormAutoReply(args: {
     references: [],
   });
   const subject = buildTicketSubject(args.ticketId, `Re: ${args.originalSubject}`);
+  const ref = subject.match(/\[#[a-f0-9]+\]/i)?.[0] ?? '';
 
-  const html = `<!DOCTYPE html>
+  const isBg = args.language === 'bg';
+
+  let html: string;
+  let text: string;
+
+  if (isBg) {
+    html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
   <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px;">
@@ -75,7 +85,7 @@ async function sendWebFormAutoReply(args: {
         <p style="margin:0 0 16px;color:#111;font-size:16px;">Здравейте,</p>
         <p style="margin:0 0 16px;color:#444;font-size:15px;line-height:1.6;">
           Получихме вашата заявка и тя е регистрирана с референция
-          <strong style="font-family:monospace;">${subject.match(/\[#[a-f0-9]+\]/i)?.[0] ?? ''}</strong>.
+          <strong style="font-family:monospace;">${ref}</strong>.
         </p>
         <p style="margin:0 0 16px;color:#444;font-size:15px;line-height:1.6;">
           Ще се свържем с вас възможно най-скоро. За да добавите информация
@@ -91,9 +101,34 @@ async function sendWebFormAutoReply(args: {
     </table>
   </td></tr></table>
 </body></html>`;
-
-  const ref = subject.match(/\[#[a-f0-9]+\]/i)?.[0] ?? '';
-  const text = `Здравейте,\n\nПолучихме вашата заявка и тя е регистрирана с референция ${ref}. За да добавите информация, просто отговорете на този имейл — съобщението ще бъде прикачено автоматично.\n\nСпешен случай: support@boomcard.bg\n\n— Екипът на BoomCard`;
+    text = `Здравейте,\n\nПолучихме вашата заявка и тя е регистрирана с референция ${ref}. За да добавите информация, просто отговорете на този имейл — съобщението ще бъде прикачено автоматично.\n\nСпешен случай: support@boomcard.bg\n\n— Екипът на BoomCard`;
+  } else {
+    html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px;">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+      <tr><td style="padding:28px;">
+        <p style="margin:0 0 16px;color:#111;font-size:16px;">Hello,</p>
+        <p style="margin:0 0 16px;color:#444;font-size:15px;line-height:1.6;">
+          We've received your request and registered it with reference
+          <strong style="font-family:monospace;">${ref}</strong>.
+        </p>
+        <p style="margin:0 0 16px;color:#444;font-size:15px;line-height:1.6;">
+          We'll be in touch as soon as possible. To add information to your request,
+          simply reply to this email — your message will be attached automatically.
+        </p>
+        <p style="margin:0 0 16px;color:#666;font-size:14px;line-height:1.6;">
+          If you need immediate assistance, please contact us at
+          <a href="mailto:support@boomcard.bg" style="color:#1f2937;">support@boomcard.bg</a>.
+        </p>
+        <p style="margin:24px 0 0;color:#999;font-size:13px;">— The BoomCard Team</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+    text = `Hello,\n\nWe've received your request and registered it with reference ${ref}. To add information to your request, simply reply to this email — your message will be attached automatically.\n\nUrgent matter: support@boomcard.bg\n\n— The BoomCard Team`;
+  }
 
   // Persist the reply row FIRST (before sending email) so threading anchor exists
   // even if mailer fails. Mirror the pattern from ticketInbound.service.ts.
@@ -116,7 +151,8 @@ async function sendWebFormAutoReply(args: {
     html,
     text,
     headers: threading.headers,
-    // Web forms are treated as 'subscriber' audience (safe default for unidentified sources)
+    // Web forms are treated as 'subscriber' audience (safe default for unidentified sources).
+    // If partner-specific forms are added in the future, this should become configurable.
     replyTo: buildPlusReplyTo(args.ticketId, 'subscriber'),
   });
 }
@@ -208,6 +244,7 @@ export async function createHelpTicketFromInbound(
       ticketId: ticket.id,
       to: normalizedEmail,
       originalSubject: args.subject || '(no subject)',
+      language: args.language,
     }),
     (err) => logger.error(`[helpTicketIntake] failed to send auto-reply for ${ticket.id}:`, err)
   );
