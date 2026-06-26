@@ -178,14 +178,16 @@ router.get('/pending-super', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), re
   try {
     const { skip, take, page: pageNum } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
-    // N6 fix: filter out requests older than 72h — they are expired and cannot be approved.
-    const expiryThreshold = new Date(Date.now() - PENDING_SUPER_ADMIN_TTL_MS);
+    // FINDING 1 fix: use persisted expiresAt column instead of recomputing from createdAt + TTL.
+    // This ensures that if TTL changes, existing requests still expire at their original scheduled time.
+    const now = new Date();
+    const where = { expiresAt: { gt: now } };
 
     const [requests, total] = await Promise.all([
       prisma.pendingSuperAdminRequest.findMany({
         skip,
         take,
-        where: { createdAt: { gte: expiryThreshold } },
+        where,
         orderBy: { createdAt: 'desc' },
         select: {
           id: true,
@@ -194,10 +196,11 @@ router.get('/pending-super', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), re
           lastName: true,
           phone: true,
           createdAt: true,
+          expiresAt: true,
           requestedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
         },
       }),
-      prisma.pendingSuperAdminRequest.count({ where: { createdAt: { gte: expiryThreshold } } }),
+      prisma.pendingSuperAdminRequest.count({ where }),
     ]);
 
     res.json({ requests, total, page: pageNum, limit: take });
@@ -215,9 +218,9 @@ router.get('/pending-all', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requ
   try {
     const hasAdminsRead = req.user!.role === 'SUPER_ADMIN' || (req.user!.permissions ?? []).includes('admins.read');
 
-    // N2 fix: apply the same 72h expiry filter used in /pending-super so that
-    // expired requests are excluded from the unified pending count/list here too.
-    const pendingAllExpiryThreshold = new Date(Date.now() - PENDING_SUPER_ADMIN_TTL_MS);
+    // FINDING 1 fix: use persisted expiresAt column instead of recomputing from createdAt + TTL.
+    // This ensures that if TTL changes, existing requests still expire at their original scheduled time.
+    const now = new Date();
 
     const [pendingRoleAssignments, pendingSuperAdmins, pendingCriticalActions] = await Promise.all([
       hasAdminsRead
@@ -229,7 +232,7 @@ router.get('/pending-all', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requ
         : Promise.resolve([]),
       hasAdminsRead
         ? prisma.pendingSuperAdminRequest.findMany({
-            where: { createdAt: { gte: pendingAllExpiryThreshold } },
+            where: { expiresAt: { gt: now } },
             orderBy: { createdAt: 'desc' },
             select: {
               id: true,
@@ -237,6 +240,7 @@ router.get('/pending-all', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requ
               firstName: true,
               lastName: true,
               createdAt: true,
+              expiresAt: true,
               requestedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
             },
           })
@@ -625,7 +629,12 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
       if (existingUser) {
         return res.status(409).json({ error: 'A SUPER_ADMIN with this email already exists' });
       }
-      const existing = await prisma.pendingSuperAdminRequest.findFirst({ where: { email } });
+      // FINDING 2 fix: scope duplicate guard to live rows only. Expired-but-undeleted
+      // requests must not block re-submission of the same email.
+      const now = new Date();
+      const existing = await prisma.pendingSuperAdminRequest.findFirst({
+        where: { email, expiresAt: { gt: now } },
+      });
       if (existing) {
         return res.status(409).json({ error: 'A pending SUPER_ADMIN request for this email already exists' });
       }
@@ -718,9 +727,9 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
     });
     if (!request) return res.status(404).json({ error: 'Pending request not found' });
 
-    // N6 fix: reject approval of requests older than 72h (spec §9 dual-approval expiry).
-    const requestAgeMs = Date.now() - request.createdAt.getTime();
-    if (requestAgeMs > PENDING_SUPER_ADMIN_TTL_MS) {
+    // FINDING 1 fix: use persisted expiresAt column instead of recomputing from createdAt + TTL.
+    // This ensures that if TTL changes, existing requests still expire at their original scheduled time.
+    if (request.expiresAt && request.expiresAt.getTime() < Date.now()) {
       return res.status(410).json({
         error: 'This pending SUPER_ADMIN creation request has expired (72h window). ' +
                'Please submit a new request.',
@@ -843,8 +852,10 @@ router.delete('/pending-super/:id', authenticate, authorize('SUPER_ADMIN'), requ
       userAgent: req.headers['user-agent'] ?? null,
     });
 
-    // Notify the requester so they know their request was rejected/cancelled.
-    if (request.requestedBy.email) {
+    // FINDING 3 fix: suppress email when request has already expired.
+    // The requester should not be notified of rejection for an already-expired request.
+    const hasExpired = request.expiresAt && request.expiresAt.getTime() <= Date.now();
+    if (!hasExpired && request.requestedBy.email) {
       const requesterName = request.requestedBy.firstName || request.requestedBy.email;
       detach(emailService.sendEmail({
         to: request.requestedBy.email,
