@@ -168,7 +168,7 @@ describe('userRisk.service (spec §2.1 canonical five signals)', () => {
       expect(out.get('u1')!.bucket).toBe('HIGH_51_PLUS');
     });
 
-    it('caps the score at 100 when every signal fires (sum 120)', async () => {
+    it('reaches the maximum score of 120 when every signal fires (40+30+20+20+10)', async () => {
       mockedPrisma.receipt.groupBy.mockResolvedValueOnce([{ userId: 'u1', _count: { _all: 1 } }]);          // +30
       mockedPrisma.stickerScan.groupBy.mockResolvedValueOnce([{ userId: 'u1', _count: { _all: 1 } }]);      // +20
       mockedPrisma.walletTransaction.groupBy.mockResolvedValueOnce([{ walletId: 'w1', _count: { _all: 5 } }]); // +20 (5 voids >= 3)
@@ -176,8 +176,8 @@ describe('userRisk.service (spec §2.1 canonical five signals)', () => {
       mockedPrisma.stickerScan.findMany.mockResolvedValueOnce([{ userId: 'u1' }]);                          // +10
       const u = baseUser({ ibanLastChangedAt: new Date(Date.now() - 1 * 60 * 60 * 1000) });                // +40
       const out = await computeRiskForUsers([u]);
-      // 40 + 30 + 20 + 20 + 10 = 120, capped at 100.
-      expect(out.get('u1')!.score).toBe(100);
+      // 40 + 30 + 20 + 20 + 10 = 120 (spec §2.1 additive maximum).
+      expect(out.get('u1')!.score).toBe(120);
       expect(out.get('u1')!.bucket).toBe('HIGH_51_PLUS');
     });
 

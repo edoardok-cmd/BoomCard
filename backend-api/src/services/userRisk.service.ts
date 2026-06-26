@@ -2,7 +2,7 @@ import { prisma } from '../lib/prisma';
 import { RiskBucket } from '@prisma/client';
 
 // Spec §2.1 — canonical five-signal risk profile per subscriber.
-// Additive rule-sum scorer (0-100). Buckets use the canonical RiskBucket ranges:
+// Additive rule-sum scorer (0-120). Buckets use the canonical RiskBucket ranges:
 //   0-20  → LOW_0_20      (auto-approve)
 //   21-50 → MEDIUM_21_50  (auto-approve — per spec §2.2/§3.4 amendment 2026-06-24:
 //                          Medium no longer enters mandatory manual review;
@@ -17,10 +17,10 @@ import { RiskBucket } from '@prisma/client';
 // scorer in fraudDetection.service.ts::computeSpecRiskLevel so the per-user
 // roll-up and the per-record gate agree.
 //
-// The total is capped at 100 (the five spec weights already sum to 120, so a
-// user firing every signal lands at HIGH regardless).
+// The total is capped at 120 to match the additive maximum of the five spec weights
+// (IBAN +40, receipt +30, QR +20, voided +20, partner +10 = 120).
 
-const SCORE_CAP = 100;
+const SCORE_CAP = 120;
 
 // Spec §2.1 additive weights (identical to fraudDetection.service.ts constants).
 const RULES = {
