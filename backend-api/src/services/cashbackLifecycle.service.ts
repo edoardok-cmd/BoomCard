@@ -39,7 +39,7 @@ const CASHBACK_VALIDITY_DAYS_DEFAULT = 60;
  * The zero UUID is chosen as a conventional "system" marker — it is not a
  * valid user ID (Postgres uuid_generate_v4() never produces the nil UUID).
  */
-const SYSTEM_ACTOR_ID = '00000000-0000-0000-0000-000000000000';
+export const SYSTEM_ACTOR_ID = '00000000-0000-0000-0000-000000000000';
 
 // F-008: Controlled vocabulary for voidedReason per spec requirement.
 // All void reasons must use one of these canonical categories.
@@ -53,6 +53,22 @@ export const VOID_REASON_CATEGORIES = [
   'OTHER',
 ] as const;
 export type VoidReasonCategory = typeof VOID_REASON_CATEGORIES[number];
+
+/**
+ * BC-ADMIN-REAUDIT2-TRIALVOID-VOCAB-1 / Spec §8.1 rule 6 + §1.3: the single
+ * canonical voidedReason used by EVERY TrialPending→Voided path (the
+ * user-triggered WalletService.voidTrialPendingCashback fast path AND the
+ * scheduler's resolveTrialPendingCashback fallback). Voiding here is an internal
+ * reconciliation — cashback reclaimed because a trial refund was used — NOT user
+ * fraud, so the canonical category is SYSTEM_ERROR, never FRAUD.
+ *
+ * Lives here, alongside VOID_REASON_CATEGORIES, so the void-vocabulary is
+ * single-sourced and both void paths import the identical value (no drift). It is
+ * validated once below via assertVoidReasonCategory so a future edit to a
+ * non-canonical prefix throws at module load rather than silently persisting an
+ * out-of-vocabulary reason.
+ */
+export const TRIAL_VOID_REASON = 'SYSTEM_ERROR: Trial refund used — cashback reclaimed';
 
 /**
  * F-008 / Spec §8.1 rule 6 + §1.3: every Voided cashback record requires a
@@ -83,6 +99,14 @@ export function assertVoidReasonCategory(reason: string): string {
   }
   return trimmed;
 }
+
+// BC-ADMIN-REAUDIT2-TRIALVOID-VOCAB-1 drift guard: validate the shared
+// TRIAL_VOID_REASON against the controlled vocabulary ONCE at module load. Both
+// the scheduler fallback and the user-triggered WalletService fast path import
+// this same constant, so this single validation site protects every void path —
+// a future non-canonical edit throws here immediately rather than silently
+// persisting an out-of-vocabulary voidedReason on voided rows.
+assertVoidReasonCategory(TRIAL_VOID_REASON);
 
 /**
  * F-008 / Spec §8.1 rule 6 + §1.3: normalize a (possibly free-text) void reason

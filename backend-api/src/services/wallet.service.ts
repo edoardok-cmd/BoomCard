@@ -9,7 +9,7 @@ import { notificationService } from './notification.service';
 import { fireAutomation } from '../lib/automationDispatcher';
 import { getSystemSettingInt } from '../utils/systemSettings';
 import { isCurrencyTransitionWindowOpen } from '../utils/currencyDisplay';
-import { cashbackLifecycleService } from './cashbackLifecycle.service';
+import { cashbackLifecycleService, SYSTEM_ACTOR_ID, TRIAL_VOID_REASON } from './cashbackLifecycle.service';
 import { AppError } from '../middleware/error.middleware';
 import { detach } from '../utils/detach';
 import { reasonIndicatesIbanProblem } from '../utils/payoutFailureReason';
@@ -565,8 +565,16 @@ export class WalletService {
       // resolveTrialPendingCashback doesn't find them and double-decrement balance.
       // Spec §3.1 / §4.4: also set cashbackStatus=VOIDED so the voided amount drops
       // out of getBalance's pending aggregation (which sums cashbackStatus IN
-      // [PENDING, TRIAL_PENDING] with no status filter). Mirrors the scheduler's
-      // parallel void path (jobs/scheduler.ts resolveTrialPendingCashback) exactly.
+      // [PENDING, TRIAL_PENDING] with no status filter).
+      //
+      // BC-ADMIN-REAUDIT2-TRIALVOID-VOCAB-1 / Spec §8.1 rule 6 + §1.3: this is the
+      // PRIMARY (user-triggered) trial-void path; the scheduler's
+      // resolveTrialPendingCashback fallback only runs when this one silently
+      // fails. Both now write the SAME single-sourced canonical reason
+      // (TRIAL_VOID_REASON, SYSTEM_ERROR-prefixed — validated against the
+      // controlled vocabulary at cashbackLifecycle.service module load) AND the
+      // SYSTEM_ACTOR_ID responsible-actor stamp, so the void-reason vocabulary +
+      // actor stamp are shared by ALL void paths exactly.
       if (transactionIds && transactionIds.length > 0) {
         await tx.walletTransaction.updateMany({
           where: { id: { in: transactionIds } },
@@ -574,7 +582,8 @@ export class WalletService {
             status: WalletTransactionStatus.CANCELLED,
             cashbackStatus: CashbackEntryStatus.VOIDED,
             voidedAt: new Date(),
-            voidedReason: 'Trial refund used',
+            voidedReason: TRIAL_VOID_REASON,
+            voidedByUserId: SYSTEM_ACTOR_ID,
           },
         });
       }

@@ -1,7 +1,8 @@
 import { Router } from 'express';
-import { TicketCategory, TicketPriority, DisputeSubjectType, TicketRequestType } from '@prisma/client';
+import { TicketCategory, TicketPriority, DisputeSubjectType, TicketRequestType, TicketStatus } from '@prisma/client';
 import { asyncHandler } from '../middleware/error.middleware';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
+import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { notificationService } from '../services/notification.service';
 import { emailService } from '../services/email.service';
@@ -13,6 +14,7 @@ import { detach } from '../utils/detach';
 
 const router = Router();
 router.use(authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'));
+router.use(auditMiddleware);
 
 // B2: HTML entity escape helper used in all email templates in this file.
 // Prevents injected markup from user-supplied email addresses and ticket subjects
@@ -394,6 +396,89 @@ router.get('/tickets/:id/replies', asyncHandler(async (req: AuthRequest, res) =>
   });
 
   return res.json({ success: true, data: replies });
+}));
+
+/**
+ * POST /api/partner/help/tickets/:id/cancel
+ * Requester-initiated withdrawal of a support ticket. Spec §1.7 "Cancelled = withdrawn".
+ * Partners may withdraw their own OPEN tickets; transitions to CANCELLED status.
+ * Distinct from admin cancel (which covers "invalid" tickets).
+ * Authorization: PARTNER only (spec §1.7 — withdrawal is requester-initiated, not admin-delegated).
+ */
+router.post('/tickets/:id/cancel', authorize('PARTNER'), requireNonArchivedPartner, asyncHandler(async (req: AuthRequest, res) => {
+  const ticket = await prisma.helpTicket.findFirst({
+    where: { id: req.params.id, userId: req.user!.id },
+    include: { assignee: { select: { email: true, firstName: true } } },
+  });
+
+  // 404 if ticket not found or ownership check fails
+  if (!ticket) {
+    return res.status(404).json({ error: 'Заявката не е намерена или нямате достъп' });
+  }
+
+  // Terminal guard: reject withdrawals if status is CLOSED, REJECTED, or CANCELLED
+  if (ticket.status === 'CLOSED' || ticket.status === 'REJECTED' || ticket.status === 'CANCELLED') {
+    return res.status(400).json({ error: 'Не може да се оттегли заявка в крайно състояние' });
+  }
+
+  // Atomic transaction: update status to CANCELLED and create INTERNAL reply
+  await prisma.$transaction(async (tx) => {
+    await tx.helpTicket.update({
+      where: { id: req.params.id },
+      data: { status: 'CANCELLED' as TicketStatus },
+    });
+    await tx.ticketReply.create({
+      data: {
+        ticketId: req.params.id,
+        authorId: req.user!.id,
+        body: '[ОТТЕГЛЕНА от заявителя]',
+        isAdmin: false,
+        channel: 'INTERNAL',
+      },
+    });
+  });
+
+  // Audit trail: write ticket.withdraw action with before/after status
+  req.skipAudit = true;
+  detach(writeAudit({
+    actorUserId: req.user!.id,
+    action: 'ticket.withdraw',
+    objectType: 'ticket',
+    objectId: req.params.id,
+    before: { status: ticket.status },
+    after: { status: 'CANCELLED' },
+  }), () => {});
+
+  // Notify assignee of withdrawal (non-fatal)
+  if (ticket.assignee?.email) {
+    const priorMessages = await prisma.ticketReply.findMany({
+      where: { ticketId: req.params.id, messageId: { not: null } },
+      orderBy: { createdAt: 'asc' },
+      select: { messageId: true },
+    });
+    const refChain: string[] = [
+      ticket.rootMessageId,
+      ...priorMessages.map((r) => r.messageId),
+    ].filter((id): id is string => !!id);
+
+    detach(emailService
+      .sendEmail({
+        to: ticket.assignee.email,
+        subject: buildTicketSubject(ticket.id, `[Заявката оттеглена] ${ticket.subject}`),
+        headers: buildTicketHeaders({
+          ticketId: req.params.id,
+          inReplyTo: refChain.at(-1) ?? null,
+          references: refChain,
+        }).headers,
+        html: `<p>Партньор оттегли заявка, назначена на вас.</p>
+<p><strong>Заявка:</strong> ${esc(ticket.subject)}</p>
+<p><strong>Статус:</strong> Оттеглена</p>
+<p style="color:#999;font-size:12px;">Ticket ID: ${ticket.id}</p>`,
+        text: `Партньор оттегли заявка, назначена на вас.\n\nЗаявка: ${ticket.subject}\nСтатус: Оттеглена\n\nTicket ID: ${ticket.id}`,
+      }), (err) => logger.error('[partnerHelp] failed to notify assignee of partner withdrawal:', err));
+  }
+
+  return res.json({ ok: true });
 }));
 
 export default router;

@@ -41,6 +41,65 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
     req.user = decoded;
 
+    // Spec §1.5 (line 177) + Part 4 impersonation invariants — re-check the ACTING
+    // admin's live status on every request during an active impersonation session.
+    //
+    // An impersonation token is minted with role = the TARGET's role (PARTNER/USER)
+    // and carries imp:true + impBy:<adminId> (auth.service.ts impersonate()); refresh
+    // carries those claims forward. Because the token's role is the target's, the
+    // ADMIN/SUPER_ADMIN branch below never fires for it, so without this branch a
+    // decommission/suspension of the acting admin AFTER impersonation starts would not
+    // sever the session until natural token expiry — stopImpersonate() only enforces
+    // the acting-admin status gate on EXIT, not during the session.
+    //
+    // Mirrors the stopImpersonate() exit gate (auth.service.ts ~2793-2799): acting
+    // admin must still exist, still be ADMIN/SUPER_ADMIN, and have status === 'ACTIVE'.
+    // The status check is an ALLOWLIST (ACTIVE-only), identical to the exit gate's
+    // `status !== 'ACTIVE'` rejection, so the two gates are truly symmetric — any
+    // non-ACTIVE status (ARCHIVED / SUSPENDED / DELETED / INACTIVE / PENDING_VERIFICATION
+    // / PENDING_PAYMENT) ends the impersonation rather than coasting to token expiry.
+    // This runs ONLY for impersonation tokens (gated strictly on imp + impBy),
+    // adding one DB read on those rare tokens only — normal USER/PARTNER tokens are
+    // untouched. The TARGET's own status is still re-checked by the USER/PARTNER branch
+    // below (the token's role is the target's), so this branch is additive: an
+    // actor-revoked impersonation 401s regardless of target status.
+    //
+    // DESIGN DECISION (INACTIVE): impersonation is inherently a write-capable operator
+    // power, and stopImpersonate() blocks any non-ACTIVE acting admin on exit. For
+    // consistency we take the STRICTER choice and also end the impersonation when the
+    // acting admin is INACTIVE (read-only) — INACTIVE !== 'ACTIVE', so the ACTIVE-only
+    // allowlist below naturally enforces this. Unlike a normal admin session — where
+    // INACTIVE coasts to expiry in read-only mode via the aro flag — there is no
+    // read-only mode for an impersonation session, so INACTIVE is session-ending here.
+    if (decoded?.imp === true && decoded?.impBy) {
+      const actor = await prisma.user.findUnique({
+        where: { id: decoded.impBy },
+        select: { status: true, role: true, rolesUpdatedAt: true },
+      }).catch(() => null);
+
+      const actorStatus = actor?.status as string | undefined;
+      const actorOk =
+        !!actor &&
+        (actor.role === 'ADMIN' || actor.role === 'SUPER_ADMIN') &&
+        // ALLOWLIST: only ACTIVE acting admins keep the impersonation alive — exactly
+        // mirrors stopImpersonate()'s `status !== 'ACTIVE'` exit gate (see DESIGN
+        // DECISION above re: INACTIVE).
+        actorStatus === 'ACTIVE' &&
+        // rolesUpdatedAt bump (role revoke / status change to no-login) after the
+        // token was issued invalidates the live impersonation. Mirror the admin
+        // branch comparison (ms vs iat*1000) so the units match exactly.
+        !(
+          actor.rolesUpdatedAt &&
+          actor.rolesUpdatedAt.getTime() > (decoded.iat as number) * 1000
+        );
+
+      if (!actorOk) {
+        return res
+          .status(401)
+          .json({ error: 'Impersonation session ended — acting admin access revoked' });
+      }
+    }
+
     // For ADMIN and SUPER_ADMIN users: if their roles were updated after this JWT was
     // issued, the embedded permissions (or role itself) are stale — reject with 401 so
     // the client is forced to re-login and get a fresh token.

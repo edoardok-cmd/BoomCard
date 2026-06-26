@@ -1169,9 +1169,11 @@ router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADM
 
     // #3 fix: prevent removing the last SUPER_ADMIN role
     if (roleKey === AdminRoleKey.SUPER_ADMIN) {
-      const superAdminCount = await prisma.user.count({ where: { role: 'SUPER_ADMIN', status: 'ACTIVE' } });
-      if (superAdminCount <= 1) {
-        return res.status(409).json({ error: 'Cannot revoke the role of the last SUPER_ADMIN' });
+      const remainingActiveSupers = await prisma.user.count({
+        where: { role: 'SUPER_ADMIN', status: 'ACTIVE', id: { not: id } },
+      });
+      if (remainingActiveSupers === 0) {
+        return res.status(409).json({ error: 'Cannot revoke the role of the last active SUPER_ADMIN' });
       }
     }
 

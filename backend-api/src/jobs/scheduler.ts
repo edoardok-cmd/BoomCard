@@ -50,7 +50,7 @@ import { getSystemSettingInt } from '../utils/systemSettings';
 import { CASHBACK_VALIDITY_DAYS } from '../constants/receipt.constants';
 import { writeAudit } from '../middleware/audit.middleware';
 import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo } from '../services/ticketEmail.service';
-import { expireStalePendingCashback } from '../services/cashbackLifecycle.service';
+import { expireStalePendingCashback, assertVoidReasonCategory, SYSTEM_ACTOR_ID, TRIAL_VOID_REASON } from '../services/cashbackLifecycle.service';
 import { detach } from '../utils/detach';
 import { SLA_WARN_HOURS } from '../services/partnerSla.helper';
 
@@ -823,9 +823,26 @@ const PAYMENT_FAILURE_RATE_THRESHOLD_PCT = 20;
 // trial window (trialRefundEligibleUntil) has now expired, then promotes them
 // to COMPLETED and increments availableBalance — making the funds withdrawable.
 
-async function resolveTrialPendingCashback(): Promise<void> {
+// BC-ADMIN-REAUDIT2-TRIALVOID-VOCAB-1 / Spec §8.1 rule 6 + §1.3: every Voided
+// cashback record requires a controlled-vocabulary reason category. This
+// scheduler-driven TrialPending→Voided path is an internal reconciliation
+// (cashback reclaimed because a trial refund was used) — NOT user fraud — so the
+// canonical category is SYSTEM_ERROR, never FRAUD. TRIAL_VOID_REASON is now
+// single-sourced in cashbackLifecycle.service (alongside VOID_REASON_CATEGORIES)
+// and imported here so this scheduler fallback and the user-triggered
+// WalletService.voidTrialPendingCashback fast path share the identical value. It
+// is validated against the controlled vocabulary at that module's load AND once
+// more below (outside the per-wallet loop) as a defensive drift guard.
+
+export async function resolveTrialPendingCashback(): Promise<void> {
   const now = new Date();
   logger.info(`[trial-pending-cashback] Starting run at ${now.toISOString()}`);
+
+  // Defense-in-depth: assert the canonical void reason against the shared
+  // controlled vocabulary ONCE before the loop. If a future edit changes
+  // TRIAL_VOID_REASON to a non-canonical prefix this throws immediately rather
+  // than persisting an out-of-vocabulary voidedReason across every voided row.
+  assertVoidReasonCategory(TRIAL_VOID_REASON);
 
   // Find all distinct wallets that still hold TRIAL_PENDING cashback
   const pendingWallets = await prisma.walletTransaction.findMany({
@@ -904,7 +921,11 @@ async function resolveTrialPendingCashback(): Promise<void> {
             status: WalletTransactionStatus.CANCELLED,
             cashbackStatus: CashbackEntryStatus.VOIDED,
             voidedAt,
-            voidedReason: 'Trial refund used',
+            // §8.1 rule 6 / §1.3: canonical-prefixed reason (validated above) +
+            // responsible-actor stamp. System-automated void → SYSTEM_ACTOR_ID
+            // sentinel so voidedByUserId is never NULL (audit trail complete).
+            voidedReason: TRIAL_VOID_REASON,
+            voidedByUserId: SYSTEM_ACTOR_ID,
           },
         });
         await tx.wallet.update({

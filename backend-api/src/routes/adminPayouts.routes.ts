@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { WalletTransactionStatus, SubscriptionStatus } from '@prisma/client';
+import { WalletTransactionStatus, WalletTransactionType, SubscriptionStatus } from '@prisma/client';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
@@ -858,11 +858,27 @@ router.patch(
                   : 'Неуспешен банков превод',
               },
             });
-            await tx.wallet.update({
+            const restored = await tx.wallet.update({
               where: { id: payout.walletId },
               data: {
                 balance:          { increment: restoreAmount },
                 availableBalance: { increment: restoreAmount },
+              },
+            });
+            // Paired ADJUSTMENT reversal credit — matches the Paysera auto-fail
+            // first-failure path (wallet.service.ts ~L1189). Without this row the
+            // user-facing masking helper (maskUserFacingPayoutStatus) treats the
+            // FAILED withdrawal as an un-reversed race and masks it as PROCESSING.
+            await tx.walletTransaction.create({
+              data: {
+                walletId: payout.walletId,
+                type: WalletTransactionType.ADJUSTMENT,
+                amount: restoreAmount,
+                balanceBefore: restored.balance - restoreAmount,
+                balanceAfter: restored.balance,
+                status: WalletTransactionStatus.COMPLETED,
+                description: 'Сторниране на изплащане — балансът е възстановен',
+                metadata: JSON.stringify({ reversedWithdrawalId: id, reason: reason ?? 'bank transfer failure' }),
               },
             });
 
