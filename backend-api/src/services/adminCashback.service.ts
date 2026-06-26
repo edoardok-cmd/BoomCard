@@ -693,6 +693,7 @@ export function deriveCashbackEntryStatus(
   // Authoritative: lifecycle service has written an explicit status.
   if (entry.cashbackStatus) {
     const cs = entry.cashbackStatus;
+    if (cs === 'TRIAL_PENDING') return 'TrialPending';
     if (cs === 'VOIDED') return 'Voided';
     if (cs === 'PAID') return 'Paid';
     if (cs === 'EXPIRED') return 'Expired';
@@ -702,7 +703,8 @@ export function deriveCashbackEntryStatus(
   }
   // Legacy fallback for rows without cashbackStatus set.
   if (entry.cashbackPaidAt) return 'Paid';
-  if (entry.status === 'PENDING' || entry.status === 'TRIAL_PENDING' || entry.status === 'PROCESSING' || entry.status === 'RISK_HOLD') {
+  if (entry.status === 'TRIAL_PENDING') return 'TrialPending';
+  if (entry.status === 'PENDING' || entry.status === 'PROCESSING' || entry.status === 'RISK_HOLD') {
     return 'Pending';
   }
   if (entry.status === 'CANCELLED') {

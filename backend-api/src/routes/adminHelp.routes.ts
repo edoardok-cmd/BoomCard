@@ -831,6 +831,13 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
       return res.status(400).json({ error: 'Използвайте endpoint /reject за отказване на заявки — изисква се причина' });
     }
 
+    // BC-ADMIN-SPEC-REAUDIT3-HELP-CANCEL-BACKDOOR-1: CANCELLED also requires the
+    // accountability gate from POST /:id/cancel (assignee or SUPER_ADMIN only).
+    // Block PATCH from bypassing that gate; callers must use the dedicated endpoint.
+    if (status === 'CANCELLED') {
+      return res.status(400).json({ error: 'Използвайте endpoint /cancel за отмяна на заявки — изисква се потвърждение от отговорника' });
+    }
+
     // Creators who are not also the assignee may only mark their own ticket as RESOLVED;
     // they may not change priority. Assignees and SUPER_ADMINs have no such restriction.
     const isCreatorOnly = !hasFullAccess(req)

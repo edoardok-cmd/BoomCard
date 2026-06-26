@@ -12,7 +12,7 @@ import { runWithConcurrency } from '../utils/concurrency';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
 import { reasonIndicatesIbanProblem } from '../utils/payoutFailureReason';
-import { buildDualCurrencyMap } from '../utils/currencyDisplay';
+import { buildDualCurrencyMap, isCurrencyTransitionWindowOpen } from '../utils/currencyDisplay';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -71,13 +71,13 @@ function subGateMessage(gate: SubGateResult): string {
   // After the eligible===true short-circuit `gate` is the rejected variant.
   const rejected = gate as Extract<SubGateResult, { eligible: false }>;
   if (rejected.reason === 'NO_SUBSCRIPTION') {
-    return 'Не може да се одобри: абонатът няма регистриран абонамент. Изплащане е възможно само при активен абонамент (§6.1).';
+    return 'Не може да се одобри: абонатът няма регистриран абонамент. Изплащане е възможно само при активен абонамент (§3.7).';
   }
   if (rejected.reason === 'FAILED_PAYMENT') {
-    return 'Не може да се одобри: последната подписка е "неуспешно плащане". Payout се задържа до възстановяване на абонамента (§6.1).';
+    return 'Не може да се одобри: последната подписка е "неуспешно плащане". Payout се задържа до възстановяване на абонамента (§3.7).';
   }
   const label = rejected.status ? (SUB_STATUS_BG[rejected.status] ?? rejected.status) : 'неактивен';
-  return `Не може да се одобри: абонаментът е „${label}". Payout се задържа до възстановяване на абонамента (§6.1).`;
+  return `Не може да се одобри: абонаментът е „${label}". Payout се задържа до възстановяване на абонамента (§3.7).`;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -300,21 +300,30 @@ router.get(
         failedTotal:     failedTotalBgn,
       });
 
+      // DEFECT 1 gate: raw BGN scalars only shown when window is open
+      const windowOpen = await isCurrencyTransitionWindowOpen();
+
+      // DEFECT 2 gate: payouts array items should omit raw BGN fields when window closed
+      const payoutsDisplay = payouts.map(p => ({
+        ...p,
+        ...(windowOpen ? {} : { amount: undefined, balanceBefore: undefined, balanceAfter: undefined }),
+      }));
+
       res.json({
-        payouts,
+        payouts: payoutsDisplay,
         total,
         page: pageNum,
         limit: limitNum,
         summary: {
           pendingCount,
-          pendingTotal:    pendingTotalBgn,
+          ...(windowOpen && { pendingTotal: pendingTotalBgn }),
           processingCount,
-          processingTotal: processingTotalBgn,
+          ...(windowOpen && { processingTotal: processingTotalBgn }),
           completedCount,
-          completedTotal:  completedTotalBgn,
+          ...(windowOpen && { completedTotal: completedTotalBgn }),
           riskHoldCount,
           failedCount,
-          failedTotal:     failedTotalBgn,
+          ...(windowOpen && { failedTotal: failedTotalBgn }),
           totalCount,
           // M7 — dual-currency {bgn, eur} pairs (BGN null after transition window).
           display: summaryDisplay,
