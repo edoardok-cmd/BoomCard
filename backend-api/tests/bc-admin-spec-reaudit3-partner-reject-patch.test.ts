@@ -56,13 +56,13 @@ describe('BC-ADMIN-SPEC-REAUDIT3: PATCH /:id/status rejects REJECTED', () => {
         email: `admin-reject-patch-${Date.now()}@test.local`,
         firstName: 'Test',
         lastName: 'Admin',
-        role: 'ADMIN',
+        role: 'SUPER_ADMIN',
         status: 'ACTIVE',
         emailVerified: true,
         passwordHash: 'dummy-hash',
       },
     });
-    adminToken = generateTestToken(adminUser.id, 'ADMIN');
+    adminToken = generateTestToken(adminUser.id, 'SUPER_ADMIN');
   });
 
   afterAll(async () => {
