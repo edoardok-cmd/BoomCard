@@ -335,7 +335,6 @@ const VALID_PIPELINE_TRANSITIONS: Partial<Record<PartnerRequestStatus, PartnerRe
   NEGOTIATION: ['ONBOARDING'],
   ONBOARDING: [],
   APPROVED: [],
-  REJECTED: [],
 };
 
 router.patch(

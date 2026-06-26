@@ -132,7 +132,7 @@ describe('BC-ADMIN-SPEC-REAUDIT3: PATCH /:id/status rejects REJECTED', () => {
 
     // Attempt with Bulgarian database-mapped name
     const res = await request(app)
-      .patch(`/api/admin/partners/${partner.id}/status`)
+      .patch(`/api/admin/partner-requests/${partner.id}/status`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ requestStatus: 'OTKAZANA' });
 
@@ -251,7 +251,7 @@ describe('BC-ADMIN-SPEC-REAUDIT3: PATCH /:id/status rejects REJECTED', () => {
 
     // NEW → COMMUNICATION
     let res = await request(app)
-      .patch(`/api/admin/partners/${partner.id}/status`)
+      .patch(`/api/admin/partner-requests/${partner.id}/status`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ requestStatus: 'COMMUNICATION' });
     expect(res.status).toBe(200);
@@ -259,7 +259,7 @@ describe('BC-ADMIN-SPEC-REAUDIT3: PATCH /:id/status rejects REJECTED', () => {
 
     // COMMUNICATION → NEGOTIATION
     res = await request(app)
-      .patch(`/api/admin/partners/${partner.id}/status`)
+      .patch(`/api/admin/partner-requests/${partner.id}/status`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ requestStatus: 'NEGOTIATION' });
     expect(res.status).toBe(200);
@@ -267,7 +267,7 @@ describe('BC-ADMIN-SPEC-REAUDIT3: PATCH /:id/status rejects REJECTED', () => {
 
     // NEGOTIATION → ONBOARDING
     res = await request(app)
-      .patch(`/api/admin/partners/${partner.id}/status`)
+      .patch(`/api/admin/partner-requests/${partner.id}/status`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ requestStatus: 'ONBOARDING' });
     expect(res.status).toBe(200);
@@ -275,7 +275,7 @@ describe('BC-ADMIN-SPEC-REAUDIT3: PATCH /:id/status rejects REJECTED', () => {
 
     // ONBOARDING → REJECTED (should fail)
     res = await request(app)
-      .patch(`/api/admin/partners/${partner.id}/status`)
+      .patch(`/api/admin/partner-requests/${partner.id}/status`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ requestStatus: 'REJECTED' });
     expect(res.status).toBe(400);
