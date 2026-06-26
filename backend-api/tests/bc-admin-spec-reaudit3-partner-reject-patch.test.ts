@@ -220,8 +220,8 @@ describe('BC-ADMIN-SPEC-REAUDIT3: PATCH /:id/status rejects REJECTED', () => {
       orderBy: { createdAt: 'desc' },
     });
     expect(auditEntry).toBeTruthy();
-    expect(auditEntry?.before).toContain(PartnerStatus.PENDING);
-    expect(auditEntry?.after).toContain(PartnerStatus.REJECTED);
+    expect(auditEntry?.before.status).toBe(PartnerStatus.PENDING);
+    expect(auditEntry?.after.status).toBe(PartnerStatus.REJECTED);
   });
 
   it('PATCH /:id/status still allows valid transitions', async () => {
