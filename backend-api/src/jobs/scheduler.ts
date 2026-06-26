@@ -622,6 +622,31 @@ async function sendAdminInformationalDigest(): Promise<void> {
   }
 }
 
+// ── Pending Super-Admin request expiry reaper ─────────────────────────────────
+// DEFECT 2 fix: Delete expired PendingSuperAdminRequest rows so re-submission works.
+// Expired rows occupy the global @unique(email) slot and block fresh requests.
+// This reaper runs daily at 5:00 AM (before the partner digest at 8 AM) to clean up.
+
+async function reapExpiredPendingSuperAdminRequests(): Promise<void> {
+  const now = new Date();
+  logger.info(`[pending-super-admin-reaper] Starting run at ${now.toISOString()}`);
+
+  try {
+    const deleted = await prisma.pendingSuperAdminRequest.deleteMany({
+      where: { expiresAt: { lte: now } },
+    });
+
+    if (deleted.count > 0) {
+      logger.info(`[pending-super-admin-reaper] Deleted ${deleted.count} expired PendingSuperAdminRequest row(s)`);
+    } else {
+      logger.info('[pending-super-admin-reaper] No expired pending requests to clean up');
+    }
+  } catch (err) {
+    logger.error('[pending-super-admin-reaper] Failed to reap expired pending requests:', err);
+    throw err;
+  }
+}
+
 // ── Partner daily digest ──────────────────────────────────────────────────────
 // Aggregates yesterday's activity per partner/venue and sends one digest
 // notification. Skipped silently when the partner had no events — avoids
@@ -1948,6 +1973,15 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: qr-reconcile (0 4 * * *)');
+
+  // 4:30 AM every day — DEFECT 2 fix: reap expired PendingSuperAdminRequest rows.
+  // Expired rows occupy the global email @unique slot and block re-submission.
+  // This cleanup allows users to re-submit after a 72h expiry window.
+  cron.schedule('30 4 * * *', () => {
+    reapExpiredPendingSuperAdminRequests().catch((err) => alertSchedulerFailure('pending-super-admin-reaper', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: pending-super-admin-reaper (30 4 * * *)');
 
   // 6:00 AM UTC every day — Paysera auto-renewal: pause expired active subs,
   // send renewal reminder email, cancel subs past the 7-day grace period.

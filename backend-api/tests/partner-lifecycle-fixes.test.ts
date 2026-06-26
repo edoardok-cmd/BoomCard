@@ -98,7 +98,7 @@ describe('Partner Lifecycle Bug Fixes', () => {
         .send({ status: 'ARCHIVED', reason: 'Test archival' });
 
       expect(res.status).toBe(200);
-      expect(res.body.status).toBe(PartnerStatus.ARCHIVED);
+      expect(res.body.partner.status).toBe(PartnerStatus.ARCHIVED);
 
       // Verify the activation link was invalidated
       const invalidatedLink = await prisma.activationLink.findUnique({
@@ -150,7 +150,7 @@ describe('Partner Lifecycle Bug Fixes', () => {
         .send({ status: 'SUSPENDED', reason: 'Test suspension' });
 
       expect(res.status).toBe(200);
-      expect(res.body.status).toBe(PartnerStatus.SUSPENDED);
+      expect(res.body.partner.status).toBe(PartnerStatus.SUSPENDED);
 
       // Verify the activation link was invalidated
       const invalidatedLink = await prisma.activationLink.findUnique({
@@ -282,7 +282,7 @@ describe('Partner Lifecycle Bug Fixes', () => {
         .send({ status: 'ARCHIVED' });
 
       expect(res.status).toBe(200);
-      expect(res.body.status).toBe(PartnerStatus.ARCHIVED);
+      expect(res.body.partner.status).toBe(PartnerStatus.ARCHIVED);
 
       // Transition back to ACTIVE (requires re-onboarding)
       res = await request(app)
@@ -291,7 +291,7 @@ describe('Partner Lifecycle Bug Fixes', () => {
         .send({ status: 'ACTIVE' });
 
       expect(res.status).toBe(200);
-      expect(res.body.status).toBe(PartnerStatus.ACTIVE);
+      expect(res.body.partner.status).toBe(PartnerStatus.ACTIVE);
 
       // Verify autoDeactivatedAt was cleared on all INACTIVE stickers
       const updatedSticker1 = await prisma.sticker.findUnique({

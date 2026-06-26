@@ -624,10 +624,14 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
         return res.status(403).json({ error: 'Only a Super Admin may initiate a Super Admin creation request' });
       }
       // Double-approval gate: store the request for a second admin to approve.
-      // Pre-check: reject immediately if a SUPER_ADMIN with this email already exists as a User.
-      const existingUser = await prisma.user.findFirst({ where: { email, role: 'SUPER_ADMIN' } });
+      // Pre-check: reject immediately if an admin (ADMIN or SUPER_ADMIN) with this email already exists.
+      // DEFECT 1 fix: User.email is unique per (email, role), so an email can exist as both ADMIN and SUPER_ADMIN.
+      // To prevent same-email ADMIN+SUPER_ADMIN coexistence, check both roles here at initiation.
+      const existingUser = await prisma.user.findFirst({
+        where: { email, role: { in: ['ADMIN', 'SUPER_ADMIN'] as UserRole[] } },
+      });
       if (existingUser) {
-        return res.status(409).json({ error: 'A SUPER_ADMIN with this email already exists' });
+        return res.status(409).json({ error: 'An admin (ADMIN or SUPER_ADMIN) with this email already exists' });
       }
       // FINDING 2 fix: scope duplicate guard to live rows only. Expired-but-undeleted
       // requests must not block re-submission of the same email.
@@ -657,9 +661,40 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
       } catch (err: unknown) {
         const isPrismaConflict = typeof err === 'object' && err !== null && (err as { code?: string }).code === 'P2002';
         if (isPrismaConflict) {
-          return res.status(409).json({ error: 'A pending SUPER_ADMIN request for this email already exists' });
+          // DEFECT 2 fix: check if the colliding row is expired. If so, delete it and retry.
+          // This allows re-submission after a pending request expires.
+          const now = new Date();
+          const expiredCollision = await prisma.pendingSuperAdminRequest.findFirst({
+            where: { email, expiresAt: { lte: now } },
+          });
+          if (expiredCollision) {
+            // Delete the expired row and retry the creation
+            await prisma.pendingSuperAdminRequest.delete({ where: { id: expiredCollision.id } });
+            try {
+              request = await prisma.pendingSuperAdminRequest.create({
+                data: {
+                  email,
+                  firstName: firstName ?? null,
+                  lastName: lastName ?? null,
+                  phone: phone ?? null,
+                  passwordHash,
+                  status: 'PENDING',
+                  expiresAt: new Date(Date.now() + PENDING_SUPER_ADMIN_TTL_MS),
+                  requestedBy: { connect: { id: req.user!.id } },
+                },
+                select: { id: true, email: true, firstName: true, lastName: true, createdAt: true },
+              });
+            } catch (retryErr: unknown) {
+              // If retry also fails with P2002, there's a live pending request (not expired)
+              return res.status(409).json({ error: 'A pending SUPER_ADMIN request for this email already exists' });
+            }
+          } else {
+            // The collision is not expired; reject with 409
+            return res.status(409).json({ error: 'A pending SUPER_ADMIN request for this email already exists' });
+          }
+        } else {
+          throw err;
         }
-        throw err;
       }
       req.auditAction = 'admin.super.request';
       req.auditObjectId = request.id;
@@ -750,6 +785,15 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
     const superAdminRole = await prisma.adminRole.findUnique({ where: { key: AdminRoleKey.SUPER_ADMIN } });
     if (!superAdminRole) return res.status(500).json({ error: 'SUPER_ADMIN role not found in DB — run seed-permissions first' });
 
+    // DEFECT 1 fix (pre-check in approval): reject if an admin (ADMIN or SUPER_ADMIN) with this email already exists.
+    // This provides a clear error message before the transaction attempt, preventing ambiguous P2002 conflicts.
+    const existingAdminAtApproval = await prisma.user.findFirst({
+      where: { email: request.email, role: { in: ['ADMIN', 'SUPER_ADMIN'] as UserRole[] } },
+    });
+    if (existingAdminAtApproval) {
+      return res.status(409).json({ error: 'An admin (ADMIN or SUPER_ADMIN) with this email already exists' });
+    }
+
     // DEFECT 3 fix: wrap bootstrap quorum check + user.create in Serializable transaction to prevent TOCTOU race.
     // If only 1 SA exists and two self-approve requests fire concurrently, one can slip through and violate 2-of-N rule.
     // By checking quorum and creating within the same Serializable transaction, we ensure exactly one succeeds.
@@ -806,10 +850,10 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
       if (typeof err === 'object' && err !== null && (err as { code?: string }).code === 'P2034') {
         return res.status(409).json({ error: 'Concurrent modification detected — please retry' });
       }
-      // Email conflict (P2002) — a SUPER_ADMIN with this email already exists
+      // Email conflict (P2002) — should not happen due to pre-check, but handle gracefully
       const isPrismaConflict = typeof err === 'object' && err !== null && (err as { code?: string }).code === 'P2002';
       if (isPrismaConflict) {
-        return res.status(409).json({ error: 'A SUPER_ADMIN with this email already exists' });
+        return res.status(409).json({ error: 'An admin with this email already exists' });
       }
       throw err;
     }
