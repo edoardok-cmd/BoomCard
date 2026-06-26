@@ -15,6 +15,7 @@ import { detach } from '../utils/detach';
 import { reasonIndicatesIbanProblem } from '../utils/payoutFailureReason';
 import { resolvePayoutEligibility } from './payoutEligibility.service';
 import { RISK_HOLD_FLOOR_SCORE } from './userRisk.service';
+import { validateIBAN, ValidationError } from '../utils/validation';
 
 // ── User-facing payout-status masking (Spec §3.2 / §3.7) ─────────────────────
 // Spec §3.7 (line 461): on the SECOND failed payout the record routes to manual
@@ -711,6 +712,16 @@ export class WalletService {
       throw new AppError('IBAN required before requesting payout.', 400);
     }
 
+    // Validate IBAN format (not just non-empty) — reject malformed IBANs early
+    try {
+      validateIBAN(ibanRaw);
+    } catch (err) {
+      if (err instanceof ValidationError) {
+        throw new AppError(err.message, 400);
+      }
+      throw err;
+    }
+
     // Require beneficiary name when Paysera Transfer API is configured.
     if (payseraService.isTransferConfigured() && !beneficiaryName) {
       throw new Error('Please provide the beneficiary name as it appears on your bank account.');
@@ -1239,6 +1250,16 @@ export class WalletService {
     userId: string,
     opts: { iban: string; beneficiaryName: string }
   ): Promise<void> {
+    // Validate IBAN format before persisting
+    try {
+      validateIBAN(opts.iban);
+    } catch (err) {
+      if (err instanceof ValidationError) {
+        throw new AppError(err.message, 400);
+      }
+      throw err;
+    }
+
     await this.getOrCreateWallet(userId);
 
     // Fetch existing IBAN for before/after audit diff.

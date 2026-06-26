@@ -156,19 +156,13 @@ export function validateIBAN(iban: any): string {
 
   const cleanIBAN = iban.toUpperCase().replace(/\s/g, '');
 
-  // Basic IBAN format check: 2 letters, 2 digits, then alphanumerics
-  const ibanRegex = /^[A-Z]{2}[0-9]{2}[A-Z0-9]{1,30}$/;
+  // IBAN format: 2 letters (country code) + 2 digits (check digits) + 11-30 alphanumerics (account)
+  // Enforces total length of 15-34 characters per IBAN spec
+  const ibanRegex = /^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/;
 
   if (!ibanRegex.test(cleanIBAN)) {
     throw new ValidationError(
-      `Invalid IBAN format. Expected format: 2 letters + 2 digits + alphanumerics, received: ${iban}`
-    );
-  }
-
-  // Length check (IBANs are between 15 and 34 characters)
-  if (cleanIBAN.length < 15 || cleanIBAN.length > 34) {
-    throw new ValidationError(
-      `IBAN length must be between 15 and 34 characters, received: ${cleanIBAN.length}`
+      `Invalid IBAN format. Expected format: 2 letters + 2 digits + 11-30 alphanumerics, received: ${iban}`
     );
   }
 

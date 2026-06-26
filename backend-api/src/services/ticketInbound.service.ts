@@ -253,25 +253,11 @@ async function resolveTicket(payload: InboundEmailPayload): Promise<{
       const t = await prisma.helpTicket.findUnique({ where: { id: ref } });
       if (t) return { ticket: t, matchedBy: 'subject-prefix' };
     }
-    // Short-ref O(1) indexed lookup — replaces the previous 200-ticket in-memory
-    // scan. Tickets created before this column was added have shortRef=null and
-    // will fall through to the fallback below.
+    // Short-ref O(1) indexed lookup via backfilled shortRef column.
+    // BC-REAUDIT-TICKET-SHORTREF-BACKFILL-2: all rows now have shortRef populated,
+    // eliminating the need for the legacy linear scan fallback.
     if (ref.length <= 8) {
       const t = await prisma.helpTicket.findUnique({ where: { shortRef: ref } });
-      if (t) return { ticket: t, matchedBy: 'subject-prefix' };
-    }
-    // Graceful fallback for legacy tickets without shortRef: scan the most recent
-    // 500 tickets. This window is intentionally larger than the old 200-ticket cap
-    // and shrinks naturally as the shortRef column is populated by new tickets.
-    const recent = await prisma.helpTicket.findMany({
-      where: { shortRef: null },
-      select: { id: true },
-      orderBy: { createdAt: 'desc' },
-      take: 500,
-    });
-    const hit = recent.find((t) => t.id.replace(/-/g, '').toLowerCase().startsWith(ref));
-    if (hit) {
-      const t = await prisma.helpTicket.findUnique({ where: { id: hit.id } });
       if (t) return { ticket: t, matchedBy: 'subject-prefix' };
     }
   }
@@ -406,25 +392,16 @@ export async function ingestInboundEmail(
       if (subjectMatch) {
         const ref = subjectMatch[1].toLowerCase();
         // Mirror the same priority ladder used by resolveTicket (Gap-8 fix):
-        // full-UUID → shortRef O(1) index → legacy linear scan for null-shortRef rows.
+        // full-UUID → shortRef O(1) indexed lookup (all tickets backfilled).
         if (ref.length === 32 || ref.includes('-')) {
           const t = await prisma.helpTicket.findUnique({ where: { id: ref }, select: { id: true } });
           relatedTicketId = t?.id ?? null;
         }
         if (!relatedTicketId && ref.length <= 8) {
+          // BC-REAUDIT-TICKET-SHORTREF-BACKFILL-2: Use indexed shortRef lookup.
+          // All tickets now have shortRef populated (backfill migration applied).
           const t = await prisma.helpTicket.findUnique({ where: { shortRef: ref }, select: { id: true } });
           relatedTicketId = t?.id ?? null;
-        }
-        if (!relatedTicketId) {
-          // Graceful fallback for legacy tickets predating the shortRef column.
-          const recent = await prisma.helpTicket.findMany({
-            where: { shortRef: null },
-            select: { id: true },
-            orderBy: { createdAt: 'desc' },
-            take: 500,
-          });
-          const hit = recent.find((t) => t.id.replace(/-/g, '').toLowerCase().startsWith(ref));
-          relatedTicketId = hit?.id ?? null;
         }
       }
 
