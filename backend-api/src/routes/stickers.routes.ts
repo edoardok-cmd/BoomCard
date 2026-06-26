@@ -22,7 +22,7 @@ import { parsePagination } from '../utils/pagination';
  * Spec §2 and §8.1 rule 1: All USER-facing write/operational endpoints
  * (POST /api/stickers/session, POST /api/stickers/scan, POST .../receipt)
  * are guarded by requireActiveSubscription middleware, which checks account
- * status (INACTIVE/ARCHIVED/DELETED/PENDING_*/etc.) BEFORE the service layer's
+ * status (INACTIVE/ARCHIVED/DELETED/PENDING_*, etc.) BEFORE the service layer's
  * subscription check. This defense-in-depth ordering ensures that inactive
  * accounts cannot perform scanning operations regardless of subscription status.
  */
