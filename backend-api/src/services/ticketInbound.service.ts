@@ -30,7 +30,7 @@ import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { writeAudit } from '../middleware/audit.middleware';
 import { emailService } from './email.service';
-import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef, isPlusAddressingEnabled } from './ticketEmail.service';
+import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef, computeShortRefOfLength, isPlusAddressingEnabled } from './ticketEmail.service';
 import { notificationService } from './notification.service';
 import { detach } from '../utils/detach';
 
@@ -96,6 +96,77 @@ function normalizeAddress(raw: string): string {
 // validated separately at the call site (admin filter); this is purely a
 // shape guard so we never write a malformed row.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * BC-ADMIN-SPEC-REAUDIT-TICKET-SHORTREF-1: Persist shortRef with collision handling.
+ *
+ * The shortRef is a unique indexed column used by the inbound parser to thread
+ * subject-prefix replies. With UUIDv4, birthday-collision risk is non-trivial at
+ * scale (low tens of thousands). On unique constraint violation, retry with a
+ * progressively longer ref: 8 → 12 → 16 → 32 chars (guaranteed unique, full UUID).
+ *
+ * Returns the persisted shortRef on success. On all retries exhausted, logs an
+ * error, notifies ops, and returns null (the ticket is still created, but without
+ * shortRef threading will fail and create duplicates). The inbound parser will
+ * recover via Priority 2 (In-Reply-To) or Priority 3 (header), so this is bounded
+ * damage (threading broken only for subject-prefix fallback).
+ *
+ * UUID collision assumptions:
+ * - We rely on UUIDs being globally unique (UUID v4 generation in Prisma).
+ * - P2002 violations on shortRef updates are always collisions with DIFFERENT tickets.
+ * - Idempotent re-calls with the same ticketId will NOT occur because each ingestInboundEmail() creates a new ticket.
+ * - The WHERE shortRef IS NULL guard below ensures this function is idempotent: if called twice on the same
+ *   ticket, the second call will encounter shortRef already populated and the update will be skipped.
+ *
+ * @param ticketId — the newly created ticket UUID
+ * @returns The persisted shortRef string, or null on failure (after all retries)
+ */
+async function persistShortRefWithCollisionRetry(ticketId: string): Promise<string | null> {
+  const MAX_ATTEMPTS = 4;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const shortRef = computeShortRefOfLength(ticketId, attempt);
+      await prisma.helpTicket.update({
+        where: { id: ticketId, shortRef: null }, // Only update if shortRef is not already set (idempotent guard)
+        data: { shortRef },
+      });
+      if (attempt > 1) {
+        logger.info(`[ticketInbound] shortRef collision resolved on attempt ${attempt}: ${shortRef}`);
+      }
+      return shortRef;
+    } catch (err) {
+      const isUniqueViolation = (err as any)?.code === 'P2002';
+      if (!isUniqueViolation || attempt === MAX_ATTEMPTS) {
+        // Final attempt or non-collision error — escalate to ops.
+        logger.error(
+          `[ticketInbound] shortRef update failed for ticket ${ticketId} after ${attempt} attempt(s):`,
+          err,
+        );
+        try {
+          // Sanitize error message to avoid leaking database internals
+          const sanitizedMsg = isUniqueViolation ? 'Unique constraint violation' : 'Database error';
+          detach(notificationService
+            .notifyAdminOps({
+              opsType: `ticket_shortref_collision_${ticketId}`,
+              title: 'Help-Ticket shortRef persistence failed — manual intervention required',
+              message: `Help-Ticket ${ticketId.slice(0, 8)} — shortRef collision unresolved after 4 attempts. Inbound reply threading will fail; subject-prefix matching will create duplicate tickets. Manual intervention required.`,
+              severity: 'critical',
+              fields: [
+                { label: 'Ticket ID', value: ticketId },
+                { label: 'Status', value: 'Requires immediate investigation' },
+              ],
+            }), () => {});
+        } catch (opsErr) {
+          logger.error('[ticketInbound] failed to notify ops of shortRef collision:', opsErr);
+        }
+        return null;
+      }
+      // Collision on non-final attempt — retry with longer ref
+      logger.debug(`[ticketInbound] shortRef collision on attempt ${attempt}, retrying with longer ref`);
+    }
+  }
+  return null;
+}
 
 /**
  * Spec §11.2 — persist a set of CC addresses against a ticket so a later inbound
@@ -229,10 +300,17 @@ async function resolveTicket(payload: InboundEmailPayload): Promise<{
   // relies ONLY on the header (Priority 1) and subject (Priority 4) fallbacks.
   // The path is preserved behind TICKET_PLUS_ADDRESSING_ENABLED for v1.3 preview.
   if (isPlusAddressingEnabled() && payload.to) {
-    const plusMatch = /[^@+\s]+\+([a-f0-9]{8,32})@/i.exec(payload.to);
+    const plusMatch = /\+([a-f0-9]{4,32})@/i.exec(payload.to);
     if (plusMatch) {
       const ref = plusMatch[1].toLowerCase();
-      if (ref.length <= 8) {
+      // Try exact UUID lookup first (full 32-char hex or hyphenated form).
+      if (ref.length === 32 || ref.includes('-')) {
+        const t = await prisma.helpTicket.findUnique({ where: { id: ref } });
+        if (t) return { ticket: t, matchedBy: 'plus-address' };
+      }
+      // Short-ref O(1) indexed lookup via the indexed shortRef column.
+      // Support any length 4-32 per the regex pattern.
+      if (ref.length >= 4 && ref.length <= 32) {
         const t = await prisma.helpTicket.findUnique({ where: { shortRef: ref } });
         if (t) return { ticket: t, matchedBy: 'plus-address' };
       }
@@ -240,7 +318,7 @@ async function resolveTicket(payload: InboundEmailPayload): Promise<{
   }
 
   // Priority 4 (spec §11.2): subject [#XXXXXXXX] prefix — match either full UUID
-  // or 8-char short form via the indexed shortRef column (Gap 8 fix).
+  // or 4-32 char short form via the indexed shortRef column (Gap 8 fix).
   // SKIPPED for forwarded emails (Fwd: / Fw: prefix detected) per spec §11.2
   // edge case: "Препратен имейл → Създава се нов тикет." The subject prefix
   // survives forwarding but header threading does not; we must not treat the
@@ -253,10 +331,10 @@ async function resolveTicket(payload: InboundEmailPayload): Promise<{
       const t = await prisma.helpTicket.findUnique({ where: { id: ref } });
       if (t) return { ticket: t, matchedBy: 'subject-prefix' };
     }
-    // Short-ref O(1) indexed lookup via backfilled shortRef column.
-    // BC-REAUDIT-TICKET-SHORTREF-BACKFILL-2: all rows now have shortRef populated,
-    // eliminating the need for the legacy linear scan fallback.
-    if (ref.length <= 8) {
+    // Short-ref O(1) indexed lookup via the indexed shortRef column.
+    // BC-REAUDIT-TICKET-SHORTREF-BACKFILL-2: all rows now have shortRef populated.
+    // Support collision-widened refs: 4–32 chars per SUBJECT_REF_RE pattern.
+    if (ref.length >= 4 && ref.length <= 32) {
       const t = await prisma.helpTicket.findUnique({ where: { shortRef: ref } });
       if (t) return { ticket: t, matchedBy: 'subject-prefix' };
     }
@@ -537,10 +615,22 @@ export async function ingestInboundEmail(
     const ticket = await prisma.helpTicket.create({ data: newTicketData });
     // Gap 8: backfill shortRef immediately after creation (computed from the UUID
     // assigned by Postgres). create() doesn't know the id ahead of time.
-    await prisma.helpTicket.update({
-      where: { id: ticket.id },
-      data: { shortRef: computeShortRef(ticket.id) },
-    }).catch((err) => logger.warn(`[ticketInbound] shortRef update failed for ticket ${ticket.id} (possible collision):`, err));
+    // BC-ADMIN-SPEC-REAUDIT-TICKET-SHORTREF-1: Retry with progressively longer
+    // refs on collision, escalate to ops if all attempts fail.
+    const persistedShortRef = await persistShortRefWithCollisionRetry(ticket.id);
+
+    // CRITICAL: If all shortRef retry attempts fail, delete the ticket and return error.
+    // Creating a ticket without shortRef breaks subject-prefix threading and causes
+    // duplicates on subsequent inbound emails from the same sender.
+    if (!persistedShortRef) {
+      logger.error(
+        `[ticketInbound] shortRef persistence failed for ticket ${ticket.id}; deleting orphan ticket`
+      );
+      await prisma.helpTicket.delete({ where: { id: ticket.id } }).catch(() => {});
+      throw new Error(
+        `Help ticket created but shortRef persistence failed after all retry attempts. Ticket creation rolled back. Sender should retry.`
+      );
+    }
 
     await writeAudit({
       actorUserId: null,
@@ -559,12 +649,15 @@ export async function ingestInboundEmail(
     // Spec §11.1 — auto-reply to the sender with the ticket reference so
     // subsequent replies thread back via [#XXXXXXXX] / X-BoomCard-Ticket-ID.
     // Fire-and-forget: a mailer failure must not block ticket creation.
+    // BC-ADMIN-SPEC-REAUDIT-TICKET-SHORTREF-1: Pass the persisted shortRef
+    // to sendInboundAutoReply so the subject uses the actual ref.
     detach(sendInboundAutoReply({
       ticketId: ticket.id,
       to: fromEmail,
       originalSubject: cleanedSubject,
       inReplyTo: payload.messageId || null,
       audience: isPartnerSender ? 'partner' : 'subscriber',
+      shortRef: persistedShortRef ?? undefined,
     }), (err) =>
       logger.error(`[ticketInbound] failed to send auto-reply for ${ticket.id}:`, err));
 
@@ -677,10 +770,20 @@ export async function ingestInboundEmail(
       },
     });
     // Gap 8: populate shortRef for the spoof-linked ticket.
-    await prisma.helpTicket.update({
-      where: { id: linked.id },
-      data: { shortRef: computeShortRef(linked.id) },
-    }).catch((err) => logger.warn(`[ticketInbound] shortRef update failed for linked ticket ${linked.id} (possible collision):`, err));
+    // BC-ADMIN-SPEC-REAUDIT-TICKET-SHORTREF-1: Retry with progressively longer
+    // refs on collision, escalate to ops if all attempts fail.
+    const linkedPersistedShortRef = await persistShortRefWithCollisionRetry(linked.id);
+
+    // CRITICAL: If all shortRef retry attempts fail, delete the linked ticket and return error.
+    if (!linkedPersistedShortRef) {
+      logger.error(
+        `[ticketInbound] shortRef persistence failed for linked ticket ${linked.id}; deleting orphan ticket`
+      );
+      await prisma.helpTicket.delete({ where: { id: linked.id } }).catch(() => {});
+      throw new Error(
+        `Spoof-linked ticket created but shortRef persistence failed after all retry attempts. Ticket creation rolled back. Sender should retry.`
+      );
+    }
     await writeAudit({
       actorUserId: null,
       action: 'TICKET_INBOUND_SPOOF_BLOCKED',
@@ -694,6 +797,8 @@ export async function ingestInboundEmail(
     // address); silence would push them to resend or escalate. The reply
     // does NOT reveal that the original ticket existed — just acknowledges
     // their inbound was received and gives them a way to thread replies.
+    // BC-ADMIN-SPEC-REAUDIT-TICKET-SHORTREF-1: Pass the persisted shortRef
+    // to sendInboundAutoReply so the subject uses the actual ref.
     detach(sendInboundAutoReply({
       ticketId: linked.id,
       to: fromEmail,
@@ -701,6 +806,7 @@ export async function ingestInboundEmail(
         (payload.subject || '').replace(SUBJECT_REF_RE, '').trim() || `(re: ${t.subject})`,
       inReplyTo: payload.messageId || null,
       audience: await resolveInboundAudience(fromEmail),
+      shortRef: linkedPersistedShortRef ?? undefined,
     }), (err) =>
       logger.error(`[ticketInbound] failed to send spoof-branch auto-reply for ${linked.id}:`, err));
 
@@ -849,13 +955,15 @@ async function sendInboundAutoReply(args: {
   originalSubject: string;
   inReplyTo: string | null;
   audience: 'partner' | 'subscriber';
+  /** BC-ADMIN-SPEC-REAUDIT-TICKET-SHORTREF-1: Actual persisted shortRef (if available) */
+  shortRef?: string;
 }): Promise<void> {
   const threading = buildTicketHeaders({
     ticketId: args.ticketId,
     inReplyTo: args.inReplyTo,
     references: args.inReplyTo ? [args.inReplyTo] : [],
   });
-  const subject = buildTicketSubject(args.ticketId, `Re: ${args.originalSubject}`);
+  const subject = buildTicketSubject(args.ticketId, `Re: ${args.originalSubject}`, args.shortRef);
 
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>

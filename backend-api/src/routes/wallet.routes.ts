@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { authenticate, AuthRequest } from '../middleware/auth.middleware';
+import { authenticate, AuthRequest, requireActiveSubscription } from '../middleware/auth.middleware';
 import { walletService } from '../services/wallet.service';
 import { asyncHandler } from '../utils/asyncHandler';
 import { paymentRateLimiter } from '../middleware/security.middleware';
@@ -12,6 +12,16 @@ const router = Router();
 
 // All routes require authentication
 router.use(authenticate);
+
+/**
+ * DEFENSE-IN-DEPTH ACCOUNT STATUS GATING (BC-ADMIN-SPEC-REAUDIT-SCANGATE-INACTIVE-1)
+ *
+ * Spec §2 and §8.1 rule 1: Operational wallet write endpoints (POST /topup)
+ * mount requireActiveSubscription middleware to check account status BEFORE
+ * subscription status. Spec §1.2 + §13.1 exempt account-maintenance endpoints
+ * (PUT /payout-account) from this gate — INACTIVE users may update their
+ * payout details but cannot initiate payments or top-ups.
+ */
 
 /**
  * GET /api/wallet/balance
@@ -57,8 +67,12 @@ router.get('/transactions', asyncHandler(async (req: AuthRequest, res: Response)
  * Top up wallet with Paysera payment
  * NOTE: This endpoint redirects to Paysera payment gateway
  * Use /api/payments/create for direct payment creation
+ *
+ * Defense-in-depth account status check: requireActiveSubscription middleware
+ * (Spec §2, §8.1 rule 1) blocks INACTIVE/ARCHIVED/DELETED users from
+ * operational write endpoints (which includes wallet top-ups).
  */
-router.post('/topup', asyncHandler(async (req: AuthRequest, res: Response) => {
+router.post('/topup', requireActiveSubscription, asyncHandler(async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
 
   // Wallet top-ups are now handled by Paysera payment gateway
@@ -75,6 +89,11 @@ router.post('/topup', asyncHandler(async (req: AuthRequest, res: Response) => {
  * PUT /api/wallet/payout-account
  * Save the user's payout bank account (IBAN + beneficiary name) without initiating a payout.
  * These are stored on the wallet and reused on subsequent payout requests.
+ *
+ * NOTE: Spec §1.2 + §13.1 explicitly permit INACTIVE users to enter/update their
+ * payout account (read-mostly maintenance, not an operational scanning write).
+ * Therefore, this endpoint does NOT mount requireActiveSubscription — INACTIVE
+ * users may update their payout details, but cannot initiate payouts.
  */
 const payoutAccountSchema = z.object({
   iban: z

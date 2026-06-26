@@ -159,14 +159,26 @@ export class PartnerService {
    *   - → Inactive/Archived/Suspended/Paused: all partner QR codes deactivated.
    *   - → Active: all partner QR codes reactivated.
    *
-   * The QR status flip runs OUTSIDE the main transaction (post-commit step) so
-   * a sticker-update failure does NOT roll back the partner status change (which
-   * is the authoritative operational state). Sticker status is derived from
-   * partner status — a transient failure is logged but not fatal. A background
-   * reconciliation can be run if needed (sticker status should match partner
-   * operational state at all times).
+   * BC-ADMIN-SPEC-REAUDIT-QR-SYNC-DURABILITY-1: The QR status flip now runs
+   * INSIDE the status transaction (atomic write). This guarantees that either:
+   *   a) Both partner.status AND all sticker.status updates commit, OR
+   *   b) Both roll back on any failure.
    *
-   * Throws if the partner is missing or already in the target state.
+   * Sticker deactivation is idempotent (Sticker.status can be safely set to
+   * INACTIVE multiple times) and bounded (deactivating a partner's stickers
+   * only touches rows scoped to that partner's venues), so transactional rollback
+   * is not a performance concern. A persistent DB fault during the sticker update
+   * will roll back the entire status change, allowing the caller to retry or
+   * decide on error recovery. There is no more "best effort" window for sync
+   * failures.
+   *
+   * The background reconciliation cron (scheduler.reconcileQrCodes, 4 AM daily)
+   * remains as defense-in-depth: if a caller crashes or network fault prevents
+   * this method from completing at all, the cron will catch any stale-ACTIVE
+   * stickers and flip them to match the now-active partner status change.
+   *
+   * Throws if the partner is missing, already in the target state, or if any
+   * transactional write (status, audit, or sticker deactivation) fails.
    */
   async setPartnerStatus(params: SetPartnerStatusParams): Promise<SetPartnerStatusResult> {
     const { partnerId, toStatus, reason, changedById } = params;
@@ -256,12 +268,12 @@ export class PartnerService {
         (changedById ? ` by=${changedById}` : '')
       );
 
+      // BC-ADMIN-SPEC-REAUDIT-QR-SYNC-DURABILITY-1: Perform QR sync INSIDE the
+      // transaction (atomic with status change). Rollback if any sticker update fails.
+      await this.syncQrCodesForPartnerTx(tx, partnerId, toStatus, fromStatus);
+
       return { partnerId, fromStatus, toStatus };
     });
-
-    // Spec §1.4 / §3.5: QR code auto-deactivation/reactivation after status flip commits.
-    // Runs outside the main transaction — sticker failure is non-fatal for the status change.
-    await this.syncQrCodesForPartner(partnerId, toStatus, result.fromStatus);
 
     // Spec §9.1 template 6 / Clash 6.6: partners MUST be notified of account status changes.
     const partner = await prisma.partner.findUnique({ where: { id: partnerId }, select: { userId: true, businessName: true } });
@@ -287,7 +299,12 @@ export class PartnerService {
 
   /**
    * Spec §1.4 / §3.5 / §8.1 point 5 — Sync QR code (Sticker) status with partner
-   * operational status. Called after every partner status transition.
+   * operational status, INSIDE the partner-status transaction.
+   *
+   * BC-ADMIN-SPEC-REAUDIT-QR-SYNC-DURABILITY-1: This method is called INSIDE
+   * prisma.$transaction by setPartnerStatus, so failures propagate and roll back
+   * the entire status change atomically. No retries or soft logging — transactional
+   * semantics mean either everything commits or nothing does.
    *
    * Three distinct behaviors based on fromStatus + toStatus:
    *
@@ -306,17 +323,105 @@ export class PartnerService {
    *      admin reactivation per code" after an archived partner is re-onboarded.
    *      Admin must reactivate individual stickers via the QR management UI.
    */
+  private async syncQrCodesForPartnerTx(
+    tx: any, // Prisma transaction client
+    partnerId: string,
+    toStatus: PartnerStatus,
+    fromStatus: PartnerStatus | undefined,
+  ): Promise<void> {
+    if (QR_DEACTIVATING_STATUSES.includes(toStatus)) {
+      // Case 1: Spec §1.4 / §8.1 rule 5: "Transition to Inactive or Archived →
+      // ALL QR codes automatically deactivate." H3 fix: previously only ACTIVE
+      // stickers were flipped, leaving PROCESSING ("In Processing") and PENDING
+      // stickers in a non-deactivated state on a non-operational partner. Flip
+      // every non-terminal sticker (ACTIVE, PROCESSING, PENDING) to INACTIVE.
+      // REPLACED / RETIRED / DAMAGED are already terminal/non-scannable and are
+      // left untouched (transitioning them would corrupt their lifecycle history).
+      //
+      // autoDeactivatedAt is stamped ONLY on the stickers that were ACTIVE, because
+      // only those should auto-reactivate when the partner returns to Active (Case 2).
+      // A PROCESSING/PENDING sticker was never operational, so it must NOT be promoted
+      // to ACTIVE by the bulk reactivation — it stays INACTIVE until admin handles it.
+      const deactivatedAt = new Date();
+      const activeResult = await tx.sticker.updateMany({
+        where: {
+          venue: { partnerId },
+          status: StickerStatus.ACTIVE,
+        },
+        data: { status: StickerStatus.INACTIVE, autoDeactivatedAt: deactivatedAt },
+      });
+      const pendingResult = await tx.sticker.updateMany({
+        where: {
+          venue: { partnerId },
+          status: { in: [StickerStatus.PROCESSING, StickerStatus.PENDING] },
+        },
+        data: { status: StickerStatus.INACTIVE },
+      });
+      logger.info(
+        `[partner.syncQr] partnerId=${partnerId} → ${toStatus}: deactivated ` +
+        `${activeResult.count} active + ${pendingResult.count} processing/pending sticker(s) [ATOMIC]`
+      );
+    } else if (toStatus === PartnerStatus.ACTIVE) {
+      if (fromStatus === undefined) {
+        // Safety guard: caller did not supply previous status. We cannot determine the
+        // correct reactivation policy (Inactive→Active vs Archived→Active), so we skip
+        // reactivation entirely rather than risk bulk-reactivating stickers that should
+        // remain inactive. Admin must reactivate stickers manually via the QR management UI.
+        logger.warn(
+          `[partner.syncQr] partnerId=${partnerId} → ACTIVE: fromStatus missing — ` +
+          `skipping QR reactivation for safety. Admin must reactivate stickers manually.`
+        );
+      } else if (fromStatus === PartnerStatus.ARCHIVED) {
+        // Case 3: Archived → Active. Spec §2.4 Gap 6 — QR codes require explicit
+        // admin reactivation per sticker. Do NOT auto-reactivate.
+        logger.info(
+          `[partner.syncQr] partnerId=${partnerId} transitioned from ARCHIVED to ACTIVE. ` +
+          `QR codes require explicit admin reactivation per sticker (spec §2.4 Gap 6). ` +
+          `Admin must use the QR management UI to reactivate individual stickers.`
+        );
+      } else {
+        // Case 2: Inactive (or other non-Archived) → Active. Spec §1.4 bulk reactivation.
+        // Scoped to stickers that were auto-deactivated by this function (autoDeactivatedAt IS NOT NULL)
+        // so manually-deactivated stickers are not unintentionally bulk-reactivated.
+        const result = await tx.sticker.updateMany({
+          where: {
+            venue: { partnerId },
+            status: StickerStatus.INACTIVE,
+            autoDeactivatedAt: { not: null },
+          },
+          data: { status: StickerStatus.ACTIVE, autoDeactivatedAt: null },
+        });
+        logger.info(
+          `[partner.syncQr] partnerId=${partnerId} → ACTIVE (from ${fromStatus}): ` +
+          `reactivated ${result.count} sticker(s) per spec §1.4 [ATOMIC]`
+        );
+      }
+    }
+  }
+
+  /**
+   * Spec §1.4 / §3.5 / §8.1 point 5 — Sync QR code (Sticker) status with partner
+   * operational status, OUTSIDE any transaction (legacy/post-commit path).
+   *
+   * DEPRECATED: This method is kept for backward compatibility. New code should
+   * use the atomic setPartnerStatus method, which performs deactivation inside
+   * the transaction. This method is only called by the background reconciliation
+   * cron (scheduler.reconcileQrCodes) and tests.
+   *
+   * Runs OUTSIDE the status transaction with bounded retries on failure. Useful
+   * for background reconciliation where failures are acceptable and don't need to
+   * roll back other operations.
+   *
+   * Same three behaviors as syncQrCodesForPartnerTx.
+   */
   async syncQrCodesForPartner(
     partnerId: string,
     toStatus: PartnerStatus,
     fromStatus: PartnerStatus | undefined,
   ): Promise<void> {
-    // Bounded retry for the sticker updateMany. The QR sync runs OUTSIDE the
-    // status transaction (a sticker failure must not roll back the committed
-    // partner-status change), but a transient DB blip on the very first attempt
-    // would otherwise leave Sticker.status stale until a manual reconciliation.
-    // Retrying up to 3 times with a short backoff narrows that stale window for
-    // recoverable faults while still failing soft (logging) for persistent ones.
+    // Bounded retry for the sticker updateMany. Retrying up to 3 times with a
+    // short backoff narrows the window for recoverable faults while still failing
+    // soft (logging only) for persistent ones.
     const MAX_ATTEMPTS = 3;
     const BACKOFF_MS = 200;
     const runWithRetry = async (
@@ -344,17 +449,7 @@ export class PartnerService {
     try {
       if (QR_DEACTIVATING_STATUSES.includes(toStatus)) {
         // Case 1: Spec §1.4 / §8.1 rule 5: "Transition to Inactive or Archived →
-        // ALL QR codes automatically deactivate." H3 fix: previously only ACTIVE
-        // stickers were flipped, leaving PROCESSING ("In Processing") and PENDING
-        // stickers in a non-deactivated state on a non-operational partner. Flip
-        // every non-terminal sticker (ACTIVE, PROCESSING, PENDING) to INACTIVE.
-        // REPLACED / RETIRED / DAMAGED are already terminal/non-scannable and are
-        // left untouched (transitioning them would corrupt their lifecycle history).
-        //
-        // autoDeactivatedAt is stamped ONLY on the stickers that were ACTIVE, because
-        // only those should auto-reactivate when the partner returns to Active (Case 2).
-        // A PROCESSING/PENDING sticker was never operational, so it must NOT be promoted
-        // to ACTIVE by the bulk reactivation — it stays INACTIVE until admin handles it.
+        // ALL QR codes automatically deactivate."
         const deactivatedAt = new Date();
         const activeResult = await runWithRetry('deactivate-active', () =>
           prisma.sticker.updateMany({
@@ -376,30 +471,21 @@ export class PartnerService {
         );
         logger.info(
           `[partner.syncQr] partnerId=${partnerId} → ${toStatus}: deactivated ` +
-          `${activeResult.count} active + ${pendingResult.count} processing/pending sticker(s)`
+          `${activeResult.count} active + ${pendingResult.count} processing/pending sticker(s) [post-commit]`
         );
       } else if (toStatus === PartnerStatus.ACTIVE) {
         if (fromStatus === undefined) {
-          // Safety guard: caller did not supply previous status. We cannot determine the
-          // correct reactivation policy (Inactive→Active vs Archived→Active), so we skip
-          // reactivation entirely rather than risk bulk-reactivating stickers that should
-          // remain inactive. Admin must reactivate stickers manually via the QR management UI.
           logger.warn(
             `[partner.syncQr] partnerId=${partnerId} → ACTIVE: fromStatus missing — ` +
             `skipping QR reactivation for safety. Admin must reactivate stickers manually.`
           );
         } else if (fromStatus === PartnerStatus.ARCHIVED) {
-          // Case 3: Archived → Active. Spec §2.4 Gap 6 — QR codes require explicit
-          // admin reactivation per sticker. Do NOT auto-reactivate.
           logger.info(
             `[partner.syncQr] partnerId=${partnerId} transitioned from ARCHIVED to ACTIVE. ` +
-            `QR codes require explicit admin reactivation per sticker (spec §2.4 Gap 6). ` +
-            `Admin must use the QR management UI to reactivate individual stickers.`
+            `QR codes require explicit admin reactivation per sticker (spec §2.4 Gap 6).`
           );
         } else {
-          // Case 2: Inactive (or other non-Archived) → Active. Spec §1.4 bulk reactivation.
-          // Scoped to stickers that were auto-deactivated by this function (autoDeactivatedAt IS NOT NULL)
-          // so manually-deactivated stickers are not unintentionally bulk-reactivated.
+          // Case 2: Inactive → Active. Spec §1.4 bulk reactivation.
           const result = await runWithRetry('reactivate', () =>
             prisma.sticker.updateMany({
               where: {
@@ -412,34 +498,24 @@ export class PartnerService {
           );
           logger.info(
             `[partner.syncQr] partnerId=${partnerId} → ACTIVE (from ${fromStatus}): ` +
-            `reactivated ${result.count} sticker(s) per spec §1.4`
+            `reactivated ${result.count} sticker(s) per spec §1.4 [post-commit]`
           );
         }
       }
     } catch (err) {
-      // Non-fatal: log and continue. The partner status change is already committed.
-      // The QR sync intentionally runs outside the partner-status transaction so a
-      // sticker failure does not roll back the status change (see spec §1.4).
+      // Non-fatal: log and continue. This is a post-commit reconciliation path;
+      // failure does not roll back any previous operations. The background cron
+      // (scheduler.reconcileQrCodes at 4 AM) will catch any stale stickers.
       //
-      // SECURITY NOTE — this best-effort failure is NOT a security hole:
-      // The AUTHORITATIVE protection against scanning a non-active partner's stickers
-      // is the SCAN-TIME gate `isPartnerOperationallyActive` enforced in sticker.service
-      // (see sticker.service.ts — used at every scan entry point, e.g. lines ~498/704/803/
-      // 932/1105/1286). That gate rejects scans whenever the partner is
-      // INACTIVE/PAUSED/SUSPENDED/ARCHIVED (or not yet verified), evaluated live against
-      // the partner row — REGARDLESS of the individual sticker's own status column.
-      // Therefore, if this best-effort sync fails and leaves a stale ACTIVE sticker row on
-      // a non-active partner, that sticker STILL CANNOT BE SCANNED. The sticker-status sync
-      // performed here is purely a consistency/display concern (keeping the sticker.status
-      // column in agreement with the partner state), not the security boundary.
-      //
-      // Recovery path: a background reconciliation script should periodically run
-      // `SELECT * FROM "Sticker" WHERE "status" = 'ACTIVE' AND venue.partner.status IN (INACTIVE, PAUSED, SUSPENDED, ARCHIVED)`
-      // and flip those stickers, purely to keep the display/status column consistent.
-      // Track as a follow-up ops task (not in scope of BC-SCHEMA-1).
+      // SECURITY NOTE: The AUTHORITATIVE protection against scanning a non-active
+      // partner's stickers is the SCAN-TIME gate `isPartnerOperationallyActive` in
+      // sticker.service, not the sticker.status column. Even if this sync fails and
+      // leaves stickers in ACTIVE state, they CANNOT be scanned on a non-active
+      // partner (scan-time gate enforced). This method only keeps the status column
+      // consistent for reporting/display purposes.
       logger.error(
-        `[partner.syncQr] WARN: QR sync failed for partner ${partnerId} → ${toStatus}. ` +
-        `Manual reconciliation may be needed. Error: ${err}`
+        `[partner.syncQr] WARN: Post-commit QR sync failed for partner ${partnerId} → ${toStatus}. ` +
+        `The 4 AM reconciliation cron will correct any stale stickers. Error: ${err}`
       );
     }
   }

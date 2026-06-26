@@ -342,22 +342,6 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       link: '/admin/control/risk?bucket=HIGH_51_PLUS&status=active',
     });
   }
-  // 31–60 is the review band — requires admin attention but not immediate action.
-  // Classified OPERATIONAL (amber) to visually separate it from the 61+ CRITICAL
-  // (red) band. Pushed to operational[] below the critical section.
-  if (failedTransactions > 0) {
-    critical.push({
-      id: 'failed_transactions',
-      type: 'FAILED_TRANSACTIONS',
-      tier: 'critical',
-      title: 'Неуспешни транзакции (последните 24ч)',
-      count: failedTransactions,
-      link: '/admin/finance/reports?focus=failed_transactions',
-      // Carries the alert's 24h window so the focus-banner drill-down filters
-      // the business transactions list to the same set the alert counted.
-      meta: { dateFrom: oneDayAgo.toISOString() },
-    });
-  }
   // Spec §3.2: спорове fall under control. Categorised as critical so the
   // tier→destination rule (Контрол/Финанси) holds.
   if (openDisputes > 0) {
@@ -444,6 +428,25 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       title: 'Транзакции за преглед (среден риск 21–50)',
       count: mediumRiskScans,
       link: '/admin/finance/reports?focus=medium_risk_transactions',
+    });
+  }
+  // Spec §3.1: OPERATIONAL alerts require admin attention but not immediate action
+  // (e.g., payment-decline noise, pending approvals). failed_transactions records failed
+  // business transactions from the last 24h — a routine monitoring metric that routes to
+  // Finance reports, not a system failure or high-risk indicator that would qualify as Critical.
+  // This alert is distinct from failed_payouts_pipeline (Critical system error) and
+  // failed_payments (Critical billing issue for subscriptions).
+  if (failedTransactions > 0) {
+    operational.push({
+      id: 'failed_transactions',
+      type: 'FAILED_TRANSACTIONS',
+      tier: 'operational',
+      title: 'Неуспешни транзакции (последните 24ч)',
+      count: failedTransactions,
+      link: '/admin/finance/reports?focus=failed_transactions',
+      // Carries the alert's 24h window so the focus-banner drill-down filters
+      // the business transactions list to the same set the alert counted.
+      meta: { dateFrom: oneDayAgo.toISOString() },
     });
   }
   if (partnerRequests > 0) {

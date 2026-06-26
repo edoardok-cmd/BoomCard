@@ -26,6 +26,7 @@ import { findInvalidCategoryEntry } from '../constants/categoryRegistry';
 import { writeAudit } from '../middleware/audit.middleware';
 import { issueActivationLink, sendActivationEmail, stampEmailOutcome } from '../services/partnerActivation.service';
 import { partnerService } from '../services/partner.service';
+import { notificationService } from '../services/notification.service';
 import { publicPartnerFilter } from '../services/publicPartnerFilter';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
@@ -1493,6 +1494,17 @@ router.put(
           ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? null,
           userAgent: req.headers['user-agent'] ?? null,
         }), () => {});
+      }
+
+      // Spec §5.1 Part 5 / Source 6.1 — Notification of commission or terms updates.
+      // When discountRate is edited by an admin and actually changes, send a
+      // partner contract-change notification. No notification on no-op edits (old === new).
+      if (after.discountRate !== undefined) {
+        detach(notificationService.notifyPartnerContractChange({
+          partnerUserId: partner.userId,
+          businessName: updated.businessName,
+          fieldChanged: 'commission rate',
+        }), (err) => logger.error('[PUT /partners/:id] notifyPartnerContractChange failed:', err));
       }
     }
 

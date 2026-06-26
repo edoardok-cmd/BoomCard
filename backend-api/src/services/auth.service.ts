@@ -2700,16 +2700,6 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
-    // Revoke the admin's pre-impersonation refresh token so a stolen copy of
-    // it can't be replayed to silently resurrect the admin session alongside
-    // the impersonation session. Stop-impersonate mints a fresh admin pair
-    // on exit, so nothing else depends on this row.
-    if (currentAdminRefreshToken) {
-      await prisma.refreshToken.deleteMany({
-        where: { token: currentAdminRefreshToken, userId: admin.id },
-      });
-    }
-
     // No accountGroup passed — impersonation tokens are single-purpose; we
     // don't want a captured impersonation token to enable pivots to other
     // siblings via /switch-account. Stop-impersonate is the only way back.
@@ -2735,7 +2725,9 @@ export class AuthService {
     });
 
     // Audit log the impersonation start event
-    detach(writeAudit({
+    // Await the audit write before returning the token — audit records must be
+    // committed before the privileged session is issued.
+    await writeAudit({
       actorUserId: admin.id,
       action: 'admin.impersonate.start',
       objectType: target.role === 'PARTNER' ? 'partner' : 'user',
@@ -2745,7 +2737,19 @@ export class AuthService {
         targetEmail: target.email,
         startedAt,
       },
-    }), (err) => logger.error('[AuthService.impersonate] writeAudit failed:', err));
+    });
+
+    // Revoke the admin's pre-impersonation refresh token so a stolen copy of
+    // it can't be replayed to silently resurrect the admin session alongside
+    // the impersonation session. Stop-impersonate mints a fresh admin pair
+    // on exit, so nothing else depends on this row.
+    // NOTE: This comes AFTER audit write to ensure audit record is committed
+    // before any irreversible mutations. If audit write throws, no token is revoked.
+    if (currentAdminRefreshToken) {
+      await prisma.refreshToken.deleteMany({
+        where: { token: currentAdminRefreshToken, userId: admin.id },
+      });
+    }
 
     const { passwordChangedAt: _pwc, ...targetUser } = target;
     return {
@@ -2798,16 +2802,6 @@ export class AuthService {
       throw new AppError('Admin account is not active', 403);
     }
 
-    // Revoke the current (impersonation) refresh token. Scope to the
-    // impersonation userId so a body-supplied token string can only delete
-    // a row belonging to the authenticated caller — same invariant as
-    // switchAccount.
-    if (currentRefreshToken) {
-      await prisma.refreshToken.deleteMany({
-        where: { token: currentRefreshToken, userId: currentUserId },
-      });
-    }
-
     // Restore the admin's original accountGroup from the `impAg` claim we
     // stamped at impersonate() time. We can't reconstruct it from scratch
     // here without the admin's password (bcrypt matching happens at login),
@@ -2843,7 +2837,9 @@ export class AuthService {
     });
 
     // Audit log the impersonation stop event
-    detach(writeAudit({
+    // Await the audit write before returning the token — audit records must be
+    // committed before the session restoration is complete.
+    await writeAudit({
       actorUserId: admin.id,
       action: 'admin.impersonate.stop',
       objectType,
@@ -2852,7 +2848,19 @@ export class AuthService {
         adminRole: admin.role,
         endedAt,
       },
-    }), (err) => logger.error('[AuthService.stopImpersonate] writeAudit failed:', err));
+    });
+
+    // Revoke the current (impersonation) refresh token. Scope to the
+    // impersonation userId so a body-supplied token string can only delete
+    // a row belonging to the authenticated caller — same invariant as
+    // switchAccount.
+    // NOTE: This comes AFTER audit write to ensure audit record is committed
+    // before any irreversible mutations. If audit write throws, no token is deleted.
+    if (currentRefreshToken) {
+      await prisma.refreshToken.deleteMany({
+        where: { token: currentRefreshToken, userId: currentUserId },
+      });
+    }
 
     const { totpEnabledAt: adminTotpEnabledAt, ...adminWithout } = admin;
     return {

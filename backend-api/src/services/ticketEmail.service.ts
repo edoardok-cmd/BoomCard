@@ -94,6 +94,51 @@ export function withCanonicalRequestStatus<T extends { status: string }>(
   return { ...ticket, requestStatus: toCanonicalRequestStatus(ticket.status) };
 }
 
+/**
+ * M7 (Spec §1.7 / Clash 8.2) — canonical `request_type` mapping.
+ *
+ * The spec defines exactly four request types: Support | Dispute | Change | Other.
+ * The DB `TicketRequestType` enum includes three additional sub-types for Change:
+ * DATA_CHANGE, LOCATION_CHANGE, CONTRACT_CHANGE. All three map back to the
+ * canonical CHANGE so the admin API surface never fragments the canonical type —
+ * when filtering by "Change", all *_CHANGE variants are returned.
+ *
+ *   SUPPORT         → Support
+ *   DISPUTE         → Dispute
+ *   CHANGE          → Change         (bare canonical Change)
+ *   DATA_CHANGE     → Change         (Change sub-type: data)
+ *   LOCATION_CHANGE → Change         (Change sub-type: location)
+ *   CONTRACT_CHANGE → Change         (Change sub-type: contract)
+ *   OTHER           → Other
+ */
+export type CanonicalRequestType = 'Support' | 'Dispute' | 'Change' | 'Other';
+
+export function toCanonicalRequestType(requestType: string | null | undefined): CanonicalRequestType {
+  switch (requestType) {
+    case 'SUPPORT':
+      return 'Support';
+    case 'DISPUTE':
+      return 'Dispute';
+    case 'CHANGE':
+    case 'DATA_CHANGE':
+    case 'LOCATION_CHANGE':
+    case 'CONTRACT_CHANGE':
+      return 'Change';
+    case 'OTHER':
+      return 'Other';
+    default:
+      // Unknown/legacy value — surface as Support (safest default).
+      return 'Support';
+  }
+}
+
+/** Attach the canonical `requestType` to a ticket-shaped object without mutating the raw `requestType`. */
+export function withCanonicalRequestType<T extends { requestType: string }>(
+  ticket: T,
+): T & { canonicalRequestType: CanonicalRequestType } {
+  return { ...ticket, canonicalRequestType: toCanonicalRequestType(ticket.requestType) };
+}
+
 function shortTicketRef(ticketId: string): string {
   // 8-char prefix is plenty for visual disambiguation; the full UUID stays in
   // headers and the database, so subject parsing only needs to be unique
@@ -105,9 +150,36 @@ function shortTicketRef(ticketId: string): string {
  * Compute the shortRef value to persist on HelpTicket.shortRef.
  * Exported so all ticket creation paths can populate the indexed column
  * used by the inbound subject-prefix resolver (Gap 8 fix).
+ *
+ * BC-ADMIN-SPEC-REAUDIT-TICKET-SHORTREF-1: This function returns the base 8-char
+ * shortRef. In case of collision on unique constraint, callers must retry with a
+ * longer length via computeShortRefOfLength().
  */
 export function computeShortRef(ticketId: string): string {
   return shortTicketRef(ticketId);
+}
+
+/**
+ * BC-ADMIN-SPEC-REAUDIT-TICKET-SHORTREF-1: Compute a shortRef of a specific length.
+ * Supports progressive widening on collision: 8 → 12 → 16 → 32 (full UUID).
+ *
+ * Callers use this in a retry loop when a unique constraint violation occurs:
+ * 1. Try attempt=1 (8 chars)
+ * 2. On collision, retry with attempt=2 (12 chars)
+ * 3. On collision, retry with attempt=3 (16 chars)
+ * 4. On collision, retry with attempt=4 (32 chars, guaranteed unique)
+ */
+export function computeShortRefOfLength(ticketId: string, attempt: number = 1): string {
+  const hex = ticketId.replace(/-/g, '');
+  const lengths = [8, 12, 16, 32];
+  // Defensive: assert valid range to catch infinite retry loops from caller bugs
+  if (attempt < 1 || attempt > lengths.length) {
+    throw new Error(
+      `computeShortRefOfLength: invalid attempt number ${attempt}; must be 1-${lengths.length}`
+    );
+  }
+  const length = lengths[attempt - 1];
+  return hex.slice(0, length);
 }
 
 /**
@@ -139,12 +211,20 @@ export function buildPlusReplyTo(ticketId: string, audience: 'partner' | 'subscr
  * Build the `[#abcd1234] Subject` prefix. Idempotent: re-prefixing a subject
  * that already carries the marker is a no-op (so admin "edit and resend"
  * flows don't pile up multiple prefixes).
+ *
+ * BC-ADMIN-SPEC-REAUDIT-TICKET-SHORTREF-1: When a shortRef collision is resolved,
+ * the persisted shortRef may be longer than 8 chars. Pass the actual persisted
+ * shortRef (if available) to ensure the subject uses the same ref as the inbound
+ * resolver will look up. Idempotency is preserved by stripping any existing [#...]
+ * marker before checking for the new marker.
  */
-export function buildTicketSubject(ticketId: string, subject: string): string {
-  const ref = shortTicketRef(ticketId);
+export function buildTicketSubject(ticketId: string, subject: string, shortRef?: string): string {
+  const ref = shortRef ?? shortTicketRef(ticketId);
   const marker = `[#${ref}]`;
-  if (subject.includes(marker)) return subject;
-  return `${marker} ${subject}`.trim();
+  // Strip any existing [#...] marker to ensure idempotency when shortRef changes
+  const cleanedSubject = subject.replace(/\[#[a-f0-9]{4,32}\]/i, '').trim();
+  if (cleanedSubject.includes(marker)) return subject; // Already has the exact marker
+  return `${marker} ${cleanedSubject}`.trim();
 }
 
 /**

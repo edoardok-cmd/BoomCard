@@ -251,9 +251,11 @@ describe('adminAlerts.service.getAlerts emitted links (B1, B2, B3, B5 fixes)', (
     expect(lpp?.meta).toEqual({ threshold: 500 });
   });
 
-  it('failed_transactions carries 24h dateFrom in meta (HIGH#2 fix)', async () => {
+  it('failed_transactions is OPERATIONAL and carries 24h dateFrom in meta (HIGH#2 fix + tier correction)', async () => {
     const result = await getAlerts();
-    const ft = result.critical.find((a) => a.id === 'failed_transactions');
+    const ft = result.operational.find((a) => a.id === 'failed_transactions');
+    expect(ft).toBeDefined();
+    expect(ft?.tier).toBe('operational');
     expect(ft?.meta?.['dateFrom']).toBeDefined();
     // ISO string parses to a date roughly 24h before now.
     const dateFrom = new Date(ft?.meta?.['dateFrom'] as string);
@@ -291,6 +293,23 @@ describe('adminAlerts.service.getAlerts emitted links (B1, B2, B3, B5 fixes)', (
     expect(inCritical).toBeUndefined();
     expect(inOperational).toBeDefined();
     expect(inOperational?.tier).toBe('operational');
+  });
+
+  it('failed_transactions is OPERATIONAL (routine monitoring) while failed_payouts_pipeline is CRITICAL (system error)', async () => {
+    // Spec §3.1: failed_transactions records business tx decline noise (OPERATIONAL);
+    // failed_payouts_pipeline is a system failure requiring immediate action (CRITICAL).
+    // These must be segregated so admins quickly distinguish routine payment noise from
+    // critical payout infrastructure failures.
+    const result = await getAlerts();
+    const ft = result.operational.find((a) => a.id === 'failed_transactions');
+    const fpp = result.critical.find((a) => a.id === 'failed_payouts_pipeline');
+    expect(ft).toBeDefined();
+    expect(fpp).toBeDefined();
+    expect(ft?.tier).toBe('operational');
+    expect(fpp?.tier).toBe('critical');
+    // Distinct links: failed_transactions → Finance reports, failed_payouts_pipeline → Finance payouts
+    expect(ft?.link).toContain('/admin/finance/reports');
+    expect(fpp?.link).toContain('/admin/finance/payouts');
   });
 
   it('parseSetting falls back to defaults when large_tx_threshold systemSetting is non-numeric', async () => {

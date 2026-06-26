@@ -34,8 +34,41 @@ process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 process.env.ALLOW_UNSIGNED_WEBHOOK = process.env.ALLOW_UNSIGNED_WEBHOOK || '1';
 
 import http from 'http';
+import { execSync } from 'child_process';
 import { prisma } from '../src/lib/prisma';
 import { drainDetached } from '../src/utils/detach';
+
+// ─── Ensure test database schema is up-to-date ──────────────────────────────
+// Before running integration tests, deploy all pending Prisma migrations to the
+// test database. This ensures the schema matches the current state of
+// prisma/schema.prisma. Without this step, tests may fail with "column does not
+// exist" errors when trying to use fields defined in the schema but not yet
+// migrated in the test DB.
+//
+// This runs synchronously at setup time (before jest loads test files) so we
+// can fail fast if migrations fail. It is test-only and has no effect on
+// production.
+if (process.env.NODE_ENV === 'test') {
+  try {
+    console.log('tests/setup.ts: deploying pending migrations to test database...');
+    execSync('npx prisma migrate deploy', {
+      cwd: __dirname.replace('/tests', ''),
+      stdio: 'inherit',
+      env: { ...process.env },
+    });
+    console.log('tests/setup.ts: migrations deployed successfully.');
+  } catch (error) {
+    console.error(
+      'tests/setup.ts: migration deployment failed. This usually means:\n' +
+        '  1. The test database does not exist — create it with `createdb boomcard_test`\n' +
+        '  2. The test database is not reachable — check DATABASE_URL in .env.test\n' +
+        '  3. A migration conflicts with existing schema — manually reset with `npm run db:reset` (warning: destructive)\n' +
+        'Full error:',
+      error,
+    );
+    process.exit(1);
+  }
+}
 
 // ─── supertest transport-race fix: persistent server per app per file ─────────
 //

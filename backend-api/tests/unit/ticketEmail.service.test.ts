@@ -14,6 +14,8 @@ import {
   buildTicketHeaders,
   buildTicketSubject,
   newMessageId,
+  computeShortRef,
+  computeShortRefOfLength,
 } from '../../src/services/ticketEmail.service';
 
 // ─── buildTicketHeaders ───────────────────────────────────────────────────────
@@ -279,5 +281,89 @@ describe('EmailService audience-aware Reply-To', () => {
     // The raw headers object passed to Resend must not contain a Reply-To key
     const rawHeaders = resendSendCalls[0].headers ?? {};
     expect(rawHeaders['Reply-To']).toBeUndefined();
+  });
+});
+
+// ─── BC-ADMIN-SPEC-REAUDIT-TICKET-SHORTREF-1: Collision resolution ──────────
+
+describe('computeShortRef and computeShortRefOfLength', () => {
+  it('computeShortRef returns 8-char hex prefix (UUID sans dashes)', () => {
+    const ticketId = 'aabbccdd-eeff-0011-2233-445566778899';
+    const result = computeShortRef(ticketId);
+    expect(result).toBe('aabbccdd');
+    expect(result.length).toBe(8);
+  });
+
+  it('computeShortRef is deterministic for the same UUID', () => {
+    const ticketId = 'aabbccdd-eeff-0011-2233-445566778899';
+    const r1 = computeShortRef(ticketId);
+    const r2 = computeShortRef(ticketId);
+    expect(r1).toBe(r2);
+  });
+
+  it('computeShortRefOfLength(id, 1) returns 8 chars', () => {
+    const id = '12345678-90ab-cdef-0123-456789abcdef';
+    expect(computeShortRefOfLength(id, 1)).toBe('12345678');
+    expect(computeShortRefOfLength(id, 1).length).toBe(8);
+  });
+
+  it('computeShortRefOfLength(id, 2) returns 12 chars', () => {
+    const id = '12345678-90ab-cdef-0123-456789abcdef';
+    expect(computeShortRefOfLength(id, 2)).toBe('1234567890ab');
+    expect(computeShortRefOfLength(id, 2).length).toBe(12);
+  });
+
+  it('computeShortRefOfLength(id, 3) returns 16 chars', () => {
+    const id = '12345678-90ab-cdef-0123-456789abcdef';
+    expect(computeShortRefOfLength(id, 3)).toBe('1234567890abcdef');
+    expect(computeShortRefOfLength(id, 3).length).toBe(16);
+  });
+
+  it('computeShortRefOfLength(id, 4) returns 32 chars (full UUID sans dashes)', () => {
+    const id = '12345678-90ab-cdef-0123-456789abcdef';
+    const result = computeShortRefOfLength(id, 4);
+    expect(result).toBe('1234567890abcdef0123456789abcdef');
+    expect(result.length).toBe(32);
+  });
+
+  it('computeShortRefOfLength clamps out-of-range attempts to valid range', () => {
+    const id = '12345678-90ab-cdef-0123-456789abcdef';
+    // attempt=0 should clamp to attempt=1 (8 chars)
+    expect(computeShortRefOfLength(id, 0).length).toBe(8);
+    // attempt=100 should clamp to attempt=4 (32 chars)
+    expect(computeShortRefOfLength(id, 100).length).toBe(32);
+  });
+
+  it('buildTicketSubject accepts optional shortRef parameter', () => {
+    const ticketId = 'aabbccdd-0000-0000-0000-000000000000';
+    // Without shortRef, uses 8-char default
+    const withoutShortRef = buildTicketSubject(ticketId, 'Test');
+    expect(withoutShortRef).toContain('[#aabbccdd]');
+    // With explicit 12-char shortRef (from collision resolution)
+    const withShortRef = buildTicketSubject(ticketId, 'Test', 'aabbccdd0000');
+    expect(withShortRef).toContain('[#aabbccdd0000]');
+  });
+
+  it('buildTicketSubject with custom shortRef is idempotent', () => {
+    const ticketId = 'aabbccdd-0000-0000-0000-000000000000';
+    const shortRef = 'aabbccdd0000';
+    const first = buildTicketSubject(ticketId, 'Test', shortRef);
+    const second = buildTicketSubject(ticketId, first, shortRef);
+    expect(second).toBe(first);
+    expect(first).toContain('[#aabbccdd0000]');
+  });
+
+  it('progression of shortRef attempts ensures uniqueness', () => {
+    const id = '99999999-ffff-eeee-dddd-ccccbbbbaaaa';
+    const refs = [1, 2, 3, 4].map((attempt) => computeShortRefOfLength(id, attempt));
+    // Each successive attempt is longer
+    expect(refs[0].length).toBe(8);
+    expect(refs[1].length).toBe(12);
+    expect(refs[2].length).toBe(16);
+    expect(refs[3].length).toBe(32);
+    // Each is a prefix of the next
+    expect(refs[1].startsWith(refs[0])).toBe(true);
+    expect(refs[2].startsWith(refs[1])).toBe(true);
+    expect(refs[3].startsWith(refs[2])).toBe(true);
   });
 });

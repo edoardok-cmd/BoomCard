@@ -1033,7 +1033,7 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
       // Handle guard failures thrown inside transaction
       if (typeof txErr === 'object' && txErr !== null && (txErr as { message?: string }).message?.startsWith('GUARD_FAILED:')) {
         const msg = (txErr as { message: string }).message.replace('GUARD_FAILED:', '');
-        return res.status(409).json({ error: msg });
+        return res.status(403).json({ error: msg });
       }
       // Serializable isolation can trigger conflicts if concurrent mutations race (P2034).
       // Retry the transaction (may succeed if the concurrent mutation resolved the race).
@@ -1045,34 +1045,42 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
             return res.status(404).json({ error: 'Admin not found' });
           }
 
-          updated = await prisma.$transaction(async (tx) => {
-            if (refreshedTarget.role === 'SUPER_ADMIN' && (status === 'INACTIVE' || status === 'ARCHIVED')) {
-              const nonArchivedSuperAdmins = await tx.user.count({
-                where: { role: 'SUPER_ADMIN', status: { not: 'ARCHIVED' }, id: { not: id } },
-              });
-              if (nonArchivedSuperAdmins === 0) {
-                throw new Error('GUARD_FAILED:Cannot deactivate the last non-archived SUPER_ADMIN');
+          try {
+            updated = await prisma.$transaction(async (tx) => {
+              if (refreshedTarget.role === 'SUPER_ADMIN' && (status === 'INACTIVE' || status === 'ARCHIVED')) {
+                const nonArchivedSuperAdmins = await tx.user.count({
+                  where: { role: 'SUPER_ADMIN', status: { not: 'ARCHIVED' }, id: { not: id } },
+                });
+                if (nonArchivedSuperAdmins === 0) {
+                  throw new Error('GUARD_FAILED:Cannot deactivate the last non-archived SUPER_ADMIN');
+                }
               }
-            }
 
-            return await tx.user.update({
-              where: { id },
-              data: {
-                status: status as UserStatus,
-                ...(status === 'ARCHIVED' ? { rolesUpdatedAt: new Date() } : {}),
-              },
-              select: { id: true, status: true },
+              return await tx.user.update({
+                where: { id },
+                data: {
+                  status: status as UserStatus,
+                  ...(status === 'ARCHIVED' ? { rolesUpdatedAt: new Date() } : {}),
+                },
+                select: { id: true, status: true },
+              });
+            }, {
+              isolationLevel: 'Serializable',
+              timeout: 30000,
             });
-          }, {
-            isolationLevel: 'Serializable',
-            timeout: 30000,
-          });
-        } catch (retryErr: unknown) {
-          if (typeof retryErr === 'object' && retryErr !== null && (retryErr as { message?: string }).message?.startsWith('GUARD_FAILED:')) {
-            const msg = (retryErr as { message: string }).message.replace('GUARD_FAILED:', '');
-            return res.status(409).json({ error: msg });
+          } catch (retryErr: unknown) {
+            if (typeof retryErr === 'object' && retryErr !== null && (retryErr as { message?: string }).message?.startsWith('GUARD_FAILED:')) {
+              const msg = (retryErr as { message: string }).message.replace('GUARD_FAILED:', '');
+              return res.status(403).json({ error: msg });
+            }
+            // If retry transaction also fails with P2034, return 409
+            if (typeof retryErr === 'object' && retryErr !== null && (retryErr as { code?: string }).code === 'P2034') {
+              return res.status(409).json({ error: 'Concurrent modification detected — please retry' });
+            }
+            throw retryErr;
           }
-          throw retryErr;
+        } catch (error) {
+          throw error;
         }
       } else {
         throw txErr;
@@ -1325,7 +1333,7 @@ router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADM
         if (typeof txErr === 'object' && txErr !== null) {
           const msg = (txErr as { message?: string }).message || '';
           if (msg.startsWith('GUARD_FAILED:')) {
-            return res.status(409).json({ error: msg.replace('GUARD_FAILED:', '') });
+            return res.status(403).json({ error: msg.replace('GUARD_FAILED:', '') });
           }
           if (msg.startsWith('NOT_FOUND:')) {
             return res.status(404).json({ error: msg.replace('NOT_FOUND:', '') });

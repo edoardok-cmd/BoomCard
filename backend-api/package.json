@@ -12,6 +12,8 @@
     "deploy": "prisma migrate deploy && npm run start",
     "test": "jest --coverage",
     "test:watch": "jest --watch",
+    "test:setup": "NODE_ENV=test npx prisma migrate deploy",
+    "test:reset": "NODE_ENV=test npx prisma migrate reset --force",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts",
     "db:migrate": "prisma migrate dev",

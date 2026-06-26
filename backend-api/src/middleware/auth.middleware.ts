@@ -411,6 +411,58 @@ export const requireActiveSubscription = async (
   }
 
   try {
+    // Source 8.1 rule 1: account status gate (defense-in-depth). Check user account
+    // status before subscription status. Inactive/Archived/Deleted accounts cannot
+    // perform scanning operations regardless of subscription status.
+    // NOTE: PENDING_VERIFICATION and PENDING_PAYMENT users are blocked at the
+    // authenticate middleware layer (line 183), so they cannot reach this point.
+    // This middleware only handles account statuses that allow login (ACTIVE/INACTIVE/ARCHIVED/DELETED).
+    const freshUser = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { status: true },
+    }).catch((err) => {
+      // Distinguish between "user not found" (P2025) and other database errors.
+      // P2025 means the user was deleted after login — treat as null (let the
+      // subscription check handle it). Other errors (connection failure, pool
+      // exhaustion) must not fail open — re-throw so the catch block below
+      // returns 503.
+      if ((err as any)?.code === 'P2025') {
+        return null;
+      }
+      throw err;
+    });
+
+    if (freshUser) {
+      const userStatus = freshUser.status as string | undefined;
+      if (userStatus === 'INACTIVE') {
+        return next(
+          new AppError(
+            'ACCOUNT_INACTIVE: Account paused. Contact support to resume.',
+            402,
+            { code: 'ACCOUNT_INACTIVE' },
+          ),
+        );
+      }
+      if (userStatus === 'ARCHIVED') {
+        return next(
+          new AppError(
+            'ACCOUNT_NOT_ACCESSIBLE: Account archived.',
+            403,
+            { code: 'ACCOUNT_NOT_ACCESSIBLE', subCode: 'ARCHIVED' },
+          ),
+        );
+      }
+      if (userStatus === 'DELETED') {
+        return next(
+          new AppError(
+            'ACCOUNT_NOT_ACCESSIBLE: Account deleted.',
+            403,
+            { code: 'ACCOUNT_NOT_ACCESSIBLE', subCode: 'DELETED' },
+          ),
+        );
+      }
+    }
+
     const now = new Date();
     // NOTE: PAUSED is intentionally treated as NON-operational here, matching
     // sticker.service.assertSubscriptionAllowsScanning. (PAUSED still earns a cashback

@@ -341,9 +341,6 @@ describe('Admin Impersonation', () => {
 
   describe('Audit logging for impersonation events', () => {
     it('writes audit logs for both start and stop events', async () => {
-      // Small delay to ensure any prior async audit writes complete
-      await new Promise(resolve => setTimeout(resolve, 100));
-
       const { accessToken } = await loginWeb(fx.adminEmail, ADMIN_PASSWORD);
 
       const impRes = await request(app)
@@ -352,17 +349,11 @@ describe('Admin Impersonation', () => {
         .send({ targetPartnerUserId: fx.partnerUserId });
       expect(impRes.status).toBe(200);
 
-      // Small delay to ensure the async audit write completes
-      await new Promise(resolve => setTimeout(resolve, 100));
-
       const stopRes = await request(app)
         .post('/api/auth/stop-impersonate')
         .set('Authorization', `Bearer ${impRes.body.data.accessToken}`)
         .send({ refreshToken: impRes.body.data.refreshToken });
       expect(stopRes.status).toBe(200);
-
-      // Small delay to ensure the async audit write completes
-      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Verify START audit log
       const startAudit = await prisma.auditLog.findFirst({
@@ -418,9 +409,6 @@ describe('Admin Impersonation', () => {
       });
       createdUserIds.push(superAdmin.id);
 
-      // Small delay to ensure any prior async writes complete
-      await new Promise(resolve => setTimeout(resolve, 100));
-
       const { accessToken } = await loginWeb(superAdminEmail, ADMIN_PASSWORD);
 
       const impRes = await request(app)
@@ -428,9 +416,6 @@ describe('Admin Impersonation', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .send({ targetUserId: fx.regularUserId });
       expect(impRes.status).toBe(200);
-
-      // Small delay to ensure the async audit write completes
-      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Verify START audit log has USER objectType
       const startAudit = await prisma.auditLog.findFirst({
@@ -454,9 +439,6 @@ describe('Admin Impersonation', () => {
         .set('Authorization', `Bearer ${impRes.body.data.accessToken}`)
         .send({ refreshToken: impRes.body.data.refreshToken });
       expect(stopRes.status).toBe(200);
-
-      // Small delay to ensure the async audit write completes
-      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Verify STOP audit log has matching USER objectType
       const stopAudit = await prisma.auditLog.findFirst({
@@ -564,6 +546,132 @@ describe('Admin Impersonation', () => {
         .post('/api/auth/refresh')
         .send({ refreshToken: bystanderRefresh });
       expect(refreshRes.status).toBe(200);
+    });
+  });
+
+  describe('Audit write failure handling', () => {
+    it('rolls back impersonate start if audit write fails — no token revoked, no impersonation artifact', async () => {
+      const { accessToken, refreshToken: adminRefresh } = await loginWeb(fx.adminEmail, ADMIN_PASSWORD);
+
+      // Verify admin refresh token exists before the call
+      const tokensBefore = await prisma.refreshToken.findMany({
+        where: { userId: fx.adminId, token: adminRefresh },
+      });
+      expect(tokensBefore).toHaveLength(1);
+
+      // Mock the auditLog.create to throw an error
+      const originalCreate = prisma.auditLog.create;
+      let auditCreateCalled = false;
+      prisma.auditLog.create = jest.fn(async () => {
+        auditCreateCalled = true;
+        throw new Error('Simulated audit write failure');
+      });
+
+      try {
+        const res = await request(app)
+          .post('/api/auth/impersonate')
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send({ targetPartnerUserId: fx.partnerUserId, refreshToken: adminRefresh });
+
+        // Impersonation should fail with 500 when audit write fails
+        expect(res.status).toBe(500);
+        // Verify that audit write was actually attempted
+        expect(auditCreateCalled).toBe(true);
+
+        // CRITICAL: Verify rollback — admin's refresh token was NOT revoked
+        const tokensAfter = await prisma.refreshToken.findMany({
+          where: { userId: fx.adminId, token: adminRefresh },
+        });
+        expect(tokensAfter).toHaveLength(1);
+        expect(tokensAfter[0].token).toBe(adminRefresh);
+
+        // CRITICAL: Verify no audit log was written
+        const auditLogs = await prisma.auditLog.findMany({
+          where: {
+            actorUserId: fx.adminId,
+            action: 'admin.impersonate.start',
+            objectId: fx.partnerUserId,
+          },
+        });
+        expect(auditLogs).toHaveLength(0);
+
+        // Verify admin's refresh token still works (session not broken)
+        const refreshRes = await request(app)
+          .post('/api/auth/refresh')
+          .send({ refreshToken: adminRefresh });
+        expect(refreshRes.status).toBe(200);
+        expect(refreshRes.body.data.accessToken).toBeDefined();
+      } finally {
+        // Restore original function
+        prisma.auditLog.create = originalCreate;
+      }
+    });
+
+    it('rolls back stop-impersonate if audit write fails — no token deleted, impersonation session survives', async () => {
+      const { accessToken } = await loginWeb(fx.adminEmail, ADMIN_PASSWORD);
+
+      // First, successfully start an impersonation
+      const impRes = await request(app)
+        .post('/api/auth/impersonate')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ targetPartnerUserId: fx.partnerUserId });
+      expect(impRes.status).toBe(200);
+
+      const impRefreshToken = impRes.body.data.refreshToken;
+
+      // Verify impersonation refresh token exists
+      const tokensBefore = await prisma.refreshToken.findMany({
+        where: { userId: fx.partnerUserId, token: impRefreshToken },
+      });
+      expect(tokensBefore).toHaveLength(1);
+
+      // Now mock auditLog.create to throw on the next call (for stop-impersonate)
+      const originalCreate = prisma.auditLog.create;
+      let auditCreateCallCount = 0;
+      prisma.auditLog.create = jest.fn(async () => {
+        auditCreateCallCount++;
+        throw new Error('Simulated audit write failure on stop');
+      });
+
+      try {
+        const stopRes = await request(app)
+          .post('/api/auth/stop-impersonate')
+          .set('Authorization', `Bearer ${impRes.body.data.accessToken}`)
+          .send({ refreshToken: impRefreshToken });
+
+        // Stop-impersonate should fail with 500 when audit write fails
+        expect(stopRes.status).toBe(500);
+        // Verify that audit write was actually attempted
+        expect(auditCreateCallCount).toBeGreaterThan(0);
+
+        // CRITICAL: Verify rollback — impersonation refresh token was NOT deleted
+        const tokensAfter = await prisma.refreshToken.findMany({
+          where: { userId: fx.partnerUserId, token: impRefreshToken },
+        });
+        expect(tokensAfter).toHaveLength(1);
+        expect(tokensAfter[0].token).toBe(impRefreshToken);
+
+        // CRITICAL: Verify no audit log was written
+        const auditLogs = await prisma.auditLog.findMany({
+          where: {
+            actorUserId: fx.adminId,
+            action: 'admin.impersonate.stop',
+            objectId: fx.partnerUserId,
+          },
+        });
+        expect(auditLogs).toHaveLength(0);
+
+        // Verify impersonation session still works — can still call authenticated endpoints
+        // as the impersonated partner (proving the token wasn't revoked)
+        const getRes = await request(app)
+          .get('/api/partners/my-profile')
+          .set('Authorization', `Bearer ${impRes.body.data.accessToken}`);
+        expect(getRes.status).not.toBe(401);
+        expect(getRes.status).not.toBe(403);
+      } finally {
+        // Restore original function
+        prisma.auditLog.create = originalCreate;
+      }
     });
   });
 

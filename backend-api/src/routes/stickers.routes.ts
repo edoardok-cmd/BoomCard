@@ -7,7 +7,7 @@ import {
   SUSPICIOUS_EXACT_CODES,
   SUSPICIOUS_PREFIX_CODES,
 } from '../services/adminAlerts.service';
-import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
+import { authenticate, authorize, requirePermission, AuthRequest, requireActiveSubscription } from '../middleware/auth.middleware';
 import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
 import { imageUploadService } from '../services/imageUpload.service';
 import { LocationType, ScanStatus } from '@prisma/client';
@@ -15,6 +15,17 @@ import prisma from '../lib/prisma';
 import { validateAmount, validateGPSCoordinates, ValidationError } from '../utils/validation';
 import { checkLivePhoto } from '../utils/exifLivePhoto';
 import { parsePagination } from '../utils/pagination';
+
+/**
+ * DEFENSE-IN-DEPTH ACCOUNT STATUS GATING (BC-ADMIN-SPEC-REAUDIT-SCANGATE-INACTIVE-1)
+ *
+ * Spec §2 and §8.1 rule 1: All USER-facing write/operational endpoints
+ * (POST /api/stickers/session, POST /api/stickers/scan, POST .../receipt)
+ * are guarded by requireActiveSubscription middleware, which checks account
+ * status (INACTIVE/ARCHIVED/DELETED/PENDING_*/etc.) BEFORE the service layer's
+ * subscription check. This defense-in-depth ordering ensures that inactive
+ * accounts cannot perform scanning operations regardless of subscription status.
+ */
 
 // Spec §5.4 — QR/location management is admin-only. For GET endpoints that
 // remain accessible to partners (venue stickers, scans, analytics, config),
@@ -45,10 +56,13 @@ const router = Router();
  * Returns a sessionId that must be passed to POST /api/stickers/scan when
  * the receipt is submitted.
  * Requires authentication.
+ *
+ * Defense-in-depth account status check: requireActiveSubscription middleware
+ * (Spec §2, §8.1 rule 1) checks account status BEFORE subscription status to
+ * ensure INACTIVE/ARCHIVED/DELETED users cannot perform scanning operations
+ * regardless of subscription state.
  */
-// Subscription gate: delegated to service layer (assertSubscriptionAllowsScanning)
-// which provides specific error codes for mobile app error handling.
-router.post('/session', authenticate, async (req: Request, res: Response) => {
+router.post('/session', authenticate, requireActiveSubscription, async (req: Request, res: Response) => {
   try {
     const { stickerId, cardId, latitude, longitude, payloadVenueId, payloadVersion, deviceFingerprint: rawDeviceFp } = req.body;
     const userId = (req as any).user.id;
@@ -101,10 +115,13 @@ router.post('/session', authenticate, async (req: Request, res: Response) => {
  * If sessionId is provided: completes an existing SESSION_ACTIVE session.
  * If not: legacy flow — creates session + scan in one call (backward compat).
  * Requires authentication.
+ *
+ * Defense-in-depth account status check: requireActiveSubscription middleware
+ * (Spec §2, §8.1 rule 1) checks account status BEFORE subscription status to
+ * ensure INACTIVE/ARCHIVED/DELETED users cannot perform scanning operations
+ * regardless of subscription state.
  */
-// Subscription gate: delegated to service layer (assertSubscriptionAllowsScanning)
-// which provides specific error codes for mobile app error handling.
-router.post('/scan', authenticate, async (req: Request, res: Response) => {
+router.post('/scan', authenticate, requireActiveSubscription, async (req: Request, res: Response) => {
   try {
     const { stickerId, cardId, billAmount, latitude, longitude, sessionId, payloadVenueId, payloadVersion, deviceFingerprint: rawDeviceFpScan } = req.body;
     const userId = (req as any).user.id;
@@ -206,10 +223,13 @@ router.post('/scan', authenticate, async (req: Request, res: Response) => {
  * POST /api/stickers/scan/:scanId/receipt
  * Upload receipt image and OCR data for a scan
  * Requires authentication
+ *
+ * Defense-in-depth account status check: requireActiveSubscription middleware
+ * (Spec §2, §8.1 rule 1) checks account status BEFORE subscription status to
+ * ensure INACTIVE/ARCHIVED/DELETED users cannot perform scanning operations
+ * regardless of subscription state.
  */
-// Subscription gate: delegated to service layer (assertSubscriptionAllowsScanning)
-// which provides specific error codes for mobile app error handling.
-router.post('/scan/:scanId/receipt', authenticate, uploadSingle, validateMagicBytes, async (req: AuthRequest, res: Response) => {
+router.post('/scan/:scanId/receipt', authenticate, requireActiveSubscription, uploadSingle, validateMagicBytes, async (req: AuthRequest, res: Response) => {
   try {
     const { scanId } = req.params;
     const userId = req.user!.id;
