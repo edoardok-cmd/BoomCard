@@ -381,7 +381,7 @@ describe('Admin Impersonation', () => {
         });
       }
 
-      // Verify STOP audit log
+      // Verify STOP audit log has matching objectType to START record
       const stopAudit = await prisma.auditLog.findFirst({
         where: {
           actorUserId: fx.adminId,
@@ -392,7 +392,8 @@ describe('Admin Impersonation', () => {
       });
       expect(stopAudit).toBeDefined();
       if (stopAudit) {
-        expect(stopAudit.objectType).toBe('user');
+        // STOP record must have same objectType as START record for correlation
+        expect(stopAudit.objectType).toBe('partner');
         expect(stopAudit.after).toMatchObject({
           adminRole: 'ADMIN',
         });
@@ -444,6 +445,33 @@ describe('Admin Impersonation', () => {
         expect(startAudit.objectType).toBe('user');
         expect(startAudit.after).toMatchObject({
           targetRole: 'USER',
+        });
+      }
+
+      // Stop the impersonation and verify STOP audit log also has USER objectType
+      const stopRes = await request(app)
+        .post('/api/auth/stop-impersonate')
+        .set('Authorization', `Bearer ${impRes.body.data.accessToken}`)
+        .send({ refreshToken: impRes.body.data.refreshToken });
+      expect(stopRes.status).toBe(200);
+
+      // Small delay to ensure the async audit write completes
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Verify STOP audit log has matching USER objectType
+      const stopAudit = await prisma.auditLog.findFirst({
+        where: {
+          actorUserId: superAdmin.id,
+          action: 'admin.impersonate.stop',
+          objectId: fx.regularUserId,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(stopAudit).toBeDefined();
+      if (stopAudit) {
+        expect(stopAudit.objectType).toBe('user');
+        expect(stopAudit.after).toMatchObject({
+          adminRole: 'SUPER_ADMIN',
         });
       }
     });

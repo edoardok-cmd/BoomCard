@@ -2827,6 +2827,14 @@ export class AuthService {
     }
 
     const endedAt = new Date().toISOString();
+
+    // Resolve the impersonated target's role to match objectType with the START record
+    const target = await prisma.user.findUnique({
+      where: { id: currentUserId },
+      select: { role: true },
+    });
+    const objectType = target?.role === 'PARTNER' ? 'partner' : 'user';
+
     logger.warn('Admin impersonation ended', {
       adminId: admin.id,
       adminRole: admin.role,
@@ -2838,7 +2846,7 @@ export class AuthService {
     detach(writeAudit({
       actorUserId: admin.id,
       action: 'admin.impersonate.stop',
-      objectType: 'user', // We don't have the target role at this point, so use generic 'user'
+      objectType,
       objectId: currentUserId,
       after: {
         adminRole: admin.role,
