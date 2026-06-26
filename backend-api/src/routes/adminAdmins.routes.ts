@@ -758,7 +758,7 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
 
     const request = await prisma.pendingSuperAdminRequest.findUnique({
       where: { id },
-      include: { requestedBy: { select: { email: true, firstName: true, lastName: true } } },
+      include: { requestedBy: { select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true } } },
     });
     if (!request) return res.status(404).json({ error: 'Pending request not found' });
 
@@ -799,6 +799,10 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
     // By checking quorum and creating within the same Serializable transaction, we ensure exactly one succeeds.
     // H2 fix: count non-ARCHIVED SAs (not just ACTIVE) to close privilege-escalation hole. Bootstrap exception applies
     // only when 1 non-archived SA exists (whether ACTIVE, INACTIVE, or SUSPENDED).
+    //
+    // SA-APPROVE-INITIATOR fix: validate that the original initiator is still an active SUPER_ADMIN at approval time.
+    // Reload the initiator from the database to re-check role and status, preventing weakening of 2-of-N when the
+    // initiator is archived or demoted between initiation and approval.
     let user: { id: string; email: string; firstName: string | null; lastName: string | null; role: UserRole; status: UserStatus; createdAt: Date };
     try {
       user = await prisma.$transaction(async (tx) => {
@@ -811,6 +815,22 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
             throw new Error('FORBIDDEN:The approver must be a different admin from the original requester');
           }
           // Bootstrap exception: only one Super Admin exists (non-archived) → sole SA may self-approve
+        } else {
+          // Non-self-approval: validate that the original initiator is still an ACTIVE SUPER_ADMIN.
+          // If the initiator is archived, demoted, or otherwise ineligible, reject the approval.
+          const initiator = await tx.user.findUnique({
+            where: { id: request.requestedById },
+            select: { role: true, status: true },
+          });
+          if (!initiator) {
+            throw new Error('FORBIDDEN:The original initiator no longer exists');
+          }
+          if (initiator.role !== 'SUPER_ADMIN') {
+            throw new Error('FORBIDDEN:The original initiator is no longer a SUPER_ADMIN (role was revoked or changed)');
+          }
+          if (initiator.status !== 'ACTIVE') {
+            throw new Error('FORBIDDEN:The original initiator is no longer available to approve this request');
+          }
         }
 
         // Create user and delete request atomically within same Serializable transaction.

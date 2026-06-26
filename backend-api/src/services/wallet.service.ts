@@ -16,6 +16,7 @@ import { reasonIndicatesIbanProblem } from '../utils/payoutFailureReason';
 import { resolvePayoutEligibility } from './payoutEligibility.service';
 import { RISK_HOLD_FLOOR_SCORE } from './userRisk.service';
 import { validateIBAN, ValidationError } from '../utils/validation';
+import { bgnToEur } from '../utils/currencyDisplay';
 
 // ── User-facing payout-status masking (Spec §3.2 / §3.7) ─────────────────────
 // Spec §3.7 (line 461): on the SECOND failed payout the record routes to manual
@@ -191,41 +192,50 @@ export class WalletService {
 
     const hasIban = !!wallet.payoutIban && wallet.payoutIban.trim().length > 0;
 
-    // Spec §8.1 rule 4: Currency transition window is controlled by a single source of truth
+    // Spec §8.1 rule 4 / Clash 12.1: Currency transition window is controlled by a single source of truth
     // (the DB SystemSetting 'currency_transition_window_open'), which is shared with the admin
     // finance/payout display. This ensures both user and admin sides show the same window state.
+    //
+    // When the window is OPEN: return dual-currency { BGN, EUR } for all amounts; currency = BGN.
+    // When the window is CLOSED: return EUR-only amounts; currency = EUR; NO BGN-denominated scalars.
     const showDualCurrency = await isCurrencyTransitionWindowOpen();
 
-    return {
-      balance: wallet.balance,
-      availableBalance: wallet.availableBalance,
-      pendingBalance: computedPendingBalance,
-      expiringBalance,
-      currency: wallet.currency,
+    // Convert all BGN amounts to EUR (stored in DB as BGN regardless of window state)
+    // Use canonical bgnToEur() helper to ensure single source of truth (Spec §8.1 rule 4)
+    const balanceEUR = bgnToEur(wallet.balance);
+    const availableBalanceEUR = bgnToEur(wallet.availableBalance);
+    const pendingBalanceEUR = bgnToEur(computedPendingBalance);
+    const expiringBalanceEUR = bgnToEur(expiringBalance);
+    const payoutThresholdEUR = bgnToEur(threshold);
+
+    // Spec §8.1 rule 4 / AC1: When transition window is CLOSED, top-level scalars are EUR-denominated
+    // and no BGN-only fields are emitted. The payout threshold is also EUR-denominated.
+    const response = {
+      balance: showDualCurrency ? wallet.balance : balanceEUR,
+      availableBalance: showDualCurrency ? wallet.availableBalance : availableBalanceEUR,
+      pendingBalance: showDualCurrency ? computedPendingBalance : pendingBalanceEUR,
+      expiringBalance: showDualCurrency ? expiringBalance : expiringBalanceEUR,
+      currency: showDualCurrency ? wallet.currency : 'EUR',
       // Dual-currency display. When showDualCurrency is true, both BGN and EUR
       // amounts are included so clients can render a transition-mode display.
       // When the transition window is closed, only EUR fields are populated.
-      ...(showDualCurrency
-        ? {
-            balanceBGN: wallet.balance,
-            availableBalanceBGN: wallet.availableBalance,
-            pendingBalanceBGN: computedPendingBalance,
-            expiringBalanceBGN: expiringBalance,
-            balanceEUR: parseFloat((wallet.balance / EUR_TO_BGN_RATE).toFixed(2)),
-            availableBalanceEUR: parseFloat((wallet.availableBalance / EUR_TO_BGN_RATE).toFixed(2)),
-            // Spec §17/§6.6: during the BGN→EUR window all amounts are shown in both
-            // currencies, including pending and expiring balances.
-            pendingBalanceEUR: parseFloat((computedPendingBalance / EUR_TO_BGN_RATE).toFixed(2)),
-            expiringBalanceEUR: parseFloat((expiringBalance / EUR_TO_BGN_RATE).toFixed(2)),
-          }
-        : {
-            balanceEUR: parseFloat((wallet.balance / EUR_TO_BGN_RATE).toFixed(2)),
-            availableBalanceEUR: parseFloat((wallet.availableBalance / EUR_TO_BGN_RATE).toFixed(2)),
-          }),
+      ...(showDualCurrency && {
+        balanceBGN: wallet.balance,
+        availableBalanceBGN: wallet.availableBalance,
+        pendingBalanceBGN: computedPendingBalance,
+        expiringBalanceBGN: expiringBalance,
+      }),
+      balanceEUR,
+      availableBalanceEUR,
+      // Spec §17/§6.6: during the BGN→EUR window all amounts are shown in both
+      // currencies, including pending and expiring balances.
+      // After window close, only EUR versions of pending/expiring are emitted.
+      pendingBalanceEUR,
+      expiringBalanceEUR,
       isLocked: wallet.isLocked,
       lastUpdated: wallet.updatedAt,
-      payoutThreshold: parseFloat(threshold.toFixed(2)),
-      payoutThresholdEUR: parseFloat((threshold / EUR_TO_BGN_RATE).toFixed(2)),
+      payoutThreshold: showDualCurrency ? parseFloat(threshold.toFixed(2)) : payoutThresholdEUR,
+      payoutThresholdEUR,
       canRequestPayout: !wallet.isLocked
         && wallet.availableBalance >= threshold
         && hasEligibleSubscription
@@ -235,6 +245,8 @@ export class WalletService {
       payoutIban: wallet.payoutIban ?? null,
       payoutBeneficiaryName: wallet.payoutBeneficiaryName ?? null,
     };
+
+    return response;
   }
 
   /**
