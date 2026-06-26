@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { asyncHandler } from '../utils/asyncHandler';
 import { emailService } from '../services/email.service';
+import { createHelpTicketFromInbound } from '../services/helpTicketIntake.service';
 import { logger } from '../utils/logger';
 
 const router = Router();
@@ -49,52 +50,67 @@ router.post('/', contactRateLimiter, asyncHandler(async (req: Request, res: Resp
     return res.status(400).json({ success: false, error: 'Invalid email address' });
   }
 
-  const safeName = escapeHtml(name);
-  const safeEmail = escapeHtml(email);
-  const safeMessage = escapeHtml(message).replace(/\n/g, '<br>');
+  try {
+    // Create a Help Ticket (Spec §3.8 / §1.7)
+    const { ticketId } = await createHelpTicketFromInbound({
+      name,
+      externalEmail: email,
+      subject: language === 'bg'
+        ? `Запитване от ${name}`
+        : `Inquiry from ${name}`,
+      body: message,
+      source: 'WEB',
+    });
 
-  const subject = language === 'bg'
-    ? `[BOOM Card] Запитване от ${name}`
-    : `[BOOM Card] Inquiry from ${name}`;
+    // Optional: send admin notification email (targets office@ instead of partner@)
+    const adminSubject = language === 'bg'
+      ? `[BOOM Card] Запитване от ${name}`
+      : `[BOOM Card] Inquiry from ${name}`;
 
-  const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #111;">New contact form submission</h2>
-      <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-        <tr>
-          <td style="padding: 8px 12px; background: #f8f9fa; font-weight: 600; width: 120px;">Name</td>
-          <td style="padding: 8px 12px;">${safeName}</td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 12px; background: #f8f9fa; font-weight: 600;">Email</td>
-          <td style="padding: 8px 12px;"><a href="mailto:${safeEmail}">${safeEmail}</a></td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 12px; background: #f8f9fa; font-weight: 600; vertical-align: top;">Message</td>
-          <td style="padding: 8px 12px; white-space: pre-wrap;">${safeMessage}</td>
-        </tr>
-      </table>
-      <p style="color: #666; font-size: 12px;">Reply directly to this email to respond to ${safeName}.</p>
-    </div>
-  `;
+    const safeName = escapeHtml(name);
+    const safeEmail = escapeHtml(email);
+    const safeMessage = escapeHtml(message).replace(/\n/g, '<br>');
 
-  const text = `New contact form submission\n\nName: ${name}\nEmail: ${email}\n\nMessage:\n${message}\n`;
+    const adminHtml = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #111;">New contact form submission</h2>
+        <p style="color: #666; font-size: 13px;">Ticket ID: <strong>${ticketId}</strong></p>
+        <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+          <tr>
+            <td style="padding: 8px 12px; background: #f8f9fa; font-weight: 600; width: 120px;">Name</td>
+            <td style="padding: 8px 12px;">${safeName}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 12px; background: #f8f9fa; font-weight: 600;">Email</td>
+            <td style="padding: 8px 12px;"><a href="mailto:${safeEmail}">${safeEmail}</a></td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 12px; background: #f8f9fa; font-weight: 600; vertical-align: top;">Message</td>
+            <td style="padding: 8px 12px; white-space: pre-wrap;">${safeMessage}</td>
+          </tr>
+        </table>
+        <p style="color: #666; font-size: 12px;">Reply directly to this email to respond to ${safeName}.</p>
+      </div>
+    `;
 
-  const result = await emailService.sendEmail({
-    to: CONTACT_RECIPIENT,
-    subject,
-    html,
-    text,
-    replyTo: email,
-  });
+    const adminText = `New contact form submission\n\nTicket ID: ${ticketId}\n\nName: ${name}\nEmail: ${email}\n\nMessage:\n${message}\n`;
 
-  if (!result.success) {
-    logger.error('Contact form email send failed', { email, name });
-    return res.status(502).json({ success: false, error: 'Failed to send message' });
+    await emailService.sendEmail({
+      to: CONTACT_RECIPIENT,
+      subject: adminSubject,
+      html: adminHtml,
+      text: adminText,
+      replyTo: email,
+    }).catch((err) => {
+      logger.warn('Contact form admin notification send failed (non-blocking):', err);
+    });
+
+    logger.info(`Contact form submitted by ${email} → ticket ${ticketId}`);
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error('Contact form help ticket creation failed', { email, name, error: err });
+    return res.status(502).json({ success: false, error: 'Failed to create help request' });
   }
-
-  logger.info(`Contact form submitted by ${email}`);
-  return res.json({ success: true });
 }));
 
 export default router;
