@@ -8,6 +8,7 @@ import { payseraService } from './paysera.service';
 import { notificationService } from './notification.service';
 import { fireAutomation } from '../lib/automationDispatcher';
 import { getSystemSettingInt } from '../utils/systemSettings';
+import { isCurrencyTransitionWindowOpen } from '../utils/currencyDisplay';
 import { cashbackLifecycleService } from './cashbackLifecycle.service';
 import { AppError } from '../middleware/error.middleware';
 import { detach } from '../utils/detach';
@@ -183,12 +184,10 @@ export class WalletService {
 
     const hasIban = !!wallet.payoutIban && wallet.payoutIban.trim().length > 0;
 
-    // F-021: CURRENCY_TRANSITION_MODE env var controls dual BGN/EUR display.
-    // Values: 'dual' (show both BGN and EUR, current default for safety) or
-    // 'eur_only' (show EUR only, for post-transition cutover).
-    // Switch to 'eur_only' when the product team confirms the BGN→EUR migration is complete.
-    const currencyMode = (process.env.CURRENCY_TRANSITION_MODE ?? 'dual').toLowerCase();
-    const showDualCurrency = currencyMode !== 'eur_only';
+    // Spec §8.1 rule 4: Currency transition window is controlled by a single source of truth
+    // (the DB SystemSetting 'currency_transition_window_open'), which is shared with the admin
+    // finance/payout display. This ensures both user and admin sides show the same window state.
+    const showDualCurrency = await isCurrencyTransitionWindowOpen();
 
     return {
       balance: wallet.balance,
@@ -196,9 +195,9 @@ export class WalletService {
       pendingBalance: computedPendingBalance,
       expiringBalance,
       currency: wallet.currency,
-      // F-021: Dual-currency display. When showDualCurrency is true, both BGN and EUR
+      // Dual-currency display. When showDualCurrency is true, both BGN and EUR
       // amounts are included so clients can render a transition-mode display.
-      // When currencyMode === 'eur_only', only EUR fields are populated.
+      // When the transition window is closed, only EUR fields are populated.
       ...(showDualCurrency
         ? {
             balanceBGN: wallet.balance,
