@@ -872,6 +872,13 @@ router.patch('/:userId/cancel', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
           status: 'CANCELLED',
           canceledAt: now,
           cancelAt: now,
+          // BC-ADMIN-SPEC-REAUDIT3-FAILEDPAY-CANCEL-SCANGATE-1: Stamp currentPeriodEnd
+          // to now so the resulting CANCELLED row is immediately post-period. This
+          // ensures findEligibleSubscription (subscriptionGate.ts ~148-158) does NOT
+          // match { status: 'CANCELLED', currentPeriodEnd: { gt: now } } and re-opens
+          // the scanning gate. A failed renewal with currentPeriodEnd in the future
+          // should not allow scanning just because an admin cancelled the subscription.
+          currentPeriodEnd: now,
           autoRenewal: false,
           // Reset retryAttempt so the resulting customer.subscription.deleted
           // webhook does NOT classify this as wasPaymentFailure
