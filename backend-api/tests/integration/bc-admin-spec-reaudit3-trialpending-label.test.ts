@@ -100,10 +100,10 @@ async function createSubscriber() {
 }
 
 async function grantPermission(userId: string, permissions: string[]) {
-  // Create or update the adminPermission record
+  // Create or update the permission record
   for (const permission of permissions) {
     try {
-      await prisma.adminPermission.create({
+      await prisma.permission.create({
         data: {
           userId,
           permission,
@@ -216,12 +216,12 @@ describe('TrialPending Cashback Records Mislabeled Fix (BC-ADMIN-SPEC-REAUDIT3-T
   });
 
   // NOTE: Integration tests are disabled due to JWT token validation issues in the test environment.
-  // The unit tests above fully validate the fix at the function level.
+  // The unit tests above validate deriveCashbackEntryStatus in isolation. Integration tests verify the complete flow through filters and endpoints.
   // The fix has been verified to work correctly:
   // 1. deriveCashbackEntryStatus now returns 'TrialPending' for cashbackStatus=TRIAL_PENDING
   // 2. deriveCashbackEntryStatus now returns 'TrialPending' for legacy status=TRIAL_PENDING
   // 3. The new cases are placed before PENDING to avoid shadowing
-  describe.skip('Integration: Admin listing shows TrialPending entries correctly', () => {
+  describe('Integration: Admin listing shows TrialPending entries correctly', () => {
     it('should label new-world TrialPending entries as TrialPending in GET /api/admin/cashback/entries', async () => {
       // Arrange: Create admin + subscriber + wallet (SUPER_ADMIN bypasses permission checks)
       const admin = await createAdmin('SUPER_ADMIN');
@@ -382,7 +382,7 @@ describe('TrialPending Cashback Records Mislabeled Fix (BC-ADMIN-SPEC-REAUDIT3-T
     });
   });
 
-  describe.skip('Integration: Subscriber endpoint shows TrialPending entries correctly', () => {
+  describe('Integration: Subscriber endpoint shows TrialPending entries correctly', () => {
     it('should label TrialPending entries in GET /api/admin/cashback/subscriber/:userId', async () => {
       // Arrange: Create admin + subscriber + wallet
       const admin = await createAdmin('SUPER_ADMIN');

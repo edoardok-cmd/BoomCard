@@ -854,7 +854,7 @@ async function buildStateWhere(
   state: CashbackEntryStatus,
   now: Date,
 ): Promise<WTWhere> {
-  const PENDING_RAW = ['PENDING', 'TRIAL_PENDING', 'PROCESSING', 'RISK_HOLD'] as const;
+  const PENDING_RAW = ['PENDING', 'PROCESSING', 'RISK_HOLD'] as const;
   const NEVER_PAID_RAW = [...PENDING_RAW, 'ANNULLED', 'FAILED'] as const;
   const notExpired: WTWhere = {
     OR: [{ cashbackExpiresAt: null }, { cashbackExpiresAt: { gt: now } }],
@@ -888,7 +888,11 @@ async function buildStateWhere(
   switch (state) {
     case 'Pending': {
       const legacy: WTWhere = {
-        AND: [legacyOnly, { cashbackPaidAt: null }, { status: { in: [...PENDING_RAW] } }],
+        AND: [
+          legacyOnly,
+          { cashbackPaidAt: null },
+          { status: { in: ['PENDING', 'PROCESSING', 'RISK_HOLD'] } },
+        ],
       };
       return { OR: [newWorld, legacy] };
     }
