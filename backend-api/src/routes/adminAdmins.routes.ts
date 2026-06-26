@@ -746,42 +746,67 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
     // counts toward "exists." Only ARCHIVED (decommissioned, terminal, never logs in) is
     // excluded. SUSPENDED is functionally Archived for login but is NOT terminal/decommissioned
     // per §1.5 legacy note, so we conservatively count it as existing.
-    if (request.requestedById === req.user!.id) {
-      const existingSuperAdminCount = await prisma.user.count({
-        where: { role: 'SUPER_ADMIN', status: { not: 'ARCHIVED' } },
-      });
-      if (existingSuperAdminCount > 1) {
-        return res.status(403).json({ error: 'The approver must be a different admin from the original requester' });
-      }
-      // Bootstrap exception: only one Super Admin exists → sole SA may self-approve
-    }
 
     const superAdminRole = await prisma.adminRole.findUnique({ where: { key: AdminRoleKey.SUPER_ADMIN } });
     if (!superAdminRole) return res.status(500).json({ error: 'SUPER_ADMIN role not found in DB — run seed-permissions first' });
 
+    // DEFECT 3 fix: wrap bootstrap quorum check + user.create in Serializable transaction to prevent TOCTOU race.
+    // If only 1 SA exists and two self-approve requests fire concurrently, one can slip through and violate 2-of-N rule.
+    // By checking quorum and creating within the same Serializable transaction, we ensure exactly one succeeds.
+    // H2 fix: count non-ARCHIVED SAs (not just ACTIVE) to close privilege-escalation hole. Bootstrap exception applies
+    // only when 1 non-archived SA exists (whether ACTIVE, INACTIVE, or SUSPENDED).
     let user: { id: string; email: string; firstName: string | null; lastName: string | null; role: UserRole; status: UserStatus; createdAt: Date };
     try {
-      [user] = await prisma.$transaction([
-        prisma.user.create({
-          data: {
-            email: request.email,
-            passwordHash: request.passwordHash,
-            firstName: request.firstName,
-            lastName: request.lastName,
-            phone: request.phone,
-            role: 'SUPER_ADMIN',
-            status: 'ACTIVE',
-            emailVerified: true,
-            mustChangePassword: true,
-            adminRoles: {
-              create: { roleId: superAdminRole.id, grantedById: req.user!.id },
+      user = await prisma.$transaction(async (tx) => {
+        // Re-check self-approval gate INSIDE transaction with Serializable isolation.
+        if (request.requestedById === req.user!.id) {
+          const existingSuperAdminCount = await tx.user.count({
+            where: { role: 'SUPER_ADMIN', status: { not: 'ARCHIVED' } },
+          });
+          if (existingSuperAdminCount > 1) {
+            throw new Error('FORBIDDEN:The approver must be a different admin from the original requester');
+          }
+          // Bootstrap exception: only one Super Admin exists (non-archived) → sole SA may self-approve
+        }
+
+        // Create user and delete request atomically within same Serializable transaction.
+        const [createdUser] = await tx.$transaction([
+          tx.user.create({
+            data: {
+              email: request.email,
+              passwordHash: request.passwordHash,
+              firstName: request.firstName,
+              lastName: request.lastName,
+              phone: request.phone,
+              role: 'SUPER_ADMIN',
+              status: 'ACTIVE',
+              emailVerified: true,
+              mustChangePassword: true,
+              adminRoles: {
+                create: { roleId: superAdminRole.id, grantedById: req.user!.id },
+              },
             },
-          },
-          select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true, createdAt: true },
-        }),
-        prisma.pendingSuperAdminRequest.delete({ where: { id } }),
-      ]);
+            select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true, createdAt: true },
+          }),
+          tx.pendingSuperAdminRequest.delete({ where: { id } }),
+        ]);
+
+        return createdUser;
+      }, {
+        isolationLevel: 'Serializable',
+        timeout: 30000,
+      });
     } catch (err: unknown) {
+      // Handle guard failures thrown inside transaction
+      if (typeof err === 'object' && err !== null && (err as { message?: string }).message?.startsWith('FORBIDDEN:')) {
+        const msg = (err as { message: string }).message.replace('FORBIDDEN:', '');
+        return res.status(403).json({ error: msg });
+      }
+      // Serializable isolation can trigger conflicts (P2034)
+      if (typeof err === 'object' && err !== null && (err as { code?: string }).code === 'P2034') {
+        return res.status(409).json({ error: 'Concurrent modification detected — please retry' });
+      }
+      // Email conflict (P2002) — a SUPER_ADMIN with this email already exists
       const isPrismaConflict = typeof err === 'object' && err !== null && (err as { code?: string }).code === 'P2002';
       if (isPrismaConflict) {
         return res.status(409).json({ error: 'A SUPER_ADMIN with this email already exists' });
@@ -967,33 +992,92 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
     // without changing observable behaviour (the cross-privilege protection is
     // fully provided by the earlier actor-role check).
 
-    // Prevent deactivating/archiving the last active SUPER_ADMIN (ARCHIVED / INACTIVE both block full access).
-    // L5/LOW-2: SUSPENDED is no longer reachable here — it is rejected at the top of this
-    // handler and excluded from VALID_ADMIN_STATUSES — so the former `status === 'SUSPENDED'`
-    // disjunct was dead and has been removed.
-    if (target.role === 'SUPER_ADMIN' && (status === 'INACTIVE' || status === 'ARCHIVED')) {
-      const activeSuperAdmins = await prisma.user.count({
-        where: { role: 'SUPER_ADMIN', status: 'ACTIVE', id: { not: id } },
+    // DEFECT 1 fix: wrap last-active-SA guard + status update in Serializable transaction to prevent TOCTOU race.
+    // Two concurrent archive requests could both see >0 active SAs, both think archiving leaves ≥1 active,
+    // both commit, resulting in 0 active SAs. Serializable isolation prevents this by detecting concurrent
+    // modifications and forcing retry. Guard is re-checked INSIDE the transaction.
+    // H2 fix: count non-ARCHIVED SAs (not just ACTIVE) to close privilege-escalation hole where
+    // a sole *active* SA could falsely self-approve if all other SAs are INACTIVE/SUSPENDED.
+    const beforeStatus = target.status;
+    let updated: { id: string; status: UserStatus };
+    try {
+      updated = await prisma.$transaction(async (tx) => {
+        // Re-check invariant INSIDE transaction with Serializable isolation.
+        // This ensures no other transaction can mutate the guard condition between our check and write.
+        if (target.role === 'SUPER_ADMIN' && (status === 'INACTIVE' || status === 'ARCHIVED')) {
+          const nonArchivedSuperAdmins = await tx.user.count({
+            where: { role: 'SUPER_ADMIN', status: { not: 'ARCHIVED' }, id: { not: id } },
+          });
+          if (nonArchivedSuperAdmins === 0) {
+            throw new Error('GUARD_FAILED:Cannot deactivate the last non-archived SUPER_ADMIN');
+          }
+        }
+
+        return await tx.user.update({
+          where: { id },
+          data: {
+            status: status as UserStatus,
+            // Stamp rolesUpdatedAt whenever status changes to a no-login state so the
+            // authenticate middleware invalidates any existing access tokens immediately.
+            // L5/LOW-2: SUSPENDED is unreachable here (rejected above + off the whitelist),
+            // so only ARCHIVED remains as a settable no-login state.
+            ...(status === 'ARCHIVED' ? { rolesUpdatedAt: new Date() } : {}),
+          },
+          select: { id: true, status: true },
+        });
+      }, {
+        isolationLevel: 'Serializable',
+        timeout: 30000,
       });
-      if (activeSuperAdmins === 0) {
-        return res.status(409).json({ error: 'Cannot deactivate the last active SUPER_ADMIN' });
+    } catch (txErr: unknown) {
+      // Handle guard failures thrown inside transaction
+      if (typeof txErr === 'object' && txErr !== null && (txErr as { message?: string }).message?.startsWith('GUARD_FAILED:')) {
+        const msg = (txErr as { message: string }).message.replace('GUARD_FAILED:', '');
+        return res.status(409).json({ error: msg });
+      }
+      // Serializable isolation can trigger conflicts if concurrent mutations race (P2034).
+      // Retry the transaction (may succeed if the concurrent mutation resolved the race).
+      if (typeof txErr === 'object' && txErr !== null && (txErr as { code?: string }).code === 'P2034') {
+        try {
+          // Re-fetch target to check for any schema/state changes
+          const refreshedTarget = await prisma.user.findUnique({ where: { id } });
+          if (!refreshedTarget || (refreshedTarget.role !== 'ADMIN' && refreshedTarget.role !== 'SUPER_ADMIN')) {
+            return res.status(404).json({ error: 'Admin not found' });
+          }
+
+          updated = await prisma.$transaction(async (tx) => {
+            if (refreshedTarget.role === 'SUPER_ADMIN' && (status === 'INACTIVE' || status === 'ARCHIVED')) {
+              const nonArchivedSuperAdmins = await tx.user.count({
+                where: { role: 'SUPER_ADMIN', status: { not: 'ARCHIVED' }, id: { not: id } },
+              });
+              if (nonArchivedSuperAdmins === 0) {
+                throw new Error('GUARD_FAILED:Cannot deactivate the last non-archived SUPER_ADMIN');
+              }
+            }
+
+            return await tx.user.update({
+              where: { id },
+              data: {
+                status: status as UserStatus,
+                ...(status === 'ARCHIVED' ? { rolesUpdatedAt: new Date() } : {}),
+              },
+              select: { id: true, status: true },
+            });
+          }, {
+            isolationLevel: 'Serializable',
+            timeout: 30000,
+          });
+        } catch (retryErr: unknown) {
+          if (typeof retryErr === 'object' && retryErr !== null && (retryErr as { message?: string }).message?.startsWith('GUARD_FAILED:')) {
+            const msg = (retryErr as { message: string }).message.replace('GUARD_FAILED:', '');
+            return res.status(409).json({ error: msg });
+          }
+          throw retryErr;
+        }
+      } else {
+        throw txErr;
       }
     }
-
-    const beforeStatus = target.status;
-
-    const updated = await prisma.user.update({
-      where: { id },
-      data: {
-        status: status as UserStatus,
-        // Stamp rolesUpdatedAt whenever status changes to a no-login state so the
-        // authenticate middleware invalidates any existing access tokens immediately.
-        // L5/LOW-2: SUSPENDED is unreachable here (rejected above + off the whitelist),
-        // so only ARCHIVED remains as a settable no-login state.
-        ...(status === 'ARCHIVED' ? { rolesUpdatedAt: new Date() } : {}),
-      },
-      select: { id: true, status: true },
-    });
 
     req.skipAudit = true;
     await writeAudit({
@@ -1167,16 +1251,6 @@ router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADM
       return res.status(400).json({ error: 'Invalid roleKey' });
     }
 
-    // #3 fix: prevent removing the last SUPER_ADMIN role
-    if (roleKey === AdminRoleKey.SUPER_ADMIN) {
-      const remainingActiveSupers = await prisma.user.count({
-        where: { role: 'SUPER_ADMIN', status: 'ACTIVE', id: { not: id } },
-      });
-      if (remainingActiveSupers === 0) {
-        return res.status(409).json({ error: 'Cannot revoke the role of the last active SUPER_ADMIN' });
-      }
-    }
-
     const adminRole = await prisma.adminRole.findUnique({ where: { key: roleKey as AdminRoleKey } });
     if (!adminRole) return res.status(404).json({ error: 'Role not found' });
 
@@ -1186,16 +1260,82 @@ router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADM
     });
     const beforeRoles = existingRoles.map((r) => r.role.key);
 
+    // DEFECT 2 fix: wrap SUPER_ADMIN role-revoke guard + delete in Serializable transaction to prevent TOCTOU race.
+    // Two concurrent revoke requests could both see >0 other non-archived SUPER_ADMINs, both think revoking leaves ≥1,
+    // both commit, resulting in 0 non-archived SUPER_ADMINs. Serializable isolation prevents this.
+    // H2 fix: count non-ARCHIVED SAs (not just ACTIVE) to close privilege-escalation hole.
     if (roleKey === AdminRoleKey.SUPER_ADMIN) {
       // Removing SUPER_ADMIN must also downgrade User.role — authorization middleware
       // checks user.role directly, not UserAdminRole, so deleting only the junction row
       // would leave the user with full SUPER_ADMIN access.
-      const [deleteResult] = await prisma.$transaction([
-        prisma.userAdminRole.deleteMany({ where: { userId: id, roleId: adminRole.id } }),
-        prisma.user.update({ where: { id }, data: { role: 'ADMIN', rolesUpdatedAt: new Date() } }),
-      ]);
-      if (deleteResult.count === 0) {
-        return res.status(404).json({ error: 'Admin does not have this role' });
+      try {
+        let deleteResult: { count: number };
+        try {
+          deleteResult = await prisma.$transaction(async (tx) => {
+            // Re-check invariant INSIDE transaction with Serializable isolation.
+            const remainingNonArchivedSupers = await tx.user.count({
+              where: { role: 'SUPER_ADMIN', status: { not: 'ARCHIVED' }, id: { not: id } },
+            });
+            if (remainingNonArchivedSupers === 0) {
+              throw new Error('GUARD_FAILED:Cannot revoke the role of the last non-archived SUPER_ADMIN');
+            }
+
+            const result = await tx.userAdminRole.deleteMany({ where: { userId: id, roleId: adminRole.id } });
+            if (result.count === 0) {
+              throw new Error('NOT_FOUND:Admin does not have this role');
+            }
+
+            await tx.user.update({ where: { id }, data: { role: 'ADMIN', rolesUpdatedAt: new Date() } });
+            return result;
+          }, {
+            isolationLevel: 'Serializable',
+            timeout: 30000,
+          });
+        } catch (txErr: unknown) {
+          // Serializable conflict on first attempt — retry once
+          if (typeof txErr === 'object' && txErr !== null && (txErr as { code?: string }).code === 'P2034') {
+            deleteResult = await prisma.$transaction(async (tx) => {
+              const remainingNonArchivedSupers = await tx.user.count({
+                where: { role: 'SUPER_ADMIN', status: { not: 'ARCHIVED' }, id: { not: id } },
+              });
+              if (remainingNonArchivedSupers === 0) {
+                throw new Error('GUARD_FAILED:Cannot revoke the role of the last non-archived SUPER_ADMIN');
+              }
+
+              const result = await tx.userAdminRole.deleteMany({ where: { userId: id, roleId: adminRole.id } });
+              if (result.count === 0) {
+                throw new Error('NOT_FOUND:Admin does not have this role');
+              }
+
+              await tx.user.update({ where: { id }, data: { role: 'ADMIN', rolesUpdatedAt: new Date() } });
+              return result;
+            }, {
+              isolationLevel: 'Serializable',
+              timeout: 30000,
+            });
+          } else {
+            throw txErr;
+          }
+        }
+
+        if (deleteResult.count === 0) {
+          return res.status(404).json({ error: 'Admin does not have this role' });
+        }
+      } catch (txErr: unknown) {
+        if (typeof txErr === 'object' && txErr !== null) {
+          const msg = (txErr as { message?: string }).message || '';
+          if (msg.startsWith('GUARD_FAILED:')) {
+            return res.status(409).json({ error: msg.replace('GUARD_FAILED:', '') });
+          }
+          if (msg.startsWith('NOT_FOUND:')) {
+            return res.status(404).json({ error: msg.replace('NOT_FOUND:', '') });
+          }
+          if ((txErr as { code?: string }).code === 'P2034') {
+            // Serializable conflict persists even after retry — return 409
+            return res.status(409).json({ error: 'Concurrent modification detected — please retry' });
+          }
+        }
+        throw txErr;
       }
     } else {
       const { count } = await prisma.userAdminRole.deleteMany({ where: { userId: id, roleId: adminRole.id } });
