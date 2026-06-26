@@ -1,4 +1,4 @@
-import { Queue, JobsOptions } from 'bullmq';
+import { Queue, JobsOptions, ConnectionOptions } from 'bullmq';
 import { getRedisConnection } from './redis';
 import { logger } from '../utils/logger';
 
@@ -31,7 +31,11 @@ export function getMerchantVerificationQueue(): Queue<MerchantVerificationJob> |
   }
 
   cachedQueue = new Queue<MerchantVerificationJob>(MERCHANT_VERIFICATION_QUEUE, {
-    connection,
+    // `connection` is an ioredis instance from the top-level ioredis package;
+    // BullMQ bundles its own ioredis copy, so the two `Redis` types have distinct
+    // identities even though they are runtime-compatible. Cast to BullMQ's
+    // ConnectionOptions to bridge the duplicate-package type mismatch.
+    connection: connection as unknown as ConnectionOptions,
     defaultJobOptions: DEFAULT_JOB_OPTS,
   });
 

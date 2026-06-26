@@ -1,4 +1,4 @@
-import { Worker } from 'bullmq';
+import { Worker, ConnectionOptions } from 'bullmq';
 import { getRedisConnection } from './redis';
 import { MERCHANT_VERIFICATION_QUEUE, MerchantVerificationJob } from './merchantVerification.queue';
 import { stickerService } from '../services/sticker.service';
@@ -44,7 +44,8 @@ export function startMerchantVerificationWorker(): Worker | null {
       }
     },
     {
-      connection,
+      // Cast bridges the duplicate ioredis-package type mismatch (see queue.ts).
+      connection: connection as unknown as ConnectionOptions,
       concurrency: WORKER_CONCURRENCY,
       stalledInterval: 30_000,  // ¼ of lockDuration; keeps stall-checks clear of lock-renewal window (operational best-practice, not a BullMQ invariant)
       lockDuration: 120_000,   // default 30 s → 2 min; OCR runs up to 90 s, avoids mid-job lock renewals
