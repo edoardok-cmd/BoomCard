@@ -513,6 +513,11 @@ router.patch('/:userId/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
     if (user.deletedAt) {
       return res.status(400).json({ error: 'Cannot change status of a deleted account' });
     }
+    // DELETED status can only be revived via the /restore endpoint (requires subscribers.delete permission).
+    // This guard prevents lower-tier admins (subscribers.write) from reviving DELETED accounts.
+    if (user.status === 'DELETED') {
+      return res.status(400).json({ error: 'Use the restore endpoint to revive a deleted account' });
+    }
     // ARCHIVED is terminal: once a user enters ARCHIVED state, they cannot be reverted to ACTIVE or INACTIVE.
     if (user.status === 'ARCHIVED' && status !== 'ARCHIVED') {
       return res.status(400).json({ error: 'Cannot revert an archived account to ACTIVE or INACTIVE. Archived accounts are terminal.' });
