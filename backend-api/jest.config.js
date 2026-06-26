@@ -5,10 +5,8 @@ module.exports = {
   testEnvironment: 'node',
   transform: {
     '^.+\\.[tj]sx?$': ['ts-jest', {
-      tsconfig: {
-        types: ['node', 'jest'],
-        allowJs: true,
-      },
+      tsconfig: 'tsconfig.test.json',
+      diagnostics: { warnOnly: true },
     }],
   },
   // @scure/base and @noble/* ship pure ESM via package.json `exports`. Jest's

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/globals';
 import request from 'supertest';
 import { prisma } from '../src/lib/prisma';
-import { app } from '../src/app';
+import { app } from '../src/server';
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key';
@@ -22,7 +22,21 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
   let superAdminToken: string;
 
   beforeAll(async () => {
-    // Create a SUPER_ADMIN user for auth
+    // Ensure the SUPER_ADMIN admin role row exists (required by the approve route).
+    // The approve route does adminRole.findUnique({ where: { key: 'SUPER_ADMIN' } }) and returns 500 if missing.
+    await prisma.adminRole.upsert({
+      where: { key: 'SUPER_ADMIN' },
+      update: {},
+      create: { key: 'SUPER_ADMIN', label: 'Super Admin' },
+    });
+
+    // Pre-cleanup stale users from previous runs before creating fixtures.
+    await prisma.pendingSuperAdminRequest.deleteMany({});
+    await prisma.helpTicket.deleteMany({ where: { user: { email: { contains: '@test.local' } } } });
+    await prisma.user.deleteMany({ where: { email: { contains: '@test.local' } } });
+
+    // Create a SUPER_ADMIN user for auth.
+    // SUPER_ADMIN bypasses all permission checks via requirePermission — no AdminRole row needed.
     superAdminUser = await prisma.user.create({
       data: {
         email: 'super-admin-test@test.local',
@@ -30,11 +44,6 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
         emailVerified: true,
-        adminRoles: {
-          create: {
-            roleId: (await prisma.adminRole.findUnique({ where: { key: 'SUPER_ADMIN' } }))!.id,
-          },
-        },
       },
     });
 
@@ -53,15 +62,10 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
   });
 
   afterAll(async () => {
-    // Cleanup
+    // Delete in FK-safe order: HelpTickets before Users.
     await prisma.pendingSuperAdminRequest.deleteMany({});
-    await prisma.user.deleteMany({
-      where: {
-        email: {
-          contains: 'test',
-        },
-      },
-    });
+    await prisma.helpTicket.deleteMany({ where: { user: { email: { contains: '@test.local' } } } });
+    await prisma.user.deleteMany({ where: { email: { contains: '@test.local' } } });
   });
 
   beforeEach(async () => {
@@ -89,13 +93,14 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
 
       // Attempt: Try to initiate a SUPER_ADMIN request for the same email
       const response = await request(app)
-        .post('/api/admin/admins/pending-super')
+        .post('/api/admin/admins/')
         .set('Authorization', `Bearer ${superAdminToken}`)
         .send({
           email: testEmail,
           firstName: 'Test',
           lastName: 'User',
           password: 'SecurePassword123!',
+          roleKey: 'SUPER_ADMIN',
         });
 
       // Assert: Should be blocked with 409
@@ -106,6 +111,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
 
     it('POST /pending-super should block initiation if email exists as SUPER_ADMIN', async () => {
       // Setup: Create a SUPER_ADMIN with email y@z.com
+      // SUPER_ADMIN bypasses permission checks — no AdminRole row needed.
       const testEmail = 'super-collision-test@test.local';
       await prisma.user.create({
         data: {
@@ -114,23 +120,19 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           role: 'SUPER_ADMIN',
           status: 'ACTIVE',
           emailVerified: true,
-          adminRoles: {
-            create: {
-              roleId: (await prisma.adminRole.findUnique({ where: { key: 'SUPER_ADMIN' } }))!.id,
-            },
-          },
         },
       });
 
       // Attempt: Try to initiate a SUPER_ADMIN request for the same email
       const response = await request(app)
-        .post('/api/admin/admins/pending-super')
+        .post('/api/admin/admins/')
         .set('Authorization', `Bearer ${superAdminToken}`)
         .send({
           email: testEmail,
           firstName: 'Test',
           lastName: 'User',
           password: 'SecurePassword123!',
+          roleKey: 'SUPER_ADMIN',
         });
 
       // Assert: Should be blocked with 409
@@ -184,13 +186,14 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
 
       // Step 1: Initiate pending request
       const initResponse = await request(app)
-        .post('/api/admin/admins/pending-super')
+        .post('/api/admin/admins/')
         .set('Authorization', `Bearer ${superAdminToken}`)
         .send({
           email: testEmail,
           firstName: 'NoCollision',
           lastName: 'User',
           password,
+          roleKey: 'SUPER_ADMIN',
         });
 
       expect(initResponse.status).toBe(202);
@@ -226,26 +229,28 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
 
       // Step 1: Create first pending request
       const firstResponse = await request(app)
-        .post('/api/admin/admins/pending-super')
+        .post('/api/admin/admins/')
         .set('Authorization', `Bearer ${superAdminToken}`)
         .send({
           email: testEmail,
           firstName: 'First',
           lastName: 'Request',
           password,
+          roleKey: 'SUPER_ADMIN',
         });
 
       expect(firstResponse.status).toBe(202);
 
       // Step 2: Attempt to create another request for same email (should fail)
       const secondResponse = await request(app)
-        .post('/api/admin/admins/pending-super')
+        .post('/api/admin/admins/')
         .set('Authorization', `Bearer ${superAdminToken}`)
         .send({
           email: testEmail,
           firstName: 'Second',
           lastName: 'Request',
           password,
+          roleKey: 'SUPER_ADMIN',
         });
 
       // Should fail with 409 because live request exists
@@ -275,13 +280,14 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
       // Step 2: Attempt to create a new request for the same email
       // This should detect the collision is expired, delete it, and retry
       const newResponse = await request(app)
-        .post('/api/admin/admins/pending-super')
+        .post('/api/admin/admins/')
         .set('Authorization', `Bearer ${superAdminToken}`)
         .send({
           email: testEmail,
           firstName: 'New',
           lastName: 'Request',
           password,
+          roleKey: 'SUPER_ADMIN',
         });
 
       // Should succeed (202) because the expired row was cleaned up
@@ -387,13 +393,14 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
       // 5. Succeed
 
       const response = await request(app)
-        .post('/api/admin/admins/pending-super')
+        .post('/api/admin/admins/')
         .set('Authorization', `Bearer ${superAdminToken}`)
         .send({
           email: testEmail,
           firstName: 'New',
           lastName: 'Request',
           password,
+          roleKey: 'SUPER_ADMIN',
         });
 
       // Should succeed

@@ -23,10 +23,11 @@ import { partnerService } from '../../src/services/partner.service';
  * Returns { partnerId, venueId, stickers: [{ id, status }] }
  */
 async function setupTestPartner(status: PartnerStatus = PartnerStatus.ACTIVE) {
+  const ts = Date.now();
   const user = await prisma.user.create({
     data: {
-      email: `test-${Date.now()}@example.com`,
-      password: 'hashed',
+      email: `test-${ts}@example.com`,
+      passwordHash: 'hashed',
       firstName: 'Test',
       lastName: 'Partner',
       role: 'PARTNER',
@@ -37,7 +38,7 @@ async function setupTestPartner(status: PartnerStatus = PartnerStatus.ACTIVE) {
   const partner = await prisma.partner.create({
     data: {
       userId: user.id,
-      businessName: `Test Partner ${Date.now()}`,
+      businessName: `Test Partner ${ts}`,
       category: 'RESTAURANTS_FOOD',
       status,
       verifiedAt: status === PartnerStatus.ACTIVE ? new Date() : null,
@@ -50,7 +51,6 @@ async function setupTestPartner(status: PartnerStatus = PartnerStatus.ACTIVE) {
       name: 'Test Venue',
       city: 'Sofia',
       address: '123 Main St',
-      type: 'PRIMARY',
     },
   });
 
@@ -58,8 +58,8 @@ async function setupTestPartner(status: PartnerStatus = PartnerStatus.ACTIVE) {
     data: {
       venueId: venue.id,
       name: 'Entrance',
-      type: 'COUNTER',
-      number: '1',
+      locationType: 'COUNTER',
+      locationNumber: '1',
     },
   });
 
@@ -69,36 +69,36 @@ async function setupTestPartner(status: PartnerStatus = PartnerStatus.ACTIVE) {
       data: {
         venueId: venue.id,
         locationId: stickerLocation.id,
-        code: `TEST-ACTIVE-${Date.now()}`,
+        stickerId: `TEST-ACTIVE-${ts}`,
+        qrCode: `QR-ACTIVE-${ts}`,
         status: StickerStatus.ACTIVE,
-        printedCopies: 1,
       },
     }),
     prisma.sticker.create({
       data: {
         venueId: venue.id,
         locationId: stickerLocation.id,
-        code: `TEST-PROCESSING-${Date.now()}`,
+        stickerId: `TEST-PROCESSING-${ts}`,
+        qrCode: `QR-PROCESSING-${ts}`,
         status: StickerStatus.PROCESSING,
-        printedCopies: 0,
       },
     }),
     prisma.sticker.create({
       data: {
         venueId: venue.id,
         locationId: stickerLocation.id,
-        code: `TEST-PENDING-${Date.now()}`,
+        stickerId: `TEST-PENDING-${ts}`,
+        qrCode: `QR-PENDING-${ts}`,
         status: StickerStatus.PENDING,
-        printedCopies: 0,
       },
     }),
     prisma.sticker.create({
       data: {
         venueId: venue.id,
         locationId: stickerLocation.id,
-        code: `TEST-MANUAL-${Date.now()}`,
+        stickerId: `TEST-MANUAL-${ts}`,
+        qrCode: `QR-MANUAL-${ts}`,
         status: StickerStatus.INACTIVE,
-        printedCopies: 1,
         autoDeactivatedAt: null, // Manually deactivated
       },
     }),
@@ -288,8 +288,9 @@ describe('BC-ADMIN-SPEC-REAUDIT-QR-SYNC-DURABILITY-1 — QR sync atomic durabili
           where: { id: stickers[0].id },
         });
         expect(activeSticker?.status).toBe(StickerStatus.INACTIVE);
-        // autoDeactivatedAt is still there because the reactivation didn't happen
-        expect(activeSticker?.autoDeactivatedAt).not.toBeNull();
+        // autoDeactivatedAt is CLEARED on ARCHIVED → ACTIVE to prevent bulk-reactivation
+        // on a subsequent Inactive → Active cycle (spec §2.4 Gap 6, code Case 3).
+        expect(activeSticker?.autoDeactivatedAt).toBeNull();
 
         const partner = await prisma.partner.findUnique({ where: { id: partnerId } });
         expect(partner?.status).toBe(PartnerStatus.ACTIVE);
@@ -361,15 +362,14 @@ describe('BC-ADMIN-SPEC-REAUDIT-QR-SYNC-DURABILITY-1 — QR sync atomic durabili
 
   describe('Integration with PartnerStatusChange audit table', () => {
     it('should create a PartnerStatusChange row atomically with sticker updates', async () => {
-      const { partnerId } = await setupTestPartner(PartnerStatus.ACTIVE);
+      const { partnerId, userId } = await setupTestPartner(PartnerStatus.ACTIVE);
 
       try {
-        const adminId = 'test-admin-' + Date.now();
         await partnerService.setPartnerStatus({
           partnerId,
           toStatus: PartnerStatus.INACTIVE,
           reason: 'Test audit',
-          changedById: adminId,
+          changedById: userId,
         });
 
         // Verify PartnerStatusChange was created
@@ -381,7 +381,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-QR-SYNC-DURABILITY-1 — QR sync atomic durabili
         expect(change?.fromStatus).toBe(PartnerStatus.ACTIVE);
         expect(change?.toStatus).toBe(PartnerStatus.INACTIVE);
         expect(change?.reason).toBe('Test audit');
-        expect(change?.changedById).toBe(adminId);
+        expect(change?.changedById).toBe(userId);
       } finally {
         await cleanupTestPartner(partnerId);
       }
@@ -430,7 +430,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-QR-SYNC-DURABILITY-1 — QR sync atomic durabili
       const user = await prisma.user.create({
         data: {
           email: `test-no-venues-${Date.now()}@example.com`,
-          password: 'hashed',
+          passwordHash: 'hashed',
           firstName: 'Test',
           lastName: 'NoVenues',
           role: 'PARTNER',
@@ -470,33 +470,34 @@ describe('BC-ADMIN-SPEC-REAUDIT-QR-SYNC-DURABILITY-1 — QR sync atomic durabili
       });
 
       if (stickerLocation) {
+        const ts2 = Date.now();
         // Create terminal stickers
         const terminalStickers = await Promise.all([
           prisma.sticker.create({
             data: {
               venueId,
               locationId: stickerLocation.id,
-              code: `TEST-REPLACED-${Date.now()}`,
+              stickerId: `TEST-REPLACED-${ts2}`,
+              qrCode: `QR-REPLACED-${ts2}`,
               status: StickerStatus.REPLACED,
-              printedCopies: 1,
             },
           }),
           prisma.sticker.create({
             data: {
               venueId,
               locationId: stickerLocation.id,
-              code: `TEST-RETIRED-${Date.now()}`,
+              stickerId: `TEST-RETIRED-${ts2 + 1}`,
+              qrCode: `QR-RETIRED-${ts2 + 1}`,
               status: StickerStatus.RETIRED,
-              printedCopies: 1,
             },
           }),
           prisma.sticker.create({
             data: {
               venueId,
               locationId: stickerLocation.id,
-              code: `TEST-DAMAGED-${Date.now()}`,
+              stickerId: `TEST-DAMAGED-${ts2 + 2}`,
+              qrCode: `QR-DAMAGED-${ts2 + 2}`,
               status: StickerStatus.DAMAGED,
-              printedCopies: 1,
             },
           }),
         ]);
