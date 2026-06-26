@@ -253,6 +253,23 @@ export class PartnerService {
         },
       });
 
+      // Spec §1.7 / §12 rule 5: DEFECT 1 FIX — invalidate activation links on
+      // ARCHIVED and SUSPENDED transitions. When a partner is archived or suspended,
+      // any unconsumed activation links should be dead. The consume path (line 280-285
+      // in activationLink.service.ts) already defends against this, but spec intent is
+      // the link should be explicitly invalidated at archival time.
+      if (toStatus === PartnerStatus.ARCHIVED || toStatus === PartnerStatus.SUSPENDED) {
+        const now = new Date();
+        await tx.activationLink.updateMany({
+          where: {
+            partnerId,
+            consumedAt: null,
+            invalidatedAt: null,
+          },
+          data: { invalidatedAt: now },
+        });
+      }
+
       await tx.partnerStatusChange.create({
         data: {
           partnerId,
@@ -374,9 +391,26 @@ export class PartnerService {
       } else if (fromStatus === PartnerStatus.ARCHIVED) {
         // Case 3: Archived → Active. Spec §2.4 Gap 6 — QR codes require explicit
         // admin reactivation per sticker. Do NOT auto-reactivate.
+        //
+        // DEFECT 2 FIX: Clear autoDeactivatedAt for all INACTIVE codes so they do not
+        // get bulk-reactivated by a later Inactive→Active cycle. During the ARCHIVED
+        // phase, stickers may have been manually deactivated (autoDeactivatedAt=null)
+        // or auto-deactivated (autoDeactivatedAt!=null). When transitioning back to
+        // ACTIVE, we must require explicit per-sticker reactivation (spec §2.4 Gap 6),
+        // so we clear the timestamp on ALL INACTIVE stickers. This ensures that if the
+        // partner later becomes Inactive and then Active again, the stickers are not
+        // unexpectedly bulk-reactivated — they require admin action per the spec.
+        await tx.sticker.updateMany({
+          where: {
+            venue: { partnerId },
+            status: StickerStatus.INACTIVE,
+          },
+          data: { autoDeactivatedAt: null },
+        });
         logger.info(
           `[partner.syncQr] partnerId=${partnerId} transitioned from ARCHIVED to ACTIVE. ` +
           `QR codes require explicit admin reactivation per sticker (spec §2.4 Gap 6). ` +
+          `Cleared autoDeactivatedAt on all INACTIVE stickers to prevent accidental bulk-reactivation. ` +
           `Admin must use the QR management UI to reactivate individual stickers.`
         );
       } else {
