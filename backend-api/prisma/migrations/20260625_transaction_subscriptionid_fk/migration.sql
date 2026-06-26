@@ -34,7 +34,7 @@ ALTER TABLE "Transaction"
 -- if the Subscription is deleted, maintaining audit trail.
 ALTER TABLE "Transaction"
   ADD CONSTRAINT "Transaction_subscriptionId_fkey"
-  FOREIGN KEY ("subscriptionId") REFERENCES "Subscription"("id")
+  FOREIGN KEY ("subscriptionId") REFERENCES "subscriptions"("id")
   ON DELETE SET NULL;
 
 -- Step 4: Backfill Transaction rows with type='SUBSCRIPTION' by matching their
@@ -43,7 +43,7 @@ ALTER TABLE "Transaction"
 UPDATE "Transaction" t
   SET "subscriptionId" = (
     SELECT s.id
-    FROM "Subscription" s
+    FROM "subscriptions" s
     WHERE s."userId" = t."userId"
       AND t."type" = 'SUBSCRIPTION'
       AND t."createdAt" >= s."currentPeriodStart"
