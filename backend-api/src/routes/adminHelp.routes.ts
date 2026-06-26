@@ -5,7 +5,7 @@ import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { notificationService } from '../services/notification.service';
 import { emailService } from '../services/email.service';
-import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef, withCanonicalRequestStatus } from '../services/ticketEmail.service';
+import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef, withCanonicalRequestStatus, withCanonicalRequestType } from '../services/ticketEmail.service';
 import { fireAutomation } from '../lib/automationDispatcher';
 import { logger } from '../utils/logger';
 import { parsePagination } from '../utils/pagination';
@@ -271,7 +271,13 @@ router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
       if (!ADMIN_VALID_REQUEST_TYPES.includes(req.query.requestType)) {
         return res.status(400).json({ error: 'Невалиден тип заявка' });
       }
-      where.requestType = req.query.requestType as TicketRequestType;
+      // M7: When filtering by canonical CHANGE, include all *_CHANGE sub-types
+      // to prevent fragmentation of the Change bucket (Spec §1.7 / Clash 8.2).
+      if (req.query.requestType === 'CHANGE') {
+        where.requestType = { in: ['CHANGE', 'DATA_CHANGE', 'LOCATION_CHANGE', 'CONTRACT_CHANGE'] as TicketRequestType[] };
+      } else {
+        where.requestType = req.query.requestType as TicketRequestType;
+      }
     }
     // Spec §11.5 "период" — date range filter on createdAt.
     // `from` and `to` are ISO-8601 strings; invalid values are silently ignored.
@@ -302,7 +308,13 @@ router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
     ]);
 
     // M6 (§1.7): surface the canonical request_status alongside the raw enum token.
-    res.json({ tickets: tickets.map(withCanonicalRequestStatus), total, page: pageNum, limit: take });
+    // M7 (§1.7 / Clash 8.2): surface the canonical request_type alongside the raw enum token.
+    res.json({
+      tickets: tickets.map(t => withCanonicalRequestType(withCanonicalRequestStatus(t))),
+      total,
+      page: pageNum,
+      limit: take,
+    });
   } catch (error) {
     next(error);
   }
@@ -334,7 +346,13 @@ router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res
       if (!ADMIN_VALID_REQUEST_TYPES.includes(req.query.requestType)) {
         return res.status(400).json({ error: 'Невалиден тип заявка' });
       }
-      conditions.push({ requestType: req.query.requestType as TicketRequestType });
+      // M7: When filtering by canonical CHANGE, include all *_CHANGE sub-types
+      // to prevent fragmentation of the Change bucket (Spec §1.7 / Clash 8.2).
+      if (req.query.requestType === 'CHANGE') {
+        conditions.push({ requestType: { in: ['CHANGE', 'DATA_CHANGE', 'LOCATION_CHANGE', 'CONTRACT_CHANGE'] as TicketRequestType[] } });
+      } else {
+        conditions.push({ requestType: req.query.requestType as TicketRequestType });
+      }
     }
     if (search) {
       conditions.push({ OR: [
@@ -351,7 +369,13 @@ router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res
     ]);
 
     // M6 (§1.7): surface the canonical request_status alongside the raw enum token.
-    res.json({ tickets: tickets.map(withCanonicalRequestStatus), total, page: pageNum, limit: take });
+    // M7 (§1.7 / Clash 8.2): surface the canonical request_type alongside the raw enum token.
+    res.json({
+      tickets: tickets.map(t => withCanonicalRequestType(withCanonicalRequestStatus(t))),
+      total,
+      page: pageNum,
+      limit: take,
+    });
   } catch (error) {
     next(error);
   }
@@ -396,7 +420,8 @@ router.get('/:id', requirePermission('help.read'), async (req: AuthRequest, res,
     }
 
     // M6 (§1.7): surface the canonical request_status alongside the raw enum token.
-    res.json({ ticket: { ...withCanonicalRequestStatus(ticket), bounceCount } });
+    // M7 (§1.7 / Clash 8.2): surface the canonical request_type alongside the raw enum token.
+    res.json({ ticket: { ...withCanonicalRequestType(withCanonicalRequestStatus(ticket)), bounceCount } });
   } catch (error) {
     next(error);
   }
