@@ -5,7 +5,7 @@ import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { notificationService } from '../services/notification.service';
 import { emailService } from '../services/email.service';
-import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef, withCanonicalRequestStatus, withCanonicalRequestType } from '../services/ticketEmail.service';
+import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef, withCanonicalRequestStatus, withCanonicalRequestType, toRawStatusFilter } from '../services/ticketEmail.service';
 import { fireAutomation } from '../lib/automationDispatcher';
 import { logger } from '../utils/logger';
 import { parsePagination } from '../utils/pagination';
@@ -74,6 +74,14 @@ function hasFullAccess(req: AuthRequest): boolean {
 // L5 fix: include the bare CHANGE member so admins can classify a generic
 // change request that does not fit a specific sub-type.
 const ADMIN_VALID_REQUEST_TYPES = ['SUPPORT', 'DISPUTE', 'CHANGE', 'DATA_CHANGE', 'LOCATION_CHANGE', 'CONTRACT_CHANGE', 'OTHER'];
+
+// M8 (Spec §1.7 / §7.1): canonical status names the admin UI exposes + raw enum
+// tokens kept for back-compat. Used by both GET / and GET /mine to validate the
+// ?status= query param before expanding via toRawStatusFilter().
+const VALID_STATUS_TOKENS: ReadonlyArray<string> = [
+  ...Object.values(TicketStatus),
+  'Cancelled', 'Closed', 'In Progress', 'New', 'Waiting',
+];
 
 // POST /api/admin/help — G8: admin creates a new help ticket (Spec §11 "Нова заявка")
 router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, next) => {
@@ -258,8 +266,10 @@ router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
     const { skip, take, page: pageNum } = parsePagination(req.query, { defaultLimit: 25, maxLimit: 100 });
 
     const where: Parameters<typeof prisma.helpTicket.findMany>[0]['where'] = {};
-    if (status && Object.values(TicketStatus).includes(status as TicketStatus)) {
-      where.status = status as TicketStatus;
+    if (status && VALID_STATUS_TOKENS.includes(status)) {
+      // M8: expand canonical bucket names to the raw enum tokens that display
+      // under that bucket (e.g. "Cancelled" → { in: ['CANCELLED', 'REJECTED'] }).
+      where.status = toRawStatusFilter(status) as any;
     }
     if (priority && Object.values(TicketPriority).includes(priority as TicketPriority)) {
       where.priority = priority as TicketPriority;
@@ -333,8 +343,10 @@ router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res
       { OR: [{ userId: req.user!.id }, { assigneeId: req.user!.id }] },
     ];
 
-    if (status && Object.values(TicketStatus).includes(status as TicketStatus)) {
-      conditions.push({ status: status as TicketStatus });
+    if (status && VALID_STATUS_TOKENS.includes(status)) {
+      // M8: expand canonical bucket names to the raw enum tokens that display
+      // under that bucket (e.g. "Cancelled" → { in: ['CANCELLED', 'REJECTED'] }).
+      conditions.push({ status: toRawStatusFilter(status) as any });
     }
     if (priority && Object.values(TicketPriority).includes(priority as TicketPriority)) {
       conditions.push({ priority: priority as TicketPriority });

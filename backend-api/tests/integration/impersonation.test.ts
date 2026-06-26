@@ -318,6 +318,106 @@ describe('Admin Impersonation', () => {
       expect(stopRes.status).toBe(200);
       expect(stopRes.body.data.user.id).toBe(fx.adminId);
     });
+
+    it('rejects refresh when acting admin is archived', async () => {
+      // Part 4 impersonation invariants: refreshToken must re-validate the acting
+      // admin status. If the admin is decommissioned, refresh must fail (401) without
+      // carrying impersonation forward.
+      const { accessToken } = await loginWeb(fx.adminEmail, ADMIN_PASSWORD);
+
+      const impRes = await request(app)
+        .post('/api/auth/impersonate')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ targetPartnerUserId: fx.partnerUserId });
+      expect(impRes.status).toBe(200);
+      const impRefreshToken = impRes.body.data.refreshToken;
+
+      // Archive the admin account
+      await prisma.user.update({
+        where: { id: fx.adminId },
+        data: { status: 'ARCHIVED' },
+      });
+
+      // Attempt refresh — must fail because the acting admin is no longer ACTIVE
+      const refreshRes = await request(app)
+        .post('/api/auth/refresh')
+        .send({ refreshToken: impRefreshToken });
+
+      expect(refreshRes.status).toBe(401);
+      expect(refreshRes.body.error).toContain('Impersonation session ended');
+
+      // Verify the refresh token was revoked
+      const stored = await prisma.refreshToken.findUnique({
+        where: { token: impRefreshToken },
+      });
+      expect(stored).toBeNull();
+
+      // Restore admin for other tests
+      await prisma.user.update({
+        where: { id: fx.adminId },
+        data: { status: 'ACTIVE' },
+      });
+    });
+
+    it('rejects refresh when acting admin is suspended', async () => {
+      const { accessToken } = await loginWeb(fx.adminEmail, ADMIN_PASSWORD);
+
+      const impRes = await request(app)
+        .post('/api/auth/impersonate')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ targetPartnerUserId: fx.partnerUserId });
+      expect(impRes.status).toBe(200);
+      const impRefreshToken = impRes.body.data.refreshToken;
+
+      // Suspend the admin account
+      await prisma.user.update({
+        where: { id: fx.adminId },
+        data: { status: 'SUSPENDED' },
+      });
+
+      // Refresh must fail
+      const refreshRes = await request(app)
+        .post('/api/auth/refresh')
+        .send({ refreshToken: impRefreshToken });
+
+      expect(refreshRes.status).toBe(401);
+
+      // Restore admin for other tests
+      await prisma.user.update({
+        where: { id: fx.adminId },
+        data: { status: 'ACTIVE' },
+      });
+    });
+
+    it('rejects refresh when acting admin is downgraded from ADMIN to USER role', async () => {
+      const { accessToken } = await loginWeb(fx.adminEmail, ADMIN_PASSWORD);
+
+      const impRes = await request(app)
+        .post('/api/auth/impersonate')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ targetPartnerUserId: fx.partnerUserId });
+      expect(impRes.status).toBe(200);
+      const impRefreshToken = impRes.body.data.refreshToken;
+
+      // Downgrade admin to USER role (this stamps rolesUpdatedAt)
+      await prisma.user.update({
+        where: { id: fx.adminId },
+        data: { role: 'USER' },
+      });
+
+      // Refresh must fail
+      const refreshRes = await request(app)
+        .post('/api/auth/refresh')
+        .send({ refreshToken: impRefreshToken });
+
+      expect(refreshRes.status).toBe(401);
+
+      // Restore admin for other tests
+      await prisma.user.update({
+        where: { id: fx.adminId },
+        data: { role: 'ADMIN' },
+      });
+    });
   });
 
   describe('/auth/switch-account refuses impersonation tokens', () => {

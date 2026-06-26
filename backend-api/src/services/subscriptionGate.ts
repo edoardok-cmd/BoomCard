@@ -15,6 +15,7 @@
  *            future statuses
  */
 import { SubscriptionStatus } from '@prisma/client';
+import prisma from '../lib/prisma';
 
 /**
  * Determine if a subscription status allows earning activities (scanning + cashback).
@@ -114,4 +115,44 @@ export function subscriptionBlockReason(
 
   // Unknown statuses
   return 'SUBSCRIPTION_INACTIVE';
+}
+
+/**
+ * Find an eligible subscription for the user that allows earning activity.
+ * Used as the canonical selection logic by both the middleware and service-layer
+ * subscription gates to ensure they evaluate the same subscription.
+ *
+ * Selection strategy: Return ANY subscription that matches the earning-allowed
+ * criteria (ACTIVE, TRIALING, or CANCELLED-within-period). This matches the
+ * original middleware logic which uses an OR query.
+ *
+ * The choice to return "any eligible" rather than "latest" is intentional:
+ * a user with a newer terminal subscription (e.g. EXPIRED) and an older
+ * still-within-period CANCELLED subscription should be allowed to scan/earn
+ * based on the older CANCELLED subscription. The user's behavior is governed
+ * by whether they HAVE an eligible subscription, not by which one they created
+ * most recently.
+ *
+ * @param userId The user ID
+ * @param now Current time (defaults to now)
+ * @returns The first eligible subscription found, or null if none exist
+ */
+export async function findEligibleSubscription(
+  userId: string,
+  now: Date = new Date(),
+): Promise<{
+  id: string;
+  status: SubscriptionStatus | string;
+  currentPeriodEnd: Date | null;
+} | null> {
+  return prisma.subscription.findFirst({
+    where: {
+      userId,
+      OR: [
+        { status: { in: ['ACTIVE', 'TRIALING'] } },
+        { status: 'CANCELLED', currentPeriodEnd: { gt: now } },
+      ],
+    },
+    select: { id: true, status: true, currentPeriodEnd: true },
+  });
 }

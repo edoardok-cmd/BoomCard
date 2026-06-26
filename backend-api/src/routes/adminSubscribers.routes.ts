@@ -1421,7 +1421,13 @@ router.delete('/:userId/account', authenticate, authorize('ADMIN', 'SUPER_ADMIN'
     await Promise.all([
       prisma.user.update({
         where: { id: userId },
-        data: { deletedAt: new Date(), status: 'DELETED' },
+        // Persist the pre-delete status so /restore can revive the user to their
+        // EXACT prior state (BC-ADMIN-SPEC-REAUDIT2-ARCHIVE-RESTORE-BYPASS-1).
+        // Without this, an ARCHIVED user soft-deleted here would be silently
+        // resurrected as ACTIVE on restore, escaping the spec §1.1/§2.4 ARCHIVED
+        // terminality that PATCH /status enforces. `user.status` was already
+        // fetched above; capture it before it is overwritten with DELETED.
+        data: { deletedAt: new Date(), status: 'DELETED', statusBeforeDelete: user.status },
       }),
       // Revoke all active sessions immediately so a deleted user cannot
       // continue making API requests with their existing refresh tokens.
@@ -1458,11 +1464,29 @@ router.post('/:userId/restore', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
       return;
     }
 
-    const updated = await prisma.user.update({
-      where: { id: userId },
-      data: { deletedAt: null, status: 'ACTIVE' },
-      select: { id: true, status: true },
-    });
+    // Revive to the EXACT status the user held before deletion, not a blanket ACTIVE
+    // (BC-ADMIN-SPEC-REAUDIT2-ARCHIVE-RESTORE-BYPASS-1). A user who was ARCHIVED before
+    // being soft-deleted MUST come back ARCHIVED — restoring them as ACTIVE would bypass
+    // the spec §1.1/§2.4 terminality that PATCH /status enforces (an Archived account
+    // reactivates only via password-reset + new subscription, never an admin flip).
+    // Legacy rows soft-deleted before statusBeforeDelete existed have NULL here; default
+    // those to ACTIVE to preserve the pre-fix behaviour. statusBeforeDelete is cleared
+    // back to NULL on restore so a later DELETE captures a fresh value.
+    const revivedStatus = user.statusBeforeDelete ?? 'ACTIVE';
+
+    const [updated] = await Promise.all([
+      prisma.user.update({
+        where: { id: userId },
+        data: { deletedAt: null, status: revivedStatus, statusBeforeDelete: null },
+        select: { id: true, status: true },
+      }),
+      // Mirror PATCH /status: ARCHIVED is a terminal no-login state, so a user revived
+      // into ARCHIVED must not regain sessions. (DELETE already revoked all tokens; this
+      // is a belt-and-braces guard so no stray session survives the revive.)
+      revivedStatus === 'ARCHIVED'
+        ? prisma.refreshToken.deleteMany({ where: { userId } })
+        : Promise.resolve(),
+    ]);
 
     res.json({ ok: true, ...updated });
   } catch (error) {

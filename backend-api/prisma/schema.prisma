@@ -34,6 +34,14 @@ model User {
   emailVerificationToken     String?                    @unique
   notificationPreferences    Json?
   deletedAt                  DateTime?
+  /// BC-ADMIN-SPEC-REAUDIT2-ARCHIVE-RESTORE-BYPASS-1 — persists the user's account
+  /// status captured at soft-delete time (DELETE /:userId/account) so POST /:userId/restore
+  /// can revive the user to their EXACT prior state instead of unconditionally ACTIVE.
+  /// This preserves spec §1.1/§2.4 ARCHIVED-terminality across a DELETE→restore round-trip:
+  /// an Archived user that is soft-deleted must come back Archived, not Active. Nullable;
+  /// NULL for legacy rows deleted before this column existed (restore falls back to ACTIVE)
+  /// and is cleared back to NULL on every restore.
+  statusBeforeDelete         UserStatus?
   /// F-003: @deprecated — User.iban is a legacy field that may be out of sync with
   /// Wallet.payoutIban. For all payout and GDPR export operations, use Wallet.payoutIban
   /// as the authoritative source. This field is retained for backward compatibility only.

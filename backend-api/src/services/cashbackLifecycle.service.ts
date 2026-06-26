@@ -270,7 +270,10 @@ export async function markVoided(params: {
         status: WalletTransactionStatus.ANNULLED,
         voidedAt,
         voidedReason: reason,
-        voidedByUserId: actorUserId,
+        // L1 / Spec audit trail: every voided record must record a responsible actor.
+        // When the void is system-automated (actorUserId=null), use the zero-UUID
+        // sentinel so the field is never null and the audit trail is complete.
+        voidedByUserId: actorUserId ?? SYSTEM_ACTOR_ID,
       },
     });
 

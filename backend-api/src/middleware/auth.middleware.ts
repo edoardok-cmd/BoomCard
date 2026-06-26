@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { AppError } from './error.middleware';
 import { touchUserActivity } from '../services/userActivity.service';
+import { findEligibleSubscription } from '../services/subscriptionGate';
 import prisma from '../lib/prisma';
 
 export interface AuthRequest extends Request {
@@ -473,19 +474,9 @@ export const requireActiveSubscription = async (
     // sticker.service.assertSubscriptionAllowsScanning. (PAUSED still earns a cashback
     // tier elsewhere, but cannot open a session/scan.) Keep these two gates aligned —
     // if product decides PAUSED retains grace-window access, add PAUSED to BOTH.
-    const eligible = await prisma.subscription.findFirst({
-      where: {
-        userId: req.user.id,
-        OR: [
-          // Active or trialing — full operational access (spec §2 post-payment state).
-          { status: { in: ['ACTIVE', 'TRIALING'] } },
-          // Cancelled within the still-paid period — access continues through the
-          // last paid day (spec §3.2 "Cancelled within paid period", §8.3).
-          { status: 'CANCELLED', currentPeriodEnd: { gt: now } },
-        ],
-      },
-      select: { id: true },
-    });
+    // Use the shared helper to ensure both gates (middleware and service layer)
+    // evaluate the same subscription selection logic (BC-ADMIN-SPEC-REAUDIT2-SCANGATE-SELECTION-1).
+    const eligible = await findEligibleSubscription(req.user.id, now);
 
     if (!eligible) {
       return next(

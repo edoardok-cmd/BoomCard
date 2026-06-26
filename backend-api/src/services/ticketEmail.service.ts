@@ -14,6 +14,7 @@
  */
 
 import crypto from 'crypto';
+import { TicketStatus } from '@prisma/client';
 
 const DEFAULT_DOMAIN = 'mail.boomcard.bg';
 
@@ -92,6 +93,48 @@ export function withCanonicalRequestStatus<T extends { status: string }>(
   ticket: T,
 ): T & { requestStatus: CanonicalRequestStatus } {
   return { ...ticket, requestStatus: toCanonicalRequestStatus(ticket.status) };
+}
+
+/**
+ * M8 (Spec §1.7 / §7.1) — canonical-status → raw-enum expansion for filtering.
+ *
+ * The filter must agree with the canonical projection (toCanonicalRequestStatus)
+ * so that filtering by a canonical bucket returns ALL rows that display under
+ * that bucket. Mirrors the M7 fix applied to requestType.
+ *
+ * Accepts both canonical names ("Cancelled") and raw enum tokens ("CANCELLED")
+ * for back-compat. Raw tokens that don't map to a canonical bucket are returned
+ * as a single-element array (passthrough).
+ *
+ * Returns: { in: TicketStatus[] } shaped for Prisma `where.status = { in: [...] }`.
+ */
+export function toRawStatusFilter(status: string): { in: TicketStatus[] } {
+  switch (status) {
+    case 'Cancelled':
+    case 'CANCELLED':
+      return { in: ['CANCELLED', 'REJECTED'] as TicketStatus[] };
+    case 'Closed':
+    case 'CLOSED':
+      return { in: ['CLOSED', 'RESOLVED'] as TicketStatus[] };
+    case 'In Progress':
+    case 'OPEN':
+      return { in: ['OPEN', 'IN_REVIEW'] as TicketStatus[] };
+    case 'IN_REVIEW':
+      return { in: ['OPEN', 'IN_REVIEW'] as TicketStatus[] };
+    case 'New':
+    case 'NEW':
+      return { in: ['NEW'] as TicketStatus[] };
+    case 'Waiting':
+    case 'WAITING':
+      return { in: ['WAITING'] as TicketStatus[] };
+    case 'RESOLVED':
+      return { in: ['CLOSED', 'RESOLVED'] as TicketStatus[] };
+    case 'REJECTED':
+      return { in: ['CANCELLED', 'REJECTED'] as TicketStatus[] };
+    default:
+      // Unknown token — pass through as-is so unknown values simply match nothing rather than 400.
+      return { in: [status as TicketStatus] };
+  }
 }
 
 /**

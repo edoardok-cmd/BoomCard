@@ -1040,8 +1040,8 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
     // Two concurrent archive requests could both see >0 active SAs, both think archiving leaves ≥1 active,
     // both commit, resulting in 0 active SAs. Serializable isolation prevents this by detecting concurrent
     // modifications and forcing retry. Guard is re-checked INSIDE the transaction.
-    // H2 fix: count non-ARCHIVED SAs (not just ACTIVE) to close privilege-escalation hole where
-    // a sole *active* SA could falsely self-approve if all other SAs are INACTIVE/SUSPENDED.
+    // §1.5: count only ACTIVE SAs — INACTIVE/SUSPENDED SAs cannot perform write operations and must not
+    // count toward the liveness quorum.
     const beforeStatus = target.status;
     let updated: { id: string; status: UserStatus };
     try {
@@ -1049,11 +1049,11 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
         // Re-check invariant INSIDE transaction with Serializable isolation.
         // This ensures no other transaction can mutate the guard condition between our check and write.
         if (target.role === 'SUPER_ADMIN' && (status === 'INACTIVE' || status === 'ARCHIVED')) {
-          const nonArchivedSuperAdmins = await tx.user.count({
-            where: { role: 'SUPER_ADMIN', status: { not: 'ARCHIVED' }, id: { not: id } },
+          const activeSuperAdmins = await tx.user.count({
+            where: { role: 'SUPER_ADMIN', status: 'ACTIVE', id: { not: id } },
           });
-          if (nonArchivedSuperAdmins === 0) {
-            throw new Error('GUARD_FAILED:Cannot deactivate the last non-archived SUPER_ADMIN');
+          if (activeSuperAdmins === 0) {
+            throw new Error('GUARD_FAILED:Cannot deactivate the last active SUPER_ADMIN');
           }
         }
 

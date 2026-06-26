@@ -462,4 +462,155 @@ describe('BC-ADMIN-AUDIT-FIX-005: adminSubscribers route defect fixes', () => {
       expect(res.body.error).toMatch(/restore endpoint/i);
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // DEFECT F: ARCHIVED terminality survives a DELETE → restore round-trip
+  // (BC-ADMIN-SPEC-REAUDIT2-ARCHIVE-RESTORE-BYPASS-1)
+  //
+  // Spec §1.1 / §2.4: ARCHIVED is terminal — an archived user reactivates only via
+  // password-reset + new subscription, never an admin flip back to Active. PATCH /status
+  // enforces this directly (DEFECT B). The escape hatch closed here is the DELETE-then-
+  // restore round-trip: previously DELETE overwrote status=DELETED without recording the
+  // prior state and POST /restore unconditionally wrote ACTIVE, silently reviving a
+  // terminal ARCHIVED user as ACTIVE. restore must now revive the EXACT pre-delete status.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  describe('DEFECT F: ARCHIVED survives DELETE → restore (no silent revive to ACTIVE)', () => {
+    async function makeSubscriber(label: string): Promise<string> {
+      const hash = await bcrypt.hash(PASSWORD, 10);
+      const u = await prisma.user.create({
+        data: {
+          email: `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@boomcard.bg`,
+          passwordHash: hash,
+          firstName: 'Round',
+          lastName: 'Trip',
+          role: 'USER',
+          status: 'ACTIVE',
+          emailVerified: true,
+        },
+      });
+      return u.id;
+    }
+
+    it('F1 — ARCHIVED → DELETE → restore comes back ARCHIVED, NOT ACTIVE', async () => {
+      const userId = await makeSubscriber('archive-roundtrip');
+      try {
+        // Archive via the real PATCH /status endpoint.
+        const archiveRes = await request(app)
+          .patch(`/api/admin/subscribers/${userId}/status`)
+          .set('Authorization', `Bearer ${fixtures.superAdminToken}`)
+          .send({ status: 'ARCHIVED' });
+        expect(archiveRes.status).toBe(200);
+        expect(archiveRes.body.status).toBe('ARCHIVED');
+
+        // Soft-delete.
+        const delRes = await request(app)
+          .delete(`/api/admin/subscribers/${userId}/account`)
+          .set('Authorization', `Bearer ${fixtures.superAdminToken}`)
+          .send({ reason: 'audit-fix round-trip' });
+        expect(delRes.status).toBe(200);
+        expect(delRes.body.ok).toBe(true);
+
+        // Restore — must NOT silently revive to ACTIVE.
+        const restoreRes = await request(app)
+          .post(`/api/admin/subscribers/${userId}/restore`)
+          .set('Authorization', `Bearer ${fixtures.superAdminToken}`);
+        expect(restoreRes.status).toBe(200);
+        expect(restoreRes.body.status).toBe('ARCHIVED');
+        expect(restoreRes.body.status).not.toBe('ACTIVE');
+
+        // statusBeforeDelete is cleared back to NULL after restore.
+        const after = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { status: true, deletedAt: true, statusBeforeDelete: true },
+        });
+        expect(after?.status).toBe('ARCHIVED');
+        expect(after?.deletedAt).toBeNull();
+        expect(after?.statusBeforeDelete).toBeNull();
+      } finally {
+        await cleanupTestUser(userId);
+      }
+    });
+
+    it('F2 — ACTIVE → DELETE → restore comes back ACTIVE (normal case preserved)', async () => {
+      const userId = await makeSubscriber('active-roundtrip');
+      try {
+        const delRes = await request(app)
+          .delete(`/api/admin/subscribers/${userId}/account`)
+          .set('Authorization', `Bearer ${fixtures.superAdminToken}`)
+          .send({ reason: 'normal case' });
+        expect(delRes.status).toBe(200);
+
+        const restoreRes = await request(app)
+          .post(`/api/admin/subscribers/${userId}/restore`)
+          .set('Authorization', `Bearer ${fixtures.superAdminToken}`);
+        expect(restoreRes.status).toBe(200);
+        expect(restoreRes.body.status).toBe('ACTIVE');
+
+        const after = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { status: true, deletedAt: true, statusBeforeDelete: true },
+        });
+        expect(after?.status).toBe('ACTIVE');
+        expect(after?.deletedAt).toBeNull();
+        expect(after?.statusBeforeDelete).toBeNull();
+      } finally {
+        await cleanupTestUser(userId);
+      }
+    });
+
+    it('F3 — INACTIVE → DELETE → restore comes back INACTIVE (exact prior state)', async () => {
+      const userId = await makeSubscriber('inactive-roundtrip');
+      try {
+        const statusRes = await request(app)
+          .patch(`/api/admin/subscribers/${userId}/status`)
+          .set('Authorization', `Bearer ${fixtures.superAdminToken}`)
+          .send({ status: 'INACTIVE' });
+        expect(statusRes.status).toBe(200);
+        expect(statusRes.body.status).toBe('INACTIVE');
+
+        const delRes = await request(app)
+          .delete(`/api/admin/subscribers/${userId}/account`)
+          .set('Authorization', `Bearer ${fixtures.superAdminToken}`)
+          .send({});
+        expect(delRes.status).toBe(200);
+
+        const restoreRes = await request(app)
+          .post(`/api/admin/subscribers/${userId}/restore`)
+          .set('Authorization', `Bearer ${fixtures.superAdminToken}`);
+        expect(restoreRes.status).toBe(200);
+        expect(restoreRes.body.status).toBe('INACTIVE');
+      } finally {
+        await cleanupTestUser(userId);
+      }
+    });
+
+    it('F4 — Legacy soft-deleted row (statusBeforeDelete NULL) restores to ACTIVE', async () => {
+      // Simulate a row deleted BEFORE this fix: status=DELETED, deletedAt set,
+      // statusBeforeDelete still NULL. restore must fall back to ACTIVE.
+      const hash = await bcrypt.hash(PASSWORD, 10);
+      const legacy = await prisma.user.create({
+        data: {
+          email: `legacy-deleted-${Date.now()}@boomcard.bg`,
+          passwordHash: hash,
+          firstName: 'Legacy',
+          lastName: 'Deleted',
+          role: 'USER',
+          status: 'DELETED',
+          emailVerified: true,
+          deletedAt: new Date(),
+          statusBeforeDelete: null,
+        },
+      });
+      try {
+        const restoreRes = await request(app)
+          .post(`/api/admin/subscribers/${legacy.id}/restore`)
+          .set('Authorization', `Bearer ${fixtures.superAdminToken}`);
+        expect(restoreRes.status).toBe(200);
+        expect(restoreRes.body.status).toBe('ACTIVE');
+      } finally {
+        await cleanupTestUser(legacy.id);
+      }
+    });
+  });
 });

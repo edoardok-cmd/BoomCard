@@ -1158,21 +1158,49 @@ export class AuthService {
         storedToken.accountGroup && storedToken.accountGroup.length > 0
           ? storedToken.accountGroup
           : undefined;
-      // Carry impersonation claims across the rotation. Without this, the
-      // `imp/impBy/impByRole/impAg` fields are dropped on first refresh
-      // (~15m in), which (a) severs the audit trail — further actions look
-      // like a normal partner session — and (b) strands the admin in the
-      // partner account because /auth/stop-impersonate requires `imp:true`.
-      // The JWT signature has already been verified above, so decoded
-      // claims are trustworthy.
-      const impersonation: ImpersonationClaims | undefined =
-        decoded.imp && decoded.impBy && decoded.impByRole
-          ? {
-              impBy: decoded.impBy,
-              impByRole: decoded.impByRole,
-              impAg: decoded.impAg,
-            }
-          : undefined;
+
+      // Part 4 impersonation invariants — re-check the ACTING admin's live
+      // status on token refresh, mirroring the per-request middleware check
+      // (auth.middleware.ts ~79-106). If the acting admin has been decommissioned
+      // since impersonation started, do NOT re-mint privileged impersonation tokens.
+      // This closes the gap where a self-renewing refresh token could extend an
+      // impersonation session past the point when the admin lost access.
+      let impersonation: ImpersonationClaims | undefined;
+      if (decoded.imp === true && decoded.impBy && decoded.impByRole) {
+        const actor = await prisma.user.findUnique({
+          where: { id: decoded.impBy },
+          select: { status: true, role: true, rolesUpdatedAt: true },
+        }).catch(() => null);
+
+        const actorStatus = actor?.status as string | undefined;
+        const actorOk =
+          !!actor &&
+          (actor.role === 'ADMIN' || actor.role === 'SUPER_ADMIN') &&
+          // ALLOWLIST: only ACTIVE acting admins — identical to the per-request
+          // middleware gate at auth.middleware.ts ~92.
+          actorStatus === 'ACTIVE' &&
+          // rolesUpdatedAt bump after token issuance invalidates the impersonation.
+          // Mirror the middleware check (ms vs iat*1000) so units match exactly.
+          !(
+            actor.rolesUpdatedAt &&
+            actor.rolesUpdatedAt.getTime() > (decoded.iat as number) * 1000
+          );
+
+        if (!actorOk) {
+          // Acting admin has lost access. Reject refresh without carrying
+          // impersonation forward — force the operator back to clean admin login.
+          await prisma.refreshToken.delete({ where: { id: storedToken.id } });
+          throw new AppError('Impersonation session ended — acting admin access revoked', 401);
+        }
+
+        // Acting admin still has valid access — safe to carry impersonation forward
+        impersonation = {
+          impBy: decoded.impBy,
+          impByRole: decoded.impByRole,
+          ...(decoded.impAg && decoded.impAg.length > 0 ? { impAg: decoded.impAg } : {}),
+        };
+      }
+
       const tokens = await this.generateTokens(storedToken.user, clientType, ag, impersonation, meta);
 
       // Delete old refresh token

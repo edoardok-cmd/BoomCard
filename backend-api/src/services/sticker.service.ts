@@ -10,7 +10,7 @@ import { recognizeReceiptImage } from './ocr.service';
 import { imageUploadService } from './imageUpload.service';
 import { enqueueMerchantVerification } from '../queues/merchantVerification.queue';
 import { cashbackLifecycleService, VOID_REASON_CATEGORIES } from './cashbackLifecycle.service';
-import { subscriptionAllowsEarning } from './subscriptionGate';
+import { subscriptionAllowsEarning, findEligibleSubscription } from './subscriptionGate';
 import { writeAudit } from '../middleware/audit.middleware';
 import { getSystemSettingStr } from '../utils/systemSettings';
 import { isPartnerOperationallyActive } from './partner.service';
