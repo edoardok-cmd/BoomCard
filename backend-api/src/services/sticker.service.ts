@@ -1,4 +1,4 @@
-import { Sticker, StickerScan, StickerLocation, VenueStickerConfig, ScanStatus, StickerStatus, LocationType, TransactionStatus, TransactionType, PaymentMethod, SubscriptionStatus, WalletTransactionType, VenueStatus } from '@prisma/client';
+import { Sticker, StickerScan, StickerLocation, VenueStickerConfig, ScanStatus, StickerStatus, LocationType, TransactionStatus, TransactionType, PaymentMethod, SubscriptionStatus, SubscriptionPlan, WalletTransactionType, VenueStatus } from '@prisma/client';
 import QRCode from 'qrcode';
 import { prisma } from '../lib/prisma';
 import { walletService } from './wallet.service';
@@ -306,6 +306,28 @@ class StickerService {
   }
 
   /**
+   * Get the subscription plan for partner-type access gates (scanning authorization).
+   * Uses findEligibleSubscription (state-aware: ACTIVE, TRIALING, CANCELLED-within-period)
+   * instead of ACTIVE-only lookup. Per spec §1.2 + §8.1, users with CANCELLED-within-period
+   * or TRIALING subscriptions must NOT be downgraded to PREMIUM_WEEKLY.
+   *
+   * @param userId The user ID
+   * @returns The user's eligible subscription plan (e.g. "BASIC", "PREMIUM_MONTHLY"), or null if no eligible subscription
+   */
+  private async getPlanForAccessGate(userId: string): Promise<SubscriptionPlan | null> {
+    const eligible = await findEligibleSubscription(userId);
+    if (!eligible) return null;
+
+    // Fetch the full subscription record to get the plan field
+    const sub = await prisma.subscription.findUnique({
+      where: { id: eligible.id },
+      select: { plan: true },
+    });
+
+    return sub?.plan ?? null;
+  }
+
+  /**
    * Resolve the user's cashback tier from their active Subscription.
    * Returns null when no active subscription exists — callers should treat this as
    * "no cashback" (Finding #1 fix). Using Subscription.plan as the single source of
@@ -316,18 +338,13 @@ class StickerService {
     // subscription logic as the scanning gate (spec §8.1 rule 1 alignment).
     // This guarantees that if a user is eligible for scanning, their cashback
     // tier is calculated from the same subscription they scanned with.
-    const eligible = await findEligibleSubscription(userId);
-    if (!eligible) return null;
+    const plan = await this.getPlanForAccessGate(userId);
+    if (!plan) return null;
 
-    // Fetch the full subscription record to get the plan field
-    const sub = await prisma.subscription.findUnique({
-      where: { id: eligible.id },
-      select: { plan: true },
-    });
-
-    if (!sub) return null;
-    const plan = sub.plan as string;
-    if (plan === 'PREMIUM_WEEKLY' || plan === 'BASIC' || plan === 'PREMIUM_MONTHLY') return plan as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY';
+    // Validate that the plan is one of the known cashback tiers
+    if (plan === 'PREMIUM_WEEKLY' || plan === 'BASIC' || plan === 'PREMIUM_MONTHLY') {
+      return plan as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY';
+    }
     return null;
   }
 
@@ -930,13 +947,11 @@ class StickerService {
     }
 
     if (partner?.partnerTypeId) {
-      const userSubscription = await prisma.subscription.findFirst({
-        where: { userId, status: SubscriptionStatus.ACTIVE },
-        orderBy: { currentPeriodEnd: 'desc' },
-      });
-      const redeemableTypeIds = await partnerTypeService.getRedeemableTypeIdsForPlan(
-        userSubscription?.plan ?? null
-      );
+      // Use state-aware plan lookup (ACTIVE, TRIALING, CANCELLED-within-period).
+      // Per spec §1.2 + §8.1, users must retain access at their ACTUAL PLAN level,
+      // not be downgraded to PREMIUM_WEEKLY due to subscription state transitions.
+      const userPlan = await this.getPlanForAccessGate(userId);
+      const redeemableTypeIds = await partnerTypeService.getRedeemableTypeIdsForPlan(userPlan);
       if (!redeemableTypeIds.includes(partner.partnerTypeId)) {
         throw new Error(
           'Your current subscription does not include access to this partner. ' +
@@ -1243,12 +1258,10 @@ class StickerService {
     }
 
     if (partner && partner.partnerTypeId) {
-      const userSubscription = await prisma.subscription.findFirst({
-        where: { userId, status: SubscriptionStatus.ACTIVE },
-        orderBy: { currentPeriodEnd: 'desc' },
-      });
-
-      const userPlan = userSubscription?.plan ?? null;
+      // Use state-aware plan lookup (ACTIVE, TRIALING, CANCELLED-within-period).
+      // Per spec §1.2 + §8.1, users must retain access at their ACTUAL PLAN level,
+      // not be downgraded to PREMIUM_WEEKLY due to subscription state transitions.
+      const userPlan = await this.getPlanForAccessGate(userId);
       const redeemableTypeIds = await partnerTypeService.getRedeemableTypeIdsForPlan(userPlan);
 
       if (!redeemableTypeIds.includes(partner.partnerTypeId)) {
