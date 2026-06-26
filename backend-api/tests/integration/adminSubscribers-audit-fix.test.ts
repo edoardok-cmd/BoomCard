@@ -25,6 +25,10 @@
  *   D2. ARCHIVED user: IBAN edit blocked
  *   D3. ARCHIVED user: riskScore edit allowed (compliance workflows)
  *   D4. INACTIVE user: profile edit allowed
+ *
+ * DEFECT E (LOW) — DELETED status bypass (permission tier enforcement)
+ *   E1. DELETED account cannot be revived via /status endpoint (400)
+ *   E2. DELETED account with deletedAt=null cannot be patched to ACTIVE via /status
  */
 
 import bcrypt from 'bcrypt';
@@ -408,6 +412,54 @@ describe('BC-ADMIN-AUDIT-FIX-005: adminSubscribers route defect fixes', () => {
         .send({ email: 'new-email@example.com' });
       expect(res.status).toBe(400);
       expect(res.body.error).toMatch(/archived.*terminal/i);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // DEFECT E: DELETED status bypass — permission tier enforcement
+  // ─────────────────────────────────────────────────────────────────────────
+
+  describe('DEFECT E: DELETED status bypass (permission tier enforcement)', () => {
+    let deletedId: string;
+
+    beforeAll(async () => {
+      const hash = await bcrypt.hash(PASSWORD, 10);
+      const deleted = await prisma.user.create({
+        data: {
+          email: `deleted-${Date.now()}@boomcard.bg`,
+          passwordHash: hash,
+          firstName: 'Deleted',
+          lastName: 'Test',
+          role: 'USER',
+          status: 'DELETED',
+          emailVerified: true,
+          deletedAt: null, // Soft-delete state: status=DELETED but deletedAt=null
+        },
+      });
+      deletedId = deleted.id;
+    });
+
+    afterAll(async () => {
+      await cleanupTestUser(deletedId);
+    });
+
+    it('E1 — DELETED account cannot be revived via /status endpoint (400)', async () => {
+      const res = await request(app)
+        .patch(`/api/admin/subscribers/${deletedId}/status`)
+        .set('Authorization', `Bearer ${fixtures.superAdminToken}`)
+        .send({ status: 'ACTIVE' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/restore endpoint/i);
+    });
+
+    it('E2 — DELETED account cannot be revived via /status endpoint (400)', async () => {
+      // Even with permission, /status endpoint rejects DELETED status and directs to /restore endpoint
+      const res = await request(app)
+        .patch(`/api/admin/subscribers/${deletedId}/status`)
+        .set('Authorization', `Bearer ${fixtures.superAdminToken}`)
+        .send({ status: 'ACTIVE' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/restore endpoint/i);
     });
   });
 });
