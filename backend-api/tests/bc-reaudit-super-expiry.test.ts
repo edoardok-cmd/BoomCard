@@ -260,7 +260,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
       expect(res.status).toBe(200);
       // Email should have been sent (one for approval notification in prior test + one for this)
       expect(emailSendCalls.length).toBeGreaterThan(0);
-      const cancelEmail = emailSendCalls.find((e) => e.to === initiatorId);
+      const cancelEmail = emailSendCalls.find((e) => e.to === 'initiator@test.local');
       expect(cancelEmail).toBeDefined();
     });
 
