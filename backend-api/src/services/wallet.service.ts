@@ -57,15 +57,21 @@ function reversedWithdrawalIdOf(tx: { type: WalletTransactionType; metadata?: st
 }
 
 export function maskUserFacingPayoutStatus<
-  T extends { id?: string; type: WalletTransactionType; status: WalletTransactionStatus }
+  T extends { id?: string; type: WalletTransactionType; status: WalletTransactionStatus; metadata?: string | null }
 >(
   tx: T,
   reversedWithdrawalIds?: ReadonlySet<string>,
 ): T {
   if (tx.type !== WalletTransactionType.WITHDRAWAL) return tx;
 
-  // Second-failure escalation — spec §3.7 requires this to read "Sent to payout".
   if (tx.status === WalletTransactionStatus.RISK_HOLD) {
+    const meta = tx.metadata ? JSON.parse(tx.metadata) : {};
+    if (meta.noIbanHold === true) {
+      // No-IBAN administrative hold — display as PENDING so the user sees "awaiting
+      // action" rather than "Sent to payout", which contradicts the hold notification.
+      return { ...tx, status: WalletTransactionStatus.PENDING };
+    }
+    // Second-failure escalation — spec §3.7 requires this to read "Sent to payout".
     return { ...tx, status: WalletTransactionStatus.PROCESSING };
   }
 
@@ -1115,12 +1121,16 @@ export class WalletService {
             type: WalletTransactionType.WITHDRAWAL,
             status: { in: [WalletTransactionStatus.FAILED, WalletTransactionStatus.RISK_HOLD] },
           },
-          select: { metadata: true },
+          select: { metadata: true, description: true },
         });
-        // Filter out manual holds (metadata.manualHold=true) and only count genuine failures.
+        // Filter out manual holds (metadata.manualHold=true), no-IBAN administrative holds
+        // (metadata.noIbanHold=true), and legacy no-IBAN holds written before this flag was
+        // introduced (identifiable by their canonical no-IBAN hold description).
         const genuineFailures = allFailedRows.filter((row) => {
           const meta = row.metadata ? JSON.parse(row.metadata) : {};
-          return meta.manualHold !== true;
+          if (meta.manualHold === true || meta.noIbanHold === true) return false;
+          if (row.description?.includes('липсва банкова сметка')) return false;
+          return true;
         });
         isSecondFailure = genuineFailures.length >= 1;
       } catch (countErr) {

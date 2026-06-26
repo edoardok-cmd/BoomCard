@@ -3,6 +3,7 @@ import { PartnerStatus, PartnerRequestStatus } from '@prisma/client';
 import { createTestUser } from '../helpers/test-utils';
 import request from 'supertest';
 import app from '../../src/app';
+import jwt from 'jsonwebtoken';
 
 /**
  * BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1
@@ -15,13 +16,42 @@ import app from '../../src/app';
  */
 describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates activation links', () => {
   let adminUser: any;
+  let adminAccessToken: string;
+  let partnerUser: any;
   let partnerId: string;
   let activationTokens: string[] = [];
 
   beforeAll(async () => {
-    // Create test admin with write permission
-    const { user } = await createTestUser({ role: 'ADMIN' });
-    adminUser = user;
+    // Create a SUPER_ADMIN user for auth. SUPER_ADMIN bypasses all permission checks.
+    adminUser = await prisma.user.create({
+      data: {
+        email: `admin-reject-link-${Date.now()}@test.local`,
+        passwordHash: 'hash',
+        role: 'SUPER_ADMIN',
+        status: 'ACTIVE',
+        emailVerified: true,
+      },
+    });
+
+    // Generate a valid JWT token for the admin user
+    const JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key';
+    adminAccessToken = jwt.sign(
+      {
+        id: adminUser.id,
+        email: adminUser.email,
+        role: 'SUPER_ADMIN',
+      },
+      JWT_SECRET,
+      { expiresIn: '15m' }
+    );
+
+    // Create a regular user to own the partner entity (partners must be owned by non-admin users)
+    const { user, accessToken } = await createTestUser({
+      email: `partner-user-${Date.now()}@test.local`,
+      firstName: 'Partner',
+      lastName: 'Owner',
+    });
+    partnerUser = user;
   });
 
   afterAll(async () => {
@@ -36,6 +66,10 @@ describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates ac
       await prisma.refreshToken.deleteMany({ where: { userId: adminUser.id } }).catch(() => {});
       await prisma.user.delete({ where: { id: adminUser.id } }).catch(() => {});
     }
+    if (partnerUser?.id) {
+      await prisma.refreshToken.deleteMany({ where: { userId: partnerUser.id } }).catch(() => {});
+      await prisma.user.delete({ where: { id: partnerUser.id } }).catch(() => {});
+    }
   });
 
   describe('Spec §1.6 / §3.5 step 6: Reject invalidates activation links', () => {
@@ -47,7 +81,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates ac
           category: 'restaurants',
           status: PartnerStatus.NEW,
           requestStatus: PartnerRequestStatus.NEW,
-          userId: adminUser.id,
+          userId: partnerUser.id,
         },
       });
       partnerId = partner.id;
@@ -99,7 +133,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates ac
       // Call POST /:id/reject (via API route)
       const response = await request(app)
         .post(`/api/admin/partners/${partnerId}/reject`)
-        .set('Authorization', `Bearer ${adminUser.id}`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
         .send({
           reason: 'Test rejection for link invalidation',
         })
@@ -168,7 +202,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates ac
           category: 'restaurants',
           status: PartnerStatus.PENDING,
           requestStatus: PartnerRequestStatus.APPROVED,
-          userId: adminUser.id,
+          userId: partnerUser.id,
         },
       });
       const partner2Id = partner2.id;
@@ -209,7 +243,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates ac
       // Reject the partner
       await request(app)
         .post(`/api/admin/partners/${partner2Id}/reject`)
-        .set('Authorization', `Bearer ${adminUser.id}`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
         .send({ reason: 'Test multiple links rejection' })
         .expect(200);
 
@@ -241,7 +275,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates ac
       // Try to reject again
       const response = await request(app)
         .post(`/api/admin/partners/${partnerId}/reject`)
-        .set('Authorization', `Bearer ${adminUser.id}`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
         .send({ reason: 'Another rejection attempt' })
         .expect(400);
 
@@ -256,7 +290,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates ac
           category: 'restaurants',
           status: PartnerStatus.ACTIVE,
           requestStatus: PartnerRequestStatus.APPROVED,
-          userId: adminUser.id,
+          userId: partnerUser.id,
         },
       });
       const partner3Id = partner3.id;
@@ -272,7 +306,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates ac
       // Archive the partner via /partner-status (uses setPartnerStatus internally)
       const response = await request(app)
         .patch(`/api/admin/partners/${partner3Id}/partner-status`)
-        .set('Authorization', `Bearer ${adminUser.id}`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
         .send({ status: PartnerStatus.ARCHIVED, reason: 'Test archive invalidation' })
         .expect(200);
 

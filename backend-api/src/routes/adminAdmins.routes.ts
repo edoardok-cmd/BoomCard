@@ -1077,7 +1077,7 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
       // Handle guard failures thrown inside transaction
       if (typeof txErr === 'object' && txErr !== null && (txErr as { message?: string }).message?.startsWith('GUARD_FAILED:')) {
         const msg = (txErr as { message: string }).message.replace('GUARD_FAILED:', '');
-        return res.status(403).json({ error: msg });
+        return res.status(409).json({ error: msg });
       }
       // Serializable isolation can trigger conflicts if concurrent mutations race (P2034).
       // Retry the transaction (may succeed if the concurrent mutation resolved the race).
@@ -1092,11 +1092,11 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
           try {
             updated = await prisma.$transaction(async (tx) => {
               if (refreshedTarget.role === 'SUPER_ADMIN' && (status === 'INACTIVE' || status === 'ARCHIVED')) {
-                const nonArchivedSuperAdmins = await tx.user.count({
-                  where: { role: 'SUPER_ADMIN', status: { not: 'ARCHIVED' }, id: { not: id } },
+                const activeSuperAdmins = await tx.user.count({
+                  where: { role: 'SUPER_ADMIN', status: 'ACTIVE', id: { not: id } },
                 });
-                if (nonArchivedSuperAdmins === 0) {
-                  throw new Error('GUARD_FAILED:Cannot deactivate the last non-archived SUPER_ADMIN');
+                if (activeSuperAdmins === 0) {
+                  throw new Error('GUARD_FAILED:Cannot deactivate the last active SUPER_ADMIN');
                 }
               }
 
@@ -1115,7 +1115,7 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
           } catch (retryErr: unknown) {
             if (typeof retryErr === 'object' && retryErr !== null && (retryErr as { message?: string }).message?.startsWith('GUARD_FAILED:')) {
               const msg = (retryErr as { message: string }).message.replace('GUARD_FAILED:', '');
-              return res.status(403).json({ error: msg });
+              return res.status(409).json({ error: msg });
             }
             // If retry transaction also fails with P2034, return 409
             if (typeof retryErr === 'object' && retryErr !== null && (retryErr as { code?: string }).code === 'P2034') {
@@ -1313,9 +1313,10 @@ router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADM
     const beforeRoles = existingRoles.map((r) => r.role.key);
 
     // DEFECT 2 fix: wrap SUPER_ADMIN role-revoke guard + delete in Serializable transaction to prevent TOCTOU race.
-    // Two concurrent revoke requests could both see >0 other non-archived SUPER_ADMINs, both think revoking leaves ≥1,
-    // both commit, resulting in 0 non-archived SUPER_ADMINs. Serializable isolation prevents this.
-    // H2 fix: count non-ARCHIVED SAs (not just ACTIVE) to close privilege-escalation hole.
+    // Two concurrent revoke requests could both see >0 other ACTIVE SUPER_ADMINs, both think revoking leaves ≥1,
+    // both commit, resulting in 0 ACTIVE SUPER_ADMINs. Serializable isolation prevents this.
+    // §1.5: count only ACTIVE SAs — INACTIVE/SUSPENDED SAs cannot perform write operations and must not
+    // count toward the liveness quorum.
     if (roleKey === AdminRoleKey.SUPER_ADMIN) {
       // Removing SUPER_ADMIN must also downgrade User.role — authorization middleware
       // checks user.role directly, not UserAdminRole, so deleting only the junction row
@@ -1325,11 +1326,11 @@ router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADM
         try {
           deleteResult = await prisma.$transaction(async (tx) => {
             // Re-check invariant INSIDE transaction with Serializable isolation.
-            const remainingNonArchivedSupers = await tx.user.count({
-              where: { role: 'SUPER_ADMIN', status: { not: 'ARCHIVED' }, id: { not: id } },
+            const remainingActiveSupers = await tx.user.count({
+              where: { role: 'SUPER_ADMIN', status: 'ACTIVE', id: { not: id } },
             });
-            if (remainingNonArchivedSupers === 0) {
-              throw new Error('GUARD_FAILED:Cannot revoke the role of the last non-archived SUPER_ADMIN');
+            if (remainingActiveSupers === 0) {
+              throw new Error('GUARD_FAILED:Cannot revoke the role of the last active SUPER_ADMIN');
             }
 
             const result = await tx.userAdminRole.deleteMany({ where: { userId: id, roleId: adminRole.id } });
@@ -1347,11 +1348,11 @@ router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADM
           // Serializable conflict on first attempt — retry once
           if (typeof txErr === 'object' && txErr !== null && (txErr as { code?: string }).code === 'P2034') {
             deleteResult = await prisma.$transaction(async (tx) => {
-              const remainingNonArchivedSupers = await tx.user.count({
-                where: { role: 'SUPER_ADMIN', status: { not: 'ARCHIVED' }, id: { not: id } },
+              const remainingActiveSupers = await tx.user.count({
+                where: { role: 'SUPER_ADMIN', status: 'ACTIVE', id: { not: id } },
               });
-              if (remainingNonArchivedSupers === 0) {
-                throw new Error('GUARD_FAILED:Cannot revoke the role of the last non-archived SUPER_ADMIN');
+              if (remainingActiveSupers === 0) {
+                throw new Error('GUARD_FAILED:Cannot revoke the role of the last active SUPER_ADMIN');
               }
 
               const result = await tx.userAdminRole.deleteMany({ where: { userId: id, roleId: adminRole.id } });
@@ -1377,7 +1378,7 @@ router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADM
         if (typeof txErr === 'object' && txErr !== null) {
           const msg = (txErr as { message?: string }).message || '';
           if (msg.startsWith('GUARD_FAILED:')) {
-            return res.status(403).json({ error: msg.replace('GUARD_FAILED:', '') });
+            return res.status(409).json({ error: msg.replace('GUARD_FAILED:', '') });
           }
           if (msg.startsWith('NOT_FOUND:')) {
             return res.status(404).json({ error: msg.replace('NOT_FOUND:', '') });

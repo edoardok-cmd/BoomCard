@@ -216,17 +216,17 @@ export interface FraudCheckResult {
 
 class StickerService {
   /**
-   * Spec §4.2 v1.1 — block receipt scanning when the user's most-recent
-   * subscription is FAILED_PAYMENT ("неуспешно плащане"). No protected period,
-   * no retry window. The mobile app pattern-matches the
-   * SUBSCRIPTION_FAILED_PAYMENT marker to render the renewal CTA.
+   * Spec §4.2 v1.1 — block receipt scanning when the user does not have an
+   * eligible subscription (ACTIVE, TRIALING, or CANCELLED-within-period).
    *
-   * Only the most-recent subscription row is checked. A user who lapsed and
-   * then re-subscribed (new ACTIVE/TRIALING row) is recovered and must be
-   * allowed to scan even if an older FAILED_PAYMENT row is still on file.
-   * clearFailedPaymentSubsForUser() transitions those older rows to EXPIRED
-   * when the new subscription is created, so in practice the most-recent check
-   * is sufficient.
+   * Subscription selection: uses findEligibleSubscription(), which returns ANY
+   * eligible subscription. This matches the middleware gate (requireActiveSubscription)
+   * so both enforce the same rule. A user with a newer terminal subscription
+   * (e.g. EXPIRED) and an older still-within-period CANCELLED subscription can
+   * scan because the older CANCELLED sub is still eligible.
+   *
+   * The selection logic is factored into subscriptionGate.ts to prevent drift
+   * (Finding: BC-ADMIN-SPEC-REAUDIT2-SCANGATE-SELECTION-1).
    *
    * PAST_DUE is blocked — it matches none of the allow branches below and falls
    * through to the generic SUBSCRIPTION_INACTIVE throw. It is a Stripe-internal
@@ -253,40 +253,24 @@ class StickerService {
       }
     }
 
-    const latest = await prisma.subscription.findFirst({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      select: { status: true, cancelAtPeriodEnd: true, currentPeriodEnd: true },
-    });
+    const now = new Date();
+    // Use the shared helper to find an eligible subscription. This ensures both
+    // the middleware (requireActiveSubscription) and this service layer use
+    // the same selection logic.
+    const eligible = await findEligibleSubscription(userId, now);
 
-    if (!latest) {
+    if (!eligible) {
       throw new Error(
         'SUBSCRIPTION_INACTIVE: Нямате активен абонамент. ' +
         'Абонирайте се от менюто „Абонамент и плащания", за да сканирате бележки.'
       );
     }
 
-    const now = new Date();
-    const status = latest.status;
-
-    // Use the shared allow-list gate from subscriptionGate module to ensure
-    // consistency with cashback creation gate (spec §8.1 rule 1). The gate
-    // permits ACTIVE, TRIALING, and CANCELLED-within-period; blocks all others
-    // (EXPIRED, FAILED_PAYMENT, CANCELLED-post-period, PAST_DUE, UNPAID,
-    // INCOMPLETE, INCOMPLETE_EXPIRED, PAUSED).
-    // (Spec §1.2) — the source spec DEFERS the admin handling of the Stripe-
-    // mapped statuses (TRIALING, PAST_DUE, PAUSED, etc.) to product confirmation.
-    // Decisions made here, documented as the current spec-aligned defaults:
-    //   • TRIALING ≡ Active: a user in the Stripe trial has a live, paid-intent
-    //     subscription, so scanning is allowed (treated identically to ACTIVE).
-    //   • PAST_DUE is blocked — it is a Stripe-internal dunning state; §1.2's
-    //     terminal block-states include Failed Payment, and PAST_DUE precedes that state.
-    //   • PAUSED blocks both scanning and earning (both enforced via subscriptionGate).
-    //     PAUSED is not a scan state in the original spec §1.2 (Stripe-specific status);
-    //     this is a product decision made in subscriptionGate.ts.
-    // If product later defines different rules, change subscriptionGate module
-    // and this note — they are the single documented decision point for the §1.2 gap.
-    if (!subscriptionAllowsEarning(status, latest.currentPeriodEnd, now)) {
+    // Additional check: if the found subscription does NOT allow earning
+    // (edge case: e.g. a query race where it became ineligible between
+    // the select and this check), surface a specific error code.
+    if (!subscriptionAllowsEarning(eligible.status, eligible.currentPeriodEnd, now)) {
+      const status = eligible.status;
       // Block earning. Return specific error code based on status.
       if (status === SubscriptionStatus.FAILED_PAYMENT) {
         throw new Error(
@@ -328,17 +312,19 @@ class StickerService {
    * truth (not Card.type) resolves Finding #2.
    */
   private async resolveCashbackTier(userId: string): Promise<'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY' | null> {
-    const now = new Date();
-    const sub = await prisma.subscription.findFirst({
-      where: {
-        userId,
-        OR: [
-          { status: { in: [SubscriptionStatus.ACTIVE, 'TRIALING' as any] } },
-          { status: SubscriptionStatus.CANCELLED, currentPeriodEnd: { gt: now } },
-        ],
-      },
-      orderBy: { currentPeriodEnd: 'desc' },
+    // Use the shared helper to ensure cashback tier selection uses the same
+    // subscription logic as the scanning gate (spec §8.1 rule 1 alignment).
+    // This guarantees that if a user is eligible for scanning, their cashback
+    // tier is calculated from the same subscription they scanned with.
+    const eligible = await findEligibleSubscription(userId);
+    if (!eligible) return null;
+
+    // Fetch the full subscription record to get the plan field
+    const sub = await prisma.subscription.findUnique({
+      where: { id: eligible.id },
+      select: { plan: true },
     });
+
     if (!sub) return null;
     const plan = sub.plan as string;
     if (plan === 'PREMIUM_WEEKLY' || plan === 'BASIC' || plan === 'PREMIUM_MONTHLY') return plan as 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY';

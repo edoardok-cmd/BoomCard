@@ -122,20 +122,20 @@ export function subscriptionBlockReason(
  * Used as the canonical selection logic by both the middleware and service-layer
  * subscription gates to ensure they evaluate the same subscription.
  *
- * Selection strategy: Return ANY subscription that matches the earning-allowed
- * criteria (ACTIVE, TRIALING, or CANCELLED-within-period). This matches the
- * original middleware logic which uses an OR query.
+ * Selection strategy: Return the EARLIEST eligible subscription (by createdAt asc)
+ * that matches the earning-allowed criteria (ACTIVE, TRIALING, or CANCELLED-within-period).
+ * This matches the original middleware logic which uses an OR query to find ANY eligible.
  *
  * The choice to return "any eligible" rather than "latest" is intentional:
  * a user with a newer terminal subscription (e.g. EXPIRED) and an older
  * still-within-period CANCELLED subscription should be allowed to scan/earn
  * based on the older CANCELLED subscription. The user's behavior is governed
  * by whether they HAVE an eligible subscription, not by which one they created
- * most recently.
+ * most recently. The earliest ordering ensures deterministic behavior in tests.
  *
  * @param userId The user ID
  * @param now Current time (defaults to now)
- * @returns The first eligible subscription found, or null if none exist
+ * @returns The earliest eligible subscription found, or null if none exist
  */
 export async function findEligibleSubscription(
   userId: string,
@@ -154,5 +154,6 @@ export async function findEligibleSubscription(
       ],
     },
     select: { id: true, status: true, currentPeriodEnd: true },
+    orderBy: { createdAt: 'asc' },
   });
 }

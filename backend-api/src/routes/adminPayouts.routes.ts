@@ -360,11 +360,13 @@ router.patch(
       // Fix C — hold no-IBAN payouts and notify users to add their bank details.
       for (const payout of noIbanPayouts) {
         try {
+          const noIbanBulkMeta = payout.metadata ? JSON.parse(payout.metadata) : {};
           await prisma.walletTransaction.update({
             where: { id: payout.id },
             data: {
               status: 'RISK_HOLD',
               description: 'Задържано - липсва банкова сметка (IBAN). Моля добавете вашия IBAN преди повторно одобрение.',
+              metadata: JSON.stringify({ ...noIbanBulkMeta, noIbanHold: true }),
             },
           });
           held++;
@@ -454,11 +456,13 @@ router.patch(
       if (!payout.wallet.payoutIban) {
         try {
           // Hold the payout for manual review with a description indicating no-IBAN.
+          const noIbanSingleMeta = payout.metadata ? JSON.parse(payout.metadata) : {};
           const held = await prisma.walletTransaction.update({
             where: { id: payout.id },
             data: {
               status: 'RISK_HOLD',
               description: 'Задържано - липсва банкова сметка (IBAN). Моля добавете вашия IBAN преди повторно одобрение.',
+              metadata: JSON.stringify({ ...noIbanSingleMeta, noIbanHold: true }),
             },
           });
           // Spec §3.2 / §6.1 — notify user to add their bank details.
@@ -804,12 +808,16 @@ router.patch(
               type: 'WITHDRAWAL',
               status: { in: ['FAILED', 'RISK_HOLD'] as WalletTransactionStatus[] },
             },
-            select: { metadata: true },
+            select: { metadata: true, description: true },
           });
-          // Filter out manual holds (metadata.manualHold=true) and only count genuine failures.
+          // Filter out manual holds (metadata.manualHold=true), no-IBAN administrative holds
+          // (metadata.noIbanHold=true), and legacy no-IBAN holds written before this flag was
+          // introduced (identifiable by their canonical no-IBAN hold description).
           const genuineFailures = allFailedRows.filter((row) => {
             const meta = row.metadata ? JSON.parse(row.metadata) : {};
-            return meta.manualHold !== true;
+            if (meta.manualHold === true || meta.noIbanHold === true) return false;
+            if (row.description?.includes('липсва банкова сметка')) return false;
+            return true;
           });
           const previousFailedCount = genuineFailures.length;
 

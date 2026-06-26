@@ -15,6 +15,7 @@
  */
 
 const findManyMock        = jest.fn();
+const updateMock          = jest.fn(async () => ({}));
 const subFindFirstMock    = jest.fn();
 const findUniqueMock      = jest.fn();
 const executeTransferMock = jest.fn();
@@ -28,6 +29,7 @@ jest.mock('../../src/lib/prisma', () => {
     walletTransaction: {
       findMany: findManyMock,
       findUnique: findUniqueMock,
+      update: updateMock,
     },
     subscription: {
       findFirst: subFindFirstMock,
@@ -35,6 +37,13 @@ jest.mock('../../src/lib/prisma', () => {
   };
   return { __esModule: true, default: client, prisma: client };
 });
+
+jest.mock('../../src/services/notification.service', () => ({
+  notificationService: {
+    notifyPayoutHeldNoIban: jest.fn(async () => undefined),
+    notifyPayoutEvent: jest.fn(async () => undefined),
+  },
+}));
 
 jest.mock('../../src/middleware/auth.middleware', () => ({
   authenticate: (req: any, _res: any, next: any) => {
@@ -85,6 +94,8 @@ function row(id: string, opts: { iban?: string | null; userId?: string } = {}) {
 
 beforeEach(() => {
   findManyMock.mockReset();
+  updateMock.mockReset();
+  updateMock.mockResolvedValue({});
   findUniqueMock.mockReset();
   executeTransferMock.mockReset();
   sendEmailMock.mockReset();
@@ -127,7 +138,7 @@ describe('PATCH /api/admin/payouts/bulk-approve — response counts', () => {
       approved: 1,
       alreadyProcessed: 1,
       failed: 0,
-      skippedNoIban: 1,
+      held: 1,
       skippedNoSub: 1,
       total: 4,
       skipped: 2, // noIban + noSub + failed
@@ -139,6 +150,15 @@ describe('PATCH /api/admin/payouts/bulk-approve — response counts', () => {
       (c: any[]) => /одобрено/.test((c[0] as any).subject),
     );
     expect(approvedEmails).toHaveLength(1);
+
+    // Verify the no-IBAN hold (row c) was written with metadata.noIbanHold=true so
+    // the two-strike counter excludes it from genuine failure counts.
+    const holdCall = updateMock.mock.calls.find(
+      (call: any[]) => call[0]?.where?.id === 'c',
+    );
+    expect(holdCall).toBeDefined();
+    const holdMeta = JSON.parse(holdCall![0].data.metadata);
+    expect(holdMeta.noIbanHold).toBe(true);
   });
 
   it('counts failures and sends a failed-payout email for each failure', async () => {
@@ -159,7 +179,7 @@ describe('PATCH /api/admin/payouts/bulk-approve — response counts', () => {
       approved: 1,
       alreadyProcessed: 0,
       failed: 1,
-      skippedNoIban: 0,
+      held: 0,
       skippedNoSub: 0,
       total: 2,
       skipped: 1, // 0 + 0 + 1 failed
@@ -180,11 +200,26 @@ describe('PATCH /api/admin/payouts/bulk-approve — response counts', () => {
       approved: 0,
       alreadyProcessed: 0,
       failed: 0,
-      skippedNoIban: 0,
+      held: 0,
       skippedNoSub: 0,
       total: 0,
       skipped: 0,
     });
     expect(executeTransferMock).not.toHaveBeenCalled();
+  });
+
+  it('no-IBAN hold preserves pre-existing metadata fields when stamping noIbanHold=true', async () => {
+    const priorMeta = { plan: 'BASIC', requestedAt: '2025-01-01T00:00:00.000Z' };
+    const c = { ...row('c', { iban: null }), metadata: JSON.stringify(priorMeta) };
+    findManyMock.mockResolvedValue([c]);
+
+    await request(app).patch('/api/admin/payouts/bulk-approve').send({});
+
+    const holdCall = updateMock.mock.calls.find((call: any[]) => call[0]?.where?.id === 'c');
+    expect(holdCall).toBeDefined();
+    const writtenMeta = JSON.parse(holdCall![0].data.metadata);
+    expect(writtenMeta.noIbanHold).toBe(true);
+    expect(writtenMeta.plan).toBe('BASIC');
+    expect(writtenMeta.requestedAt).toBe('2025-01-01T00:00:00.000Z');
   });
 });

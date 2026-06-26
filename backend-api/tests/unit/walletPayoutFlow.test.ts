@@ -46,10 +46,34 @@ let userStore: any = {
 jest.mock('../../src/lib/prisma', () => {
   const txDelegate = {
     findFirst: jest.fn(async (_args: any) => inflightExisting),
-    // Spec §4.4 v1.1 — requestPayout now scans for CLEARED CASHBACK_CREDIT
-    // rows to mark them LOCKED. The unit test fixture has no cashback rows so
-    // returning an empty array is correct here.
-    findMany: jest.fn(async (_args: any) => [] as any[]),
+    // Spec §4.4 v1.1 — requestPayout scans for CLEARED CASHBACK_CREDIT rows to
+    // mark them LOCKED (those always return []). The strike-count query uses
+    // type=WITHDRAWAL with status.in=[FAILED,RISK_HOLD] and needs real rows so
+    // F-014 second-failure escalation and no-IBAN-hold exclusion tests work.
+    findMany: jest.fn(async (args: any) => {
+      const w = args?.where ?? {};
+      if (
+        w.type === 'WITHDRAWAL' &&
+        w.status &&
+        typeof w.status === 'object' &&
+        Array.isArray(w.status.in)
+      ) {
+        return txCreated
+          .filter((t) => {
+            const last = [...txUpdated].reverse().find((u: any) => u.id === t.id);
+            const eff = { ...t, ...(last ?? {}) };
+            if (w.walletId !== undefined && eff.walletId !== w.walletId) return false;
+            if (!w.status.in.includes(eff.status)) return false;
+            return true;
+          })
+          .map((t) => {
+            const last = [...txUpdated].reverse().find((u: any) => u.id === t.id);
+            const eff = { ...t, ...(last ?? {}) };
+            return { metadata: eff.metadata ?? null, description: eff.description ?? null };
+          });
+      }
+      return [];
+    }),
     findUnique: jest.fn(async (args: any) => {
       const id = args.where?.id;
       const base = txCreated.find((t) => t.id === id);
@@ -442,7 +466,7 @@ describe('§6.1 v1.1 executePayoutTransfer (admin /approve helper)', () => {
     payseraService.isTransferConfigured.mockReturnValue(false);
   });
 
-  it('F-014 second payout failure escalates the user to HIGH risk, riskScore floored at 61 (spec §2.1/§7.4)', async () => {
+  it('F-014 second payout failure escalates the user to HIGH risk, riskScore floored at 51 (spec §2.1/§7.4)', async () => {
     const { payseraService } = jest.requireMock('../../src/services/paysera.service');
     const { notificationService } = jest.requireMock('../../src/services/notification.service');
     payseraService.isTransferConfigured.mockReturnValue(true);
@@ -458,9 +482,9 @@ describe('§6.1 v1.1 executePayoutTransfer (admin /approve helper)', () => {
       .rejects.toThrow(/Payout could not be processed/i);
 
     // Two FAILED withdrawals now (seeded + just-reversed) → second-failure branch.
-    // The shared two-strike helper floors riskScore at 61 and sets the HIGH bucket;
-    // it must NOT inflate unbounded (the old Paysera path did riskScore += 40).
-    expect(userStore.riskScore).toBe(61);
+    // The shared two-strike helper floors riskScore at 51 (canonical HIGH boundary per §2.1)
+    // and sets the HIGH bucket; it must NOT inflate unbounded.
+    expect(userStore.riskScore).toBe(51);
     expect(userStore.riskBucket).toBe('HIGH_51_PLUS');
     expect(notificationService.notifyAdminOps).toHaveBeenCalled();
     // Second failure does NOT notify the user (spec §7.4).
@@ -486,6 +510,72 @@ describe('§6.1 v1.1 executePayoutTransfer (admin /approve helper)', () => {
     // Existing score 85 > 61 floor → preserved, not downgraded.
     expect(userStore.riskScore).toBe(85);
     expect(userStore.riskBucket).toBe('HIGH_51_PLUS');
+
+    payseraService.isTransferConfigured.mockReturnValue(false);
+  });
+
+  it('F-014 no-IBAN RISK_HOLD does not count as a strike — genuine first failure takes first-failure branch (spec §3.7)', async () => {
+    const { payseraService } = jest.requireMock('../../src/services/paysera.service');
+    const { notificationService } = jest.requireMock('../../src/services/notification.service');
+    payseraService.isTransferConfigured.mockReturnValue(true);
+    payseraService.createTransfer.mockRejectedValueOnce(new Error('Invalid IBAN'));
+
+    // Seed a prior RISK_HOLD stamped with noIbanHold=true (written by the no-IBAN
+    // hold path in adminPayouts.routes.ts).  This must NOT count as a strike.
+    txCreated.push({
+      id: 'prior-no-iban-hold',
+      walletId: 'wallet-1',
+      type: 'WITHDRAWAL',
+      status: 'RISK_HOLD',
+      amount: -50,
+      metadata: JSON.stringify({ noIbanHold: true }),
+    });
+
+    await walletService.requestPayout('user-1');
+    const pending = txCreated.find((t) => t.status === 'PENDING' && t.type === 'WITHDRAWAL');
+
+    await expect(walletService.executePayoutTransfer(pending.id))
+      .rejects.toThrow(/Payout could not be processed/i);
+
+    // noIbanHold row excluded from strike count → this is the FIRST genuine failure:
+    // riskBucket must NOT be elevated and user must be notified to correct their IBAN.
+    expect(userStore.riskBucket).toBeNull();
+    expect(userStore.riskScore).toBe(0);
+    expect(notificationService.notifyPayoutFailedInvalidIban).toHaveBeenCalled();
+    expect(notificationService.notifyAdminOps).not.toHaveBeenCalled();
+
+    payseraService.isTransferConfigured.mockReturnValue(false);
+  });
+
+  it('F-014 legacy no-IBAN RISK_HOLD (no metadata flag, pre-fix description) does not count as a strike', async () => {
+    const { payseraService } = jest.requireMock('../../src/services/paysera.service');
+    const { notificationService } = jest.requireMock('../../src/services/notification.service');
+    payseraService.isTransferConfigured.mockReturnValue(true);
+    payseraService.createTransfer.mockRejectedValueOnce(new Error('Invalid IBAN'));
+
+    // Simulate a legacy row: RISK_HOLD with NO metadata flag (written before this fix)
+    // but with the canonical no-IBAN hold description.
+    txCreated.push({
+      id: 'prior-legacy-no-iban',
+      walletId: 'wallet-1',
+      type: 'WITHDRAWAL',
+      status: 'RISK_HOLD',
+      amount: -50,
+      metadata: null,
+      description: 'Задържано - липсва банкова сметка (IBAN). Моля добавете вашия IBAN преди повторно одобрение.',
+    });
+
+    await walletService.requestPayout('user-1');
+    const pending = txCreated.find((t) => t.status === 'PENDING' && t.type === 'WITHDRAWAL');
+
+    await expect(walletService.executePayoutTransfer(pending.id))
+      .rejects.toThrow(/Payout could not be processed/i);
+
+    // Legacy no-IBAN hold excluded via description fallback → first genuine failure.
+    expect(userStore.riskBucket).toBeNull();
+    expect(userStore.riskScore).toBe(0);
+    expect(notificationService.notifyPayoutFailedInvalidIban).toHaveBeenCalled();
+    expect(notificationService.notifyAdminOps).not.toHaveBeenCalled();
 
     payseraService.isTransferConfigured.mockReturnValue(false);
   });

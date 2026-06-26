@@ -14,8 +14,12 @@
  * 2. GET /api/admin/help?status=CANCELLED (raw token) also returns REJECTED tickets (back-compat)
  * 3. GET /api/admin/help/mine?status=Cancelled returns REJECTED tickets owned by the caller
  * 4. GET /api/admin/help?status=Closed returns RESOLVED tickets
- * 5. GET /api/admin/help?status=In Progress returns IN_REVIEW tickets
+ * 5. GET /api/admin/help?status=In%20Progress returns IN_REVIEW tickets
  * 6. Response still includes both raw status and requestStatus fields
+ * 7. GET /api/admin/help?status=New returns NEW tickets
+ * 8. GET /api/admin/help?status=Waiting returns WAITING tickets
+ * 9. GET /api/admin/help/mine?status=Closed returns RESOLVED tickets owned by caller
+ * 10. GET /api/admin/help/mine?status=In%20Progress returns IN_REVIEW tickets owned by caller
  */
 
 jest.mock('../../src/services/email.service', () => ({
@@ -51,8 +55,13 @@ async function hashPw() {
 
 // ─── Shared cleanup state ─────────────────────────────────────────────────────
 
+// Global safety-net: catches anything that slips through afterEach
 const userIds: string[] = [];
 const ticketIds: string[] = [];
+
+// Per-test tracking — reset in beforeEach, deleted in afterEach
+let currentTestTicketIds: string[] = [];
+let currentTestUserIds: string[] = [];
 
 afterAll(async () => {
   if (ticketIds.length) {
@@ -71,7 +80,7 @@ async function createSuperAdmin() {
   const user = await prisma.user.create({
     data: {
       email: `super-admin-${suffix}@boomcard.bg`,
-      hashedPassword: hash,
+      passwordHash: hash,
       firstName: 'Test',
       lastName: 'SuperAdmin',
       role: 'SUPER_ADMIN',
@@ -79,6 +88,7 @@ async function createSuperAdmin() {
     },
   });
   userIds.push(user.id);
+  currentTestUserIds.push(user.id);
   return user;
 }
 
@@ -88,7 +98,7 @@ async function createAdmin() {
   const user = await prisma.user.create({
     data: {
       email: `admin-status-${suffix}@boomcard.bg`,
-      hashedPassword: hash,
+      passwordHash: hash,
       firstName: 'Test',
       lastName: 'Admin',
       role: 'ADMIN',
@@ -96,6 +106,7 @@ async function createAdmin() {
     },
   });
   userIds.push(user.id);
+  currentTestUserIds.push(user.id);
   return user;
 }
 
@@ -113,6 +124,7 @@ async function createTicketWithStatus(ownerId: string, status: string) {
     },
   });
   ticketIds.push(ticket.id);
+  currentTestTicketIds.push(ticket.id);
   return ticket;
 }
 
@@ -120,8 +132,8 @@ async function loginAs(email: string): Promise<string> {
   const res = await request(app)
     .post('/api/auth/login')
     .send({ email, password: PASSWORD });
-  expect(res.body.token).toBeDefined();
-  return res.body.token;
+  expect(res.body.data.accessToken).toBeDefined();
+  return res.body.data.accessToken;
 }
 
 // ─── Test Suite ───────────────────────────────────────────────────────────────
@@ -132,10 +144,23 @@ describe('Admin Help Canonical Status Filter Fix (M8)', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // Reset per-test tracking arrays before creating any fixtures
+    currentTestTicketIds = [];
+    currentTestUserIds = [];
     superAdmin = await createSuperAdmin();
 
     // SUPER_ADMIN has implicit help.read.all access via hasFullAccess()
     superToken = await loginAs(superAdmin.email);
+  });
+
+  afterEach(async () => {
+    // Delete tickets created in this test iteration first (FK order)
+    if (currentTestTicketIds.length) {
+      await prisma.helpTicket.deleteMany({ where: { id: { in: currentTestTicketIds } } });
+    }
+    if (currentTestUserIds.length) {
+      await prisma.user.deleteMany({ where: { id: { in: currentTestUserIds } } });
+    }
   });
 
   // ─── Cancelled bucket: canonical name should return REJECTED + CANCELLED ───
@@ -239,8 +264,9 @@ describe('Admin Help Canonical Status Filter Fix (M8)', () => {
       const openTicket = await createTicketWithStatus(superAdmin.id, 'OPEN');
       const closedTicket = await createTicketWithStatus(superAdmin.id, 'CLOSED');
 
+      // LOW-2 fix: use %20 instead of raw space in URL
       const res = await request(app)
-        .get('/api/admin/help?status=In Progress&limit=100')
+        .get('/api/admin/help?status=In%20Progress&limit=100')
         .set('Authorization', `Bearer ${superToken}`)
         .expect(200);
 
@@ -251,11 +277,80 @@ describe('Admin Help Canonical Status Filter Fix (M8)', () => {
     });
   });
 
+  // ─── New bucket: canonical name should return NEW tickets ─────────────────
+
+  describe('status=New (canonical name)', () => {
+    it('returns NEW tickets under GET /api/admin/help and excludes OPEN', async () => {
+      const newTicket = await createTicketWithStatus(superAdmin.id, 'NEW');
+      const openTicket = await createTicketWithStatus(superAdmin.id, 'OPEN');
+
+      const res = await request(app)
+        .get('/api/admin/help?status=New&limit=100')
+        .set('Authorization', `Bearer ${superToken}`)
+        .expect(200);
+
+      const returnedIds = new Set(res.body.tickets.map((t: any) => t.id));
+      expect(returnedIds.has(newTicket.id)).toBe(true);
+      expect(returnedIds.has(openTicket.id)).toBe(false);
+    });
+  });
+
+  // ─── Waiting bucket: canonical name should return WAITING tickets ──────────
+
+  describe('status=Waiting (canonical name)', () => {
+    it('returns WAITING tickets under GET /api/admin/help and excludes OPEN', async () => {
+      const waitingTicket = await createTicketWithStatus(superAdmin.id, 'WAITING');
+      const openTicket = await createTicketWithStatus(superAdmin.id, 'OPEN');
+
+      const res = await request(app)
+        .get('/api/admin/help?status=Waiting&limit=100')
+        .set('Authorization', `Bearer ${superToken}`)
+        .expect(200);
+
+      const returnedIds = new Set(res.body.tickets.map((t: any) => t.id));
+      expect(returnedIds.has(waitingTicket.id)).toBe(true);
+      expect(returnedIds.has(openTicket.id)).toBe(false);
+    });
+  });
+
+  // ─── GET /mine: Closed and In Progress buckets ────────────────────────────
+
+  describe('GET /mine status buckets (Closed and In Progress)', () => {
+    it('returns RESOLVED tickets owned by caller under GET /api/admin/help/mine?status=Closed', async () => {
+      const resolvedTicket = await createTicketWithStatus(superAdmin.id, 'RESOLVED');
+      const openTicket = await createTicketWithStatus(superAdmin.id, 'OPEN');
+
+      const res = await request(app)
+        .get('/api/admin/help/mine?status=Closed')
+        .set('Authorization', `Bearer ${superToken}`)
+        .expect(200);
+
+      const returnedIds = new Set(res.body.tickets.map((t: any) => t.id));
+      expect(returnedIds.has(resolvedTicket.id)).toBe(true);
+      expect(returnedIds.has(openTicket.id)).toBe(false);
+    });
+
+    it('returns IN_REVIEW tickets owned by caller under GET /api/admin/help/mine?status=In%20Progress', async () => {
+      const inReviewTicket = await createTicketWithStatus(superAdmin.id, 'IN_REVIEW');
+      const closedTicket = await createTicketWithStatus(superAdmin.id, 'CLOSED');
+
+      const res = await request(app)
+        .get('/api/admin/help/mine?status=In%20Progress')
+        .set('Authorization', `Bearer ${superToken}`)
+        .expect(200);
+
+      const returnedIds = new Set(res.body.tickets.map((t: any) => t.id));
+      expect(returnedIds.has(inReviewTicket.id)).toBe(true);
+      expect(returnedIds.has(closedTicket.id)).toBe(false);
+    });
+  });
+
   // ─── Response shape: raw status + canonical requestStatus both present ──────
 
   describe('Response shape', () => {
-    it('includes raw status and requestStatus on all returned tickets', async () => {
-      await createTicketWithStatus(superAdmin.id, 'REJECTED');
+    it('includes raw status and requestStatus on the returned ticket', async () => {
+      // LOW-1 fix: assert on the specific ticket ID rather than every() over full DB state
+      const createdTicket = await createTicketWithStatus(superAdmin.id, 'REJECTED');
 
       const res = await request(app)
         .get('/api/admin/help?status=Cancelled&limit=100')
@@ -263,12 +358,11 @@ describe('Admin Help Canonical Status Filter Fix (M8)', () => {
         .expect(200);
 
       expect(res.body.tickets.length).toBeGreaterThan(0);
-      for (const ticket of res.body.tickets) {
-        expect(ticket).toHaveProperty('status');
-        expect(ticket).toHaveProperty('requestStatus');
-        // Every ticket in the Cancelled bucket must project to 'Cancelled'
-        expect(ticket.requestStatus).toBe('Cancelled');
-      }
+
+      const found = res.body.tickets.find((t: any) => t.id === createdTicket.id);
+      expect(found).toBeDefined();
+      expect(found.status).toBe('REJECTED');
+      expect(found.requestStatus).toBe('Cancelled');
     });
   });
 

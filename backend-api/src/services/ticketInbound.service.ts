@@ -475,7 +475,7 @@ export async function ingestInboundEmail(
           const t = await prisma.helpTicket.findUnique({ where: { id: ref }, select: { id: true } });
           relatedTicketId = t?.id ?? null;
         }
-        if (!relatedTicketId && ref.length <= 8) {
+        if (!relatedTicketId && ref.length >= 4 && ref.length <= 32) {
           // BC-REAUDIT-TICKET-SHORTREF-BACKFILL-2: Use indexed shortRef lookup.
           // All tickets now have shortRef populated (backfill migration applied).
           const t = await prisma.helpTicket.findUnique({ where: { shortRef: ref }, select: { id: true } });
@@ -507,6 +507,7 @@ export async function ingestInboundEmail(
           where: {
             ...(relatedTicketId ? { ticketId: relatedTicketId } : { fromEmail: normalizeAddress(payload.from) }),
             alerted: false,
+            createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
           },
           data: { alerted: true },
         });
