@@ -330,10 +330,10 @@ router.get(
 // ─── Advance pipeline status ──────────────────────────────────────────────────
 
 const VALID_PIPELINE_TRANSITIONS: Partial<Record<PartnerRequestStatus, PartnerRequestStatus[]>> = {
-  NEW: ['COMMUNICATION', 'REJECTED'],
-  COMMUNICATION: ['NEGOTIATION', 'REJECTED'],
-  NEGOTIATION: ['ONBOARDING', 'REJECTED'],
-  ONBOARDING: ['REJECTED'],
+  NEW: ['COMMUNICATION'],
+  COMMUNICATION: ['NEGOTIATION'],
+  NEGOTIATION: ['ONBOARDING'],
+  ONBOARDING: [],
   APPROVED: [],
   REJECTED: [],
 };
@@ -371,6 +371,12 @@ router.patch(
     }
 
     requestStatus = normalized;
+
+    if (requestStatus === PartnerRequestStatus.REJECTED) {
+      return res.status(400).json({
+        error: 'Cannot set requestStatus to REJECTED via PATCH. Use POST /:id/reject to reject a partner — it handles the full rejection workflow including status flip, audit trail, and link invalidation.',
+      });
+    }
 
     const partner = await prisma.partner.findUnique({ where: { id: req.params.id } });
     if (!partner) return res.status(404).json({ error: 'Partner not found' });
