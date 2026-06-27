@@ -305,7 +305,7 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
     // get the fresh behaviour-based score below.
     let subscribers = flat.map((s) => {
       const { riskOverriddenAt, wallet, ...rest } = s;
-      const { availableBalance, balance, pendingBalance } = wallet;
+      const { availableBalance = 0, balance = 0, pendingBalance = 0 } = wallet ?? {};
       return {
         ...rest,
         riskOverridden: !!riskOverriddenAt,
@@ -392,7 +392,7 @@ router.get('/export', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePe
     // raw internal riskOverriddenAt timestamp from the response shape.
     const subscribers = users.map(flattenSubscriber).map((s) => {
       const { riskOverriddenAt, wallet, ...rest } = s as typeof s & { riskOverriddenAt?: Date | null };
-      const { availableBalance, balance, pendingBalance } = wallet;
+      const { availableBalance = 0, balance = 0, pendingBalance = 0 } = wallet ?? {};
       return {
         ...rest,
         riskOverridden: !!riskOverriddenAt,
@@ -510,7 +510,7 @@ router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
     // (stored BGN). Raw BGN scalars are gated by isCurrencyTransitionWindowOpen();
     // when window is CLOSED, EUR-only display; when OPEN, both BGN+EUR.
     const { wallet, ...restUser } = user;
-    const { availableBalance, balance, pendingBalance } = wallet;
+    const { availableBalance = 0, balance = 0, pendingBalance = 0 } = wallet ?? {};
 
     // Enrich each subscription with a human-readable plan name (PREMIUM_WEEKLY → "Premium Weekly")
     const enriched = {

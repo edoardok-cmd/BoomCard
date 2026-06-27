@@ -393,6 +393,7 @@ Rule: a malformed/garbage path param MUST yield a clean 4xx (404/400), never a 5
 | INV-INPUT-022 | `:id` | venues/:id/{menu,menu/approve,menu/reject,status,status-history}; marketing template/list detail | [SUITE: INPUT] |
 | INV-INPUT-023 | `:tokenId` | DELETE /me/sessions/:tokenId | [SUITE: INPUT] |
 | INV-INPUT-024 | non-uuid query (`riskLevel=bogus`, `dateFrom=notadate`) | list endpoints must 200-ignore or 400, never 500 | runtime probe / [SUITE: INPUT] |
+| INV-INPUT-025 | subscriber with NULL wallet row | GET /api/admin/subscribers/ + /export + /:userId must 200 (treat null wallet as zero balances), never 500 on the destructure | [SUITE: INV-INPUT-025 in adminSubscribers-audit-fix.test.ts — covers list, export, detail routes] |
 
 ---
 

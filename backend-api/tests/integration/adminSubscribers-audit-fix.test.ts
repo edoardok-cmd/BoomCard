@@ -61,6 +61,7 @@ async function createFixtures(): Promise<TestFixtures> {
       role: 'SUPER_ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
+      phone: `+1000${suffix.replace(/[^0-9]/g, '').slice(0, 7)}`,
     },
   });
 
@@ -73,6 +74,7 @@ async function createFixtures(): Promise<TestFixtures> {
       role: 'ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
+      phone: `+2000${suffix.replace(/[^0-9]/g, '').slice(0, 7)}`,
     },
   });
 
@@ -87,6 +89,7 @@ async function createFixtures(): Promise<TestFixtures> {
       emailVerified: true,
       riskScore: 25,
       riskBucket: 'MEDIUM_21_50',
+      phone: `+3000${suffix.replace(/[^0-9]/g, '').slice(0, 7)}`,
     },
   });
 
@@ -199,6 +202,7 @@ describe('BC-ADMIN-AUDIT-FIX-005: adminSubscribers route defect fixes', () => {
           role: 'USER',
           status: 'ACTIVE',
           emailVerified: true,
+          phone: `+4${Date.now().toString().slice(-10)}`,
         },
       });
       archivedSubscriberId = archived.id;
@@ -253,6 +257,7 @@ describe('BC-ADMIN-AUDIT-FIX-005: adminSubscribers route defect fixes', () => {
         role: 'USER',
         status: 'ACTIVE',
         emailVerified: true,
+        phone: `+5${Date.now().toString().slice(-10)}`,
       },
     });
 
@@ -328,6 +333,7 @@ describe('BC-ADMIN-AUDIT-FIX-005: adminSubscribers route defect fixes', () => {
           status: 'ARCHIVED',
           emailVerified: true,
           iban: 'BG80BNBG96611020345672',
+          phone: `+6${Date.now().toString().slice(-10)}`,
         },
       });
       archivedId = archived.id;
@@ -341,6 +347,7 @@ describe('BC-ADMIN-AUDIT-FIX-005: adminSubscribers route defect fixes', () => {
           role: 'USER',
           status: 'INACTIVE',
           emailVerified: true,
+          phone: `+7${Date.now().toString().slice(-10)}`,
         },
       });
       inactiveId = inactive.id;
@@ -434,6 +441,7 @@ describe('BC-ADMIN-AUDIT-FIX-005: adminSubscribers route defect fixes', () => {
           status: 'DELETED',
           emailVerified: true,
           deletedAt: null, // Soft-delete state: status=DELETED but deletedAt=null
+          phone: `+8${Date.now().toString().slice(-10)}`,
         },
       });
       deletedId = deleted.id;
@@ -452,14 +460,119 @@ describe('BC-ADMIN-AUDIT-FIX-005: adminSubscribers route defect fixes', () => {
       expect(res.body.error).toMatch(/restore endpoint/i);
     });
 
-    it('E2 — DELETED account cannot be revived via /status endpoint (400)', async () => {
-      // Even with permission, /status endpoint rejects DELETED status and directs to /restore endpoint
+    it('E2 — DELETED account cannot be patched to INACTIVE via /status endpoint either (400)', async () => {
+      // The guard fires for any target status, not just ACTIVE.
+      // DELETED → INACTIVE must also be redirected to /restore.
       const res = await request(app)
         .patch(`/api/admin/subscribers/${deletedId}/status`)
         .set('Authorization', `Bearer ${fixtures.superAdminToken}`)
-        .send({ status: 'ACTIVE' });
+        .send({ status: 'INACTIVE' });
       expect(res.status).toBe(400);
       expect(res.body.error).toMatch(/restore endpoint/i);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // INV-INPUT-025 (BC-ADMIN-SPEC-REAUDIT9-SUBSCRIBER-NULL-WALLET-1):
+  // Subscriber with no wallet row must not 500 the list or export routes.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  describe('INV-INPUT-025: wallet-less subscriber does not 500 list or export', () => {
+    let walletlessId: string;
+
+    beforeAll(async () => {
+      const hash = await bcrypt.hash(PASSWORD, 10);
+      const u = await prisma.user.create({
+        data: {
+          email: `no-wallet-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@boomcard.bg`,
+          passwordHash: hash,
+          firstName: 'NoWallet',
+          lastName: 'Subscriber',
+          role: 'USER',
+          status: 'ACTIVE',
+          emailVerified: true,
+          phone: `+9${Date.now().toString().slice(-10)}`,
+        },
+      });
+      walletlessId = u.id;
+    });
+
+    afterAll(async () => {
+      await cleanupTestUser(walletlessId);
+    });
+
+    it('INV-INPUT-025-LIST — GET /subscribers returns 200 and includes the wallet-less subscriber', async () => {
+      const res = await request(app)
+        .get(`/api/admin/subscribers?search=no-wallet`)
+        .set('Authorization', `Bearer ${fixtures.superAdminToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.subscribers).toBeDefined();
+      expect(Array.isArray(res.body.subscribers)).toBe(true);
+      const row = (res.body.subscribers as Array<Record<string, unknown>>).find(
+        (s: Record<string, unknown>) => s.id === walletlessId,
+      );
+      expect(row).toBeDefined();
+      const wd = row!.walletDisplay as Record<string, {bgn: number; eur: number}>;
+      expect((wd.availableBalance).bgn).toBe(0);
+      expect((wd.availableBalance).eur).toBe(0);
+      expect((wd.balance).bgn).toBe(0);
+      expect((wd.balance).eur).toBe(0);
+      expect((wd.pendingBalance).bgn).toBe(0);
+      expect((wd.pendingBalance).eur).toBe(0);
+    });
+
+    it('INV-INPUT-025-EXPORT — GET /subscribers/export returns 200 and includes the wallet-less subscriber', async () => {
+      const res = await request(app)
+        .get(`/api/admin/subscribers/export?search=no-wallet`)
+        .set('Authorization', `Bearer ${fixtures.superAdminToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.subscribers).toBeDefined();
+      expect(Array.isArray(res.body.subscribers)).toBe(true);
+      const row = (res.body.subscribers as Array<Record<string, unknown>>).find(
+        (s: Record<string, unknown>) => s.id === walletlessId,
+      );
+      expect(row).toBeDefined();
+      const wd = row!.walletDisplay as Record<string, {bgn: number; eur: number}>;
+      expect((wd.availableBalance).bgn).toBe(0);
+      expect((wd.availableBalance).eur).toBe(0);
+      expect((wd.balance).bgn).toBe(0);
+      expect((wd.balance).eur).toBe(0);
+      expect((wd.pendingBalance).bgn).toBe(0);
+      expect((wd.pendingBalance).eur).toBe(0);
+    });
+
+    it('INV-INPUT-025-ZERO — wallet-less subscriber row has zero balances in walletDisplay', async () => {
+      const res = await request(app)
+        .get(`/api/admin/subscribers?search=no-wallet`)
+        .set('Authorization', `Bearer ${fixtures.superAdminToken}`);
+      expect(res.status).toBe(200);
+      const row = (res.body.subscribers as Array<Record<string, unknown>>).find(
+        (s: Record<string, unknown>) => s.id === walletlessId,
+      );
+      expect(row).toBeDefined();
+      expect(row!.walletDisplay).toBeDefined();
+      const wd = row!.walletDisplay as Record<string, {bgn: number; eur: number}>;
+      expect((wd.availableBalance).bgn).toBe(0);
+      expect((wd.availableBalance).eur).toBe(0);
+      expect((wd.balance).bgn).toBe(0);
+      expect((wd.balance).eur).toBe(0);
+      expect((wd.pendingBalance).bgn).toBe(0);
+      expect((wd.pendingBalance).eur).toBe(0);
+    });
+
+    it('INV-INPUT-025-DETAIL — GET /subscribers/:userId returns 200 (not 500) for a wallet-less subscriber', async () => {
+      const res = await request(app)
+        .get(`/api/admin/subscribers/${walletlessId}`)
+        .set('Authorization', `Bearer ${fixtures.superAdminToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.walletDisplay).toBeDefined();
+      const wd = res.body.walletDisplay as Record<string, {bgn: number; eur: number}>;
+      expect((wd.availableBalance).bgn).toBe(0);
+      expect((wd.availableBalance).eur).toBe(0);
+      expect((wd.balance).bgn).toBe(0);
+      expect((wd.balance).eur).toBe(0);
+      expect((wd.pendingBalance).bgn).toBe(0);
+      expect((wd.pendingBalance).eur).toBe(0);
     });
   });
 
@@ -487,6 +600,7 @@ describe('BC-ADMIN-AUDIT-FIX-005: adminSubscribers route defect fixes', () => {
           role: 'USER',
           status: 'ACTIVE',
           emailVerified: true,
+          phone: `+0${Date.now().toString().slice(-10)}`,
         },
       });
       return u.id;
@@ -600,6 +714,7 @@ describe('BC-ADMIN-AUDIT-FIX-005: adminSubscribers route defect fixes', () => {
           emailVerified: true,
           deletedAt: new Date(),
           statusBeforeDelete: null,
+          phone: `+1${Date.now().toString().slice(-10)}`,
         },
       });
       try {
