@@ -41,6 +41,25 @@ const VALID_PAYOUT_STATUSES = ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', '
 // "no subscribers" rather than issuing an invalid enum query.
 const VALID_PLANS = ['PREMIUM_WEEKLY', 'BASIC', 'PREMIUM_MONTHLY', 'UNKNOWN'] as const;
 
+/**
+ * Transforms a PartnerCashbackPayment row for wire format, applying dual-currency
+ * gating per spec §8.1 rule 4. Raw BGN scalars are conditionally excluded when the
+ * currency transition window is closed; a dual-currency display object is always attached.
+ */
+async function formatInvoiceForWire(inv: any) {
+  const windowOpen = await isCurrencyTransitionWindowOpen();
+  const { totalCashbackOwed, turnoverAmount, marginAmount, ...rest } = inv;
+  return {
+    ...rest,
+    ...(windowOpen && { totalCashbackOwed, turnoverAmount, marginAmount }),
+    display: {
+      totalCashbackOwed: toDualCurrency(totalCashbackOwed ?? 0, windowOpen),
+      turnoverAmount: toDualCurrency(turnoverAmount ?? 0, windowOpen),
+      marginAmount: toDualCurrency(marginAmount ?? 0, windowOpen),
+    },
+  };
+}
+
 /* ─── Invoices ────────────────────────────────────────────────────────────── */
 
 /**
@@ -336,8 +355,9 @@ router.post(
     }
 
     const updated = await prisma.partnerCashbackPayment.findUnique({ where: { id } });
+    const display = await formatInvoiceForWire(updated);
 
-    res.json({ success: true, data: updated, message: 'Invoice marked as paid' });
+    res.json({ success: true, data: display, message: 'Invoice marked as paid' });
   })
 );
 
@@ -379,7 +399,8 @@ router.patch(
     }
 
     const updated = await prisma.partnerCashbackPayment.findUnique({ where: { id } });
-    res.json({ success: true, data: updated });
+    const display = await formatInvoiceForWire(updated);
+    res.json({ success: true, data: display });
   })
 );
 
@@ -403,7 +424,8 @@ router.patch(
       data: { notes: notes || null },
     });
 
-    res.json({ success: true, data: updated });
+    const display = await formatInvoiceForWire(updated);
+    res.json({ success: true, data: display });
   })
 );
 
@@ -569,18 +591,17 @@ router.get(
 
     const periods = Array.from(monthMap.values()).sort((a, b) => b.month.localeCompare(a.month));
 
-    // DEFECT 2 fix: add display object to periods with dual-currency pairs
     const windowOpen = await isCurrencyTransitionWindowOpen();
     const periodsWithDisplay = periods.map(p => ({
       month: p.month,
       count: p.count,
+      pending: p.pending,
+      paid: p.paid,
+      overdue: p.overdue,
       hasUnbilledScans: p.hasUnbilledScans,
-      ...(windowOpen && { total: p.total, pending: p.pending, paid: p.paid, overdue: p.overdue }),
+      ...(windowOpen && { total: p.total }),
       display: {
         total: toDualCurrency(p.total, windowOpen),
-        pending: toDualCurrency(p.pending, windowOpen),
-        paid: toDualCurrency(p.paid, windowOpen),
-        overdue: toDualCurrency(p.overdue, windowOpen),
       },
     }));
 
