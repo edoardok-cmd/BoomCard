@@ -77,7 +77,7 @@ export interface InboundEmailPayload {
 // M5 / Spec §6.2 + Clash 7.1: the canonical subject-fallback marker is `[#XXXX]`
 // (a 4-char-and-up hex reference). The threshold was previously 8, which silently
 // failed to thread the spec's literal `[#XXXX]` notation. Widen to {4,32}.
-const SUBJECT_REF_RE = /\[#([a-f0-9]{4,32})\]/i;
+export const SUBJECT_REF_RE = /\[#([a-f0-9]{4,32})\]/i;
 const BOUNCE_SUBJECT_RE = /delivery (status|failure)|undeliverable|mailer[- ]daemon/i;
 // Spec §11.2 edge case: forwarded emails break header threading and must always
 // create a new ticket regardless of any [#ref] present in the subject. The
@@ -975,7 +975,7 @@ async function sendInboundAutoReply(args: {
         <p style="margin:0 0 16px;color:#111;font-size:16px;">Здравейте,</p>
         <p style="margin:0 0 16px;color:#444;font-size:15px;line-height:1.6;">
           Получихме вашата заявка и тя е регистрирана с референция
-          <strong style="font-family:monospace;">${subject.match(/\[#[a-f0-9]+\]/i)?.[0] ?? ''}</strong>.
+          <strong style="font-family:monospace;">${subject.match(SUBJECT_REF_RE)?.[0] ?? ''}</strong>.
         </p>
         <p style="margin:0 0 16px;color:#444;font-size:15px;line-height:1.6;">
           Ще се свържем с вас възможно най-скоро. За да добавите информация
@@ -991,7 +991,7 @@ async function sendInboundAutoReply(args: {
     </table>
   </td></tr></table>
 </body></html>`;
-  const ref = subject.match(/\[#[a-f0-9]+\]/i)?.[0] ?? '';
+  const ref = subject.match(SUBJECT_REF_RE)?.[0] ?? '';
   const text = `Здравейте,\n\nПолучихме вашата заявка и тя е регистрирана с референция ${ref}. За да добавите информация, просто отговорете на този имейл — съобщението ще бъде прикачено автоматично.\n\nСпешен случай: support@boomcard.bg\n\n— Екипът на BoomCard`;
 
   // Audit-pass [5.4]: persist the reply row FIRST. If we sent the email

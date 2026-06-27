@@ -12,6 +12,7 @@ import { DisputeSubjectType, TicketStatus } from '@prisma/client';
 import { z } from 'zod';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
+import { SUBJECT_REF_RE } from '../services/ticketInbound.service';
 
 const router = Router();
 router.use(auditMiddleware);
@@ -103,7 +104,7 @@ router.post(
         const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, firstName: true } });
         if (user?.email) {
           const emailSubject = buildTicketSubject(ticket.id, 'Вашата заявка е получена');
-          const ref = emailSubject.match(/\[#[a-f0-9]+\]/i)?.[0] ?? '';
+          const ref = emailSubject.match(SUBJECT_REF_RE)?.[0] ?? '';
           // Persist the auto-reply row BEFORE sending — ensures the Message-ID is
           // anchored in the DB so an inbound In-Reply-To resolves via Priority-2
           // even if the mailer subsequently fails.

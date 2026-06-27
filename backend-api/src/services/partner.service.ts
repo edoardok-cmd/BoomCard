@@ -262,7 +262,13 @@ export class PartnerService {
       await tx.partner.update({
         where: { id: partnerId },
         data: {
-          status: toStatus,
+          // Spec §1.7 / §2.4 / §12 rule 5: ARCHIVED → ACTIVE reactivation must
+          // re-enter the onboarding pipeline (status=PENDING) rather than jumping
+          // directly to ACTIVE. This ensures the partner goes through the approval
+          // flow and activation link consumption before becoming operationally
+          // live (isPartnerOperationallyActive requires verifiedAt != null).
+          // For all other transitions, apply the requested status directly.
+          status: isArchivedReactivation ? PartnerStatus.PENDING : toStatus,
           ...statusReasonUpdate,
           ...(isArchivedReactivation
             ? { requestStatus: PartnerRequestStatus.ONBOARDING, verifiedAt: null }

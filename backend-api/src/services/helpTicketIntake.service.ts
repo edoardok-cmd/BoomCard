@@ -18,6 +18,7 @@ import { logger } from '../utils/logger';
 import { writeAudit } from '../middleware/audit.middleware';
 import { emailService } from './email.service';
 import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef } from './ticketEmail.service';
+import { SUBJECT_REF_RE } from './ticketInbound.service';
 import { inferRequestType } from './ticketInbound.service';
 import { detach } from '../utils/detach';
 
@@ -68,7 +69,7 @@ async function sendWebFormAutoReply(args: {
     references: [],
   });
   const subject = buildTicketSubject(args.ticketId, `Re: ${args.originalSubject}`);
-  const ref = subject.match(/\[#[a-f0-9]+\]/i)?.[0] ?? '';
+  const ref = subject.match(SUBJECT_REF_RE)?.[0] ?? '';
 
   const isBg = args.language === 'bg';
 

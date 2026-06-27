@@ -11,6 +11,7 @@ import { getSystemSettingStr } from '../utils/systemSettings';
 import { logger } from '../utils/logger';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
+import { SUBJECT_REF_RE } from '../services/ticketInbound.service';
 
 const router = Router();
 router.use(authenticate, authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'));
@@ -185,7 +186,7 @@ router.post('/ticket', requireNonArchivedPartner, asyncHandler(async (req: AuthR
   detach((async () => {
     try {
       const subject_built = buildTicketSubject(ticket.id, 'Вашата заявка е получена');
-      const ref = subject_built.match(/\[#[a-f0-9]+\]/i)?.[0] ?? '';
+      const ref = subject_built.match(SUBJECT_REF_RE)?.[0] ?? '';
       // Generate threading headers first so rootMessageId matches the actual
       // Message-ID sent in the email (a second newMessageId() call would
       // produce a different value, breaking Priority-2 In-Reply-To threading).

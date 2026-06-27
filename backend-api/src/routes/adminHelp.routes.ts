@@ -11,6 +11,7 @@ import { logger } from '../utils/logger';
 import { parsePagination } from '../utils/pagination';
 import type { AuthRequest } from '../middleware/auth.middleware';
 import { detach } from '../utils/detach';
+import { SUBJECT_REF_RE } from '../services/ticketInbound.service';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -193,7 +194,7 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
             isAutoReply: true,
           },
         });
-        const ref = buildTicketSubject(ticket.id, '').match(/\[#[a-f0-9]+\]/i)?.[0] ?? `#${ticket.id.slice(0, 8)}`;
+        const ref = buildTicketSubject(ticket.id, '').match(SUBJECT_REF_RE)?.[0] ?? `#${ticket.id.slice(0, 8)}`;
         await emailService.sendEmail({
           to: req.user!.email,
           subject: buildTicketSubject(ticket.id, 'Вашата заявка е получена'),

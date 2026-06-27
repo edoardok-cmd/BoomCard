@@ -15,6 +15,7 @@
 
 import crypto from 'crypto';
 import { TicketStatus } from '@prisma/client';
+import { SUBJECT_REF_RE } from './ticketInbound.service';
 
 const DEFAULT_DOMAIN = 'mail.boomcard.bg';
 
@@ -286,7 +287,7 @@ export function buildTicketSubject(ticketId: string, subject: string, shortRef?:
   const ref = shortRef ?? shortTicketRef(ticketId);
   const marker = `[#${ref}]`;
   // Strip any existing [#...] marker to ensure idempotency when shortRef changes
-  const cleanedSubject = subject.replace(/\[#[a-f0-9]{4,32}\]/i, '').trim();
+  const cleanedSubject = subject.replace(SUBJECT_REF_RE, '').trim();
   if (cleanedSubject.includes(marker)) return subject; // Already has the exact marker
   return `${marker} ${cleanedSubject}`.trim();
 }
