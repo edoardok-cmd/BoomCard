@@ -650,6 +650,8 @@ router.get('/business/stats', requirePermission('transactions.read'), async (req
   try {
     const where = buildBusinessWhere(req.query);
 
+    const windowOpen = await isCurrencyTransitionWindowOpen();
+
     const [startOfToday, endOfToday] = getTodayBoundariesInSofia();
 
     // Strip top-level createdAt before composing today's window so the row is
@@ -712,13 +714,23 @@ router.get('/business/stats', requirePermission('transactions.read'), async (req
       }),
     ]);
 
+    // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for aggregate amounts
+    const totalVolume = agg._sum.amount ?? 0;
+    const averageValue = agg._avg.amount ?? 0;
+    const totalCashback =
+      (agg._sum.cashbackAmount ?? 0) + (fallbackAgg._sum.cashbackAmount ?? 0);
+
     res.json({
       count: agg._count._all,
       todayCount,
-      totalVolume: agg._sum.amount ?? 0,
-      averageValue: agg._avg.amount ?? 0,
-      totalCashback:
-        (agg._sum.cashbackAmount ?? 0) + (fallbackAgg._sum.cashbackAmount ?? 0),
+      ...(windowOpen && { totalVolume }),
+      ...(windowOpen && { averageValue }),
+      ...(windowOpen && { totalCashback }),
+      display: {
+        totalVolume: toDualCurrency(totalVolume, windowOpen),
+        averageValue: toDualCurrency(averageValue, windowOpen),
+        totalCashback: toDualCurrency(totalCashback, windowOpen),
+      },
     });
   } catch (error) {
     next(error);
