@@ -27,6 +27,11 @@ const FRONTEND_URL = (() => {
   return 'http://localhost:3021';
 })();
 
+const STATUS_BG_NOTIFY: Record<string, string> = {
+  NEW: 'Нова', OPEN: 'Отворена', IN_REVIEW: 'В преглед', WAITING: 'Чака отговор',
+  RESOLVED: 'Решена', CLOSED: 'Затворена', REJECTED: 'Отказана', CANCELLED: 'Отменена',
+};
+
 /**
  * Return a portal URL the ticket creator can use to view their ticket.
  * ADMIN/SUPER_ADMIN → admin help panel (mine view).
@@ -990,10 +995,6 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
       const CATEGORY_BG_NOTIFY: Record<string, string> = {
         CASHBACK: 'Кешбек', ACCOUNT: 'Акаунт', PAYMENT: 'Плащане', TECHNICAL: 'Техническо', OTHER: 'Друго',
       };
-      const STATUS_BG_NOTIFY: Record<string, string> = {
-        OPEN: 'Отворена', IN_REVIEW: 'В преглед', WAITING: 'Чака отговор',
-        RESOLVED: 'Решена', CLOSED: 'Затворена', REJECTED: 'Отказана',
-      };
       const newStatusLabel = STATUS_BG_NOTIFY[data.status] ?? data.status;
       const baseSubject = data.status === 'CLOSED'
         ? `[Заявката затворена] ${ticket.subject}`
@@ -1175,6 +1176,24 @@ router.post('/:id/reply', requirePermission('help.write'), async (req: AuthReque
           ...(isReopen ? { reopenedAt: new Date() } : {}),
         },
       });
+    }
+
+    // Spec §9.1 template #5 "Request Updates" — partner in-app bell on reply-driven
+    // status change. Parity with the reject/cancel/PATCH handlers: fires only when
+    // support (non-creator) replies and the creator is a PARTNER, and only when the
+    // reply actually changed the status (newStatus is set). Subscriber/user creators
+    // have no partner dashboard, so this is gated on role.
+    if (!isCreator && newStatus && ticket.user.role === 'PARTNER') {
+      const fromLabel = STATUS_BG_NOTIFY[ticket.status] ?? ticket.status;
+      const toLabel = STATUS_BG_NOTIFY[newStatus] ?? newStatus;
+      detach(notificationService
+        .notifyPartnerRequestUpdate({
+          partnerUserId: ticket.user.id,
+          ticketId: req.params.id,
+          subject: ticket.subject,
+          fromStatus: fromLabel,
+          toStatus: toLabel,
+        }), (err) => logger.error('[adminHelp] Failed to send partner in-app request-update notification on reply:', err));
     }
 
     req.skipAudit = true;

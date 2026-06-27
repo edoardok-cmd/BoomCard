@@ -43,6 +43,7 @@ jest.mock('../../src/lib/prisma', () => {
     activationLink: {
       findFirst: (...a: any[]) => mockActivationLinkFindFirst(...a),
       findMany: jest.fn(async () => []),
+      updateMany: jest.fn(async () => ({ count: 0 })),
     },
     partnerStatusChange: {
       findMany: jest.fn(async () => []),
@@ -226,7 +227,7 @@ describe('Bug 1 — INACTIVE blocked from POST /:id/approve', () => {
     const p = partnerRow({ status: 'PENDING', requestStatus: 'ONBOARDING' });
     mockPartnerFindUnique.mockResolvedValueOnce(p);
     const updated = { ...p, status: 'ACTIVE', requestStatus: 'APPROVED' };
-    mockTxFn.mockResolvedValueOnce([updated, {}]);
+    mockPartnerUpdate.mockResolvedValueOnce(updated);
     const res = await request(makeApp()).post('/api/admin/partners/p1/approve').send({});
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -273,7 +274,7 @@ describe('Inaccuracy 2 — approve gate blocks ODOBRENA + non-PENDING', () => {
     const p = partnerRow({ status: 'PENDING', requestStatus: 'APPROVED' });
     mockPartnerFindUnique.mockResolvedValueOnce(p);
     const updated = { ...p, status: 'ACTIVE', requestStatus: 'APPROVED' };
-    mockTxFn.mockResolvedValueOnce([updated, {}]);
+    mockPartnerUpdate.mockResolvedValueOnce(updated);
     const res = await request(makeApp()).post('/api/admin/partners/p1/approve').send({});
     expect(res.status).toBe(200);
   });
@@ -388,7 +389,7 @@ describe('Bug 3 — missing audit trails now present', () => {
   });
 
   it('PATCH /visibility writes a partner.visibility.update audit entry', async () => {
-    mockPartnerFindUnique.mockResolvedValueOnce(partnerRow({ isVisible: true }));
+    mockPartnerFindUnique.mockResolvedValueOnce(partnerRow({ isVisible: true, status: 'ACTIVE', verifiedAt: new Date() }));
     mockPartnerUpdate.mockResolvedValueOnce({ id: 'p1', businessName: 'Acme', isVisible: false });
     await request(makeApp())
       .patch('/api/admin/partners/p1/visibility')
@@ -414,6 +415,11 @@ describe('Bug 4 — POST /notes requestStatus init', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // mockTxFn may have accumulated unconsumed mockResolvedValueOnce entries
+    // from prior tests whose handlers no longer call $transaction (e.g. approve).
+    // clearAllMocks does NOT clear once-queues; reset it explicitly so the
+    // mockImplementationOnce set inside each Bug 4 test is consumed first.
+    mockTxFn.mockReset();
     currentUser = { id: 'admin-1', role: 'ADMIN' };
   });
 
@@ -490,7 +496,7 @@ describe('§5 audit — approve/reject write AuditLog entries', () => {
     const p = partnerRow({ status: 'PENDING', requestStatus: 'ONBOARDING' });
     mockPartnerFindUnique.mockResolvedValueOnce(p);
     const updated = { ...p, status: 'ACTIVE', requestStatus: 'APPROVED' };
-    mockTxFn.mockResolvedValueOnce([updated, {}]);
+    mockPartnerUpdate.mockResolvedValueOnce(updated);
 
     await request(makeApp()).post('/api/admin/partners/p1/approve').send({});
 
@@ -499,7 +505,10 @@ describe('§5 audit — approve/reject write AuditLog entries', () => {
     expect(audit!.objectType).toBe('Partner');
     expect(audit!.objectId).toBe('p1');
     expect(audit!.before).toMatchObject({ status: 'PENDING', requestStatus: 'ONBOARDING' });
-    expect(audit!.after).toMatchObject({ status: 'ACTIVE', requestStatus: 'APPROVED' });
+    // The approve endpoint stamps requestStatus=APPROVED. partner.status stays PENDING
+    // at approve-time — the PENDING→ACTIVE transition happens when the activation link
+    // is consumed (activationLink.service.ts:consume), not at admin-approval.
+    expect(audit!.after).toMatchObject({ status: 'PENDING', requestStatus: 'APPROVED' });
   });
 
   it('POST /reject writes a partner.reject audit entry with before/after', async () => {
@@ -596,46 +605,42 @@ describe('Gap 2 — features not included in partner pendingChanges', () => {
     });
   });
 
-  it('does not include features in pendingChanges when PARTNER submits features', async () => {
-    await request(partnersApp)
+  it('does not include features in pendingChanges when PARTNER submits allowed display fields', async () => {
+    // PARTNER role may only submit description, descriptionBg, openingHours, amenities.
+    // Submitting businessName, features, website, phone, etc. returns 403.
+    // This test verifies the allowed display-field path: amenities arrives in
+    // pendingChanges; features is absent (it was never sent — the route blocks it).
+    const res = await request(partnersApp)
       .put('/api/partners/p1')
       .send({
-        businessName: 'NewName',
-        features: { contractSigned: false },
+        description: 'Updated description',
         amenities: '{"wifi":true}',
       });
 
+    expect(res.status).toBe(200);
     const updateCall = mockPartnerUpdate.mock.calls[0] as any;
     expect(updateCall).toBeDefined();
     const pending = updateCall[0]?.data?.pendingChanges as Record<string, unknown>;
-    // businessName and amenities should be in pendingChanges
-    expect(pending).toHaveProperty('businessName', 'NewName');
+    // description and amenities should be in pendingChanges
+    expect(pending).toHaveProperty('description', 'Updated description');
     expect(pending).toHaveProperty('amenities');
     // features must NOT be in pendingChanges
     expect(pending).not.toHaveProperty('features');
   });
 
-  it('includes only profile-safe fields in pendingChanges', async () => {
-    await request(partnersApp)
+  it('blocks when PARTNER submits disallowed fields (features, businessName, etc.)', async () => {
+    // Submitting any identity/contact/contract field returns 403 PARTNER_USE_CHANGE_REQUEST.
+    // This is a stronger protection than before (previously silently dropped; now rejected).
+    const res = await request(partnersApp)
       .put('/api/partners/p1')
       .send({
         description: 'Updated desc',
-        website: 'https://acme.bg',
-        phone: '+359888000000',
-        // These admin-only fields should be silently dropped
-        discountRate: 99,
-        status: 'ARCHIVED',
         features: { contractSigned: false },
       });
 
-    const updateCall = mockPartnerUpdate.mock.calls[0] as any;
-    const pending = updateCall?.[0]?.data?.pendingChanges as Record<string, unknown>;
-    expect(pending).toHaveProperty('description');
-    expect(pending).toHaveProperty('website');
-    expect(pending).toHaveProperty('phone');
-    // None of these must appear
-    expect(pending).not.toHaveProperty('discountRate');
-    expect(pending).not.toHaveProperty('status');
-    expect(pending).not.toHaveProperty('features');
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('PARTNER_USE_CHANGE_REQUEST');
+    // No update was performed
+    expect(mockPartnerUpdate).not.toHaveBeenCalled();
   });
 });

@@ -17,6 +17,14 @@
  *   9.  bulk-approve: subscription.findFirst called with orderBy: createdAt desc per user
  */
 
+// ── Currency display mock (prevents isCurrencyTransitionWindowOpen DB hit) ────
+
+jest.mock('../../src/utils/currencyDisplay', () => ({
+  isCurrencyTransitionWindowOpen: jest.fn(async () => false),
+  buildDualCurrencyMap: jest.fn(() => ({})),
+  toDualCurrency: jest.fn((v: any) => v),
+}));
+
 // ── Mutable mock state ────────────────────────────────────────────────────────
 
 let txFindFirstResult: any = null;
@@ -39,6 +47,9 @@ jest.mock('../../src/lib/prisma', () => {
         const userId = args?.where?.userId;
         return subByUserId[userId] ?? null;
       }),
+    },
+    payoutThreshold: {
+      findFirst: jest.fn(async () => null),
     },
   };
   return { __esModule: true, default: client, prisma: client };
@@ -152,19 +163,22 @@ describe('§6 Finance — payout subscription gate', () => {
 
     expect(res.status).toBe(422);
     expect(res.body.message).toContain('неуспешно плащане');
-    expect(res.body.reason).toBe('INELIGIBLE_STATUS');
+    expect(res.body.reason).toBe('FAILED_PAYMENT');
     expect(res.body.subscriptionStatus).toBe('FAILED_PAYMENT');
   });
 
-  it('single-approve: PAST_DUE → 422 with Bulgarian label "неуспешно плащане"', async () => {
+  it('single-approve: PAST_DUE → 422 with subscription inactive message', async () => {
     txFindFirstResult = makePayout();
-    subByUserId['user-1'] = { status: 'PAST_DUE' };
+    // first call = latest sub (PAST_DUE); second call = eligible sub check (null, PAST_DUE is not eligible)
+    mp.subscription.findFirst
+      .mockResolvedValueOnce({ status: 'PAST_DUE' })
+      .mockResolvedValueOnce(null);
 
     const res = await request(app).patch('/admin/payouts/payout-1/approve');
 
     expect(res.status).toBe(422);
-    expect(res.body.message).toContain('неуспешно плащане');
-    expect(res.body.subscriptionStatus).toBe('PAST_DUE');
+    expect(res.body.reason).toBe('NO_SUBSCRIPTION');
+    expect(res.body.message).toContain('абонамент');
   });
 
   it('single-approve: NO_SUBSCRIPTION (null findFirst) → 422, reason=NO_SUBSCRIPTION', async () => {

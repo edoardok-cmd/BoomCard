@@ -175,14 +175,15 @@ export async function seedPermissions() {
   }
 
   // Seed the SUPER_ADMIN role. SUPER_ADMIN is bypassed in requirePermission and requires
-  // no RolePermission grants. However, the AdminRole row itself must exist because the approval
-  // handler at adminAdmins.routes.ts:785 queries it directly: findUnique({ where: { key: 'SUPER_ADMIN' } }).
+  // no RolePermission grants. The approval handler at adminAdmins.routes.ts:785 self-heals
+  // via adminRole.upsert (idempotent); this call provides early warm-up so the row exists
+  // before the first approval attempt.
   await seedSuperAdminRole();
 }
 
 // Seeds the SUPER_ADMIN role row. SUPER_ADMIN is bypassed in requirePermission and requires
-// no RolePermission grants. However, the AdminRole row itself must exist because the approval
-// handler at adminAdmins.routes.ts:785 queries it directly: findUnique({ where: { key: 'SUPER_ADMIN' } }).
+// no RolePermission grants. The approval handler at adminAdmins.routes.ts:785 self-heals
+// via adminRole.upsert, so this function is a warm-up rather than a hard dependency.
 async function seedSuperAdminRole() {
   await prisma.adminRole.upsert({
     where: { key: 'SUPER_ADMIN' },

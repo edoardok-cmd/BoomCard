@@ -782,8 +782,11 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
     // excluded. SUSPENDED is functionally Archived for login but is NOT terminal/decommissioned
     // per §1.5 legacy note, so we conservatively count it as existing.
 
-    const superAdminRole = await prisma.adminRole.findUnique({ where: { key: AdminRoleKey.SUPER_ADMIN } });
-    if (!superAdminRole) return res.status(500).json({ error: 'SUPER_ADMIN role not found in DB — run seed-permissions first' });
+    const superAdminRole = await prisma.adminRole.upsert({
+      where: { key: AdminRoleKey.SUPER_ADMIN },
+      update: {},
+      create: { key: AdminRoleKey.SUPER_ADMIN, label: 'Super Administrator' },
+    });
 
     // DEFECT 1 fix (pre-check in approval): reject if an admin (ADMIN or SUPER_ADMIN) with this email already exists.
     // This provides a clear error message before the transaction attempt, preventing ambiguous P2002 conflicts.

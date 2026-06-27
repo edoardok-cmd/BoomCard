@@ -213,7 +213,7 @@ describe('subscriptionGate Module', () => {
         data: {
           id: `test-user-${Date.now()}`,
           email: `test-user-${Date.now()}@example.com`,
-          password: 'hashed_password',
+          passwordHash: 'hashed_password',
           firstName: 'Test',
           lastName: 'User',
           role: 'USER',
@@ -240,7 +240,7 @@ describe('subscriptionGate Module', () => {
           data: {
             userId: user.id,
             status: SubscriptionStatus.EXPIRED,
-            plan: 'PREMIUM_MONTHLY',
+            plan: 'PREMIUM_WEEKLY',
             stripeSubscriptionId: `stripe-newer-${Date.now()}`,
             currentPeriodEnd: new Date(now.getTime() - 24 * 60 * 60 * 1000), // Yesterday
             currentPeriodStart: new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000), // 60 days ago
@@ -276,7 +276,7 @@ describe('subscriptionGate Module', () => {
         data: {
           id: `test-user-none-${Date.now()}`,
           email: `test-user-none-${Date.now()}@example.com`,
-          password: 'hashed_password',
+          passwordHash: 'hashed_password',
           firstName: 'Test',
           lastName: 'User',
           role: 'USER',
@@ -316,7 +316,7 @@ describe('subscriptionGate Module', () => {
         data: {
           id: `test-user-active-${Date.now()}`,
           email: `test-user-active-${Date.now()}@example.com`,
-          password: 'hashed_password',
+          passwordHash: 'hashed_password',
           firstName: 'Test',
           lastName: 'User',
           role: 'USER',
@@ -357,7 +357,7 @@ describe('subscriptionGate Module', () => {
         data: {
           id: `test-user-trialing-${Date.now()}`,
           email: `test-user-trialing-${Date.now()}@example.com`,
-          password: 'hashed_password',
+          passwordHash: 'hashed_password',
           firstName: 'Test',
           lastName: 'User',
           role: 'USER',

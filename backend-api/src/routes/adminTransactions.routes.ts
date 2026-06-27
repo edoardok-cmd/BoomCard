@@ -214,53 +214,71 @@ router.post('/adjust', requirePermission('transactions.write'), async (req, res,
     }
 
     // Read balance INSIDE the interactive transaction so balanceBefore/After are consistent
-    // even under concurrent requests.
-    const created = await prisma.$transaction(async (tx) => {
-      const wallet = await tx.wallet.findUnique({
-        where: { userId },
-        select: { id: true, balance: true, availableBalance: true, currency: true },
-      });
-      if (!wallet) throw new Error('Wallet disappeared inside transaction');
+    // even under concurrent requests. Serializable isolation prevents the lost-update
+    // TOCTOU where two concurrent negative adjustments both pass the availableBalance
+    // guard and both apply their blind decrements, overdrawing the wallet.
+    // eslint-disable-next-line prefer-const
+    let created: any;
+    try {
+      created = await prisma.$transaction(async (tx) => {
+        const wallet = await tx.wallet.findUnique({
+          where: { userId },
+          select: { id: true, balance: true, availableBalance: true, currency: true },
+        });
+        if (!wallet) throw new Error('Wallet disappeared inside transaction');
 
-      if (amount < 0 && wallet.availableBalance + amount < 0) {
-        validationError = 'Adjustment would result in negative balance';
-        throw new Error(validationError);
+        if (amount < 0 && wallet.availableBalance + amount < 0) {
+          validationError = 'Adjustment would result in negative balance';
+          throw new Error(validationError);
+        }
+
+        const balanceBefore = wallet.balance;
+        const balanceAfter = balanceBefore + amount;
+
+        const transaction = await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            type: 'ADJUSTMENT',
+            amount: Math.abs(amount), // amount field is always the magnitude; direction via balanceBefore→After
+            balanceBefore,
+            balanceAfter,
+            currency: wallet.currency,
+            status: 'COMPLETED',
+            description: reason.trim(),
+          },
+          select: {
+            id: true,
+            type: true,
+            amount: true,
+            balanceBefore: true,
+            balanceAfter: true,
+            currency: true,
+            status: true,
+            description: true,
+            createdAt: true,
+          },
+        });
+
+        await tx.wallet.update({
+          where: { id: wallet.id },
+          data: { balance: { increment: amount }, availableBalance: { increment: amount } },
+        });
+
+        return transaction;
+      }, { isolationLevel: 'Serializable' });
+    } catch (txErr: any) {
+      // Serializable isolation can produce a serialization failure (P2034) when two
+      // concurrent adjustments race. Return 409 so the caller can retry rather than
+      // surfacing an unhandled 500.
+      if (txErr?.code === 'P2034') {
+        res.status(409).json({
+          message: 'Concurrent modification — please retry.',
+          reason: 'CONCURRENT_TRANSITION',
+        });
+        return;
       }
-
-      const balanceBefore = wallet.balance;
-      const balanceAfter = balanceBefore + amount;
-
-      const transaction = await tx.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          type: 'ADJUSTMENT',
-          amount: Math.abs(amount), // amount field is always the magnitude; direction via balanceBefore→After
-          balanceBefore,
-          balanceAfter,
-          currency: wallet.currency,
-          status: 'COMPLETED',
-          description: reason.trim(),
-        },
-        select: {
-          id: true,
-          type: true,
-          amount: true,
-          balanceBefore: true,
-          balanceAfter: true,
-          currency: true,
-          status: true,
-          description: true,
-          createdAt: true,
-        },
-      });
-
-      await tx.wallet.update({
-        where: { id: wallet.id },
-        data: { balance: { increment: amount }, availableBalance: { increment: amount } },
-      });
-
-      return transaction;
-    });
+      throw txErr;
+    }
 
     // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for transaction amounts
     // (stored BGN). Raw BGN scalars are gated by isCurrencyTransitionWindowOpen();

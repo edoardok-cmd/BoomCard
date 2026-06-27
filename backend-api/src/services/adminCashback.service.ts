@@ -1317,6 +1317,9 @@ export async function voidEntry(entryId: string, adminUserId: string, reason: st
   if (entry.cashbackStatus === PrismaCashbackEntryStatus.VOIDED) {
     throw new AppError('Cannot void an already-VOIDED cashback entry — VOIDED is terminal (§1.3).', 400);
   }
+  if (entry.cashbackStatus === PrismaCashbackEntryStatus.PAID) {
+    throw new AppError('Cannot void a PAID cashback entry — issue a refund instead (PAID is terminal, §1.3).', 400);
+  }
 
   // Spec §1.3 + §3.4: Locked → Voided is a supported transition. markVoided
   // throws on LOCKED to protect in-flight payouts. For a standalone admin void
