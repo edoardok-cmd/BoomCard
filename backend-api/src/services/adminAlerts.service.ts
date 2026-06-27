@@ -280,16 +280,6 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
   const informational: AlertItem[] = [];
 
   // ── Critical ────────────────────────────────────────────────────────────────
-  if (receiptReviews > 0) {
-    critical.push({
-      id: 'receipt_review',
-      type: 'RECEIPT_REVIEW',
-      tier: 'critical',
-      title: 'Касови бележки за ръчен преглед',
-      count: receiptReviews,
-      link: '/admin/control/risk?status=MANUAL_REVIEW',
-    });
-  }
   if (partnerInvoicesOverdue > 0) {
     // Per spec §6.2, partners are invoiced by BoomCard for cashback owed to
     // subscribers (totalCashbackOwed = partner→BoomCard receivable).
@@ -328,10 +318,11 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
     });
   }
   // Spec §3.2 lists "рискови транзакции" as a single critical category. We
-  // intentionally split into three emitters (receipt_review, risk_transactions,
+  // intentionally split into two Critical emitters (risk_transactions,
   // medium_risk_transactions) because the action surfaces are distinct
-  // (manual-review queue vs. fraud-score buckets) and admins benefit from
-  // seeing them broken out — see /admin/control/risk for the unified queue.
+  // (fraud-score buckets) and admins benefit from seeing them broken out
+  // — see /admin/control/risk for the unified queue.
+  // receipt_review (MANUAL_REVIEW queue) is Operational, not Critical — see below.
   if (highRiskScans > 0) {
     critical.push({
       id: 'risk_transactions',
@@ -387,10 +378,12 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       tier: 'critical',
       title: 'Промени на IBAN (последните 24ч)',
       count: recentIbanChanges,
-      // Deep-link to subscriber list pre-filtered to users who changed IBAN in
-      // the counted window. ibanChangedAfter is handled by the subscribers route
-      // and by AdminSubscribersAllPage's URL-param hydration.
-      link: `/admin/subscribers/all?ibanChangedAfter=${oneDayAgo.toISOString()}`,
+      // Deep-link to Finance reports pre-filtered to the suspicious_iban_changes
+      // focus, satisfying spec §3.1 (Critical alerts → Control or Finance).
+      // ibanChangedAfter is passed as a URL param for frontend filtering,
+      // mirroring the ?focus= pattern used by medium_risk_transactions and
+      // other Finance alerts.
+      link: `/admin/finance/reports?focus=suspicious_iban_changes&ibanChangedAfter=${oneDayAgo.toISOString()}`,
       meta: { dateFrom: oneDayAgo.toISOString() },
     });
   }
@@ -414,6 +407,23 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
   }
 
   // ── Operational ─────────────────────────────────────────────────────────────
+  // Spec §3.1: "pending approvals" → Operational tier (Partners/Users/Finance).
+  // MANUAL_REVIEW receipt queue is a pending-approval workflow, not a high-risk
+  // indicator — high-risk (51+) scans are handled separately by risk_transactions
+  // (Critical). Spec §3.1 reserves Control for CRITICAL alerts; Operational alerts
+  // must route to Partners / Users / Finance. This receipt-review alert is a
+  // financial-review surface, so it links to Finance (reports drill-down) — the
+  // same pattern used by medium_risk_transactions and failed_transactions below.
+  if (receiptReviews > 0) {
+    operational.push({
+      id: 'receipt_review',
+      type: 'RECEIPT_REVIEW',
+      tier: 'operational',
+      title: 'Касови бележки за ръчен преглед',
+      count: receiptReviews,
+      link: '/admin/finance/reports?focus=receipt_review',
+    });
+  }
   // Medium risk band (spec-canonical 21–50): needs attention but not immediate
   // action → OPERATIONAL (amber).
   // L8 / Spec §3.1: Control is reserved for CRITICAL alerts; Operational alerts must

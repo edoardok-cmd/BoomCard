@@ -260,6 +260,7 @@ router.delete('/rates/snapshot/:iso', requirePermission('cashback.write'), async
 // ------------------------------------------------------------------
 router.get('/payout-thresholds', requirePermission('cashback.read'), async (_req: AuthRequest, res: Response) => {
   try {
+    // 'cashback.read' permission is seeded in services/permission.service.ts (SUPPORT/FINANCE/RISK_REVIEW roles)
     // M1 (spec §3.7) — the spec-canonical plan key set is `BASIC, PREMIUM_WEEKLY,
     // PREMIUM`. The SubscriptionPlan enum stores the third plan as `PREMIUM_MONTHLY`;
     // we read the threshold by the enum key but emit it under the spec key `PREMIUM`
@@ -291,7 +292,8 @@ router.get('/payout-thresholds', requirePermission('cashback.read'), async (_req
         PREMIUM_MONTHLY: toDualCurrency(premiumMonthly, windowOpen),
       },
     });
-  } catch {
+  } catch (error: any) {
+    logger.error('Failed to fetch payout thresholds:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch payout thresholds' });
   }
 });

@@ -15,6 +15,7 @@ import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
+import { invalidateSystemSettingCache } from '../../src/utils/systemSettings';
 
 jest.mock('../../src/services/email.service', () => ({
   emailService: {
@@ -48,10 +49,13 @@ async function setCurrencyWindowOpen(isOpen: boolean): Promise<void> {
     create: { key: 'currency_transition_window_open', value: isOpen ? 'true' : 'false' },
     update: { value: isOpen ? 'true' : 'false' },
   });
+  // Invalidate the cache immediately so the change takes effect on the next call
+  invalidateSystemSettingCache('currency_transition_window_open');
 }
 
 describe('BC-ADMIN-SPEC-REAUDIT4-PAYOUT-THRESH-BGN-LEAK-1: Cashback payout-thresholds currency display', () => {
   let adminToken: string;
+  let testUserIds: string[] = []; // Track test users for cleanup
 
   beforeAll(async () => {
     // Create admin user and get token
@@ -67,6 +71,35 @@ describe('BC-ADMIN-SPEC-REAUDIT4-PAYOUT-THRESH-BGN-LEAK-1: Cashback payout-thres
       },
     });
     adminToken = generateTestToken(adminUser.id, 'SUPER_ADMIN');
+    testUserIds.push(adminUser.id); // Track for cleanup
+
+    // Ensure window starts in known state (open)
+    await setCurrencyWindowOpen(true);
+  });
+
+  afterEach(async () => {
+    // Clean up window state after each test to ensure isolation
+    await prisma.systemSetting.deleteMany({
+      where: { key: 'currency_transition_window_open' },
+    });
+
+    // Clean up test users and their permission overrides
+    // Remove any users created during tests (except the main adminUser)
+    const usersToDelete = testUserIds.slice(1); // Skip the first user (adminUser)
+    for (const userId of usersToDelete) {
+      // Delete associated userPermissionOverrides first (foreign key constraint)
+      await prisma.userPermissionOverride.deleteMany({
+        where: { userId },
+      });
+      // Then delete the user
+      await prisma.user.delete({
+        where: { id: userId },
+      }).catch(() => {
+        // Silently ignore if user doesn't exist (test may have failed before creation)
+      });
+    }
+    // Reset the temporary users list after cleanup
+    testUserIds = testUserIds.slice(0, 1);
   });
 
   describe('GET /api/admin/cashback/payout-thresholds', () => {
@@ -162,6 +195,11 @@ describe('BC-ADMIN-SPEC-REAUDIT4-PAYOUT-THRESH-BGN-LEAK-1: Cashback payout-thres
       // Verify backward-compat alias display
       expect(res.body.display.PREMIUM_MONTHLY).toBeDefined();
       expect(res.body.display.PREMIUM_MONTHLY).toEqual(res.body.display.PREMIUM);
+
+      // Verify EUR values are consistent in window-closed state
+      expect(res.body.display.BASIC.eur).toBeGreaterThan(0);
+      expect(res.body.display.PREMIUM_WEEKLY.eur).toBeGreaterThan(0);
+      expect(res.body.display.PREMIUM.eur).toBeGreaterThan(0);
     });
 
     it('should require cashback.read permission', async () => {
@@ -170,6 +208,52 @@ describe('BC-ADMIN-SPEC-REAUDIT4-PAYOUT-THRESH-BGN-LEAK-1: Cashback payout-thres
         .get('/api/admin/cashback/payout-thresholds');
 
       expect(res.status).toBe(401);
+    });
+
+    it('should return 403 for authenticated user without cashback.read permission', async () => {
+      // Create a regular ADMIN user and manually deny them cashback.read permission via override
+      const restrictedAdminUser = await prisma.user.create({
+        data: {
+          email: `admin-no-cashback-${Date.now()}@test.local`,
+          firstName: 'RestrictedAdmin',
+          lastName: 'Test',
+          status: 'ACTIVE',
+          role: 'ADMIN',
+          emailVerified: true,
+          passwordHash: 'unused',
+        },
+      });
+      // Track this user for cleanup in afterEach
+      testUserIds.push(restrictedAdminUser.id);
+
+      // Get or create the permission and then deny it for this user
+      const permission = await prisma.permission.findUnique({
+        where: { key: 'cashback.read' },
+      });
+
+      if (permission) {
+        // Deny the permission for this specific user
+        await prisma.userPermissionOverride.create({
+          data: {
+            userId: restrictedAdminUser.id,
+            permissionId: permission.id,
+            allow: false,
+          },
+        });
+      }
+
+      const restrictedToken = generateTestToken(restrictedAdminUser.id, 'ADMIN');
+
+      // Try with token but denied permission
+      const res = await request(app)
+        .get('/api/admin/cashback/payout-thresholds')
+        .set('Authorization', `Bearer ${restrictedToken}`);
+
+      expect(res.status).toBe(403);
+      // 403 response may have error message but not success field if middleware returns early
+      if (res.body.success !== undefined) {
+        expect(res.body.success).toBe(false);
+      }
     });
 
     it('should maintain consistency with finance payout-thresholds response structure', async () => {

@@ -342,6 +342,8 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
           dispatched++;
         }
       } else if (campaign.type === 'PUSH') {
+        if (recipient.kind === 'USER' && !recipient.marketingConsentEmail) continue;
+        if (recipient.kind === 'PARTNER' && recipient.linkedUserConsentEmail === false) continue;
         const targetUserId = recipient.kind === 'USER' ? recipient.userId : recipient.linkedUserId;
         if (targetUserId) {
           await sendWebPushToUser(targetUserId, { title: template.name, body: template.subject ?? template.name });
