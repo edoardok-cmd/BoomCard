@@ -1516,8 +1516,17 @@ export async function expireEntry(
   if (['VOIDED', 'PAID', 'EXPIRED'].includes(entry.cashbackStatus ?? '')) {
     throw new AppError(`Cannot expire entry with cashback status ${entry.cashbackStatus}`, 400);
   }
-  if (['ANNULLED', 'FAILED'].includes(entry.status) && !entry.cashbackStatus) {
+  // Legacy ANNULLED entries derive to Voided (per line 714) — reject with 400.
+  // Legacy FAILED entries derive to Locked (per line 715) — reject with 409 like other Locked cases.
+  if (entry.status === 'ANNULLED' && !entry.cashbackStatus) {
     throw new AppError(`Cannot expire entry with status ${entry.status}`, 400);
+  }
+  if (entry.status === 'FAILED' && !entry.cashbackStatus) {
+    throw new AppError(
+      'Cannot expire a LOCKED cashback entry — Locked exits only to Paid or Voided (§1.3). ' +
+        'Cancel the payout first to revert it to Cleared.',
+      409,
+    );
   }
   // L1 / Spec §1.3: LOCKED is an intermediate payout-pipeline state whose only
   // valid exits are Locked → Paid and Locked → Voided. The §3.4 "any active →
@@ -1527,23 +1536,29 @@ export async function expireEntry(
   // Reject any LOCKED entry (both the admin-panel lock, status='CANCELLED', and
   // the user requestPayout lock, status='COMPLETED'). To remove a Locked entry,
   // cancel the payout (revert to Cleared) then expire/void, or pay it.
-  if (entry.cashbackStatus === 'LOCKED') {
+  const now = new Date();
+  const isNewWorldLocked = entry.cashbackStatus === 'LOCKED';
+  const isLegacyDerivedLocked = entry.cashbackStatus == null &&
+    entry.status === 'CANCELLED' &&
+    entry.cashbackExpiresAt != null &&
+    entry.cashbackExpiresAt > now;
+
+  if (isNewWorldLocked || isLegacyDerivedLocked) {
     throw new AppError(
       'Cannot expire a LOCKED cashback entry — Locked exits only to Paid or Voided (§1.3). ' +
         'Cancel the payout first to revert it to Cleared.',
       409,
     );
   }
-  const now = new Date();
   // Was the balance already credited? True for CLEARED state. PENDING entries have
   // no wallet credit yet; expiring them needs no decrement. (LOCKED is rejected
   // above per L1 — Locked exits only to Paid/Voided — so it never reaches here.)
-  const wasCleared =
-    entry.cashbackStatus === 'CLEARED' ||
-    (entry.cashbackStatus == null && (
-      entry.status === 'COMPLETED' ||
-      (entry.status === 'CANCELLED' && entry.cashbackExpiresAt != null && entry.cashbackExpiresAt > now)
-    ));
+  // For legacy entries without explicit cashbackStatus:
+  // - COMPLETED entries can be Paid, Expired, or Cleared; without latestWithdrawalAt data,
+  //   we cannot safely determine if they are Cleared vs Paid, so we do NOT decrement balance.
+  // - CANCELLED entries that passed the isLegacyDerivedLocked check (past expiresAt) already
+  //   derive to Expired (line 712), so they were never credited to the wallet.
+  const wasCleared = entry.cashbackStatus === 'CLEARED';
   await prisma.$transaction(async (tx) => {
     const result = await tx.walletTransaction.updateMany({
       where: {

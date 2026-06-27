@@ -50,24 +50,31 @@ export function isPlusAddressingEnabled(): boolean {
  * applied additively as a `requestStatus` field; the raw `status` is preserved for
  * any caller that still keys on the stable enum token.
  *
- *   NEW       → New
- *   OPEN      → In Progress   (received + first contact made / being acted upon)
- *   IN_REVIEW → In Progress   (assigned + actively worked)
+ * BC-ADMIN-SPEC-REAUDIT3-HELP-NEWSTATUS-CLAIM-2 (Finding 1): Freshly-created,
+ * unassigned OPEN tickets now map to canonical "New" status (OPEN + assigneeId=null).
+ * This makes the canonical New bucket meaningful instead of dead.
+ *
+ *   NEW       → New              (legacy NEW status)
+ *   OPEN      → New              (if assigneeId is null; unassigned + untouched)
+ *   OPEN      → In Progress      (if assigneeId is not null; assigned)
+ *   IN_REVIEW → In Progress      (assigned + actively worked)
  *   WAITING   → Waiting
- *   RESOLVED  → Closed        (admin-internal pre-close)
+ *   RESOLVED  → Closed           (admin-internal pre-close)
  *   CLOSED    → Closed
- *   REJECTED  → Cancelled     (Spec §1.7: Cancelled = "Withdrawn or invalid" — a rejected
- *                              ticket is admin-declined/invalid, not resolved. Closed is
- *                              reserved for successfully resolved tickets.)
+ *   REJECTED  → Cancelled        (Spec §1.7: Cancelled = "Withdrawn or invalid" — a rejected
+ *                                 ticket is admin-declined/invalid, not resolved. Closed is
+ *                                 reserved for successfully resolved tickets.)
  *   CANCELLED → Cancelled
  */
 export type CanonicalRequestStatus = 'New' | 'In Progress' | 'Waiting' | 'Closed' | 'Cancelled';
 
-export function toCanonicalRequestStatus(status: string | null | undefined): CanonicalRequestStatus {
+export function toCanonicalRequestStatus(status: string | null | undefined, assigneeId?: string | null): CanonicalRequestStatus {
   switch (status) {
     case 'NEW':
       return 'New';
     case 'OPEN':
+      // BC-ADMIN-SPEC-REAUDIT3-HELP-NEWSTATUS-CLAIM-2: unassigned OPEN → New
+      return assigneeId === null ? 'New' : 'In Progress';
     case 'IN_REVIEW':
       return 'In Progress';
     case 'WAITING':
@@ -89,10 +96,10 @@ export function toCanonicalRequestStatus(status: string | null | undefined): Can
 }
 
 /** Attach the canonical `requestStatus` to a ticket-shaped object without mutating the raw `status`. */
-export function withCanonicalRequestStatus<T extends { status: string }>(
+export function withCanonicalRequestStatus<T extends { status: string; assigneeId?: string | null }>(
   ticket: T,
 ): T & { requestStatus: CanonicalRequestStatus } {
-  return { ...ticket, requestStatus: toCanonicalRequestStatus(ticket.status) };
+  return { ...ticket, requestStatus: toCanonicalRequestStatus(ticket.status, ticket.assigneeId) };
 }
 
 /**
@@ -106,34 +113,47 @@ export function withCanonicalRequestStatus<T extends { status: string }>(
  * for back-compat. Raw tokens that don't map to a canonical bucket are returned
  * as a single-element array (passthrough).
  *
- * Returns: { in: TicketStatus[] } shaped for Prisma `where.status = { in: [...] }`.
+ * Returns a where clause shaped for Prisma filtering. Most return { in: TicketStatus[] },
+ * but some require complex OR conditions (e.g., New = NEW enum OR unassigned OPEN).
+ *
+ * BC-ADMIN-SPEC-REAUDIT3-HELP-NEWSTATUS-CLAIM-2: Filtering by "New" now includes
+ * both legacy NEW enum rows AND freshly-created unassigned OPEN tickets. Callers
+ * must apply the returned filter as-is to their WHERE clause.
  */
-export function toRawStatusFilter(status: string): { in: TicketStatus[] } {
+export function toRawStatusFilter(status: string): any {
   switch (status) {
     case 'Cancelled':
     case 'CANCELLED':
-      return { in: ['CANCELLED', 'REJECTED'] as TicketStatus[] };
+      return { status: { in: ['CANCELLED', 'REJECTED'] as TicketStatus[] } };
     case 'Closed':
     case 'CLOSED':
-      return { in: ['CLOSED', 'RESOLVED'] as TicketStatus[] };
+      return { status: { in: ['CLOSED', 'RESOLVED'] as TicketStatus[] } };
     case 'In Progress':
     case 'OPEN':
-      return { in: ['OPEN', 'IN_REVIEW'] as TicketStatus[] };
+      // BC-ADMIN-SPEC-REAUDIT3-HELP-NEWSTATUS-CLAIM-2: In Progress = OPEN+assigned OR IN_REVIEW
+      // (excludes unassigned OPEN, which maps to "New")
+      return {
+        OR: [
+          { AND: [{ status: 'OPEN' }, { assigneeId: { not: null } }] },
+          { status: 'IN_REVIEW' }
+        ]
+      };
     case 'IN_REVIEW':
-      return { in: ['OPEN', 'IN_REVIEW'] as TicketStatus[] };
+      return { status: { in: ['IN_REVIEW'] as TicketStatus[] } };
     case 'New':
     case 'NEW':
-      return { in: ['NEW'] as TicketStatus[] };
+      // BC-ADMIN-SPEC-REAUDIT3-HELP-NEWSTATUS-CLAIM-2: New = NEW enum OR (OPEN + assigneeId=null)
+      return { OR: [{ status: 'NEW' }, { AND: [{ status: 'OPEN' }, { assigneeId: null }] }] };
     case 'Waiting':
     case 'WAITING':
-      return { in: ['WAITING'] as TicketStatus[] };
+      return { status: { in: ['WAITING'] as TicketStatus[] } };
     case 'RESOLVED':
-      return { in: ['CLOSED', 'RESOLVED'] as TicketStatus[] };
+      return { status: { in: ['CLOSED', 'RESOLVED'] as TicketStatus[] } };
     case 'REJECTED':
-      return { in: ['CANCELLED', 'REJECTED'] as TicketStatus[] };
+      return { status: { in: ['CANCELLED', 'REJECTED'] as TicketStatus[] } };
     default:
       // Unknown token — pass through as-is so unknown values simply match nothing rather than 400.
-      return { in: [status as TicketStatus] };
+      return { status: { in: [status as TicketStatus] } };
   }
 }
 

@@ -56,6 +56,9 @@ const TICKET_SELECT_ALL = {
   requestType: true,
   source: true,
   externalEmail: true,
+  // BC-ADMIN-SPEC-REAUDIT3-HELP-NEWSTATUS-CLAIM-2 (Finding 1): include assigneeId
+  // so withCanonicalRequestStatus can map OPEN+null → "New"
+  assigneeId: true,
   user: { select: { id: true, firstName: true, lastName: true, email: true } },
   assignee: { select: { id: true, firstName: true, lastName: true, email: true } },
 } as const;
@@ -265,17 +268,23 @@ router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
     } = req.query as Record<string, string>;
     const { skip, take, page: pageNum } = parsePagination(req.query, { defaultLimit: 25, maxLimit: 100 });
 
-    const where: Parameters<typeof prisma.helpTicket.findMany>[0]['where'] = {};
+    // Build where as AND conditions so status + search + other filters can coexist without clobbering each other.
+    type WhereClause = Parameters<typeof prisma.helpTicket.findMany>[0]['where'];
+    const conditions: NonNullable<WhereClause>[] = [];
+
     if (status && VALID_STATUS_TOKENS.includes(status)) {
       // M8: expand canonical bucket names to the raw enum tokens that display
-      // under that bucket (e.g. "Cancelled" → { in: ['CANCELLED', 'REJECTED'] }).
-      where.status = toRawStatusFilter(status) as any;
+      // under that bucket (e.g. "Cancelled" → { status: { in: ['CANCELLED', 'REJECTED'] } }).
+      // BC-ADMIN-SPEC-REAUDIT3-HELP-NEWSTATUS-CLAIM-2: toRawStatusFilter now returns
+      // complex OR conditions for "New" and "In Progress" status filtering.
+      // Push the filter result directly (it's already a WHERE-shaped object).
+      conditions.push(toRawStatusFilter(status));
     }
     if (priority && Object.values(TicketPriority).includes(priority as TicketPriority)) {
-      where.priority = priority as TicketPriority;
+      conditions.push({ priority: priority as TicketPriority });
     }
     if (category && Object.values(TicketCategory).includes(category as TicketCategory)) {
-      where.category = category as TicketCategory;
+      conditions.push({ category: category as TicketCategory });
     }
     if (req.query.requestType && typeof req.query.requestType === 'string') {
       if (!ADMIN_VALID_REQUEST_TYPES.includes(req.query.requestType)) {
@@ -284,33 +293,35 @@ router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
       // M7: When filtering by canonical CHANGE, include all *_CHANGE sub-types
       // to prevent fragmentation of the Change bucket (Spec §1.7 / Clash 8.2).
       if (req.query.requestType === 'CHANGE') {
-        where.requestType = { in: ['CHANGE', 'DATA_CHANGE', 'LOCATION_CHANGE', 'CONTRACT_CHANGE'] as TicketRequestType[] };
+        conditions.push({ requestType: { in: ['CHANGE', 'DATA_CHANGE', 'LOCATION_CHANGE', 'CONTRACT_CHANGE'] as TicketRequestType[] } });
       } else {
-        where.requestType = req.query.requestType as TicketRequestType;
+        conditions.push({ requestType: req.query.requestType as TicketRequestType });
       }
     }
-    // Spec §11.5 "период" — date range filter on createdAt.
+    // Spec §11.5 "період" — date range filter on createdAt.
     // `from` and `to` are ISO-8601 strings; invalid values are silently ignored.
     const fromDate = from ? new Date(from) : null;
     const toDate = to ? new Date(to) : null;
     if (fromDate && !isNaN(fromDate.getTime()) && toDate && !isNaN(toDate.getTime())) {
-      where.createdAt = { gte: fromDate, lte: toDate };
+      conditions.push({ createdAt: { gte: fromDate, lte: toDate } });
     } else if (fromDate && !isNaN(fromDate.getTime())) {
-      where.createdAt = { gte: fromDate };
+      conditions.push({ createdAt: { gte: fromDate } });
     } else if (toDate && !isNaN(toDate.getTime())) {
-      where.createdAt = { lte: toDate };
+      conditions.push({ createdAt: { lte: toDate } });
     }
     // Spec §11.5 "ownership" — filter by assignee.
     // assigneeId="unassigned" returns tickets with no assignee.
     if (assigneeId) {
-      where.assigneeId = assigneeId === 'unassigned' ? null : assigneeId;
+      conditions.push({ assigneeId: assigneeId === 'unassigned' ? null : assigneeId });
     }
     if (search) {
-      where.OR = [
+      conditions.push({ OR: [
         { subject: { contains: search, mode: 'insensitive' } },
         { user: { email: { contains: search, mode: 'insensitive' } } },
-      ];
+      ]});
     }
+
+    const where: WhereClause = conditions.length > 1 ? { AND: conditions } : conditions[0] ?? {};
 
     const [tickets, total] = await Promise.all([
       prisma.helpTicket.findMany({ where, skip, take, orderBy: { createdAt: 'desc' }, select: TICKET_SELECT_ALL }),
@@ -346,7 +357,10 @@ router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res
     if (status && VALID_STATUS_TOKENS.includes(status)) {
       // M8: expand canonical bucket names to the raw enum tokens that display
       // under that bucket (e.g. "Cancelled" → { in: ['CANCELLED', 'REJECTED'] }).
-      conditions.push({ status: toRawStatusFilter(status) as any });
+      // BC-ADMIN-SPEC-REAUDIT3-HELP-NEWSTATUS-CLAIM-2: toRawStatusFilter now returns
+      // complex OR conditions for "New" status filtering (NEW enum OR unassigned OPEN).
+      // Push the filter result directly (it's already a WHERE-shaped object).
+      conditions.push(toRawStatusFilter(status));
     }
     if (priority && Object.values(TicketPriority).includes(priority as TicketPriority)) {
       conditions.push({ priority: priority as TicketPriority });
@@ -413,6 +427,9 @@ router.get('/:id', requirePermission('help.read'), async (req: AuthRequest, res,
         resolvedAt: true,
         createdAt: true,
         updatedAt: true,
+        // BC-ADMIN-SPEC-REAUDIT3-HELP-NEWSTATUS-CLAIM-2 (Finding 1): include assigneeId
+        // so withCanonicalRequestStatus can map OPEN+null → "New"
+        assigneeId: true,
         user: { select: { id: true, firstName: true, lastName: true, email: true } },
         assignee: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
@@ -461,7 +478,13 @@ router.post('/:id/assign', requirePermission('help.write'), async (req: AuthRequ
 
     const ticket = await prisma.helpTicket.findUnique({ where: { id: req.params.id } });
     if (!ticket) return res.status(404).json({ error: 'Заявката не е намерена' });
-    if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id) {
+
+    // BC-ADMIN-SPEC-REAUDIT3-HELP-NEWSTATUS-CLAIM-2 (Finding 2): Allow self-claim of unassigned tickets.
+    // The access gate should not block help.write-only admins from claiming unassigned tickets.
+    // Previously: only owner or assignee or hasFullAccess could access → blocked claim of shared queue tickets.
+    // Now: also allow if claiming an unassigned ticket (no explicit target, assigneeId=null).
+    const isClaimingUnassigned = !hasExplicitTarget && ticket.assigneeId === null;
+    if (!hasFullAccess(req) && ticket.userId !== req.user!.id && ticket.assigneeId !== req.user!.id && !isClaimingUnassigned) {
       return res.status(403).json({ error: 'Отказан достъп' });
     }
 
