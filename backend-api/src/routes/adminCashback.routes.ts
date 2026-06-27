@@ -22,6 +22,7 @@ import {
   CashbackEntryStatus, approveEntry, lockEntry, expireEntry, payEntry, voidEntry, backfillCashbackExpiry,
 } from '../services/adminCashback.service';
 import { getPayoutThresholdBGN } from '../utils/payoutThreshold';
+import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 import { parsePagination } from '../utils/pagination';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
@@ -255,6 +256,7 @@ router.delete('/rates/snapshot/:iso', requirePermission('cashback.write'), async
 // ------------------------------------------------------------------
 // GET /api/admin/cashback/payout-thresholds
 // Returns per-plan payout thresholds from DB; falls back to constants.
+// Spec §3.7 + §8.1 rule 4 — dual-currency display gated by transition window.
 // ------------------------------------------------------------------
 router.get('/payout-thresholds', requirePermission('cashback.read'), async (_req: AuthRequest, res: Response) => {
   try {
@@ -269,14 +271,26 @@ router.get('/payout-thresholds', requirePermission('cashback.read'), async (_req
       getPayoutThresholdBGN('PREMIUM_WEEKLY'),
       getPayoutThresholdBGN('PREMIUM_MONTHLY'),
     ]);
-    const data: Record<string, number> = {
-      BASIC: basic,
-      PREMIUM_WEEKLY: premiumWeekly,
-      PREMIUM: premiumMonthly,
-      // Backward-compat alias for enum-native consumers (spec key is PREMIUM).
-      PREMIUM_MONTHLY: premiumMonthly,
-    };
-    res.json({ success: true, data });
+    // Spec §3.7 + §8.1 rule 4 — dual-currency display for payout thresholds
+    // (stored BGN). Raw BGN values gated by window state.
+    const windowOpen = await isCurrencyTransitionWindowOpen();
+    res.json({
+      success: true,
+      data: {
+        ...(windowOpen && { BASIC: basic }),
+        ...(windowOpen && { PREMIUM_WEEKLY: premiumWeekly }),
+        ...(windowOpen && { PREMIUM: premiumMonthly }),
+        // Backward-compat alias for enum-native consumers (spec key is PREMIUM).
+        ...(windowOpen && { PREMIUM_MONTHLY: premiumMonthly }),
+      },
+      display: {
+        BASIC: toDualCurrency(basic, windowOpen),
+        PREMIUM_WEEKLY: toDualCurrency(premiumWeekly, windowOpen),
+        PREMIUM: toDualCurrency(premiumMonthly, windowOpen),
+        // Backward-compat alias for enum-native consumers (spec key is PREMIUM).
+        PREMIUM_MONTHLY: toDualCurrency(premiumMonthly, windowOpen),
+      },
+    });
   } catch {
     res.status(500).json({ success: false, error: 'Failed to fetch payout thresholds' });
   }

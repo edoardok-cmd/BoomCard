@@ -804,7 +804,8 @@ export async function getSubscriberCashbackEntries(
     // so it may still be in the future for force-expired entries. Using the
     // authoritative derived `status` here prevents the UI from showing
     // e.g. "Expired — 30 days remaining", which is contradictory.
-    const daysUntilExpiry = (e.cashbackExpiresAt && status !== 'Expired')
+    // Spec §1.3: terminal states (Voided, Paid, Expired) have no countdown.
+    const daysUntilExpiry = (e.cashbackExpiresAt && status !== 'Expired' && status !== 'Voided' && status !== 'Paid')
       ? Math.max(0, Math.ceil((e.cashbackExpiresAt.getTime() - now.getTime()) / 86_400_000))
       : null;
 
@@ -1148,7 +1149,8 @@ export async function getAllCashbackEntries(
 
     // Mirror the same guard as getSubscriberCashbackEntries: null when Expired
     // so force-expired entries don't show a positive countdown alongside "Expired".
-    const daysUntilExpiry = (e.cashbackExpiresAt && status !== 'Expired')
+    // Spec §1.3: terminal states (Voided, Paid, Expired) have no countdown.
+    const daysUntilExpiry = (e.cashbackExpiresAt && status !== 'Expired' && status !== 'Voided' && status !== 'Paid')
       ? Math.max(0, Math.ceil((e.cashbackExpiresAt.getTime() - now.getTime()) / 86_400_000))
       : null;
 

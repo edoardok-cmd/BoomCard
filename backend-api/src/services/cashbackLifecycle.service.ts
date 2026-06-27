@@ -162,6 +162,9 @@ export async function markCleared(params: {
   if (existing.cashbackStatus === CashbackEntryStatus.PAID) {
     throw new Error(`Cannot clear a PAID cashback entry (${walletTransactionId})`);
   }
+  if (existing.cashbackStatus === CashbackEntryStatus.EXPIRED) {
+    throw new Error(`Cannot clear an EXPIRED cashback entry (${walletTransactionId}) — EXPIRED is terminal (§1.3)`);
+  }
 
   const clearedAt = new Date();
   const expiresAt = new Date(clearedAt.getTime() + validityDays * 24 * 60 * 60 * 1000);

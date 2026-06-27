@@ -272,7 +272,10 @@ router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
     type WhereClause = Parameters<typeof prisma.helpTicket.findMany>[0]['where'];
     const conditions: NonNullable<WhereClause>[] = [];
 
-    if (status && VALID_STATUS_TOKENS.includes(status)) {
+    if (status) {
+      if (!VALID_STATUS_TOKENS.includes(status)) {
+        return res.status(400).json({ error: 'Невалиден статус' });
+      }
       // M8: expand canonical bucket names to the raw enum tokens that display
       // under that bucket (e.g. "Cancelled" → { status: { in: ['CANCELLED', 'REJECTED'] } }).
       // BC-ADMIN-SPEC-REAUDIT3-HELP-NEWSTATUS-CLAIM-2: toRawStatusFilter now returns
@@ -354,7 +357,10 @@ router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res
       { OR: [{ userId: req.user!.id }, { assigneeId: req.user!.id }] },
     ];
 
-    if (status && VALID_STATUS_TOKENS.includes(status)) {
+    if (status) {
+      if (!VALID_STATUS_TOKENS.includes(status)) {
+        return res.status(400).json({ error: 'Невалиден статус' });
+      }
       // M8: expand canonical bucket names to the raw enum tokens that display
       // under that bucket (e.g. "Cancelled" → { in: ['CANCELLED', 'REJECTED'] }).
       // BC-ADMIN-SPEC-REAUDIT3-HELP-NEWSTATUS-CLAIM-2: toRawStatusFilter now returns

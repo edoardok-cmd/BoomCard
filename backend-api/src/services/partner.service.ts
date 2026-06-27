@@ -113,18 +113,35 @@ export const PARTNER_STATUS_SUBTYPE_REASON: Record<string, string> = {
  * Derive the canonical Inactive sub_type for a partner from its raw status and
  * the `statusReason` metadata. Returns null for ACTIVE/ARCHIVED partners (the
  * sub_type only applies within the canonical Inactive status).
+ *
+ * Spec §1.6 / §3.5 — ONBOARDING_INACTIVE applies ONLY when:
+ *   - status === PENDING (account state)
+ *   - AND requestStatus === ONBOARDING or APPROVED (application stage)
+ *
+ * NEW / COMMUNICATION / NEGOTIATION applications have NO partner account yet
+ * (still status=null or unfilled), so they must NOT be labeled ONBOARDING_INACTIVE.
  */
 export function derivePartnerInactiveSubType(partner: {
   status: string;
   statusReason?: string | null;
+  requestStatus?: string | null;
 }): PartnerInactiveSubType {
   switch (partner.status) {
     case 'PAUSED':
       return 'VOLUNTARY_PAUSE';
     case 'SUSPENDED':
       return 'ADMIN_SUSPENSION';
-    case 'PENDING':
-      return 'ONBOARDING_INACTIVE';
+    case 'PENDING': {
+      // Spec §1.6 / §3.5 — PENDING account status combined with ONBOARDING or
+      // APPROVED requestStatus indicates the onboarding stage (read-only access).
+      // Earlier stages (NEW, COMMUNICATION, NEGOTIATION) have no account yet.
+      const reqStatus = partner.requestStatus ?? '';
+      if (reqStatus === 'ONBOARDING' || reqStatus === 'APPROVED') {
+        return 'ONBOARDING_INACTIVE';
+      }
+      // NEW / COMMUNICATION / NEGOTIATION applications have no account, so no sub-type.
+      return null;
+    }
     case 'INACTIVE': {
       const r = partner.statusReason ?? '';
       if (r.startsWith('VOLUNTARY_PAUSE')) return 'VOLUNTARY_PAUSE';

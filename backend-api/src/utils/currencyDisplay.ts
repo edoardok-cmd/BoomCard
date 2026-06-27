@@ -58,14 +58,37 @@ export function bgnToEur(amountBgn: number): number {
 }
 
 /**
- * Read the transition-window flag (cached 60s by getSystemSettingStr). Defaults to
- * OPEN. Any value other than the literal "false" (case-insensitive) is treated as
- * open, so a missing/blank setting keeps both currencies visible (fail-open: showing
- * BGN too is never wrong during/ before adoption — only after adoption is BGN hidden).
+ * Read the transition-window flag (cached 60s by getSystemSettingStr).
+ *
+ * Accepts ONLY the literal strings "true" or "false" (case-insensitive).
+ * Any unrecognised value (typos, empty string, '0', 'no', 'off', null, undefined, etc.)
+ * logs a warning and defaults to CLOSED (false) to avoid fail-open violations after adoption.
+ *
+ * Per Spec §8.1 rule 4: once the BGN→EUR transition window closes, BGN must be hidden
+ * (EUR-only display). A misconfigured flag that silently treats typos as OPEN is a
+ * compliance risk.
  */
 export async function isCurrencyTransitionWindowOpen(): Promise<boolean> {
+  const { logger } = await import('./logger');
+
   const raw = await getSystemSettingStr(CURRENCY_TRANSITION_WINDOW_SETTING, 'true');
-  return raw.trim().toLowerCase() !== 'false';
+  const normalized = raw.trim().toLowerCase();
+
+  // Accept only literal "true" or "false"
+  if (normalized === 'true') {
+    return true;
+  }
+  if (normalized === 'false') {
+    return false;
+  }
+
+  // Unrecognised value: log warning and default to CLOSED (fail-safe, not fail-open)
+  logger.warn(
+    `Invalid currency_transition_window_open setting: "${raw}". ` +
+    `Expected "true" or "false" (case-insensitive). Defaulting to CLOSED (EUR-only). ` +
+    `Set the value explicitly in SystemSettings to fix this warning.`
+  );
+  return false;
 }
 
 /**
