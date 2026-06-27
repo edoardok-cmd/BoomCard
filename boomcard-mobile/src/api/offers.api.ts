@@ -37,8 +37,12 @@ export class OffersApi {
   /**
    * Get single offer by ID
    */
-  static async getOfferById(id: string): Promise<ApiResponse<Offer>> {
-    return await apiClient.get<Offer>(
+  static async getOfferById(
+    id: string
+  ): Promise<ApiResponse<ApiResponse<Offer>>> {
+    // The backend wraps the offer in its own { success, data } envelope, and
+    // apiClient.get re-wraps that, so the actual offer lives at res.data.data.
+    return await apiClient.get<ApiResponse<Offer>>(
       `${API_CONFIG.ENDPOINTS.OFFERS.BASE}/${id}`
     );
   }
@@ -104,8 +108,11 @@ export class OffersApi {
   static async activateOffer(
     offerId: string,
     location: { latitude: number; longitude: number },
-  ): Promise<ApiResponse<{ code: string; expiresAt: string }>> {
-    return await apiClient.post(
+  ): Promise<ApiResponse<ApiResponse<{ code: string; expiresAt: string }>>> {
+    // The backend wraps the result in its own { success, data } envelope, and
+    // apiClient.post re-wraps that, so the actual { code, expiresAt } lives at
+    // res.data.data.
+    return await apiClient.post<ApiResponse<{ code: string; expiresAt: string }>>(
       `${API_CONFIG.ENDPOINTS.OFFERS.BASE}/${offerId}/activate`,
       { latitude: location.latitude, longitude: location.longitude },
     );

@@ -44,8 +44,11 @@ export class PartnersApi {
    * Returns an error with code TIER_ACCESS_DENIED if the user's plan
    * doesn't include this partner's tier.
    */
-  static async getPartnerById(id: string): Promise<ApiResponse<Partner>> {
-    return apiClient.get<Partner>(`${API_CONFIG.ENDPOINTS.PARTNERS.BASE}/${id}`);
+  static async getPartnerById(id: string): Promise<ApiResponse<ApiResponse<Partner>>> {
+    // The backend wraps the partner in its own { success, data } envelope, and
+    // apiClient.get re-wraps that, so the actual partner lives at res.data.data
+    // (mirror getOfferById — task 021).
+    return apiClient.get<ApiResponse<Partner>>(`${API_CONFIG.ENDPOINTS.PARTNERS.BASE}/${id}`);
   }
 
   /**

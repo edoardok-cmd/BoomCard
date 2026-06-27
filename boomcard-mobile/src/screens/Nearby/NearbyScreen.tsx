@@ -71,7 +71,7 @@ const NearbyScreen = ({ navigation }: any) => {
       <TouchableOpacity
         style={s.card}
         activeOpacity={0.7}
-        onPress={() => navigation.navigate('OfferDetail', { partnerId: item.id, partner: item })}
+        onPress={() => navigation.navigate('OfferDetail', { partnerId: item.id })}
       >
         <View style={s.iconCircle}>
           <Ionicons name="storefront" size={22} color={isDarkMode ? '#A78BFA' : '#8B5CF6'} />

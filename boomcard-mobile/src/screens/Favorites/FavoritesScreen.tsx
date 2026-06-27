@@ -56,20 +56,25 @@ const FavoritesScreen = ({ navigation }: any) => {
       const enriched = await Promise.all(
         refs.map(async (ref): Promise<FavoritePartner> => {
           try {
+            // All three endpoints double-wrap: the backend GET returns
+            // { success, data:<payload> } and apiClient.get re-wraps to
+            // { success, data:<httpBody> }, so the real payload is at
+            // res.data.data (verified against backend route source; same class
+            // fixed in getOfferById/activateOffer — tasks 021/022).
             if (ref.entityKind === 'partner') {
               const pRes = await PartnersApi.getPartnerById(ref.entityId);
-              const p = pRes.success ? pRes.data : undefined;
+              const p = pRes.success ? pRes.data?.data : undefined;
               return { ...ref, partner: p, title: p?.businessName, subtitle: [p?.category, p?.city].filter(Boolean).join(' · ') };
             }
             if (ref.entityKind === 'offer') {
               const oRes = await OffersApi.getOfferById(ref.entityId);
-              const o: any = oRes.success ? oRes.data : undefined;
+              const o: any = oRes.success ? oRes.data?.data : undefined;
               return { ...ref, entity: o, title: o?.title, subtitle: o?.partner?.businessName || o?.category };
             }
             // venue
             const vRes = await VenuesApi.getVenueById(ref.entityId);
-            const v: any = vRes.success ? vRes.data : undefined;
-            return { ...ref, entity: v, title: v?.name, subtitle: [v?.category, v?.city].filter(Boolean).join(' · ') };
+            const v: any = vRes.success ? vRes.data?.data : undefined;
+            return { ...ref, entity: v, title: v?.name, subtitle: [v?.city, v?.address].filter(Boolean).join(' · ') };
           } catch {
             return ref;
           }

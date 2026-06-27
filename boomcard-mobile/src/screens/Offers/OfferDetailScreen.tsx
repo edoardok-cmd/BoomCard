@@ -5,7 +5,7 @@
  * Requires user to be within 100m of the venue to activate.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -17,16 +17,28 @@ import {
 } from 'react-native';
 import { Text, Button, Chip, ActivityIndicator } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
-import { useRoute, RouteProp } from '@react-navigation/native';
+import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useTheme } from '../../contexts/ThemeContext';
 import { OffersApi } from '../../api/offers.api';
 import FavoriteButton from '../../components/FavoriteButton';
-import type { Offer } from '../../types';
+import type { Offer, Partner } from '../../types';
 import { OfferType } from '../../types';
 
-type RouteParams = { offer: Offer };
+/**
+ * Route params. `offer` may be absent on:
+ *  - in-app navigation from Nearby (only a Partner is known)
+ *  - web reload / deep-link (params are lost on refresh)
+ * In those cases we resolve the offer from an id, or from the partner's offers.
+ */
+type RouteParams = {
+  offer?: Offer;
+  offerId?: string;
+  id?: string;
+  partnerId?: string;
+  partner?: Partner;
+};
 
 function getDiscountLabel(offer: Offer): string {
   if (offer.discountPercent) return `${offer.discountPercent}% off`;
@@ -58,17 +70,144 @@ export default function OfferDetailScreen() {
   const { t, i18n } = useTranslation();
   const { theme } = useTheme();
   const route = useRoute<RouteProp<Record<string, RouteParams>, string>>();
-  const { offer } = route.params;
+  const navigation = useNavigation<any>();
+  // route.params can be undefined (web reload / deep-link) — read defensively.
+  const params: RouteParams = route.params ?? {};
   const lang = i18n.language;
+
+  // The offer id we can resolve from, if no full offer object was passed.
+  const offerIdParam = params.offer?.id ?? params.offerId ?? params.id ?? null;
+  const partnerIdParam = params.partnerId ?? params.partner?.id ?? null;
+
+  // Offer is either passed directly or fetched (by offer id, or via partner).
+  const [offer, setOffer] = useState<Offer | null>(params.offer ?? null);
+  const [loadingOffer, setLoadingOffer] = useState<boolean>(!params.offer);
+  const [loadError, setLoadError] = useState<boolean>(false);
 
   const [redeeming, setRedeeming] = useState(false);
   const [redeemCode, setRedeemCode] = useState<string | null>(null);
   const [codeExpiry, setCodeExpiry] = useState<string | null>(null);
+  // Bumping this re-runs the resolution effect (used by the retry button).
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    // If we already have a full offer object, nothing to fetch.
+    if (params.offer) {
+      setOffer(params.offer);
+      setLoadingOffer(false);
+      setLoadError(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const resolve = async () => {
+      setLoadingOffer(true);
+      setLoadError(false);
+      try {
+        // Preferred: resolve by explicit offer id (web reload / deep-link).
+        if (offerIdParam) {
+          const res = await OffersApi.getOfferById(offerIdParam);
+          if (cancelled) return;
+          // The backend wraps the offer in its own envelope which apiClient
+          // re-wraps, so the actual offer is at res.data.data (mirror the
+          // partner branch below). Guard against a missing/blank offer.
+          const resolved = res.success ? (res.data?.data ?? null) : null;
+          if (resolved && resolved.id) {
+            setOffer(resolved);
+            return;
+          }
+          setLoadError(true);
+          return;
+        }
+
+        // Fallback: only a partner is known (e.g. tapped from Nearby).
+        // Surface that partner's first available offer.
+        if (partnerIdParam) {
+          const res = await OffersApi.getPartnerOffers(partnerIdParam);
+          if (cancelled) return;
+          const list = res.success ? (res.data?.data ?? []) : [];
+          if (list.length > 0) {
+            setOffer(list[0]);
+            return;
+          }
+          // No offers for this partner — render an empty/not-found state.
+          setLoadError(true);
+          return;
+        }
+
+        // Nothing to resolve from.
+        setLoadError(true);
+      } catch {
+        if (!cancelled) setLoadError(true);
+      } finally {
+        if (!cancelled) setLoadingOffer(false);
+      }
+    };
+
+    resolve();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offerIdParam, partnerIdParam, params.offer, reloadKey]);
+
   const menuVenues = useMemo(
-    () => (offer.partner?.venues ?? []).filter(v => !!v.menuUrl),
-    [offer.partner?.venues]
+    () => (offer?.partner?.venues ?? []).filter(v => !!v.menuUrl),
+    [offer?.partner?.venues]
   );
 
+  // ---- Loading / error states (rendered before any unguarded offer read) ----
+  if (loadingOffer) {
+    return (
+      <View style={[styles.stateContainer, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator size="large" color={theme.colors.gold} />
+        <Text style={[styles.stateText, { color: theme.colors.onSurfaceVariant }]}>
+          {t('common.loading')}
+        </Text>
+      </View>
+    );
+  }
+
+  if (loadError || !offer) {
+    return (
+      <View style={[styles.stateContainer, { backgroundColor: theme.colors.background }]}>
+        <Ionicons name="alert-circle-outline" size={56} color={theme.colors.onSurfaceVariant} />
+        <Text style={[styles.stateTitle, { color: theme.colors.onSurface }]}>
+          {t('offers.notFoundTitle', { defaultValue: 'Офертата не е намерена' })}
+        </Text>
+        <Text style={[styles.stateText, { color: theme.colors.onSurfaceVariant }]}>
+          {t('offers.notFoundDesc', {
+            defaultValue: 'Тази оферта вече не е налична или връзката е изтекла.',
+          })}
+        </Text>
+        <View style={styles.stateButtons}>
+          {offerIdParam || partnerIdParam ? (
+            <Button
+              mode="outlined"
+              onPress={() => setReloadKey(k => k + 1)}
+              textColor={theme.colors.onSurface}
+            >
+              {t('common.retry')}
+            </Button>
+          ) : null}
+          <Button
+            mode="contained"
+            onPress={() => {
+              if (navigation.canGoBack()) navigation.goBack();
+              else navigation.navigate('Offers');
+            }}
+            buttonColor={theme.colors.gold}
+            textColor={theme.colors.onGold}
+          >
+            {t('common.back', { defaultValue: 'Назад' })}
+          </Button>
+        </View>
+      </View>
+    );
+  }
+
+  // ---- From here `offer` is guaranteed non-null ----
   const title = lang === 'bg' && offer.titleBg ? offer.titleBg : offer.title;
   const description = lang === 'bg' && offer.descriptionBg ? offer.descriptionBg : offer.description;
   const partnerName =
@@ -108,8 +247,8 @@ export default function OfferDetailScreen() {
     setRedeeming(false);
 
     if (res.success) {
-      setRedeemCode(res.data?.code ?? '');
-      setCodeExpiry(res.data?.expiresAt ?? '');
+      setRedeemCode(res.data?.data?.code ?? '');
+      setCodeExpiry(res.data?.data?.expiresAt ?? '');
     } else {
       const msg = res.error ?? '';
       if (msg.toLowerCase().includes('100') || msg.toLowerCase().includes('distance') || msg.toLowerCase().includes('proximity')) {
@@ -315,6 +454,28 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingBottom: 48,
+  },
+  stateContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+    gap: 12,
+  },
+  stateTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  stateText: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  stateButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
   },
   heroImage: {
     width: '100%',
