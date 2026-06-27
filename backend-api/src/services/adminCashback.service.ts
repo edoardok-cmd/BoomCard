@@ -15,7 +15,7 @@ import { logger } from '../utils/logger';
 import { AppError } from '../middleware/error.middleware';
 import { emailService } from './email.service';
 import { CASHBACK_MATRIX, CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
-import { cashbackLifecycleService, assertVoidReasonCategory } from './cashbackLifecycle.service';
+import { cashbackLifecycleService, assertVoidReasonCategory, SYSTEM_ACTOR_ID } from './cashbackLifecycle.service';
 import { resolvePayoutEligibility } from './payoutEligibility.service';
 import { writeAudit } from '../middleware/audit.middleware';
 import { getSystemSettingInt } from '../utils/systemSettings';
@@ -1350,7 +1350,9 @@ export async function voidEntry(entryId: string, adminUserId: string, reason: st
           status: 'ANNULLED',
           voidedAt,
           voidedReason: trimmedReason,
-          voidedByUserId: adminUserId,
+          // L1 FIX: Use the same fallback pattern as markVoided (??SYSTEM_ACTOR_ID) so both void paths record
+          // a consistent actor-resolution strategy. When adminUserId is provided, use it; when null, use sentinel.
+          voidedByUserId: adminUserId ?? SYSTEM_ACTOR_ID,
         },
       });
       await tx.wallet.update({
@@ -1401,10 +1403,10 @@ export async function lockEntry(entryId: string, adminUserId: string): Promise<v
   const entry = await prisma.walletTransaction.findUnique({
     where: { id: entryId },
     select: {
-      id: true, type: true, status: true, cashbackExpiresAt: true,
+      id: true, type: true, status: true, cashbackExpiresAt: true, amount: true,
       createdAt: true, walletId: true,
       cashbackStatus: true, cashbackPaidAt: true,
-      wallet: { select: { userId: true } },
+      wallet: { select: { userId: true, availableBalance: true } },
     },
   });
   if (!entry) throw new AppError('Entry not found', 404);
@@ -1467,10 +1469,40 @@ export async function lockEntry(entryId: string, adminUserId: string): Promise<v
   const keepExpiresAt = entry.cashbackExpiresAt && entry.cashbackExpiresAt > now
     ? entry.cashbackExpiresAt
     : new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
-  await prisma.walletTransaction.update({
-    where: { id: entryId },
-    data: { status: 'CANCELLED', cashbackStatus: 'LOCKED', cashbackExpiresAt: keepExpiresAt },
+
+  // H1 FIX: Atomically lock the entry AND debit the wallet.availableBalance in a single
+  // transaction, mirroring the requestPayout pattern. This prevents the same cashback
+  // from being paid twice if a user later requestPayout while an admin-locked entry is pending.
+  // Spec §1.3 / §6.1: the entry amount must be reserved (unavailable) once it enters the
+  // payout pipeline (LOCKED state).
+  const debitAmount = Math.abs(entry.amount);
+  await prisma.$transaction(async (tx) => {
+    // Update the walletTransaction to LOCKED with conditional guard on cashbackStatus=CLEARED
+    // to prevent concurrent admin locks from double-debiting the wallet.
+    const lockResult = await tx.walletTransaction.updateMany({
+      where: {
+        id: entryId,
+        cashbackStatus: PrismaCashbackEntryStatus.CLEARED,
+      },
+      data: { status: 'CANCELLED', cashbackStatus: 'LOCKED', cashbackExpiresAt: keepExpiresAt },
+    });
+
+    if (lockResult.count === 0) {
+      // Entry is either already locked, already paid, or doesn't have CLEARED status.
+      throw new AppError(
+        'Entry is either already locked, already paid, or not in CLEARED state. ' +
+        'Cannot lock an entry that is not currently in CLEARED state.',
+        409,
+      );
+    }
+
+    // Debit the wallet.availableBalance by the entry amount (must succeed for the lock to be valid).
+    await tx.wallet.update({
+      where: { id: entry.walletId },
+      data: { availableBalance: { decrement: debitAmount } },
+    });
   });
+
   await writeAudit({
     actorUserId: adminUserId,
     action: 'CASHBACK_LOCKED',
@@ -1608,7 +1640,7 @@ export async function payEntry(entryId: string, adminUserId: string): Promise<vo
     where: { id: entryId },
     select: {
       id: true, type: true, status: true, cashbackStatus: true,
-      cashbackExpiresAt: true, cashbackPaidAt: true,
+      cashbackExpiresAt: true, cashbackPaidAt: true, walletId: true, amount: true,
     },
   });
   if (!entry) throw new AppError('Entry not found', 404);
@@ -1632,6 +1664,26 @@ export async function payEntry(entryId: string, adminUserId: string): Promise<vo
       (!entry.cashbackExpiresAt || entry.cashbackExpiresAt <= now)) {
     throw new AppError('Entry has already expired and cannot be marked as paid', 400);
   }
+
+  // M2 FIX: Verify that legacy entries (status=FAILED with no cashbackStatus) actually represent
+  // valid LOCKED state, not an illegal entry that was marked FAILED without proper state transitions.
+  // The difference is subtle but critical: status=FAILED with cashbackStatus=null means either:
+  // 1. A legacy Cleared→Failed transition (valid), OR
+  // 2. An illegal row that skipped Cleared/Locked (invalid — should be rejected)
+  // Since we have no way to distinguish, we conservatively reject FAILED entries without cashbackStatus
+  // and only accept:
+  // - New-world LOCKED (cashbackStatus='LOCKED'), OR
+  // - Legacy CANCELLED with valid expiresAt (legit admin-lock before the new-world schema)
+  if (isLegacyLocked && entry.status === 'FAILED') {
+    throw new AppError(
+      'Cannot mark as paid: entry has status=FAILED with no cashbackStatus. ' +
+      'This may be a legacy entry without proper state lineage. Entries must transition through ' +
+      'a genuine LOCKED state (either cashbackStatus=\'LOCKED\' or status=\'CANCELLED\') before payment. ' +
+      'Spec §1.3 / §6.1: Locked entries must have valid Cleared→Locked lineage.',
+      400,
+    );
+  }
+
   const result = await prisma.walletTransaction.updateMany({
     where: { id: entryId, cashbackPaidAt: null },
     data: { cashbackStatus: 'PAID', cashbackPaidAt: now },

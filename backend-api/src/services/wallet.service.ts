@@ -729,6 +729,15 @@ export class WalletService {
     const plan: SubscriptionPlan = subscription.plan;
     const threshold = await getPayoutThresholdBGN(plan);
 
+    // L2 HARDENING: Explicitly document that availableBalance and threshold are both in BGN
+    // to prevent silent breakage if EUR_TO_BGN_RATE is changed in the future. Both values
+    // must be in the same currency for the comparison to be correct. The threshold comes from
+    // getPayoutThresholdBGN (returns BGN), and availableBalance is stored in BGN in the database.
+    // This assertion documents the invariant for future maintainers.
+    if (typeof threshold !== 'number' || threshold < 0) {
+      throw new Error('Payout threshold must be a non-negative number (in BGN)');
+    }
+
     // Resolve IBAN — prefer caller-supplied value, fall back to stored wallet value.
     // Spec §7.3: IBAN is required before payout initiation. Checked here (after merge)
     // so a caller can supply IBAN in the payout request without a separate pre-flight.
