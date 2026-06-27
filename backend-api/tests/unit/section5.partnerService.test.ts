@@ -44,6 +44,21 @@ jest.mock('../../src/lib/prisma', () => ({
   prisma: mockPrisma,
 }));
 
+const mockNotificationService: any = {
+  notifyPartnerStatusChange: jest.fn(async () => undefined),
+};
+
+jest.mock('../../src/services/notification.service', () => ({
+  notificationService: mockNotificationService,
+}));
+
+jest.mock('../../src/utils/detach', () => ({
+  detach: (promise: Promise<unknown>, errorHandler: any) => {
+    // For testing, execute synchronously and call error handler if it fails
+    promise.catch((err: unknown) => errorHandler?.(err));
+  },
+}));
+
 import { PartnerStatus, PartnerRequestStatus } from '@prisma/client';
 import { isPartnerOperationallyActive, partnerService } from '../../src/services/partner.service';
 
@@ -207,5 +222,70 @@ describe('partnerService.setPartnerStatus', () => {
       fromStatus: PartnerStatus.ARCHIVED,
       toStatus: PartnerStatus.PENDING, // Actual status written to DB
     });
+  });
+
+  it('sends notification with correct canonicalized status when ARCHIVED→ACTIVE reactivation occurs', async () => {
+    // r2i F2: The notification must reflect the actual DB state (PENDING), not the request (ACTIVE).
+    // This verifies that the notification parameter toStatus uses result.toStatus, not the input toStatus.
+    mockTx.partner.findUnique.mockResolvedValueOnce({ id: 'p-archived', status: PartnerStatus.ARCHIVED });
+    mockTx.activationLink.updateMany.mockResolvedValueOnce({ count: 0 });
+    mockTx.sticker.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    // Mock the post-transaction partner lookup for the notification
+    mockPrisma.partner.findUnique.mockResolvedValueOnce({
+      id: 'p-archived',
+      userId: 'user-123',
+      businessName: 'Test Business',
+    });
+
+    await partnerService.setPartnerStatus({
+      partnerId: 'p-archived',
+      toStatus: PartnerStatus.ACTIVE, // Request ACTIVE
+      reason: 'Reactivating archived partner',
+      changedById: 'admin-1',
+    });
+
+    // The notification should be called with the canonicalized actual DB status (PENDING → INACTIVE),
+    // not the requested status (ACTIVE). This ensures partners receive accurate information about
+    // their account state.
+    expect(mockNotificationService.notifyPartnerStatusChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        partnerUserId: 'user-123',
+        businessName: 'Test Business',
+        toStatus: 'INACTIVE', // PENDING canonicalizes to INACTIVE
+        fromStatus: 'ARCHIVED', // ARCHIVED canonicalizes to ARCHIVED
+      })
+    );
+  });
+
+  it('sends notification with correct status for normal ACTIVE→SUSPENDED transition', async () => {
+    mockTx.partner.findUnique.mockResolvedValueOnce({ id: 'p-1', status: PartnerStatus.ACTIVE });
+    mockTx.activationLink.updateMany.mockResolvedValueOnce({ count: 0 });
+    mockTx.sticker.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    // Mock the post-transaction partner lookup for the notification
+    mockPrisma.partner.findUnique.mockResolvedValueOnce({
+      id: 'p-1',
+      userId: 'user-456',
+      businessName: 'Another Business',
+    });
+
+    await partnerService.setPartnerStatus({
+      partnerId: 'p-1',
+      toStatus: PartnerStatus.SUSPENDED,
+      reason: 'Policy violation',
+      changedById: 'admin-2',
+    });
+
+    // For normal transitions (not ARCHIVED→ACTIVE), the notification receives the actual status
+    // and its canonicalization: SUSPENDED → INACTIVE
+    expect(mockNotificationService.notifyPartnerStatusChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        partnerUserId: 'user-456',
+        businessName: 'Another Business',
+        toStatus: 'INACTIVE', // SUSPENDED canonicalizes to INACTIVE
+        fromStatus: 'ACTIVE', // ACTIVE canonicalizes to ACTIVE
+      })
+    );
   });
 });

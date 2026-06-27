@@ -333,7 +333,11 @@ export class PartnerService {
         // rejects non-canonical values and silently drops the notification, so we map the raw
         // PartnerStatus enum to the canonical ACTIVE | INACTIVE | ARCHIVED set here. The DB
         // write above keeps the raw status; only the notification value is canonicalized.
-        toStatus: toCanonicalPartnerStatus(toStatus),
+        //
+        // r2i F2: Use result.toStatus (actual written status) instead of toStatus (requested status).
+        // For ARCHIVED→ACTIVE reactivation, the DB writes PENDING but the request is ACTIVE.
+        // The notification must reflect the actual database state, not the request intent.
+        toStatus: toCanonicalPartnerStatus(result.toStatus),
         fromStatus: toCanonicalPartnerStatus(result.fromStatus),
       }), (err: unknown) => logger.error('[partner.setStatus] status-change notification failed:', err));
     }
