@@ -144,8 +144,24 @@ describe('M3 — derivePartnerInactiveSubType', () => {
     expect(derivePartnerInactiveSubType({ status: 'SUSPENDED' })).toBe('ADMIN_SUSPENSION');
   });
 
-  it('maps PENDING → ONBOARDING_INACTIVE', () => {
-    expect(derivePartnerInactiveSubType({ status: 'PENDING' })).toBe('ONBOARDING_INACTIVE');
+  it('maps PENDING + ONBOARDING requestStatus → ONBOARDING_INACTIVE', () => {
+    expect(derivePartnerInactiveSubType({ status: 'PENDING', requestStatus: 'ONBOARDING' })).toBe('ONBOARDING_INACTIVE');
+  });
+
+  it('maps PENDING + APPROVED requestStatus → ONBOARDING_INACTIVE', () => {
+    expect(derivePartnerInactiveSubType({ status: 'PENDING', requestStatus: 'APPROVED' })).toBe('ONBOARDING_INACTIVE');
+  });
+
+  it('returns null for PENDING + NEW requestStatus (spec §1.6: no account yet)', () => {
+    expect(derivePartnerInactiveSubType({ status: 'PENDING', requestStatus: 'NEW' })).toBeNull();
+  });
+
+  it('returns null for PENDING + COMMUNICATION requestStatus (spec §1.6: no account yet)', () => {
+    expect(derivePartnerInactiveSubType({ status: 'PENDING', requestStatus: 'COMMUNICATION' })).toBeNull();
+  });
+
+  it('returns null for PENDING + NEGOTIATION requestStatus (spec §1.6: no account yet)', () => {
+    expect(derivePartnerInactiveSubType({ status: 'PENDING', requestStatus: 'NEGOTIATION' })).toBeNull();
   });
 
   it('derives INACTIVE sub_type from the statusReason marker', () => {

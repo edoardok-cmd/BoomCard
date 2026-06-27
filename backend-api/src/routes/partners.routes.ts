@@ -1402,7 +1402,7 @@ router.put(
         // Spec §5.2 — block direct activation of a PENDING partner that has not
         // completed the onboarding pipeline. An admin using the general edit form
         // must not be able to bypass the pipeline by flipping status=ACTIVE from
-        // NOVA/KOMUNIKACIYA/DOGOVARYANE. Partners already in ONBOARDING or ODOBRENA
+        // NOVA/KOMUNIKACIYA/DOGOVARYANE. Partners already in ONBOARDING or APPROVED
         // (pipeline complete) and re-activations of post-onboarding partners (e.g.
         // PAUSED → ACTIVE) are always allowed.
         if (status === PartnerStatus.ACTIVE && partner.status === PartnerStatus.PENDING) {

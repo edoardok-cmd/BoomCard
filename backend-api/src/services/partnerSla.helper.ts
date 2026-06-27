@@ -51,15 +51,9 @@ export function computePartnerSla(
    */
   assignedAdminId: string | null = null,
 ): PartnerSla {
-  // HIGH-1 (r2n): Use Prisma enum constants instead of raw strings.
-  // The schema.prisma defines: APPROVED @map("ODOBRENA"), REJECTED @map("OTKAZANA")
-  // The current generated client (pre-generate) still exposes the Bulgarian DB keys.
-  // After the next `prisma generate` the keys become APPROVED/REJECTED.
-  // Until then we reference the enum object so the key name is not duplicated:
-  // both here and in the scheduler use PartnerRequestStatus.APPROVED / .OTKAZANA.
-  // When `prisma generate` is run this file only needs two identifier renames —
-  // no grep-for-raw-strings needed.
-  // TODO: after `prisma generate` rename ODOBRENA→APPROVED and OTKAZANA→REJECTED.
+  // Use Prisma enum constants for status comparison. The schema.prisma defines:
+  // APPROVED @map("ODOBRENA"), REJECTED @map("OTKAZANA") — the @map only affects
+  // database storage; the TypeScript client always uses the enum key names.
   const isClosed = requestStatus === PartnerRequestStatus.APPROVED
     || requestStatus === PartnerRequestStatus.REJECTED;
   // M4: an assigned application has met the assignment SLA — treat it as satisfied.

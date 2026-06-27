@@ -413,7 +413,7 @@ router.patch(
       data: {
         requestStatus: requestStatus as PartnerRequestStatus,
         // Spec §3.2 informational alert needs an explicit completion timestamp.
-        // Stamp once on the first ODOBRENA transition; later edits don't reset it.
+        // Stamp once on the first APPROVED transition; later edits don't reset it.
         ...(isOdobrenaTransition && !partner.onboardingCompletedAt
           ? { onboardingCompletedAt: new Date() }
           : {}),
@@ -650,7 +650,7 @@ router.post(
     }
     // Bug-fix: INACTIVE is a post-onboarding status — re-activating must go
     // through /partner-status, not through the onboarding approve endpoint.
-    // Without this guard, an INACTIVE partner (requestStatus=ODOBRENA, verifiedAt
+    // Without this guard, an INACTIVE partner (requestStatus=APPROVED, verifiedAt
     // set) would receive a stale "Onboarding approved" email + a superfluous
     // activation link, and the PartnerStatusChange row would carry the wrong label.
     if (partner.status === PartnerStatus.REJECTED) {
@@ -683,7 +683,7 @@ router.post(
         currentStatus: partner.requestStatus ?? 'NEW',
       });
     }
-    // Guard the resend carve-out: if requestStatus is already ODOBRENA but
+    // Guard the resend carve-out: if requestStatus is already APPROVED but
     // partner.status is not PENDING, the pipeline was manually advanced (via PATCH
     // /status) without consuming an activation link, OR the partner is already
     // post-onboarding. PENDING is the ONLY status where an APPROVED-source approve
@@ -694,7 +694,7 @@ router.post(
       partner.status !== PartnerStatus.PENDING
     ) {
       return res.status(400).json({
-        error: 'Partner pipeline shows ODOBRENA but operational status is not PENDING. Use /partner-status for post-onboarding transitions.',
+        error: 'Partner pipeline shows APPROVED but operational status is not PENDING. Use /partner-status for post-onboarding transitions.',
         currentStatus: partner.status,
       });
     }
