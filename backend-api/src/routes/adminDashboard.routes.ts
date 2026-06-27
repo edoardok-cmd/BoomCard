@@ -249,10 +249,12 @@ router.get(
     ] as const;
     const cashbackStatusBreakdown = CASHBACK_STATUSES.map((status) => {
       const row = cashbackStatusGroups.find((g) => g.cashbackStatus === status);
+      const amount = row?._sum?.amount ?? 0;
       return {
         status,
         count: row?._count?._all ?? 0,
-        amount: row?._sum?.amount ?? 0,
+        ...(windowOpen && { amount }),
+        display: toDualCurrency(amount, windowOpen),
       };
     });
 
@@ -286,16 +288,27 @@ router.get(
         },
         transactions: {
           todayCount: todayTxCount,
-          todayVolume,
-          todayAvg,
-          totalVolume: totalTxVolume._sum.finalAmount ?? 0,
+          ...(windowOpen && { todayVolume }),
+          ...(windowOpen && { todayAvg }),
+          ...(windowOpen && { totalVolume: totalTxVolume._sum.finalAmount ?? 0 }),
+          display: {
+            todayVolume: toDualCurrency(todayVolume, windowOpen),
+            todayAvg: toDualCurrency(todayAvg, windowOpen),
+            totalVolume: toDualCurrency(totalTxVolume._sum.finalAmount ?? 0, windowOpen),
+          },
         },
         cashback: {
-          accrued: accruedCashback._sum.amount ?? 0,
-          approved: approvedCashback._sum.amount ?? 0,
-          pending: pendingCashback._sum.amount ?? 0,
-          expiringSoon: expiringCashback._sum.amount ?? 0,
+          ...(windowOpen && { accrued: accruedCashback._sum.amount ?? 0 }),
+          ...(windowOpen && { approved: approvedCashback._sum.amount ?? 0 }),
+          ...(windowOpen && { pending: pendingCashback._sum.amount ?? 0 }),
+          ...(windowOpen && { expiringSoon: expiringCashback._sum.amount ?? 0 }),
           statusBreakdown: cashbackStatusBreakdown,
+          display: {
+            accrued: toDualCurrency(accruedCashback._sum.amount ?? 0, windowOpen),
+            approved: toDualCurrency(approvedCashback._sum.amount ?? 0, windowOpen),
+            pending: toDualCurrency(pendingCashback._sum.amount ?? 0, windowOpen),
+            expiringSoon: toDualCurrency(expiringCashback._sum.amount ?? 0, windowOpen),
+          },
         },
         partners: {
           active: activePartners,
