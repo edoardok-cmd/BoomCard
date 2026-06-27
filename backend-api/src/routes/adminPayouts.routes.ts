@@ -82,6 +82,28 @@ function subGateMessage(gate: SubGateResult): string {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+// Spec §3.7 + §8.1 rule 4 — DEFECT 2 gate: omit raw BGN fields from payout
+// objects when the currency transition window is CLOSED. This helper gates
+// a single payout returned from a mutation endpoint, applying the same logic
+// as the GET endpoint (lines 312–328). Prevents data leakage when window CLOSED.
+async function gateBgnInPayoutResponse(payout: any): Promise<any> {
+  const windowOpen = await isCurrencyTransitionWindowOpen();
+  if (windowOpen) {
+    return payout;
+  }
+  return {
+    ...payout,
+    amount: undefined,
+    balanceBefore: undefined,
+    balanceAfter: undefined,
+    wallet: {
+      ...payout.wallet,
+      availableBalance: undefined,
+      pendingBalance: undefined,
+    },
+  };
+}
+
 // Concurrency cap for /bulk-approve: limits in-flight Paysera Transfer API calls
 // so a large batch does not (a) exhaust the Prisma connection pool, (b) trip
 // Paysera rate limits, or (c) blow past the Fly.io edge proxy's ~60s idle-write
@@ -271,17 +293,26 @@ router.get(
         }),
       ]);
 
+      // DEFECT 1 gate: raw BGN scalars only shown when window is open
+      // NOTE: isCurrencyTransitionWindowOpen() uses a 60-second in-process cache.
+      // In multi-process deployments, when the setting is updated, only the process
+      // that handled the PUT request invalidates its cache. Other processes will serve
+      // stale cached values for up to 60 seconds (eventual-consistency behavior).
+      // For true immediate propagation across all processes, the cache would need to
+      // be migrated to Redis-backed storage.
+      const windowOpen = await isCurrencyTransitionWindowOpen();
+
       const fgb = (s: string) => filteredGroupBy.find(g => g.status === s);
       const filteredSummary = {
         pendingCount:    fgb('PENDING')?._count._all    ?? 0,
-        pendingTotal:    Math.abs(fgb('PENDING')?._sum.amount    ?? 0),
+        ...(windowOpen && { pendingTotal:    Math.abs(fgb('PENDING')?._sum.amount    ?? 0) }),
         processingCount: fgb('PROCESSING')?._count._all ?? 0,
-        processingTotal: Math.abs(fgb('PROCESSING')?._sum.amount ?? 0),
+        ...(windowOpen && { processingTotal: Math.abs(fgb('PROCESSING')?._sum.amount ?? 0) }),
         completedCount:  fgb('COMPLETED')?._count._all  ?? 0,
-        completedTotal:  Math.abs(fgb('COMPLETED')?._sum.amount  ?? 0),
+        ...(windowOpen && { completedTotal:  Math.abs(fgb('COMPLETED')?._sum.amount  ?? 0) }),
         riskHoldCount:   fgb('RISK_HOLD')?._count._all  ?? 0,
         failedCount:     fgb('FAILED')?._count._all     ?? 0,
-        failedTotal:     Math.abs(fgb('FAILED')?._sum.amount     ?? 0),
+        ...(windowOpen && { failedTotal:     Math.abs(fgb('FAILED')?._sum.amount     ?? 0) }),
         cancelledCount:  fgb('CANCELLED')?._count._all  ?? 0,
         totalCount:      filteredGroupBy.reduce((acc, g) => acc + g._count._all, 0),
       };
@@ -300,14 +331,23 @@ router.get(
         failedTotal:     failedTotalBgn,
       });
 
-      // DEFECT 1 gate: raw BGN scalars only shown when window is open
-      const windowOpen = await isCurrencyTransitionWindowOpen();
-
       // DEFECT 2 gate: payouts array items should omit raw BGN fields when window closed
-      const payoutsDisplay = payouts.map(p => ({
-        ...p,
-        ...(windowOpen ? {} : { amount: undefined, balanceBefore: undefined, balanceAfter: undefined }),
-      }));
+      const payoutsDisplay = payouts.map(p => {
+        if (windowOpen) {
+          return p;
+        }
+        return {
+          ...p,
+          amount: undefined,
+          balanceBefore: undefined,
+          balanceAfter: undefined,
+          wallet: {
+            ...p.wallet,
+            availableBalance: undefined,
+            pendingBalance: undefined,
+          },
+        };
+      });
 
       res.json({
         payouts: payoutsDisplay,
@@ -466,13 +506,18 @@ router.patch(
         try {
           // Hold the payout for manual review with a description indicating no-IBAN.
           const noIbanSingleMeta = payout.metadata ? JSON.parse(payout.metadata) : {};
-          const held = await prisma.walletTransaction.update({
+          await prisma.walletTransaction.update({
             where: { id: payout.id },
             data: {
               status: 'RISK_HOLD',
               description: 'Задържано - липсва банкова сметка (IBAN). Моля добавете вашия IBAN преди повторно одобрение.',
               metadata: JSON.stringify({ ...noIbanSingleMeta, noIbanHold: true }),
             },
+          });
+          // Fetch the updated payout with wallet for gating
+          const held = await prisma.walletTransaction.findUnique({
+            where: { id: payout.id },
+            include: { wallet: true },
           });
           // Spec §3.2 / §6.1 — notify user to add their bank details.
           detach(notificationService
@@ -481,8 +526,9 @@ router.patch(
               availableBalance: Math.abs(payout.amount),
               threshold: 0, // n/a for this context
             }), (err) => logger.error(`[approve] no-IBAN notification failed for user ${payout.wallet.userId}:`, err));
+          const gated = await gateBgnInPayoutResponse(held);
           res.status(202).json({
-            ...held,
+            ...gated,
             message: 'Payout held — user notified to add bank details (IBAN) before retry.',
             reason: 'NO_IBAN_HELD_FOR_UPDATE',
           });
@@ -512,11 +558,18 @@ router.patch(
         const result = await walletService.executePayoutTransfer(id);
         if (result.alreadyProcessed) {
           // Lost a race — return current row state without re-notifying.
-          updated = await prisma.walletTransaction.findUnique({ where: { id } });
-          res.json(updated);
+          updated = await prisma.walletTransaction.findUnique({
+            where: { id },
+            include: { wallet: true },
+          });
+          const gated = await gateBgnInPayoutResponse(updated);
+          res.json(gated);
           return;
         }
-        updated = await prisma.walletTransaction.findUnique({ where: { id } });
+        updated = await prisma.walletTransaction.findUnique({
+          where: { id },
+          include: { wallet: true },
+        });
       } catch (err: any) {
         // Paysera failed and the helper has already reverted balance + marked FAILED.
         logger.error(`[approve] transfer for payout ${id} failed: ${err?.message ?? err}`);
@@ -529,7 +582,8 @@ router.patch(
       }
 
       detach(notifySubscriber(id, 'approved'), () => {});
-      res.json(updated);
+      const gated = await gateBgnInPayoutResponse(updated);
+      res.json(gated);
     } catch (error) {
       next(error);
     }
@@ -632,7 +686,7 @@ router.patch(
       }
 
       const existingMeta = payout.metadata ? JSON.parse(payout.metadata) : {};
-      const updated = await prisma.walletTransaction.update({
+      await prisma.walletTransaction.update({
         where: { id },
         data: {
           status: 'COMPLETED',
@@ -647,8 +701,15 @@ router.patch(
         (req as AuthRequest).user?.id ?? null,
       );
 
+      // Fetch the updated payout with wallet for gating
+      const updated = await prisma.walletTransaction.findUnique({
+        where: { id },
+        include: { wallet: true },
+      });
+
       detach(notifySubscriber(id, 'completed'), () => {});
-      res.json(updated);
+      const gated = await gateBgnInPayoutResponse(updated);
+      res.json(gated);
     } catch (error) {
       next(error);
     }
@@ -679,7 +740,7 @@ router.patch(
       // This allows /release to refuse escalated rows (409) and prevents manual holds
       // from inflating the strike count.
       const existingMeta = payout.metadata ? JSON.parse(payout.metadata) : {};
-      const updated = await prisma.walletTransaction.update({
+      await prisma.walletTransaction.update({
         where: { id },
         data: {
           status: 'RISK_HOLD',
@@ -690,8 +751,15 @@ router.patch(
         },
       });
 
+      // Fetch the updated payout with wallet for gating
+      const updated = await prisma.walletTransaction.findUnique({
+        where: { id },
+        include: { wallet: true },
+      });
+
       detach(notifySubscriber(id, 'held', reason), () => {});
-      res.json(updated);
+      const gated = await gateBgnInPayoutResponse(updated);
+      res.json(gated);
     } catch (error) {
       next(error);
     }
@@ -736,13 +804,20 @@ router.patch(
         ? `[Освободено] ${payout.description}`
         : null;
 
-      const updated = await prisma.walletTransaction.update({
+      await prisma.walletTransaction.update({
         where: { id },
         data: { status: 'PENDING', description: releasedDesc },
       });
 
+      // Fetch the updated payout with wallet for gating
+      const updated = await prisma.walletTransaction.findUnique({
+        where: { id },
+        include: { wallet: true },
+      });
+
       detach(notifySubscriber(id, 'released'), () => {});
-      res.json(updated);
+      const gated = await gateBgnInPayoutResponse(updated);
+      res.json(gated);
     } catch (error) {
       next(error);
     }
@@ -1050,9 +1125,14 @@ router.patch(
         return;
       }
 
-      const updated = await prisma.walletTransaction.findUnique({ where: { id } });
+      // Fetch the updated payout with wallet for gating
+      const updated = await prisma.walletTransaction.findUnique({
+        where: { id },
+        include: { wallet: true },
+      });
       logger.warn(`[reset-stuck] Payout ${id} reset PROCESSING → PENDING (no payseraTransferId; admin recovery).`);
-      res.json(updated);
+      const gated = await gateBgnInPayoutResponse(updated);
+      res.json(gated);
     } catch (error) {
       next(error);
     }

@@ -4,11 +4,17 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import { seedPermissions } from '../src/services/permission.service';
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('🌱 Starting database seed...\n');
+
+  // Step 1: Seed RBAC permissions and roles (CRITICAL: must run before creating admin users)
+  console.log('⚙️  Seeding permissions and admin roles...');
+  await seedPermissions();
+  console.log('✅ Permissions and roles seeded.\n');
 
   // Create admin user
   console.log('👤 Creating admin user...');

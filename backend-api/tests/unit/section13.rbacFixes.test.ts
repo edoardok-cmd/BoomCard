@@ -515,8 +515,15 @@ describe('§13 Fix 2 — fraud-rules HTTP permission gates', () => {
     expect(res.body.error).toMatch(/outside the permitted bounds/i);
   });
 
-  it('U3 — POST /fraud-rules: full control.rules.write MAY exceed bounds (201)', async () => {
+  it('U3 — POST /fraud-rules: ADMIN with control.rules.write is CLAMPED to bounds (422)', async () => {
     setMockUser({ role: 'ADMIN', permissions: ['control.rules.write'] });
+    const res = await api.post('/settings/fraud-rules').send({ tier: 'SYSTEM', dailyScanLimit: 999 });
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatch(/outside the permitted bounds/i);
+  });
+
+  it('U3 — POST /fraud-rules: SUPER_ADMIN may exceed bounds (201)', async () => {
+    setMockUser({ role: 'SUPER_ADMIN', permissions: [] });
     const res = await api.post('/settings/fraud-rules').send({ tier: 'SYSTEM', dailyScanLimit: 999 });
     expect(res.status).toBe(201);
   });

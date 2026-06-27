@@ -791,7 +791,6 @@ function actorMayExceedFraudBounds(actorRole: string): boolean {
  */
 function checkFraudRuleBounds(
   actorRole: string,
-  permissions: string[] | undefined,
   fields: Record<string, number | null | undefined>,
 ): string | null {
   if (actorMayExceedFraudBounds(actorRole)) return null;
@@ -863,7 +862,7 @@ router.post(
     }
 
     // U3 — bounds enforcement: bounded-only writers may only set within-bounds values.
-    const boundsError = checkFraudRuleBounds(req.user!.role, req.user!.permissions, {
+    const boundsError = checkFraudRuleBounds(req.user!.role, {
       dailyScanLimit, minTransactionValue, maxTransactionValue, autoApproveThreshold,
     });
     if (boundsError) return res.status(422).json({ success: false, error: boundsError });
@@ -908,7 +907,7 @@ router.patch(
     if (!rule) return res.status(404).json({ success: false, error: 'Fraud rule not found' });
 
     // U3 — bounds enforcement: bounded-only writers may only set within-bounds values.
-    const boundsError = checkFraudRuleBounds(req.user!.role, req.user!.permissions, {
+    const boundsError = checkFraudRuleBounds(req.user!.role, {
       dailyScanLimit, minTransactionValue, maxTransactionValue, autoApproveThreshold,
     });
     if (boundsError) return res.status(422).json({ success: false, error: boundsError });

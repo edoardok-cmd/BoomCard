@@ -19,6 +19,7 @@
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:seed": "ts-node prisma/seed.ts",
+    "db:seed:permissions": "npx tsx prisma/seed-permissions.ts",
     "db:reset": "prisma migrate reset --force && npm run db:seed",
     "db:studio": "prisma studio",
     "migrate:export": "ts-node scripts/migrate-sqlite-to-postgres.ts",

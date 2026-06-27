@@ -325,6 +325,20 @@ afterEach(async () => {
 beforeAll(async () => {
   // Ensure database connection is ready
   await prisma.$connect();
+
+  // Seed RBAC permissions and admin roles (CRITICAL: must run before integration tests
+  // that depend on SUPER_ADMIN role existing, e.g., bc-admin-spec-reaudit2-sa-approve-initiator)
+  try {
+    const { seedPermissions } = await import('../src/services/permission.service');
+    await seedPermissions();
+    console.log('tests/setup.ts: permissions and roles seeded successfully.');
+  } catch (error) {
+    console.warn(
+      'tests/setup.ts: seedPermissions() warning — this is expected if run independently. ' +
+        'For integration test suites, ensure npm run db:seed or seedPermissions() was called.',
+      error,
+    );
+  }
 });
 
 // Global test teardown
