@@ -12,6 +12,7 @@ import { logger } from '../utils/logger';
 import { getClientIp } from '../utils/requestIp';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
+import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 const router = Router();
 router.use(auditMiddleware);
@@ -278,6 +279,8 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
         ? [{ lastActivityAt: { sort: dir, nulls: 'last' } }, { createdAt: 'desc' }]
         : { createdAt: dir };
 
+    const windowOpen = await isCurrencyTransitionWindowOpen();
+
     const [users, total] = await Promise.all([
       prisma.user.findMany({
         where,
@@ -301,8 +304,25 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
     // For overridden rows we keep the stored DB risk values; non-overridden rows
     // get the fresh behaviour-based score below.
     let subscribers = flat.map((s) => {
-      const { riskOverriddenAt, ...rest } = s;
-      return { ...rest, riskOverridden: !!riskOverriddenAt };
+      const { riskOverriddenAt, wallet, ...rest } = s;
+      const { availableBalance, balance, pendingBalance } = wallet;
+      return {
+        ...rest,
+        riskOverridden: !!riskOverriddenAt,
+        ...(windowOpen && {
+          wallet: {
+            availableBalance,
+            balance,
+            pendingBalance,
+          },
+        }),
+        ...(!windowOpen && { wallet: {} }),
+        walletDisplay: {
+          availableBalance: toDualCurrency(availableBalance ?? 0, windowOpen),
+          balance: toDualCurrency(balance ?? 0, windowOpen),
+          pendingBalance: toDualCurrency(pendingBalance ?? 0, windowOpen),
+        },
+      };
     });
     try {
       const assessments = await computeRiskForUsers(
@@ -353,6 +373,9 @@ router.get('/export', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePe
       where.id = { in: resolved.userIds };
       truncatedCandidates = resolved.truncated;
     }
+
+    const windowOpen = await isCurrencyTransitionWindowOpen();
+
     const users = await prisma.user.findMany({
       where,
       take: EXPORT_MAX,
@@ -368,8 +391,25 @@ router.get('/export', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePe
     // Mirror the list GET convention: expose the override as a boolean and drop the
     // raw internal riskOverriddenAt timestamp from the response shape.
     const subscribers = users.map(flattenSubscriber).map((s) => {
-      const { riskOverriddenAt, ...rest } = s as typeof s & { riskOverriddenAt?: Date | null };
-      return { ...rest, riskOverridden: !!riskOverriddenAt };
+      const { riskOverriddenAt, wallet, ...rest } = s as typeof s & { riskOverriddenAt?: Date | null };
+      const { availableBalance, balance, pendingBalance } = wallet;
+      return {
+        ...rest,
+        riskOverridden: !!riskOverriddenAt,
+        ...(windowOpen && {
+          wallet: {
+            availableBalance,
+            balance,
+            pendingBalance,
+          },
+        }),
+        ...(!windowOpen && { wallet: {} }),
+        walletDisplay: {
+          availableBalance: toDualCurrency(availableBalance ?? 0, windowOpen),
+          balance: toDualCurrency(balance ?? 0, windowOpen),
+          pendingBalance: toDualCurrency(pendingBalance ?? 0, windowOpen),
+        },
+      };
     });
     res.json({ subscribers, limit: EXPORT_MAX });
   } catch (error) {
@@ -410,6 +450,8 @@ router.get('/:userId/cashback', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
 router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.read'), async (req, res, next) => {
   try {
     const { userId } = req.params;
+
+    const windowOpen = await isCurrencyTransitionWindowOpen();
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -464,9 +506,28 @@ router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
       return res.status(404).json({ error: 'Subscriber not found' });
     }
 
+    // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for wallet amounts
+    // (stored BGN). Raw BGN scalars are gated by isCurrencyTransitionWindowOpen();
+    // when window is CLOSED, EUR-only display; when OPEN, both BGN+EUR.
+    const { wallet, ...restUser } = user;
+    const { availableBalance, balance, pendingBalance } = wallet;
+
     // Enrich each subscription with a human-readable plan name (PREMIUM_WEEKLY → "Premium Weekly")
     const enriched = {
-      ...user,
+      ...restUser,
+      ...(windowOpen && {
+        wallet: {
+          availableBalance,
+          balance,
+          pendingBalance,
+        },
+      }),
+      ...(!windowOpen && { wallet: {} }),
+      walletDisplay: {
+        availableBalance: toDualCurrency(availableBalance ?? 0, windowOpen),
+        balance: toDualCurrency(balance ?? 0, windowOpen),
+        pendingBalance: toDualCurrency(pendingBalance ?? 0, windowOpen),
+      },
       subscriptions: user.subscriptions.map((s) => ({
         ...s,
         planDisplayName: planDisplayName(s.plan),

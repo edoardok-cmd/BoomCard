@@ -758,12 +758,13 @@ const VALID_TIERS = new Set(Object.values(FraudRuleTier));
  *
  * "The Risk Review role can adjust signal thresholds within pre-defined bounds;
  * only a Super Admin can exceed those bounds." These engineering-default bounds
- * are the conservative go-live values. An actor who may exceed bounds — SUPER_ADMIN,
- * or any holder of the full `control.rules.write` key — may set ANY value. An actor
- * holding only the bounded capability (`control.rules.write.bounded`, e.g. RISK_REVIEW)
- * is clamped to these bounds (rejected with 422 if out of range). This is the U3
- * permission model (spec §2.1 / Clash 5.4): RISK_REVIEW can tune limits within safe
- * ranges but cannot disable protections or exceed the engineering bounds.
+ * are the conservative go-live values. Only SUPER_ADMIN may exceed bounds and
+ * set ANY value. Standard ADMIN with `control.rules.write` is now CLAMPED to
+ * these bounds (rejected with 422 if out of range). An actor holding only the
+ * bounded capability (`control.rules.write.bounded`, e.g. RISK_REVIEW) is also
+ * clamped to these bounds. This is the U3 permission model (spec §2.1 / Clash 5.4):
+ * RISK_REVIEW can tune limits within safe ranges but cannot disable protections
+ * or exceed the engineering bounds.
  */
 const FRAUD_RULE_BOUNDS: Record<string, { min: number; max: number }> = {
   dailyScanLimit: { min: 1, max: 500 },
@@ -774,12 +775,12 @@ const FRAUD_RULE_BOUNDS: Record<string, { min: number; max: number }> = {
 
 /**
  * True when the actor may set fraud-rule values beyond the engineering bounds:
- * SUPER_ADMIN (bypasses permission gates entirely) or any holder of the full
- * `control.rules.write` key. A holder of only `control.rules.write.bounded`
- * (e.g. RISK_REVIEW) returns false and is clamped.
+ * only SUPER_ADMIN may exceed bounds. A holder of `control.rules.write`
+ * (ADMIN) or `control.rules.write.bounded` (e.g. RISK_REVIEW) returns false
+ * and is clamped to the pre-defined bounds.
  */
-function actorMayExceedFraudBounds(actorRole: string, permissions: string[] | undefined): boolean {
-  return actorRole === 'SUPER_ADMIN' || (permissions ?? []).includes('control.rules.write');
+function actorMayExceedFraudBounds(actorRole: string): boolean {
+  return actorRole === 'SUPER_ADMIN';
 }
 
 /**
@@ -793,7 +794,7 @@ function checkFraudRuleBounds(
   permissions: string[] | undefined,
   fields: Record<string, number | null | undefined>,
 ): string | null {
-  if (actorMayExceedFraudBounds(actorRole, permissions)) return null;
+  if (actorMayExceedFraudBounds(actorRole)) return null;
   for (const [key, bound] of Object.entries(FRAUD_RULE_BOUNDS)) {
     const v = fields[key];
     if (v === undefined || v === null) continue;

@@ -170,6 +170,7 @@ type DispatchRecipient =
       email: string;
       firstName: string | null;
       lastName: string | null;
+      marketingConsent: boolean;
       marketingConsentEmail: boolean;
       preferredLanguage: string;
     }
@@ -180,7 +181,8 @@ type DispatchRecipient =
       businessName: string;
       linkedUserId: string | null;
       linkedUserEmail: string | null; // fallback when Partner.email is null
-      linkedUserConsentEmail: boolean | null; // null = no linked User → implicit B2B consent
+      linkedUserConsent: boolean | null; // channel-agnostic; null = no linked User → implicit B2B consent
+      linkedUserConsentEmail: boolean | null; // email-specific; null = no linked User → implicit B2B consent
     };
 
 // Build recipients for auto-managed (DYNAMIC/SEGMENT) lists by re-running the
@@ -188,15 +190,15 @@ type DispatchRecipient =
 async function buildRecipientsFromSyncKey(syncKey: string): Promise<DispatchRecipient[]> {
   const cutoff90d = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
 
-  const userSel = { id: true, email: true, firstName: true, lastName: true, marketingConsentEmail: true, preferredLanguage: true } as const;
-  const toUser = (u: { id: string; email: string; firstName: string | null; lastName: string | null; marketingConsentEmail: boolean; preferredLanguage: string }): DispatchRecipient => ({
-    kind: 'USER', userId: u.id, email: u.email, firstName: u.firstName, lastName: u.lastName, marketingConsentEmail: u.marketingConsentEmail, preferredLanguage: u.preferredLanguage,
+  const userSel = { id: true, email: true, firstName: true, lastName: true, marketingConsent: true, marketingConsentEmail: true, preferredLanguage: true } as const;
+  const toUser = (u: { id: string; email: string; firstName: string | null; lastName: string | null; marketingConsent: boolean; marketingConsentEmail: boolean; preferredLanguage: string }): DispatchRecipient => ({
+    kind: 'USER', userId: u.id, email: u.email, firstName: u.firstName, lastName: u.lastName, marketingConsent: u.marketingConsent, marketingConsentEmail: u.marketingConsentEmail, preferredLanguage: u.preferredLanguage,
   });
 
-  const partnerSel = { id: true, email: true, businessName: true, user: { select: { id: true, email: true, marketingConsentEmail: true } } } as const;
-  const toPartner = (p: { id: string; email: string | null; businessName: string; user: { id: string; email: string; marketingConsentEmail: boolean } | null }): DispatchRecipient => ({
+  const partnerSel = { id: true, email: true, businessName: true, user: { select: { id: true, email: true, marketingConsent: true, marketingConsentEmail: true } } } as const;
+  const toPartner = (p: { id: string; email: string | null; businessName: string; user: { id: string; email: string; marketingConsent: boolean; marketingConsentEmail: boolean } | null }): DispatchRecipient => ({
     kind: 'PARTNER', partnerId: p.id, email: p.email, businessName: p.businessName,
-    linkedUserId: p.user?.id ?? null, linkedUserEmail: p.user?.email ?? null, linkedUserConsentEmail: p.user?.marketingConsentEmail ?? null,
+    linkedUserId: p.user?.id ?? null, linkedUserEmail: p.user?.email ?? null, linkedUserConsent: p.user?.marketingConsent ?? null, linkedUserConsentEmail: p.user?.marketingConsentEmail ?? null,
   });
 
   switch (syncKey) {
@@ -265,9 +267,9 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
           members: {
             include: {
               partner: {
-                select: { id: true, email: true, businessName: true, user: { select: { id: true, email: true, marketingConsentEmail: true } } },
+                select: { id: true, email: true, businessName: true, user: { select: { id: true, email: true, marketingConsent: true, marketingConsentEmail: true } } },
               },
-              user: { select: { id: true, email: true, firstName: true, lastName: true, marketingConsentEmail: true, preferredLanguage: true } },
+              user: { select: { id: true, email: true, firstName: true, lastName: true, marketingConsent: true, marketingConsentEmail: true, preferredLanguage: true } },
             },
           },
         },
@@ -285,7 +287,7 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
     ? await buildRecipientsFromSyncKey(list.syncKey)
     : list.members.map((m): DispatchRecipient => {
         if (m.memberType === 'USER' && m.user) {
-          return { kind: 'USER', userId: m.user.id, email: m.user.email, firstName: m.user.firstName, lastName: m.user.lastName, marketingConsentEmail: m.user.marketingConsentEmail, preferredLanguage: m.user.preferredLanguage };
+          return { kind: 'USER', userId: m.user.id, email: m.user.email, firstName: m.user.firstName, lastName: m.user.lastName, marketingConsent: m.user.marketingConsent, marketingConsentEmail: m.user.marketingConsentEmail, preferredLanguage: m.user.preferredLanguage };
         }
         return {
           kind: 'PARTNER',
@@ -294,6 +296,7 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
           businessName: m.partner?.businessName ?? '',
           linkedUserId: m.partner?.user?.id ?? null,
           linkedUserEmail: m.partner?.user?.email ?? null,
+          linkedUserConsent: m.partner?.user?.marketingConsent ?? null,
           linkedUserConsentEmail: m.partner?.user?.marketingConsentEmail ?? null,
         };
       });
@@ -343,8 +346,8 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
           dispatched++;
         }
       } else if (campaign.type === 'PUSH') {
-        if (recipient.kind === 'USER' && !recipient.marketingConsentEmail) continue;
-        if (recipient.kind === 'PARTNER' && recipient.linkedUserConsentEmail === false) continue;
+        if (recipient.kind === 'USER' && !recipient.marketingConsent) continue;
+        if (recipient.kind === 'PARTNER' && recipient.linkedUserConsent === false) continue;
         const targetUserId = recipient.kind === 'USER' ? recipient.userId : recipient.linkedUserId;
         if (targetUserId) {
           await sendWebPushToUser(targetUserId, { title: template.name, body: template.subject ?? template.name });
@@ -360,7 +363,7 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
       // For USER recipients: create notification row directly.
       // For PARTNER recipients: call notifyPartnerMarketing() which respects the linked User's marketingConsent (spec §5.4).
       if (campaign.type !== 'SMS') {
-        if (recipient.kind === 'USER') {
+        if (recipient.kind === 'USER' && recipient.marketingConsent) {
           await prisma.notification.create({
             data: { userId: recipient.userId, type: 'MARKETING', title: template.name, message: template.subject ?? template.name, priority: 'low' },
           });

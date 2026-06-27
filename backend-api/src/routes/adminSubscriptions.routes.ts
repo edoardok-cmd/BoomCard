@@ -11,6 +11,7 @@ import { parsePagination } from '../utils/pagination';
 import { emailService } from '../services/email.service';
 import { logger } from '../utils/logger';
 import { detach } from '../utils/detach';
+import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 const APP_URL = process.env.APP_URL || 'https://mobile.boomcard.bg';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://boomcard.bg';
@@ -152,6 +153,7 @@ async function enrichSubscriptions(
     failedPaymentClearedAt: Date | null;
     user: { id: string; firstName: string | null; lastName: string | null; email: string; phone: string | null };
   }>,
+  windowOpen: boolean,
 ) {
   const userIds = Array.from(new Set(rows.map((s) => s.user.id)));
   if (userIds.length === 0) return [];
@@ -198,6 +200,7 @@ async function enrichSubscriptions(
 
   return rows.map((s) => {
     const payments = paymentsByUser.get(s.user.id);
+    const paymentTotalAmount = payments?.totalAmount ?? 0;
     return {
       id: s.id,
       plan: s.plan,
@@ -219,7 +222,8 @@ async function enrichSubscriptions(
       userSubscriptionCount: countByUser.get(s.user.id) ?? 1,
       billingCycle: billingCycleFromPeriod(s.currentPeriodStart, s.currentPeriodEnd),
       paymentCount: payments?.count ?? 0,
-      paymentTotalAmount: payments?.totalAmount ?? 0,
+      ...(windowOpen && { paymentTotalAmount }),
+      paymentTotalAmountDisplay: toDualCurrency(paymentTotalAmount, windowOpen),
       lastPaymentAt: payments?.lastPaymentAt ?? null,
     };
   });
@@ -275,6 +279,8 @@ router.get('/', requirePermission('subscriptions.read'), async (req, res, next) 
     const filters = parseFilters(rest);
     const where = await buildSubscriptionWhere(filters);
 
+    const windowOpen = await isCurrencyTransitionWindowOpen();
+
     const [rows, total] = await Promise.all([
       prisma.subscription.findMany({
         where,
@@ -286,7 +292,7 @@ router.get('/', requirePermission('subscriptions.read'), async (req, res, next) 
       prisma.subscription.count({ where }),
     ]);
 
-    const result = await enrichSubscriptions(rows);
+    const result = await enrichSubscriptions(rows, windowOpen);
     res.json({ subscriptions: result, total, page: pageNum, limit: limitNum });
   } catch (error) {
     next(error);
@@ -300,6 +306,8 @@ router.get('/export', requirePermission('subscriptions.read'), async (req, res, 
   try {
     const filters = parseFilters(req.query as Record<string, string>);
     const where = await buildSubscriptionWhere(filters);
+
+    const windowOpen = await isCurrencyTransitionWindowOpen();
 
     // Cap export size — admins should refine filters before exporting larger
     // sets. 5000 covers 99% of practical exports without risking a slow query.
@@ -315,7 +323,7 @@ router.get('/export', requirePermission('subscriptions.read'), async (req, res, 
 
     const truncated = rows.length > EXPORT_HARD_LIMIT;
     const cappedRows = truncated ? rows.slice(0, EXPORT_HARD_LIMIT) : rows;
-    const result = await enrichSubscriptions(cappedRows);
+    const result = await enrichSubscriptions(cappedRows, windowOpen);
     res.json({
       subscriptions: result,
       total: result.length,
@@ -341,6 +349,8 @@ router.get('/user/:userId/history', requirePermission('subscriptions.read'), asy
       select: { id: true, firstName: true, lastName: true, email: true, phone: true },
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const windowOpen = await isCurrencyTransitionWindowOpen();
 
     const subscriptions = await prisma.subscription.findMany({
       where: { userId: user.id },
@@ -392,6 +402,17 @@ router.get('/user/:userId/history', requirePermission('subscriptions.read'), asy
       paymentsBySubscriptionId.get(key)!.push(payment);
     });
 
+    // M7 / Spec §3.7 + §8.1 rule 4 — wrap each payment amount in dual-currency display
+    const enrichedPayments = (payments: typeof subscriptionPayments) =>
+      payments.map((p) => {
+        const { amount, ...rest } = p;
+        return {
+          ...rest,
+          ...(windowOpen && { amount }),
+          amountDisplay: toDualCurrency(amount ?? 0, windowOpen),
+        };
+      });
+
     const result = subscriptions.map((s) => ({
       id: s.id,
       plan: s.plan,
@@ -409,16 +430,19 @@ router.get('/user/:userId/history', requirePermission('subscriptions.read'), asy
       failedPaymentClearedAt: s.failedPaymentClearedAt,
       billingCycle: billingCycleFromPeriod(s.currentPeriodStart, s.currentPeriodEnd),
       planDisplayName: planDisplayName(s.plan),
-      // BC-ADMIN-AUDIT-FIX-006: Include per-subscription payment array
-      payments: paymentsBySubscriptionId.get(s.id) ?? [],
+      // BC-ADMIN-AUDIT-FIX-006: Include per-subscription payment array with dual-currency wrapping
+      payments: enrichedPayments(paymentsBySubscriptionId.get(s.id) ?? []),
     }));
+
+    const paymentSummaryTotal = userPaymentAgg._sum.amount ?? 0;
 
     res.json({
       user: { ...user, isTest: isTestEmail(user.email) },
       subscriptions: result,
       paymentSummary: {
         count: userPaymentAgg._count._all,
-        totalAmount: userPaymentAgg._sum.amount ?? 0,
+        ...(windowOpen && { totalAmount: paymentSummaryTotal }),
+        totalAmountDisplay: toDualCurrency(paymentSummaryTotal, windowOpen),
         lastPaymentAt: userPaymentAgg._max.createdAt,
       },
     });

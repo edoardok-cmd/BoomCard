@@ -9,9 +9,10 @@
  *
  * What it does:
  * 1. Upserts the full Permission catalog.
- * 2. Upserts AdminRole rows for ADMIN, SUPPORT, FINANCE, RISK_REVIEW, PARTNER_MANAGER.
+ * 2. Upserts AdminRole rows for ADMIN, SUPPORT, FINANCE, RISK_REVIEW, PARTNER_MANAGER, and SUPER_ADMIN.
  * 3. Assigns all permissions to ADMIN role (allow=true).
- * 4. Finds every User with role SUPER_ADMIN or ADMIN and assigns them the ADMIN
+ * 4. SUPER_ADMIN gets no RolePermission rows (it is bypassed in requirePermission), but the AdminRole row is seeded.
+ * 5. Finds every User with role SUPER_ADMIN or ADMIN and assigns them the ADMIN
  *    AdminRole so they retain full access after the RBAC migration.
  */
 

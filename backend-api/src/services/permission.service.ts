@@ -88,7 +88,8 @@ const ADMIN_MANAGEMENT_KEYS = ['admins.read', 'admins.write', 'admins.audit.read
 const OVERRIDE_ONLY_KEYS = ['impersonate.partner', 'impersonate.user'];
 
 // Default allow-sets per role (deny rows are explicit RolePermission rows with allow=false).
-// SUPER_ADMIN is bypassed in requirePermission; no seeding needed for it.
+// SUPER_ADMIN is bypassed in requirePermission; however, the AdminRole row MUST exist because
+// it is queried at runtime by the approval handler (adminAdmins.routes.ts:785).
 // Exported for unit-testing the permission matrix.
 export const ROLE_DEFAULT_ALLOWS: Record<string, string[]> = {
   // BC-ADMIN-RBAC-ROLES-019: ADMIN is now the "Normal Administrator" template. It receives
@@ -172,6 +173,22 @@ export async function seedPermissions() {
       });
     }
   }
+
+  // Seed the SUPER_ADMIN role. SUPER_ADMIN is bypassed in requirePermission and requires
+  // no RolePermission grants. However, the AdminRole row itself must exist because the approval
+  // handler at adminAdmins.routes.ts:785 queries it directly: findUnique({ where: { key: 'SUPER_ADMIN' } }).
+  await seedSuperAdminRole();
+}
+
+// Seeds the SUPER_ADMIN role row. SUPER_ADMIN is bypassed in requirePermission and requires
+// no RolePermission grants. However, the AdminRole row itself must exist because the approval
+// handler at adminAdmins.routes.ts:785 queries it directly: findUnique({ where: { key: 'SUPER_ADMIN' } }).
+async function seedSuperAdminRole() {
+  await prisma.adminRole.upsert({
+    where: { key: 'SUPER_ADMIN' },
+    update: {},
+    create: { key: 'SUPER_ADMIN', label: 'Super Administrator' },
+  });
 }
 
 // Returns the effective permission key set for a given userId.
