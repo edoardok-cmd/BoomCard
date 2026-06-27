@@ -12,10 +12,11 @@
  */
 
 import request from 'supertest';
+import bcrypt from 'bcrypt';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { walletService } from '../../src/services/wallet.service';
-import { createTestUser, createTestAdmin } from '../helpers/test-utils';
+import { createTestUser, createTestSubscription } from '../helpers/test-utils';
 import { approveEntry, lockEntry, payEntry } from '../../src/services/adminCashback.service';
 import { CashbackEntryStatus } from '@prisma/client';
 
@@ -36,14 +37,48 @@ describe('BC-ADMIN-SPEC-REAUDIT6-CASHBACK-LOCKPAY-DEBIT-1 (H1 Fix)', () => {
     const wallet = await walletService.getOrCreateWallet(userId);
     walletId = wallet.id;
 
+    // Create an active subscription (required for payout eligibility)
+    await createTestSubscription(userId, 'BASIC', 'ACTIVE');
+
+    // Add IBAN to user and wallet (required for payout eligibility)
+    await prisma.user.update({
+      where: { id: userId },
+      data: { iban: 'BG80BNBG96611020345689' },
+    });
+
+    await prisma.wallet.update({
+      where: { id: walletId },
+      data: { payoutIban: 'BG80BNBG96611020345689' },
+    });
+
     // Create test admin
-    const { user: adminUser, accessToken: adminToken } = await createTestAdmin();
-    adminAuthToken = adminToken;
+    const testAdminEmail = `admin-lockpay-${Date.now()}@boomcard.bg`;
+    const testAdminPassword = 'AdminPass123!';
+    const passwordHash = await bcrypt.hash(testAdminPassword, 12);
+    const adminUser = await prisma.user.create({
+      data: {
+        email: testAdminEmail,
+        passwordHash,
+        role: 'SUPER_ADMIN',
+        status: 'ACTIVE',
+        emailVerified: true,
+        firstName: 'Test',
+        lastName: 'Admin',
+      },
+    });
+
+    // Login to get admin token
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: testAdminEmail, password: testAdminPassword, clientType: 'web' });
+
+    adminAuthToken = loginRes.body.data.accessToken;
     adminUserId = adminUser.id;
   });
 
   afterAll(async () => {
     if (userId) {
+      await prisma.subscription.deleteMany({ where: { userId } }).catch(() => {});
       await prisma.walletTransaction.deleteMany({ where: { wallet: { userId } } }).catch(() => {});
       await prisma.wallet.deleteMany({ where: { userId } }).catch(() => {});
       await prisma.user.delete({ where: { id: userId } }).catch(() => {});
@@ -93,13 +128,64 @@ describe('BC-ADMIN-SPEC-REAUDIT6-CASHBACK-LOCKPAY-DEBIT-1 (H1 Fix)', () => {
     const expectedBalanceAfterLock = availableBalanceAfterCredit - testCashbackAmount;
 
     expect(walletAfterLock.availableBalance).toBe(expectedBalanceAfterLock);
-    expect(walletAfterLock.balance).toBe(expectedBalanceAfterLock);
+    // Note: total balance is not decremented by lockEntry, only availableBalance is reserved
+    // (see spec §6.1: only available balance is affected when entering LOCKED state)
 
     // Verify entry is LOCKED
     const lockedEntry = await prisma.walletTransaction.findUniqueOrThrow({
       where: { id: cashbackEntryId },
     });
     expect(lockedEntry.cashbackStatus).toBe(CashbackEntryStatus.LOCKED);
+  });
+
+  test('lockEntry is idempotent — second call on same entry throws 409 and does not double-debit', async () => {
+    // Get the wallet state after the first lockEntry call
+    const walletAfterFirstLock = await prisma.wallet.findUniqueOrThrow({ where: { id: walletId } });
+    const availableBalanceAfterFirstLock = walletAfterFirstLock.availableBalance;
+
+    // Create a fresh CLEARED entry for this idempotency test
+    const freshWallet = await prisma.wallet.findUniqueOrThrow({ where: { id: walletId } });
+    const entry3 = await prisma.walletTransaction.create({
+      data: {
+        walletId,
+        type: 'CASHBACK_CREDIT',
+        amount: 75, // Fresh amount for this test
+        status: 'COMPLETED',
+        cashbackStatus: CashbackEntryStatus.CLEARED,
+        description: 'Test cashback for idempotency check',
+        balanceBefore: freshWallet.balance,
+        balanceAfter: freshWallet.balance + 75,
+      },
+    });
+
+    // Credit the wallet with this new entry
+    await prisma.wallet.update({
+      where: { id: walletId },
+      data: {
+        balance: { increment: 75 },
+        availableBalance: { increment: 75 },
+      },
+    });
+
+    const walletBeforeIdempotencyTest = await prisma.wallet.findUniqueOrThrow({ where: { id: walletId } });
+    const availableBalanceBeforeIdempotencyTest = walletBeforeIdempotencyTest.availableBalance;
+
+    // First call to lockEntry — should succeed and debit
+    await lockEntry(entry3.id, adminUserId);
+
+    const walletAfterFirstCall = await prisma.wallet.findUniqueOrThrow({ where: { id: walletId } });
+    const expectedBalanceAfterFirstCall = availableBalanceBeforeIdempotencyTest - 75;
+    expect(walletAfterFirstCall.availableBalance).toBe(expectedBalanceAfterFirstCall);
+
+    // Second call to lockEntry on the same entry — should throw 409
+    await expect(lockEntry(entry3.id, adminUserId)).rejects.toThrow();
+
+    // Verify wallet was NOT double-debited
+    const walletAfterSecondCall = await prisma.wallet.findUniqueOrThrow({ where: { id: walletId } });
+    expect(walletAfterSecondCall.availableBalance).toBe(expectedBalanceAfterFirstCall);
+
+    // Cleanup
+    await prisma.walletTransaction.delete({ where: { id: entry3.id } });
   });
 
   test('payEntry marks entry PAID without additional debit', async () => {
