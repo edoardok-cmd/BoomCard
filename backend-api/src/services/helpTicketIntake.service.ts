@@ -52,7 +52,7 @@ async function getSystemOwnerId(): Promise<string | null> {
 }
 
 /**
- * BC-ADMIN-SPEC-REAUDIT5-SHORTREF-RETRY-1: Persist shortRef with collision handling.
+ * BC-ADMIN-SPEC-REAUDIT6-HELP-INTAKE-502-1: Persist shortRef with collision handling.
  *
  * The shortRef is a unique indexed column used by the inbound parser to thread
  * subject-prefix replies. With UUIDv4, birthday-collision risk is non-trivial at
@@ -65,6 +65,11 @@ async function getSystemOwnerId(): Promise<string | null> {
  * recover via Priority 2 (In-Reply-To) or Priority 3 (header), so this is bounded
  * damage (threading broken only for subject-prefix fallback).
  *
+ * CRITICAL FIX: Prisma does not support compound WHERE clauses with multiple unique
+ * fields (id + shortRef). The `where: { id, shortRef: null }` pattern was invalid and
+ * caused PrismaClientValidationError on the FIRST attempt. Use only `where: { id }`
+ * since id is the primary key and is always unique.
+ *
  * @param ticketId — the newly created ticket UUID
  * @returns The persisted shortRef string, or null on failure (after all retries)
  */
@@ -74,7 +79,7 @@ async function persistShortRefWithCollisionRetry(ticketId: string): Promise<stri
     try {
       const shortRef = computeShortRefOfLength(ticketId, attempt);
       await prisma.helpTicket.update({
-        where: { id: ticketId, shortRef: null }, // Only update if shortRef is not already set (idempotent guard)
+        where: { id: ticketId },
         data: { shortRef },
       });
       if (attempt > 1) {

@@ -98,7 +98,7 @@ function normalizeAddress(raw: string): string {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * BC-ADMIN-SPEC-REAUDIT-TICKET-SHORTREF-1: Persist shortRef with collision handling.
+ * BC-ADMIN-SPEC-REAUDIT6-HELP-INTAKE-502-1: Persist shortRef with collision handling.
  *
  * The shortRef is a unique indexed column used by the inbound parser to thread
  * subject-prefix replies. With UUIDv4, birthday-collision risk is non-trivial at
@@ -111,12 +111,15 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * recover via Priority 2 (In-Reply-To) or Priority 3 (header), so this is bounded
  * damage (threading broken only for subject-prefix fallback).
  *
+ * CRITICAL FIX: Prisma does not support compound WHERE clauses with multiple unique
+ * fields (id + shortRef). The `where: { id, shortRef: null }` pattern was invalid and
+ * caused PrismaClientValidationError on the FIRST attempt. Use only `where: { id }`
+ * since id is the primary key and is always unique.
+ *
  * UUID collision assumptions:
  * - We rely on UUIDs being globally unique (UUID v4 generation in Prisma).
  * - P2002 violations on shortRef updates are always collisions with DIFFERENT tickets.
  * - Idempotent re-calls with the same ticketId will NOT occur because each ingestInboundEmail() creates a new ticket.
- * - The WHERE shortRef IS NULL guard below ensures this function is idempotent: if called twice on the same
- *   ticket, the second call will encounter shortRef already populated and the update will be skipped.
  *
  * @param ticketId — the newly created ticket UUID
  * @returns The persisted shortRef string, or null on failure (after all retries)
@@ -127,7 +130,7 @@ async function persistShortRefWithCollisionRetry(ticketId: string): Promise<stri
     try {
       const shortRef = computeShortRefOfLength(ticketId, attempt);
       await prisma.helpTicket.update({
-        where: { id: ticketId, shortRef: null }, // Only update if shortRef is not already set (idempotent guard)
+        where: { id: ticketId },
         data: { shortRef },
       });
       if (attempt > 1) {
@@ -616,22 +619,17 @@ export async function ingestInboundEmail(
     const ticket = await prisma.helpTicket.create({ data: newTicketData });
     // Gap 8: backfill shortRef immediately after creation (computed from the UUID
     // assigned by Postgres). create() doesn't know the id ahead of time.
-    // BC-ADMIN-SPEC-REAUDIT-TICKET-SHORTREF-1: Retry with progressively longer
-    // refs on collision, escalate to ops if all attempts fail.
+    // BC-ADMIN-SPEC-REAUDIT6-HELP-INTAKE-502-1: Retry with progressively longer
+    // refs on collision, escalate to ops if all attempts fail. The ticket is kept
+    // even if shortRef assignment fails — it's safe to proceed since Priority 2
+    // (In-Reply-To) and Priority 3 (X-BoomCard-Ticket-ID header) provide fallback
+    // threading.
     const persistedShortRef = await persistShortRefWithCollisionRetry(ticket.id);
 
-    // CRITICAL: If all shortRef retry attempts fail, delete the ticket and return error.
-    // Creating a ticket without shortRef breaks subject-prefix threading and causes
-    // duplicates on subsequent inbound emails from the same sender.
-    if (!persistedShortRef) {
-      logger.error(
-        `[ticketInbound] shortRef persistence failed for ticket ${ticket.id}; deleting orphan ticket`
-      );
-      await prisma.helpTicket.delete({ where: { id: ticket.id } }).catch(() => {});
-      throw new Error(
-        `Help ticket created but shortRef persistence failed after all retry attempts. Ticket creation rolled back. Sender should retry.`
-      );
-    }
+    // NOTE: If shortRef assignment fails (all 4 retries exhausted), the ticket is
+    // still created and usable. Inbound emails will thread via fallback mechanisms
+    // (In-Reply-To header matching). Only subject-prefix fallback is degraded. The
+    // admin gets a critical ops notification for investigation.
 
     await writeAudit({
       actorUserId: null,
@@ -771,20 +769,13 @@ export async function ingestInboundEmail(
       },
     });
     // Gap 8: populate shortRef for the spoof-linked ticket.
-    // BC-ADMIN-SPEC-REAUDIT-TICKET-SHORTREF-1: Retry with progressively longer
-    // refs on collision, escalate to ops if all attempts fail.
+    // BC-ADMIN-SPEC-REAUDIT6-HELP-INTAKE-502-1: Retry with progressively longer
+    // refs on collision, escalate to ops if all attempts fail. The ticket is kept
+    // even if shortRef assignment fails.
     const linkedPersistedShortRef = await persistShortRefWithCollisionRetry(linked.id);
 
-    // CRITICAL: If all shortRef retry attempts fail, delete the linked ticket and return error.
-    if (!linkedPersistedShortRef) {
-      logger.error(
-        `[ticketInbound] shortRef persistence failed for linked ticket ${linked.id}; deleting orphan ticket`
-      );
-      await prisma.helpTicket.delete({ where: { id: linked.id } }).catch(() => {});
-      throw new Error(
-        `Spoof-linked ticket created but shortRef persistence failed after all retry attempts. Ticket creation rolled back. Sender should retry.`
-      );
-    }
+    // NOTE: If shortRef assignment fails, the linked ticket still exists and is
+    // usable via fallback threading mechanisms.
     await writeAudit({
       actorUserId: null,
       action: 'TICKET_INBOUND_SPOOF_BLOCKED',

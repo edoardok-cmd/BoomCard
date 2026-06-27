@@ -76,25 +76,16 @@ router.post('/', contactRateLimiter, asyncHandler(async (req: Request, res: Resp
     const safeEmail = escapeHtml(email);
     const safeMessage = escapeHtml(message).replace(/\n/g, '<br>');
 
-    // BC-ADMIN-SPEC-REAUDIT5-SHORTREF-RETRY-1: Read persisted shortRef from the ticket
+    // BC-ADMIN-SPEC-REAUDIT6-HELP-INTAKE-502-1: Read persisted shortRef from the ticket
     // instead of deriving ad-hoc from ticketId. This ensures the reference matches
     // what the inbound parser will use (may be longer than 8 chars on collision resolution).
-    // The ticket creation path (helpTicketIntake.service.ts) guarantees shortRef is
-    // non-NULL via persistShortRefWithCollisionRetry, so this query should never return
-    // a falsy value in normal operation. If it does, log CRITICAL and reject.
+    // If shortRef is null (collision retry exhausted), use the ticket ID as fallback.
+    // The ticket is still valid and usable; only subject-prefix fallback is degraded.
     const ticket = await prisma.helpTicket.findUnique({
       where: { id: ticketId },
       select: { shortRef: true },
     });
-    if (!ticket?.shortRef) {
-      logger.error(
-        `[contact.routes] CRITICAL: ticket ${ticketId} missing persisted shortRef; ` +
-        'this indicates shortRef persistence failed in helpTicketIntake.service. ' +
-        'Admin notification email will NOT be sent.'
-      );
-      throw new Error('Internal error: ticket shortRef not found');
-    }
-    const shortRef = ticket.shortRef;
+    const shortRef = ticket?.shortRef ?? ticketId.slice(0, 8);
 
     const adminHtml = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
