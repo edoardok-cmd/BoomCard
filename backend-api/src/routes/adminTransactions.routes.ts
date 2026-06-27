@@ -581,7 +581,18 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
       // walletId was only needed for the withdrawal-lookup Map above, and the rest
       // of the lifecycle fields are expressed as the derived cashbackStatus. UI
       // consumers read cashbackStatus rather than the raw WalletTransaction columns.
-      const { walletTransaction: _wt, partner: _origPartner, venue: origVenue, ...rest } = tx;
+      const {
+        walletTransaction: _wt,
+        partner: _origPartner,
+        venue: origVenue,
+        amount,
+        marginAmount,
+        cashbackAmount: _cbAmount,
+        discountAmount,
+        finalAmount,
+        netAmount,
+        ...rest
+      } = tx;
       // Strip venue.partner from the wire response — only the venue's id+name
       // belong on the row. The partner has been hoisted to the top-level
       // `partner` field via the fallback above.
@@ -601,19 +612,19 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
         partner: partnerOut,
         venue: venueOut,
         // M7 / Spec §3.7 + §8.1 rule 4 — gate raw BGN scalars by window state
-        ...(windowOpen && { amount: tx.amount }),
-        ...(windowOpen && { marginAmount: tx.marginAmount }),
+        ...(windowOpen && { amount }),
+        ...(windowOpen && { marginAmount }),
         ...(windowOpen && { cashbackAmount: cashbackAmountResolved }),
-        ...(windowOpen && { discountAmount: tx.discountAmount }),
-        ...(windowOpen && { finalAmount: tx.finalAmount }),
-        ...(windowOpen && { netAmount: tx.netAmount }),
+        ...(windowOpen && { discountAmount }),
+        ...(windowOpen && { finalAmount }),
+        ...(windowOpen && { netAmount }),
         display: {
-          amount: toDualCurrency(tx.amount ?? 0, windowOpen),
+          amount: toDualCurrency(amount ?? 0, windowOpen),
           marginAmount: toDualCurrency(margin ?? 0, windowOpen),
           cashbackAmount: toDualCurrency(cashback ?? 0, windowOpen),
-          discountAmount: toDualCurrency(tx.discountAmount ?? 0, windowOpen),
-          finalAmount: toDualCurrency(tx.finalAmount ?? 0, windowOpen),
-          netAmount: toDualCurrency(tx.netAmount ?? 0, windowOpen),
+          discountAmount: toDualCurrency(discountAmount ?? 0, windowOpen),
+          finalAmount: toDualCurrency(finalAmount ?? 0, windowOpen),
+          netAmount: toDualCurrency(netAmount ?? 0, windowOpen),
         },
         margin,
         partnerDiscountRate,
