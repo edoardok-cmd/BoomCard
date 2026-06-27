@@ -295,27 +295,17 @@ export async function createHelpTicketFromInbound(
   // Backfill shortRef (Gap 8 fix from ticketInbound.service.ts)
   // BC-ADMIN-SPEC-REAUDIT5-SHORTREF-RETRY-1: Retry with progressively longer refs on
   // collision, escalate to ops if all attempts fail.
+  // BC-ADMIN-SPEC-REAUDIT6-HELP-INTAKE-502-1 (CRITICAL FIX): If shortRef assignment fails,
+  // the ticket is still created and returned. Graceful degradation matches ticketInbound.service.ts
+  // behavior: threading falls back to In-Reply-To header (Priority 2). Only subject-prefix
+  // fallback is degraded (Priority 4). This prevents the 502 bug and ticket deletion.
   const persistedShortRef = await persistShortRefWithCollisionRetry(ticket.id);
 
-  // CRITICAL: If all shortRef retry attempts fail, delete the ticket and return error.
-  // Creating a ticket without shortRef breaks subject-prefix threading and causes
-  // duplicates on subsequent inbound emails from the same sender.
-  if (!persistedShortRef) {
-    logger.error(
-      `[helpTicketIntake] shortRef persistence failed for ticket ${ticket.id}; deleting orphan ticket`
-    );
-    await prisma.helpTicket.delete({ where: { id: ticket.id } }).catch(() => {});
-    throw new Error(
-      `Help ticket created but shortRef persistence failed after all retry attempts. Ticket creation rolled back.`
-    );
-  }
-
-  // BC-ADMIN-SPEC-REAUDIT5-SHORTREF-RETRY-1: Defer audit until AFTER shortRef is
-  // persisted. This ensures that if shortRef persistence fails and the ticket is
-  // deleted (above), we do not create orphaned audit records. The caller (contact.routes)
-  // will verify that shortRef is present before using it in downstream operations
-  // (email notifications, etc.), ensuring consistency across all audit records and
-  // ticket references (Acceptance Criteria #2 & #3).
+  // NOTE: If shortRef assignment fails (all 4 retries exhausted), the ticket is
+  // still created and usable. Inbound emails will thread via fallback mechanisms
+  // (In-Reply-To header matching). Only subject-prefix fallback is degraded.
+  // The admin gets a critical ops notification for investigation (sent from
+  // persistShortRefWithCollisionRetry).
   // Audit the ticket creation
   await writeAudit({
     actorUserId: null,
