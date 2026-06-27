@@ -312,7 +312,11 @@ export class PartnerService {
       // transaction (atomic with status change). Rollback if any sticker update fails.
       await this.syncQrCodesForPartnerTx(tx, partnerId, toStatus, fromStatus);
 
-      return { partnerId, fromStatus, toStatus };
+      // Return the actual status written to the database. For ARCHIVED→ACTIVE
+      // reactivation, we wrote PENDING (not the requested ACTIVE) per spec §1.7 / §2.4 / §12 rule 5.
+      // The return value must match reality so the audit trail is accurate.
+      const actualWrittenStatus = isArchivedReactivation ? PartnerStatus.PENDING : toStatus;
+      return { partnerId, fromStatus, toStatus: actualWrittenStatus };
     });
 
     // Spec §9.1 template 6 / Clash 6.6: partners MUST be notified of account status changes.

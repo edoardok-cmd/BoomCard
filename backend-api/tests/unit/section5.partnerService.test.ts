@@ -16,6 +16,12 @@ const mockTx: any = {
   partnerStatusChange: {
     create: jest.fn(async () => ({})),
   },
+  activationLink: {
+    updateMany: jest.fn(async () => ({ count: 0 })),
+  },
+  sticker: {
+    updateMany: jest.fn(async () => ({ count: 0 })),
+  },
 };
 
 const mockPrisma: any = {
@@ -38,7 +44,7 @@ jest.mock('../../src/lib/prisma', () => ({
   prisma: mockPrisma,
 }));
 
-import { PartnerStatus } from '@prisma/client';
+import { PartnerStatus, PartnerRequestStatus } from '@prisma/client';
 import { isPartnerOperationallyActive, partnerService } from '../../src/services/partner.service';
 
 beforeEach(() => jest.clearAllMocks());
@@ -152,5 +158,54 @@ describe('partnerService.setPartnerStatus', () => {
     });
     expect(result.fromStatus).toBe(PartnerStatus.SUSPENDED);
     expect(result.toStatus).toBe(PartnerStatus.ACTIVE);
+  });
+
+  it('converts ARCHIVED→ACTIVE reactivation to PENDING status + ONBOARDING requestStatus + null verifiedAt', async () => {
+    // Spec §1.7 / §2.4 / §12 rule 5: reactivating an ARCHIVED partner requires
+    // re-entry into the onboarding pipeline. The partner should NOT jump directly
+    // to ACTIVE; instead they should go to PENDING and be re-approved.
+    mockTx.partner.findUnique.mockResolvedValueOnce({ id: 'p-archived', status: PartnerStatus.ARCHIVED });
+    mockTx.activationLink.updateMany.mockResolvedValueOnce({ count: 0 });
+    mockTx.sticker.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const result = await partnerService.setPartnerStatus({
+      partnerId: 'p-archived',
+      toStatus: PartnerStatus.ACTIVE, // Admin requests ACTIVE
+      reason: 'Reactivating archived partner',
+      changedById: 'admin-1',
+    });
+
+    // The partner record should be updated with status=PENDING (not ACTIVE)
+    // and requestStatus=ONBOARDING, verifiedAt=null to re-enter the approval pipeline
+    expect(mockTx.partner.update).toHaveBeenCalledWith({
+      where: { id: 'p-archived' },
+      data: {
+        status: PartnerStatus.PENDING, // Not ACTIVE — enters onboarding pipeline
+        statusReason: null, // Leaving ARCHIVED clears the marker
+        requestStatus: PartnerRequestStatus.ONBOARDING,
+        verifiedAt: null,
+      },
+    });
+
+    // PartnerStatusChange records the semantic transition intent (ARCHIVED → ACTIVE)
+    // HOWEVER, the function return value must match what was actually written to the DB.
+    // Since ARCHIVED→ACTIVE reactivation writes status=PENDING, the return must be PENDING
+    // to avoid audit trail inconsistencies (the endpoint uses change.toStatus in the audit log).
+    expect(mockTx.partnerStatusChange.create).toHaveBeenCalledWith({
+      data: {
+        partnerId: 'p-archived',
+        fromStatus: PartnerStatus.ARCHIVED,
+        toStatus: PartnerStatus.ACTIVE, // Semantic intent recorded in history
+        reason: 'Reactivating archived partner',
+        changedById: 'admin-1',
+      },
+    });
+
+    // Return value reflects actual DB state written (PENDING, not the requested ACTIVE)
+    expect(result).toEqual({
+      partnerId: 'p-archived',
+      fromStatus: PartnerStatus.ARCHIVED,
+      toStatus: PartnerStatus.PENDING, // Actual status written to DB
+    });
   });
 });
