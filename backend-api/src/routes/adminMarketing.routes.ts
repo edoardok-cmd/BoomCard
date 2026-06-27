@@ -4,6 +4,7 @@ import { authenticate, authorize, requirePermission } from '../middleware/auth.m
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { emailService } from '../services/email.service';
+import { notificationService } from '../services/notification.service';
 import { sendWebPushToUser } from '../lib/webPush';
 import { logger } from '../utils/logger';
 import { syncMarketingListSizes } from '../jobs/scheduler';
@@ -355,11 +356,25 @@ async function dispatchCampaign(campaignId: string): Promise<number> {
         logger.info(`[marketing] SMS dispatch skipped (no provider) for ${logTarget}`);
       }
 
-      // In-app notification: only EMAIL and PUSH, only for user recipients
-      if (campaign.type !== 'SMS' && recipient.kind === 'USER') {
-        await prisma.notification.create({
-          data: { userId: recipient.userId, type: 'MARKETING', title: template.name, message: template.subject ?? template.name, priority: 'low' },
-        });
+      // In-app notification: EMAIL and PUSH types, for both USER and PARTNER recipients (spec §9.1 template #8).
+      // For USER recipients: create notification row directly.
+      // For PARTNER recipients: call notifyPartnerMarketing() which respects the linked User's marketingConsent (spec §5.4).
+      if (campaign.type !== 'SMS') {
+        if (recipient.kind === 'USER') {
+          await prisma.notification.create({
+            data: { userId: recipient.userId, type: 'MARKETING', title: template.name, message: template.subject ?? template.name, priority: 'low' },
+          });
+        } else if (recipient.kind === 'PARTNER' && recipient.linkedUserId) {
+          // Spec §9.1 template #8 (Marketing) is canonical. Partners receive in-app Marketing
+          // via the linked User's notification context. notifyPartnerMarketing() enforces
+          // marketingConsent gate (spec §5.4, Clash 6.1).
+          await notificationService.notifyPartnerMarketing({
+            partnerUserId: recipient.linkedUserId,
+            title: template.name,
+            message: template.subject ?? template.name,
+            data: { campaignId },
+          });
+        }
       }
     } catch (err) {
       logger.error(`[marketing] dispatch error for recipient:`, err);
