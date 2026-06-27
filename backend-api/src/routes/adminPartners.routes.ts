@@ -1142,8 +1142,9 @@ router.patch(
 
     // Spec §5.3 / §5.4 v1.1 — delegate to the centralized helper. Status flip
     // + PartnerStatusChange row are written atomically. QR "auto-deactivation"
-    // is enforced as a scan-time gate in sticker.service (see partner.service
-    // comment for the rationale of the gate-only approach).
+    // is an atomic DB write inside setPartnerStatus's transaction
+    // (partner.service.syncQrCodesForPartnerTx); the scan-time isPartnerOperationallyActive
+    // gate is defense-in-depth.
     const change = await partnerService.setPartnerStatus({
       partnerId: req.params.id,
       toStatus: status as PartnerStatus,
