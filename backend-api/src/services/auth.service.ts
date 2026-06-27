@@ -176,6 +176,8 @@ export interface TokenPayload {
   // Inactive admins can log in but cannot approve, reassign, or modify records.
   // Enforced in requirePermission() by blocking any write-suffix permission key.
   aro?: true;
+  // JWT issued-at timestamp (seconds since epoch). Used to validate token age.
+  iat?: number;
 }
 
 export interface ImpersonationClaims {
