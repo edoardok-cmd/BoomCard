@@ -9,7 +9,7 @@ import { Router, Response } from 'express';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
-import { buildDualCurrencyMap } from '../utils/currencyDisplay';
+import { buildDualCurrencyMap, isCurrencyTransitionWindowOpen } from '../utils/currencyDisplay';
 
 const router = Router();
 
@@ -262,6 +262,7 @@ router.get(
     // already computed above.
     const partnerReceivablesAmt = partnerReceivables._sum.totalCashbackOwed ?? 0;
     const marginAmt = totalMargin._sum.marginAmount ?? 0;
+    const windowOpen = await isCurrencyTransitionWindowOpen();
     const financeDisplay = await buildDualCurrencyMap({
       payoutsDue,
       partnerReceivables: partnerReceivablesAmt,
@@ -302,11 +303,13 @@ router.get(
           locations: activeLocations,
         },
         finance: {
-          payoutsDue,
+          payoutsDue: windowOpen ? payoutsDue : null,
           payoutsDueCount,
-          partnerReceivables: partnerReceivablesAmt,
-          margin: marginAmt,
+          partnerReceivables: windowOpen ? partnerReceivablesAmt : null,
+          margin: windowOpen ? marginAmt : null,
           // M7 — dual-currency {bgn, eur} pairs (BGN null after the transition window).
+          // Scalar fields above are also gated to null when the window is closed, keeping
+          // the scalar and display representations consistent (spec §8.1 rule 4).
           display: financeDisplay,
         },
       },
