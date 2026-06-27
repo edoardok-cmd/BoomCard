@@ -13,7 +13,7 @@
 
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
-import { createTestApp } from '../setup';
+import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 
 jest.mock('../../src/services/email.service', () => ({
@@ -44,19 +44,16 @@ function generateTestToken(userId: string, role: 'ADMIN' | 'SUPER_ADMIN'): strin
 // Helper to toggle the currency window state
 async function setCurrencyWindowOpen(isOpen: boolean): Promise<void> {
   await prisma.systemSetting.upsert({
-    where: { name: 'currency_transition_window_open' },
-    create: { name: 'currency_transition_window_open', value: isOpen ? 'true' : 'false' },
+    where: { key: 'currency_transition_window_open' },
+    create: { key: 'currency_transition_window_open', value: isOpen ? 'true' : 'false' },
     update: { value: isOpen ? 'true' : 'false' },
   });
 }
 
 describe('BC-ADMIN-SPEC-REAUDIT4-PAYOUT-THRESH-BGN-LEAK-1: Cashback payout-thresholds currency display', () => {
-  let app: any;
   let adminToken: string;
 
   beforeAll(async () => {
-    app = await createTestApp();
-
     // Create admin user and get token
     const adminUser = await prisma.user.create({
       data: {
@@ -66,14 +63,10 @@ describe('BC-ADMIN-SPEC-REAUDIT4-PAYOUT-THRESH-BGN-LEAK-1: Cashback payout-thres
         status: 'ACTIVE',
         role: 'SUPER_ADMIN',
         emailVerified: true,
+        passwordHash: 'unused',
       },
     });
     adminToken = generateTestToken(adminUser.id, 'SUPER_ADMIN');
-  });
-
-  afterAll(async () => {
-    await app?.close?.();
-    await prisma.$disconnect();
   });
 
   describe('GET /api/admin/cashback/payout-thresholds', () => {

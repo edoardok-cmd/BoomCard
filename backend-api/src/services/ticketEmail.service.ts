@@ -129,6 +129,7 @@ export function toRawStatusFilter(status: string): any {
     case 'CLOSED':
       return { status: { in: ['CLOSED', 'RESOLVED'] as TicketStatus[] } };
     case 'In Progress':
+    case 'IN_PROGRESS':
     case 'OPEN':
       // BC-ADMIN-SPEC-REAUDIT3-HELP-NEWSTATUS-CLAIM-2: In Progress = OPEN+assigned OR IN_REVIEW
       // (excludes unassigned OPEN, which maps to "New")

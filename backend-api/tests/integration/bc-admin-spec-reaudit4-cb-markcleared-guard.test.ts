@@ -50,12 +50,18 @@ async function createTestFixtures(): Promise<TestFixtures> {
   // Create wallet
   const wallet = await walletService.getOrCreateWallet(user.id);
 
+  // Get current wallet balance for transaction tracking
+  const balanceBefore = wallet.balance;
+  const balanceAfter = balanceBefore + 50;
+
   // Create a CASHBACK_CREDIT transaction in EXPIRED state
   const expiredEntry = await prisma.walletTransaction.create({
     data: {
       walletId: wallet.id,
       type: WalletTransactionType.CASHBACK_CREDIT,
       amount: 50,
+      balanceBefore,
+      balanceAfter,
       status: 'COMPLETED',
       cashbackStatus: CashbackEntryStatus.EXPIRED,
       cashbackExpiresAt: new Date(Date.now() - 1000), // Already expired

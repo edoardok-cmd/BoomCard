@@ -81,9 +81,11 @@ const ADMIN_VALID_REQUEST_TYPES = ['SUPPORT', 'DISPUTE', 'CHANGE', 'DATA_CHANGE'
 // M8 (Spec §1.7 / §7.1): canonical status names the admin UI exposes + raw enum
 // tokens kept for back-compat. Used by both GET / and GET /mine to validate the
 // ?status= query param before expanding via toRawStatusFilter().
+// Both canonical title-case ('In Progress') and enum forms ('OPEN', 'IN_PROGRESS')
+// are accepted for admin flexibility and back-compat with different client conventions.
 const VALID_STATUS_TOKENS: ReadonlyArray<string> = [
   ...Object.values(TicketStatus),
-  'Cancelled', 'Closed', 'In Progress', 'New', 'Waiting',
+  'Cancelled', 'Closed', 'In Progress', 'IN_PROGRESS', 'New', 'Waiting',
 ];
 
 // POST /api/admin/help — G8: admin creates a new help ticket (Spec §11 "Нова заявка")
