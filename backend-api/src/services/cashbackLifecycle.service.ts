@@ -26,6 +26,7 @@ import { CashbackEntryStatus, ReceiptStatus, ScanStatus, WalletTransactionStatus
 import type { WalletTransaction } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { writeAudit } from '../middleware/audit.middleware';
+import { AppError } from '../middleware/error.middleware';
 import { getSystemSettingInt } from '../utils/systemSettings';
 import { logger } from '../utils/logger';
 import { subscriptionAllowsEarning, findEligibleSubscription } from './subscriptionGate';
@@ -225,7 +226,7 @@ export async function markVoided(params: {
   }
   if (existing.cashbackStatus === CashbackEntryStatus.VOIDED) return existing;
   if (existing.cashbackStatus === CashbackEntryStatus.PAID) {
-    throw new Error(`Cannot void a PAID cashback entry (${walletTransactionId}) — issue a refund instead`);
+    throw new AppError('Cannot void a PAID cashback entry — issue a refund instead (PAID is terminal, §1.3).', 400);
   }
   // H1 / Spec §1.3 + §8.1 rule 2: EXPIRED is terminal — "Voided and Expired are
   // terminal states; no transitions out." An EXPIRED record must not be voided.
@@ -233,7 +234,7 @@ export async function markVoided(params: {
   // to Voided (and worse, the wasCleared branch below would decrement a balance
   // that was already reclaimed at expiry time — a double-debit).
   if (existing.cashbackStatus === CashbackEntryStatus.EXPIRED) {
-    throw new Error(`Cannot void an EXPIRED cashback entry (${walletTransactionId}) — EXPIRED is terminal (§1.3)`);
+    throw new AppError('Cannot void an EXPIRED cashback entry — EXPIRED is terminal (§1.3).', 400);
   }
   if (existing.cashbackStatus === CashbackEntryStatus.LOCKED) {
     // F-017: Guard against voiding in-flight payout entries.

@@ -10,6 +10,7 @@
  */
 
 import request from 'supertest';
+import jwt from 'jsonwebtoken';
 import { createTestApp } from './setup';
 import { prisma } from '../src/lib/prisma';
 import { WalletTransactionStatus, SubscriptionStatus } from '@prisma/client';
@@ -22,6 +23,25 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
 
   beforeAll(async () => {
     app = await createTestApp();
+
+    // Clean up any stale data from previous runs
+    const testEmails = [
+      'admin@test.local', 'user@test.local', 'strike-test@test.local',
+      'no-iban@test.local', 'bulk-no-iban@test.local', 'multi-sub@test.local',
+      'failed-payment@test.local', 'risk-floor@test.local', 'risk-no-downgrade@test.local',
+      'earned-rights@test.local',
+    ];
+    await prisma.walletTransaction.deleteMany({
+      where: { wallet: { user: { email: { in: testEmails } } } },
+    });
+    await prisma.subscription.deleteMany({
+      where: { userId: { in: (await prisma.user.findMany({ where: { email: { in: testEmails } }, select: { id: true } })).map(u => u.id) } },
+    });
+    await prisma.wallet.deleteMany({
+      where: { user: { email: { in: testEmails } } },
+    });
+    await prisma.user.deleteMany({ where: { email: { in: testEmails } } });
+
     // Create admin user and get token
     const adminUser = await prisma.user.create({
       data: {
@@ -31,6 +51,7 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
         status: 'ACTIVE',
         role: 'SUPER_ADMIN',
         emailVerified: true,
+        passwordHash: 'hashed_password',
       },
     });
     adminToken = generateTestToken(adminUser.id, 'SUPER_ADMIN');
@@ -43,6 +64,7 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
         lastName: 'User',
         status: 'ACTIVE',
         emailVerified: true,
+        passwordHash: 'hashed_password',
       },
     });
     userId = user.id;
@@ -62,6 +84,24 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
 
   afterAll(async () => {
     await app?.close?.();
+
+    // Clean up all test data so future runs start clean
+    const testEmails = [
+      'admin@test.local', 'user@test.local', 'strike-test@test.local',
+      'no-iban@test.local', 'bulk-no-iban@test.local', 'multi-sub@test.local',
+      'failed-payment@test.local', 'risk-floor@test.local', 'risk-no-downgrade@test.local',
+      'earned-rights@test.local',
+    ];
+    await prisma.walletTransaction.deleteMany({
+      where: { wallet: { user: { email: { in: testEmails } } } },
+    });
+    await prisma.subscription.deleteMany({
+      where: { userId: { in: (await prisma.user.findMany({ where: { email: { in: testEmails } }, select: { id: true } })).map(u => u.id) } },
+    });
+    await prisma.wallet.deleteMany({
+      where: { user: { email: { in: testEmails } } },
+    });
+    await prisma.user.deleteMany({ where: { email: { in: testEmails } } });
   });
 
   describe('DEFECT A: /release refuses escalated RISK_HOLD', () => {
@@ -202,6 +242,7 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
           lastName: 'Test',
           status: 'ACTIVE',
           emailVerified: true,
+          passwordHash: 'hashed_password',
         },
       });
 
@@ -241,7 +282,6 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
           balanceAfter: 250,
           status: 'PROCESSING',
           currency: 'BGN',
-          processingStartedAt: new Date(),
         },
       });
 
@@ -291,7 +331,7 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
       const restoredWallet = await prisma.wallet.findUnique({
         where: { id: testWallet.id },
       });
-      // Balance should be: 500 (initial) - 100 (manual hold, not counted) + 150 (restored from failed payout) = 550
+      // Balance should be: 500 (initial) + 0 (manual hold was direct-DB insert, never debited) + 150 (restored from failed payout) = 650
       expect(restoredWallet?.availableBalance).toBe(500 + 150); // 650
     });
   });
@@ -306,6 +346,7 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
           lastName: 'Test',
           status: 'ACTIVE',
           emailVerified: true,
+          passwordHash: 'hashed_password',
         },
       });
 
@@ -372,6 +413,7 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
           lastName: 'Test',
           status: 'ACTIVE',
           emailVerified: true,
+          passwordHash: 'hashed_password',
         },
       });
 
@@ -444,6 +486,7 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
           lastName: 'Test',
           status: 'ACTIVE',
           emailVerified: true,
+          passwordHash: 'hashed_password',
         },
       });
 
@@ -509,8 +552,8 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
         .patch(`/api/admin/payouts/${payout.id}/approve`)
         .set('Authorization', `Bearer ${adminToken}`);
 
-      // Should succeed (the CANCELLED-within-paid-period subscription is eligible)
-      expect([200, 202]).toContain(res.status); // 200 on success, 202 on hold for other reasons (not subscription)
+      // Should succeed with 200 (IBAN is set; no-IBAN hold branch is not reachable)
+      expect(res.status).toBe(200);
     });
 
     it('should reject payout when latest subscription is FAILED_PAYMENT, even with older ACTIVE', async () => {
@@ -522,6 +565,7 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
           lastName: 'Test',
           status: 'ACTIVE',
           emailVerified: true,
+          passwordHash: 'hashed_password',
         },
       });
 
@@ -602,6 +646,7 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
           lastName: 'Test',
           status: 'ACTIVE',
           emailVerified: true,
+          passwordHash: 'hashed_password',
           riskScore: 20, // Low score
           riskBucket: 'LOW_0_20',
         },
@@ -640,6 +685,7 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
           lastName: 'Test',
           status: 'ACTIVE',
           emailVerified: true,
+          passwordHash: 'hashed_password',
           riskScore: 80, // High score
           riskBucket: 'HIGH_51_PLUS',
         },
@@ -668,13 +714,78 @@ describe('BC-ADMIN-AUDIT-FIX-003: Payout Pipeline Fixes', () => {
       expect(updated?.riskScore).toBe(80); // Should stay at 80, not downgrade to 51
     });
   });
+
+  describe('DEFECT F: Earned-rights model — PROCESSING payouts ignore subscription status (INV-SM-SUB-007)', () => {
+    it('should complete a PROCESSING payout even when the user\'s latest subscription is FAILED_PAYMENT', async () => {
+      // Create a fresh user whose subscription is already expired/failed
+      const testUser = await prisma.user.create({
+        data: {
+          email: 'earned-rights@test.local',
+          firstName: 'EarnedRights',
+          lastName: 'Test',
+          status: 'ACTIVE',
+          emailVerified: true,
+          passwordHash: 'hashed_password',
+        },
+      });
+
+      const testWallet = await prisma.wallet.create({
+        data: {
+          userId: testUser.id,
+          balance: 0,
+          availableBalance: 0,
+          pendingBalance: 0,
+          currency: 'BGN',
+          // No IBAN needed — /complete does not check it
+        },
+      });
+
+      // Latest subscription is FAILED_PAYMENT — subscription gate would reject a new /approve
+      await prisma.subscription.create({
+        data: {
+          userId: testUser.id,
+          status: 'FAILED_PAYMENT',
+          plan: 'PREMIUM_WEEKLY',
+          currentPeriodStart: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+          currentPeriodEnd: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000),
+        },
+      });
+
+      // Payout is already in PROCESSING status (in-flight before subscription changed)
+      const payout = await prisma.walletTransaction.create({
+        data: {
+          walletId: testWallet.id,
+          type: 'WITHDRAWAL',
+          amount: -100,
+          balanceBefore: 100,
+          balanceAfter: 0,
+          status: 'PROCESSING',
+          currency: 'BGN',
+          // Empty lockedCashbackIds so markCashbackPaidForWithdrawal no-ops gracefully
+          metadata: JSON.stringify({ lockedCashbackIds: [] }),
+        },
+      });
+
+      // /complete should succeed — earned-rights: subscription gate is NOT called
+      const res = await request(app)
+        .patch(`/api/admin/payouts/${payout.id}/complete`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('COMPLETED');
+    });
+  });
 });
 
 /**
- * Helper to generate a test JWT token
+ * Helper to generate a test JWT token signed with JWT_SECRET,
+ * matching the payload shape expected by the real auth middleware.
  */
 function generateTestToken(userId: string, role: string): string {
-  // In a real test, this would use the actual auth logic
-  // For now, return a placeholder that the mock auth middleware will accept
-  return `test-token-${userId}-${role}`;
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    throw new Error('JWT_SECRET env var is not set — tests cannot generate valid tokens');
+  }
+  const payload = { id: userId, email: `test-${userId}@test.local`, role };
+  return jwt.sign(payload, jwtSecret, { expiresIn: '15m' });
 }

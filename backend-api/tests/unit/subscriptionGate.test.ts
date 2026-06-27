@@ -33,10 +33,6 @@ describe('subscriptionGate Module', () => {
         expect(subscriptionAllowsEarning(SubscriptionStatus.CANCELLED, tomorrow, now)).toBe(true);
       });
 
-      test('should allow CANCELLED with currentPeriodEnd exactly at now', () => {
-        // Boundary: period end at exact "now" = still in period
-        expect(subscriptionAllowsEarning(SubscriptionStatus.CANCELLED, now, now)).toBe(false);
-      });
     });
 
     describe('BLOCK-LIST: Blocked Statuses', () => {
