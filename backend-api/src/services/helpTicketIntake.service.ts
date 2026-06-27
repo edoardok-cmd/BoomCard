@@ -17,10 +17,11 @@ import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { writeAudit } from '../middleware/audit.middleware';
 import { emailService } from './email.service';
-import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef } from './ticketEmail.service';
+import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef, computeShortRefOfLength } from './ticketEmail.service';
 import { SUBJECT_REF_RE } from './ticketInbound.service';
 import { inferRequestType } from './ticketInbound.service';
 import { detach } from '../utils/detach';
+import { notificationService } from './notification.service';
 
 export interface HelpTicketIntakeArgs {
   /** Submitter's name (for audit trail) */
@@ -51,24 +52,91 @@ async function getSystemOwnerId(): Promise<string | null> {
 }
 
 /**
+ * BC-ADMIN-SPEC-REAUDIT5-SHORTREF-RETRY-1: Persist shortRef with collision handling.
+ *
+ * The shortRef is a unique indexed column used by the inbound parser to thread
+ * subject-prefix replies. With UUIDv4, birthday-collision risk is non-trivial at
+ * scale (low tens of thousands). On unique constraint violation, retry with a
+ * progressively longer ref: 8 → 12 → 16 → 32 chars (guaranteed unique, full UUID).
+ *
+ * Returns the persisted shortRef on success. On all retries exhausted, logs an
+ * error, notifies ops, and returns null (the ticket is still created, but without
+ * shortRef threading will fail and create duplicates). The inbound parser will
+ * recover via Priority 2 (In-Reply-To) or Priority 3 (header), so this is bounded
+ * damage (threading broken only for subject-prefix fallback).
+ *
+ * @param ticketId — the newly created ticket UUID
+ * @returns The persisted shortRef string, or null on failure (after all retries)
+ */
+async function persistShortRefWithCollisionRetry(ticketId: string): Promise<string | null> {
+  const MAX_ATTEMPTS = 4;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const shortRef = computeShortRefOfLength(ticketId, attempt);
+      await prisma.helpTicket.update({
+        where: { id: ticketId, shortRef: null }, // Only update if shortRef is not already set (idempotent guard)
+        data: { shortRef },
+      });
+      if (attempt > 1) {
+        logger.info(`[helpTicketIntake] shortRef collision resolved on attempt ${attempt}: ${shortRef}`);
+      }
+      return shortRef;
+    } catch (err) {
+      const isUniqueViolation = (err as any)?.code === 'P2002';
+      if (!isUniqueViolation || attempt === MAX_ATTEMPTS) {
+        // Final attempt or non-collision error — escalate to ops.
+        logger.error(
+          `[helpTicketIntake] shortRef update failed for ticket ${ticketId} after ${attempt} attempt(s):`,
+          err,
+        );
+        try {
+          // Sanitize error message to avoid leaking database internals
+          const sanitizedMsg = isUniqueViolation ? 'Unique constraint violation' : 'Database error';
+          detach(notificationService
+            .notifyAdminOps({
+              opsType: `ticket_shortref_collision_${ticketId}`,
+              title: 'Help-Ticket shortRef persistence failed — manual intervention required',
+              message: `Help-Ticket ${ticketId.slice(0, 8)} — shortRef collision unresolved after 4 attempts. Inbound reply threading will fail; subject-prefix matching will create duplicate tickets. Manual intervention required.`,
+              severity: 'critical',
+              fields: [
+                { label: 'Ticket ID', value: ticketId },
+                { label: 'Status', value: 'Requires immediate investigation' },
+              ],
+            }), () => {});
+        } catch (opsErr) {
+          logger.error('[helpTicketIntake] failed to notify ops of shortRef collision:', opsErr);
+        }
+        return null;
+      }
+      // Collision on non-final attempt — retry with longer ref
+      logger.debug(`[helpTicketIntake] shortRef collision on attempt ${attempt}, retrying with longer ref`);
+    }
+  }
+  return null;
+}
+
+/**
  * Send an auto-reply to the web form submitter, confirming receipt and providing
  * a ticket reference for future correspondence.
  *
  * Mirrors the sendInboundAutoReply pattern from ticketInbound.service but adapted
  * for web form submissions (no inReplyTo header, source='WEB').
+ *
+ * @param args.shortRef — the persisted shortRef from HelpTicket.shortRef
  */
 async function sendWebFormAutoReply(args: {
   ticketId: string;
   to: string;
   originalSubject: string;
   language?: 'bg' | 'en';
+  shortRef?: string;
 }): Promise<void> {
   const threading = buildTicketHeaders({
     ticketId: args.ticketId,
     inReplyTo: null,
     references: [],
   });
-  const subject = buildTicketSubject(args.ticketId, `Re: ${args.originalSubject}`);
+  const subject = buildTicketSubject(args.ticketId, `Re: ${args.originalSubject}`, args.shortRef);
   const ref = subject.match(SUBJECT_REF_RE)?.[0] ?? '';
 
   const isBg = args.language === 'bg';
@@ -220,15 +288,22 @@ export async function createHelpTicketFromInbound(
   });
 
   // Backfill shortRef (Gap 8 fix from ticketInbound.service.ts)
-  await prisma.helpTicket.update({
-    where: { id: ticket.id },
-    data: { shortRef: computeShortRef(ticket.id) },
-  }).catch((err) =>
-    logger.warn(
-      `[helpTicketIntake] shortRef update failed for ticket ${ticket.id} (possible collision):`,
-      err
-    )
-  );
+  // BC-ADMIN-SPEC-REAUDIT5-SHORTREF-RETRY-1: Retry with progressively longer refs on
+  // collision, escalate to ops if all attempts fail.
+  const persistedShortRef = await persistShortRefWithCollisionRetry(ticket.id);
+
+  // CRITICAL: If all shortRef retry attempts fail, delete the ticket and return error.
+  // Creating a ticket without shortRef breaks subject-prefix threading and causes
+  // duplicates on subsequent inbound emails from the same sender.
+  if (!persistedShortRef) {
+    logger.error(
+      `[helpTicketIntake] shortRef persistence failed for ticket ${ticket.id}; deleting orphan ticket`
+    );
+    await prisma.helpTicket.delete({ where: { id: ticket.id } }).catch(() => {});
+    throw new Error(
+      `Help ticket created but shortRef persistence failed after all retry attempts. Ticket creation rolled back.`
+    );
+  }
 
   // Audit the ticket creation
   await writeAudit({
@@ -240,12 +315,15 @@ export async function createHelpTicketFromInbound(
   }).catch(() => {});
 
   // Fire async auto-reply (don't block on this)
+  // BC-ADMIN-SPEC-REAUDIT5-SHORTREF-RETRY-1: Pass the persisted shortRef to the auto-reply
+  // so the subject uses the actual ref (may be longer than 8 chars on collision resolution).
   detach(
     sendWebFormAutoReply({
       ticketId: ticket.id,
       to: normalizedEmail,
       originalSubject: args.subject || '(no subject)',
       language: args.language,
+      shortRef: persistedShortRef ?? undefined,
     }),
     (err) => logger.error(`[helpTicketIntake] failed to send auto-reply for ${ticket.id}:`, err)
   );

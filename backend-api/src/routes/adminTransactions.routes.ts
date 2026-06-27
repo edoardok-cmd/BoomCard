@@ -5,6 +5,7 @@ import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { deriveCashbackEntryStatus } from '../services/adminCashback.service';
 import { parsePagination } from '../utils/pagination';
+import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -83,6 +84,8 @@ router.get('/', requirePermission('transactions.read'), async (req, res, next) =
 
     const where = buildWhere(req.query);
 
+    const windowOpen = await isCurrencyTransitionWindowOpen();
+
     const [transactions, total] = await Promise.all([
       prisma.walletTransaction.findMany({
         where,
@@ -118,7 +121,23 @@ router.get('/', requirePermission('transactions.read'), async (req, res, next) =
       prisma.walletTransaction.count({ where }),
     ]);
 
-    res.json({ transactions, total, page: pageNum, limit: take });
+    // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for transaction amounts
+    // (stored BGN). Raw BGN scalars are gated by isCurrencyTransitionWindowOpen();
+    // when window is CLOSED, EUR-only display; when OPEN, both BGN+EUR.
+    const enriched = transactions.map(tx => ({
+      ...tx,
+      // DEFECT E1 FIX: gate raw BGN scalars by window state
+      ...(windowOpen && { amount: tx.amount }),
+      ...(windowOpen && { balanceBefore: tx.balanceBefore }),
+      ...(windowOpen && { balanceAfter: tx.balanceAfter }),
+      display: {
+        amount: toDualCurrency(tx.amount ?? 0, windowOpen),
+        balanceBefore: toDualCurrency(tx.balanceBefore ?? 0, windowOpen),
+        balanceAfter: toDualCurrency(tx.balanceAfter ?? 0, windowOpen),
+      },
+    }));
+
+    res.json({ transactions: enriched, total, page: pageNum, limit: take });
   } catch (error) {
     next(error);
   }
@@ -128,6 +147,8 @@ router.get('/', requirePermission('transactions.read'), async (req, res, next) =
 router.get('/stats', requirePermission('transactions.read'), async (req, res, next) => {
   try {
     const baseWhere = buildWhere(req.query);
+
+    const windowOpen = await isCurrencyTransitionWindowOpen();
 
     const [volumeResult, cashbackResult, withdrawalResult] = await Promise.all([
       prisma.walletTransaction.aggregate({
@@ -144,10 +165,20 @@ router.get('/stats', requirePermission('transactions.read'), async (req, res, ne
       }),
     ]);
 
+    // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for aggregate amounts
+    const totalVolume = volumeResult._sum.amount ?? 0;
+    const totalCashback = cashbackResult._sum.amount ?? 0;
+    const totalWithdrawals = withdrawalResult._sum.amount ?? 0;
+
     res.json({
-      totalVolume: volumeResult._sum.amount ?? 0,
-      totalCashback: cashbackResult._sum.amount ?? 0,
-      totalWithdrawals: withdrawalResult._sum.amount ?? 0,
+      ...(windowOpen && { totalVolume }),
+      ...(windowOpen && { totalCashback }),
+      ...(windowOpen && { totalWithdrawals }),
+      display: {
+        totalVolume: toDualCurrency(totalVolume, windowOpen),
+        totalCashback: toDualCurrency(totalCashback, windowOpen),
+        totalWithdrawals: toDualCurrency(totalWithdrawals, windowOpen),
+      },
     });
   } catch (error) {
     next(error);

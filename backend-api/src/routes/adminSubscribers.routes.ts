@@ -496,10 +496,16 @@ router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
 //   ARCHIVED → Terminal for operational purposes; no login, no scanning.
 // Spec §6.6 Clash 6.6 — users are NOT notified of account status changes (intentional).
 // DEFECT B fix: ARCHIVED is terminal — cannot flip back to ACTIVE/INACTIVE.
-router.patch('/:userId/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.write'), async (req, res, next) => {
+// Spec §11.4 / Clash 11.4 — SUSPENDED is an intermediate state triggered by 5+ password
+// resets in 24h; it represents "account suspension PENDING SUPER ADMIN REVIEW". Only
+// SUPER_ADMIN can lift this state (change from SUSPENDED to ACTIVE). A non-SA admin
+// attempting to lift SUSPENDED receives 403. On valid lift, an audit record is written.
+router.patch('/:userId/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.write'), async (req: AuthRequest, res, next) => {
   try {
     const { userId } = req.params;
     const { status } = req.body as { status?: string };
+    const actorRole = req.user?.role;
+    const actorId = req.user?.id;
 
     // Spec §1.1 — only the three canonical statuses are allowed for new updates.
     if (status !== 'ACTIVE' && status !== 'INACTIVE' && status !== 'ARCHIVED') {
@@ -522,7 +528,14 @@ router.patch('/:userId/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
     if (user.status === 'ARCHIVED' && status !== 'ARCHIVED') {
       return res.status(400).json({ error: 'Cannot revert an archived account to ACTIVE or INACTIVE. Archived accounts are terminal.' });
     }
+    // Spec §11.4 / Clash 11.4 — SUSPENDED state (password reset abuse lockout) is a
+    // "pending Super Admin review" state. Only SUPER_ADMIN can lift it. Standard admins
+    // with subscribers.write cannot clear SUSPENDED accounts.
+    if ((user.status as string) === 'SUSPENDED' && actorRole !== 'SUPER_ADMIN') {
+      return res.status(403).json({ error: 'Only Super Admin can change a suspended account. This state requires Super Admin review.' });
+    }
 
+    const previousStatus = user.status;
     const [updated] = await Promise.all([
       prisma.user.update({
         where: { id: userId },
@@ -530,9 +543,23 @@ router.patch('/:userId/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
         select: { id: true, status: true },
       }),
       // Spec §1.1: INACTIVE users can log in — do NOT revoke their sessions.
-      // Only ARCHIVED is a terminal no-login state that requires immediate session revocation.
-      status === 'ARCHIVED'
+      // ARCHIVED and SUSPENDED->ACTIVE transitions are terminal no-login states that
+      // require immediate session revocation to enforce the lockout.
+      (status === 'ARCHIVED' || (previousStatus === 'SUSPENDED' && status === 'ACTIVE'))
         ? prisma.refreshToken.deleteMany({ where: { userId } })
+        : Promise.resolve(),
+      // Write audit record when SUPER_ADMIN lifts SUSPENDED state.
+      previousStatus === 'SUSPENDED' && status === 'ACTIVE' && actorId
+        ? writeAudit({
+            actorUserId: actorId,
+            action: 'subscriber.status.lift-suspension',
+            objectType: 'subscriber',
+            objectId: userId,
+            before: { status: previousStatus },
+            after: { status },
+            ip: getClientIp(req),
+            userAgent: req.headers['user-agent'] as string | undefined ?? null,
+          })
         : Promise.resolve(),
     ]);
 

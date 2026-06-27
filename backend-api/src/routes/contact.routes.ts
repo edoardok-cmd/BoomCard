@@ -3,6 +3,8 @@ import rateLimit from 'express-rate-limit';
 import { asyncHandler } from '../utils/asyncHandler';
 import { emailService } from '../services/email.service';
 import { createHelpTicketFromInbound } from '../services/helpTicketIntake.service';
+import { buildTicketSubject } from '../services/ticketEmail.service';
+import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 
 const router = Router();
@@ -72,8 +74,14 @@ router.post('/', contactRateLimiter, asyncHandler(async (req: Request, res: Resp
     const safeEmail = escapeHtml(email);
     const safeMessage = escapeHtml(message).replace(/\n/g, '<br>');
 
-    // Extract shortRef from ticketId (remove dashes, take first 8 chars)
-    const shortRef = ticketId.replace(/-/g, '').slice(0, 8);
+    // BC-ADMIN-SPEC-REAUDIT5-SHORTREF-RETRY-1: Read persisted shortRef from the ticket
+    // instead of deriving ad-hoc from ticketId. This ensures the reference matches
+    // what the inbound parser will use (may be longer than 8 chars on collision resolution).
+    const ticket = await prisma.helpTicket.findUnique({
+      where: { id: ticketId },
+      select: { shortRef: true },
+    });
+    const shortRef = ticket?.shortRef || ticketId.replace(/-/g, '').slice(0, 8);
 
     const adminHtml = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
