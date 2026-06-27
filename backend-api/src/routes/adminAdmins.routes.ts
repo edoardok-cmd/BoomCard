@@ -601,9 +601,9 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
   try {
     const { email, firstName, lastName, phone, password, roleKey } = req.body as {
       email: string;
-      firstName?: string;
-      lastName?: string;
-      phone?: string;
+      firstName: string;
+      lastName: string;
+      phone: string;
       password: string;
       roleKey: AdminRoleKey;
     };
@@ -613,6 +613,16 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
     }
     if (!Object.values(AdminRoleKey).includes(roleKey)) {
       return res.status(400).json({ error: 'Invalid roleKey' });
+    }
+    const trimmedFirstName = firstName?.trim();
+    const trimmedLastName = lastName?.trim();
+    const trimmedPhone = phone?.trim();
+
+    if (!trimmedFirstName || !trimmedLastName) {
+      return res.status(400).json({ error: 'firstName and lastName are required' });
+    }
+    if (!trimmedPhone) {
+      return res.status(400).json({ error: 'phone is required' });
     }
 
     if (roleKey === AdminRoleKey.SUPER_ADMIN) {
@@ -648,9 +658,9 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
         request = await prisma.pendingSuperAdminRequest.create({
           data: {
             email,
-            firstName: firstName ?? null,
-            lastName: lastName ?? null,
-            phone: phone ?? null,
+            firstName: trimmedFirstName,
+            lastName: trimmedLastName,
+            phone: trimmedPhone,
             passwordHash,
             status: 'PENDING',
             expiresAt: new Date(Date.now() + PENDING_SUPER_ADMIN_TTL_MS),
@@ -674,9 +684,9 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
               request = await prisma.pendingSuperAdminRequest.create({
                 data: {
                   email,
-                  firstName: firstName ?? null,
-                  lastName: lastName ?? null,
-                  phone: phone ?? null,
+                  firstName: trimmedFirstName,
+                  lastName: trimmedLastName,
+                  phone: trimmedPhone,
                   passwordHash,
                   status: 'PENDING',
                   expiresAt: new Date(Date.now() + PENDING_SUPER_ADMIN_TTL_MS),
@@ -720,9 +730,9 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
       data: {
         email,
         passwordHash,
-        firstName: firstName ?? null,
-        lastName: lastName ?? null,
-        phone: phone ?? null,
+        firstName: trimmedFirstName,
+        lastName: trimmedLastName,
+        phone: trimmedPhone,
         role: 'ADMIN',
         status: 'ACTIVE',
         emailVerified: true,
@@ -761,6 +771,14 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
       include: { requestedBy: { select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true } } },
     });
     if (!request) return res.status(404).json({ error: 'Pending request not found' });
+
+    // Null-guard: legacy rows may have null firstName/lastName/phone (stored before validation was enforced).
+    // Reject with 422 rather than letting tx.user.create hit a DB NOT NULL violation and 500.
+    if (!request.firstName || !request.lastName || !request.phone) {
+      return res.status(422).json({
+        error: 'This pending request is missing required fields (firstName, lastName, or phone). Please cancel it and resubmit with complete details.',
+      });
+    }
 
     // FINDING 1 fix: use persisted expiresAt column instead of recomputing from createdAt + TTL.
     // This ensures that if TTL changes, existing requests still expire at their original scheduled time.
@@ -806,7 +824,7 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
     // SA-APPROVE-INITIATOR fix: validate that the original initiator is still an active SUPER_ADMIN at approval time.
     // Reload the initiator from the database to re-check role and status, preventing weakening of 2-of-N when the
     // initiator is archived or demoted between initiation and approval.
-    let user: { id: string; email: string; firstName: string | null; lastName: string | null; role: UserRole; status: UserStatus; createdAt: Date };
+    let user: { id: string; email: string; firstName: string; lastName: string; role: UserRole; status: UserStatus; createdAt: Date };
     try {
       user = await prisma.$transaction(async (tx) => {
         // Re-check self-approval gate INSIDE transaction with Serializable isolation.
