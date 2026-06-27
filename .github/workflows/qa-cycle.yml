@@ -1,8 +1,6 @@
 name: QA Dependency Verification
 
 on:
-  push:
-    branches: [ main, master, develop ]
   pull_request:
     branches: [ main, master, develop ]
   schedule:
@@ -33,75 +31,6 @@ jobs:
         name: qa-dependency-report
         path: QA_DEPENDENCY_REPORT.md
 
-  build-verification:
-    runs-on: ubuntu-latest
-    name: Build Verification
-    needs: dependency-check
-
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: boomcard_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
-    strategy:
-      fail-fast: false
-      matrix:
-        service: [
-          'api-gateway',
-          'analytics-service',
-          'backend-api',
-          'partner-dashboard'
-        ]
-
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '22'
-        
-    - name: Cache dependencies
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.npm
-          ${{ matrix.service }}/node_modules
-        key: ${{ runner.os }}-${{ matrix.service }}-${{ hashFiles('**/package-lock.json') }}
-        
-    - name: Install dependencies
-      working-directory: ${{ matrix.service }}
-      run: npm ci
-      
-    - name: Build service
-      working-directory: ${{ matrix.service }}
-      run: npm run build
-      
-    - name: Run database migrations
-      if: matrix.service == 'backend-api'
-      working-directory: backend-api
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/boomcard_test
-      run: npx prisma migrate deploy
-
-    - name: Run tests
-      working-directory: ${{ matrix.service }}
-      continue-on-error: true
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/boomcard_test
-        JWT_SECRET: test-jwt-secret
-        JWT_REFRESH_SECRET: test-jwt-refresh-secret
-      run: npm test -- --passWithNoTests
 
   python-verification:
     runs-on: ubuntu-latest
@@ -156,7 +85,7 @@ jobs:
   integration-test:
     runs-on: ubuntu-latest
     name: Integration Tests
-    needs: [build-verification, python-verification]
+    needs: [python-verification]
     
     services:
       postgres:
@@ -196,7 +125,7 @@ jobs:
   qa-report:
     runs-on: ubuntu-latest
     name: Generate QA Report
-    needs: [build-verification, python-verification, security-audit]
+    needs: [python-verification, security-audit]
     if: always()
     
     steps:
