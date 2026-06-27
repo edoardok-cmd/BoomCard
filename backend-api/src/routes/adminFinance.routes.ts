@@ -100,19 +100,26 @@ router.get(
     const periodStatusByMonth = new Map(reportingPeriods.map(p => [p.month, p.status]));
 
     // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for invoice amounts
-    // (stored BGN). Added alongside the existing scalar fields (backward-compat).
+    // (stored BGN). Raw BGN scalars are gated by isCurrencyTransitionWindowOpen();
+    // when window is CLOSED, EUR-only display; when OPEN, both BGN+EUR.
     const windowOpen = await isCurrencyTransitionWindowOpen();
-    const enriched = invoices.map(inv => ({
-      ...inv,
-      reportingPeriodStatus: periodStatusByMonth.get(inv.month) ?? null,
-      display: {
-        totalCashbackOwed: toDualCurrency(inv.totalCashbackOwed ?? 0, windowOpen),
-        turnoverAmount: toDualCurrency(inv.turnoverAmount ?? 0, windowOpen),
-        // N2 (spec §3.7 + §8.1 rule 4) — margin dual-denominated to match the
-        // CSV/xlsx export, which already emits BGN+EUR for margin.
-        marginAmount: toDualCurrency(inv.marginAmount ?? 0, windowOpen),
-      },
-    }));
+    const enriched = invoices.map(inv => {
+      // DEFECT E1 FIX: destructure to exclude raw BGN fields from spread,
+      // then conditionally re-add them only when window is open.
+      const { totalCashbackOwed, turnoverAmount, marginAmount, ...rest } = inv;
+      return {
+        ...rest,
+        ...(windowOpen && { totalCashbackOwed, turnoverAmount, marginAmount }),
+        reportingPeriodStatus: periodStatusByMonth.get(inv.month) ?? null,
+        display: {
+          totalCashbackOwed: toDualCurrency(totalCashbackOwed ?? 0, windowOpen),
+          turnoverAmount: toDualCurrency(turnoverAmount ?? 0, windowOpen),
+          // N2 (spec §3.7 + §8.1 rule 4) — margin dual-denominated to match the
+          // CSV/xlsx export, which already emits BGN+EUR for margin.
+          marginAmount: toDualCurrency(marginAmount ?? 0, windowOpen),
+        },
+      };
+    });
 
     res.json({
       success: true,
@@ -772,11 +779,24 @@ router.get(
     ]);
 
     // Wallet tx map: always include core types so the UI can show 0 placeholders
+    // DEFECT E2a FIX: gate raw BGN totals by window state and add display objects
+    const windowOpen = await isCurrencyTransitionWindowOpen();
     const CORE_WALLET_TYPES = ['CASHBACK_CREDIT', 'WITHDRAWAL', 'TOP_UP'] as const;
-    const txByType: Record<string, { total: number; count: number }> = {};
-    for (const t of CORE_WALLET_TYPES) txByType[t] = { total: 0, count: 0 };
+    const txByType: Record<string, Record<string, any>> = {};
+    for (const t of CORE_WALLET_TYPES) {
+      txByType[t] = {
+        ...(windowOpen && { total: 0 }),
+        count: 0,
+        display: toDualCurrency(0, windowOpen),
+      };
+    }
     for (const row of walletStats) {
-      txByType[row.type] = { total: row._sum.amount ?? 0, count: row._count.id };
+      const val = row._sum.amount ?? 0;
+      txByType[row.type] = {
+        ...(windowOpen && { total: val }),
+        count: row._count.id,
+        display: toDualCurrency(val, windowOpen),
+      };
     }
 
     // Aggregate per-partner breakdown.
@@ -860,9 +880,18 @@ router.get(
       cur.turnover += scan.verifiedAmount ?? scan.billAmount ?? 0;
       planAccum[plan] = cur;
     }
+    // DEFECT E2c FIX: destructure to exclude raw BGN fields, then conditionally re-add them
     const planBreakdown = Object.entries(planAccum)
-      .map(([plan, stats]) => ({ plan, ...stats }))
-      .sort((a, b) => b.cashback - a.cashback);
+      .map(([plan, { scanCount, cashback, turnover }]) => ({
+        plan,
+        scanCount,
+        ...(windowOpen && { cashback, turnover }),
+        display: {
+          cashback: toDualCurrency(cashback, windowOpen),
+          turnover: toDualCurrency(turnover, windowOpen),
+        },
+      }))
+      .sort((a, b) => (b.display?.cashback?.eur ?? 0) - (a.display?.cashback?.eur ?? 0));
 
     // Merge period rows with the full months list so the frontend always receives an entry for
     // every month in range — status is null for months that have no ReportingPeriod record yet.
@@ -887,30 +916,49 @@ router.get(
     }));
 
     // Strip internal accumulator field before sending
+    // DEFECT E2b FIX: destructure to exclude raw BGN fields, then conditionally re-add them
     const partnerBreakdown = Array.from(partnerMap.values()).map(
-      ({ _seenRates: _ignored, ...rest }) => rest,
+      ({ _seenRates: _ignored, cashback, margin, turnover, ...rest }) => ({
+        ...rest,
+        ...(windowOpen && { cashback, margin, turnover }),
+        display: {
+          cashback: toDualCurrency(cashback, windowOpen),
+          margin: toDualCurrency(margin, windowOpen),
+          turnover: toDualCurrency(turnover, windowOpen),
+        },
+      }),
     );
 
     // Build payout-by-status breakdown.  Always include the canonical statuses with 0 placeholders
     // so the UI shows a stable row layout even when no payouts exist for that status in the period.
+    // DEFECT E2d FIX: gate raw BGN totals by window state
     const PAYOUT_STATUSES_DISPLAY = ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'RISK_HOLD'] as const;
-    const payoutByStatus: Record<string, { total: number; count: number; display?: { bgn: number | null; eur: number } }> = {};
-    for (const s of PAYOUT_STATUSES_DISPLAY) payoutByStatus[s] = { total: 0, count: 0 };
-    for (const row of payoutStatusStats) {
-      payoutByStatus[row.status] = { total: row._sum.amount ?? 0, count: row._count.id };
+    const payoutByStatus: Record<string, Record<string, any>> = {};
+    for (const s of PAYOUT_STATUSES_DISPLAY) {
+      payoutByStatus[s] = {
+        ...(windowOpen && { total: 0 }),
+        count: 0,
+      };
     }
-    const payoutTotal = Object.values(payoutByStatus).reduce((s, v) => s + v.total, 0);
+    for (const row of payoutStatusStats) {
+      const val = row._sum.amount ?? 0;
+      payoutByStatus[row.status] = {
+        ...(windowOpen && { total: val }),
+        count: row._count.id,
+      };
+    }
+    const payoutTotal = Object.values(payoutByStatus).reduce((s, v) => s + (windowOpen ? v.total ?? 0 : 0), 0);
     const payoutCount = Object.values(payoutByStatus).reduce((s, v) => s + v.count, 0);
 
-    // DEFECT 2 + DEFECT 4 fix: gate raw BGN and add display object to cashbackInvoices and payoutBreakdown
-    const windowOpen = await isCurrencyTransitionWindowOpen();
+    // Compute aggregate invoice totals for the cashbackInvoices section
     const invoiceTotalBgn = invoiceTotals._sum.totalCashbackOwed ?? 0;
     const marginTotalBgn = invoiceTotals._sum.marginAmount ?? 0;
     const turnoverTotalBgn = invoiceTotals._sum.turnoverAmount ?? 0;
 
     // Add display object with dual-currency to payoutByStatus
     for (const status in payoutByStatus) {
-      payoutByStatus[status].display = toDualCurrency(payoutByStatus[status].total, windowOpen);
+      const val = payoutByStatus[status].total ?? 0;
+      payoutByStatus[status].display = toDualCurrency(val, windowOpen);
     }
 
     res.json({
@@ -934,7 +982,7 @@ router.get(
         planBreakdown,
         payoutBreakdown: {
           byStatus: payoutByStatus,
-          total: payoutTotal,
+          ...(windowOpen && { total: payoutTotal }),
           count: payoutCount,
           filtered: !!payoutStatusParam,
           display: toDualCurrency(payoutTotal, windowOpen),

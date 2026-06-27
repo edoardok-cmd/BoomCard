@@ -124,18 +124,20 @@ router.get('/', requirePermission('transactions.read'), async (req, res, next) =
     // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for transaction amounts
     // (stored BGN). Raw BGN scalars are gated by isCurrencyTransitionWindowOpen();
     // when window is CLOSED, EUR-only display; when OPEN, both BGN+EUR.
-    const enriched = transactions.map(tx => ({
-      ...tx,
-      // DEFECT E1 FIX: gate raw BGN scalars by window state
-      ...(windowOpen && { amount: tx.amount }),
-      ...(windowOpen && { balanceBefore: tx.balanceBefore }),
-      ...(windowOpen && { balanceAfter: tx.balanceAfter }),
-      display: {
-        amount: toDualCurrency(tx.amount ?? 0, windowOpen),
-        balanceBefore: toDualCurrency(tx.balanceBefore ?? 0, windowOpen),
-        balanceAfter: toDualCurrency(tx.balanceAfter ?? 0, windowOpen),
-      },
-    }));
+    const enriched = transactions.map(tx => {
+      // DEFECT E1 FIX: destructure to exclude raw BGN fields from spread,
+      // then conditionally re-add them only when window is open.
+      const { amount, balanceBefore, balanceAfter, ...rest } = tx;
+      return {
+        ...rest,
+        ...(windowOpen && { amount, balanceBefore, balanceAfter }),
+        display: {
+          amount: toDualCurrency(amount ?? 0, windowOpen),
+          balanceBefore: toDualCurrency(balanceBefore ?? 0, windowOpen),
+          balanceAfter: toDualCurrency(balanceAfter ?? 0, windowOpen),
+        },
+      };
+    });
 
     res.json({ transactions: enriched, total, page: pageNum, limit: take });
   } catch (error) {
@@ -213,7 +215,7 @@ router.post('/adjust', requirePermission('transactions.write'), async (req, res,
 
     // Read balance INSIDE the interactive transaction so balanceBefore/After are consistent
     // even under concurrent requests.
-    const transaction = await prisma.$transaction(async (tx) => {
+    const created = await prisma.$transaction(async (tx) => {
       const wallet = await tx.wallet.findUnique({
         where: { userId },
         select: { id: true, balance: true, availableBalance: true, currency: true },
@@ -228,7 +230,7 @@ router.post('/adjust', requirePermission('transactions.write'), async (req, res,
       const balanceBefore = wallet.balance;
       const balanceAfter = balanceBefore + amount;
 
-      const created = await tx.walletTransaction.create({
+      const transaction = await tx.walletTransaction.create({
         data: {
           walletId: wallet.id,
           type: 'ADJUSTMENT',
@@ -257,13 +259,28 @@ router.post('/adjust', requirePermission('transactions.write'), async (req, res,
         data: { balance: { increment: amount }, availableBalance: { increment: amount } },
       });
 
-      return created;
+      return transaction;
     });
+
+    // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for transaction amounts
+    // (stored BGN). Raw BGN scalars are gated by isCurrencyTransitionWindowOpen();
+    // when window is CLOSED, EUR-only display; when OPEN, both BGN+EUR.
+    const windowOpen = await isCurrencyTransitionWindowOpen();
+    const { amount: txAmount, balanceBefore: txBalanceBefore, balanceAfter: txBalanceAfter, ...rest } = created;
+    const enriched = {
+      ...rest,
+      ...(windowOpen && { amount: txAmount, balanceBefore: txBalanceBefore, balanceAfter: txBalanceAfter }),
+      display: {
+        amount: toDualCurrency(txAmount ?? 0, windowOpen),
+        balanceBefore: toDualCurrency(txBalanceBefore ?? 0, windowOpen),
+        balanceAfter: toDualCurrency(txBalanceAfter ?? 0, windowOpen),
+      },
+    };
 
     req.auditAction = 'transaction.wallet-adjust';
     req.auditObjectType = 'transaction';
     req.auditObjectId = userId;
-    res.status(201).json(transaction);
+    res.status(201).json(enriched);
   } catch (error) {
     if (validationError) {
       res.status(400).json({ error: validationError });

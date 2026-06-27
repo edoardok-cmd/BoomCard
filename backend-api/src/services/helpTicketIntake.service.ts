@@ -305,6 +305,12 @@ export async function createHelpTicketFromInbound(
     );
   }
 
+  // BC-ADMIN-SPEC-REAUDIT5-SHORTREF-RETRY-1: Defer audit until AFTER shortRef is
+  // persisted. This ensures that if shortRef persistence fails and the ticket is
+  // deleted (above), we do not create orphaned audit records. The caller (contact.routes)
+  // will verify that shortRef is present before using it in downstream operations
+  // (email notifications, etc.), ensuring consistency across all audit records and
+  // ticket references (Acceptance Criteria #2 & #3).
   // Audit the ticket creation
   await writeAudit({
     actorUserId: null,

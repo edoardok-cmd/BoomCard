@@ -28,7 +28,7 @@ import prisma from '../lib/prisma';
 import { writeAudit } from '../middleware/audit.middleware';
 import { getSystemSettingInt } from '../utils/systemSettings';
 import { logger } from '../utils/logger';
-import { subscriptionAllowsEarning } from './subscriptionGate';
+import { subscriptionAllowsEarning, findEligibleSubscription } from './subscriptionGate';
 
 const CASHBACK_VALIDITY_DAYS_DEFAULT = 60;
 
@@ -637,32 +637,42 @@ export async function recordPendingForRiskReview(params: {
   // status gates. Both user and subscription status are checked using the
   // single-sourced allow-list in subscriptionGate.subscriptionAllowsEarning
   // to ensure the cashback gate cannot drift from the scanning gate.
+  //
+  // BC-ADMIN-SPEC-REAUDIT5-CASHBACK-SUB-SELECT-1 FIX: use findEligibleSubscription
+  // (which returns the EARLIEST eligible subscription, orderBy createdAt ASC)
+  // instead of the latest subscription (orderBy createdAt DESC). This aligns
+  // the cashback-creation gate with the scan gate, ensuring both use the same
+  // subscription selection logic per spec §8.1 rule 1.
   const [user, subscription] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
       select: { status: true },
     }),
-    prisma.subscription.findFirst({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      select: { status: true, currentPeriodEnd: true },
-    }),
+    findEligibleSubscription(userId, new Date()),
   ]);
 
-  if (user?.status === 'INACTIVE' || user?.status === 'ARCHIVED') {
+  // Spec §1.3 / §8.1 Rule #1: user.status gate MUST block scanning (and cashback).
+  // Match the scan gate's user status checks for complete alignment.
+  if (user?.status === 'INACTIVE' || user?.status === 'ARCHIVED' || user?.status === 'DELETED') {
+    throw new Error('Cannot create cashback: account scanning is blocked');
+  }
+  // Implementation extension statuses (not in source spec §1.1): also block these.
+  if (user?.status === 'PENDING_VERIFICATION' || user?.status === 'PENDING_PAYMENT') {
     throw new Error('Cannot create cashback: account scanning is blocked');
   }
 
-  if (subscription) {
-    const sub = subscription;
-    const now = new Date();
-    // Use the shared allow-list gate: ACTIVE, TRIALING, or CANCELLED-within-period
-    // are the only permissible states. All others (PAST_DUE, UNPAID, INCOMPLETE,
-    // INCOMPLETE_EXPIRED, PAUSED, EXPIRED, FAILED_PAYMENT) block earning.
-    const earningAllowed = subscriptionAllowsEarning(sub.status, sub.currentPeriodEnd, now);
-    if (!earningAllowed) {
-      throw new Error('Cannot create cashback: account scanning is blocked');
-    }
+  if (!subscription) {
+    throw new Error('Cannot create cashback: account scanning is blocked');
+  }
+
+  const sub = subscription;
+  const now = new Date();
+  // Use the shared allow-list gate: ACTIVE, TRIALING, or CANCELLED-within-period
+  // are the only permissible states. All others (PAST_DUE, UNPAID, INCOMPLETE,
+  // INCOMPLETE_EXPIRED, PAUSED, EXPIRED, FAILED_PAYMENT) block earning.
+  const earningAllowed = subscriptionAllowsEarning(sub.status, sub.currentPeriodEnd, now);
+  if (!earningAllowed) {
+    throw new Error('Cannot create cashback: account scanning is blocked');
   }
 
   // Idempotency: if a wallet entry already exists for this scan/receipt, return it.

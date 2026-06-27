@@ -31,9 +31,13 @@ jest.mock('../src/services/email.service', () => ({
   },
 }));
 
-function generateTestToken(userId: string, role: string): string {
+function generateTestToken(userId: string, role: string, permissions?: string[]): string {
   const jwt = require('jsonwebtoken');
-  return jwt.sign({ userId, role }, process.env.JWT_SECRET || 'test-secret', {
+  const payload: Record<string, unknown> = { userId, role, id: userId };
+  if (permissions && permissions.length > 0) {
+    payload.permissions = permissions;
+  }
+  return jwt.sign(payload, process.env.JWT_SECRET || 'test-secret', {
     expiresIn: '24h',
   });
 }
@@ -58,12 +62,14 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
         emailVerified: true,
+        passwordHash: 'dummy-hash', // dummy hash for test purposes
       },
     });
     superAdminId = superAdmin.id;
     superAdminToken = generateTestToken(superAdmin.id, 'SUPER_ADMIN');
 
-    // Create a standard ADMIN with subscribers.write permission
+    // Create a standard ADMIN with default subscribers.write permission
+    // (all ADMIN roles get subscribers.write by default)
     const admin = await prisma.user.create({
       data: {
         email: `admin-suspended-gate-${Date.now()}@test.local`,
@@ -72,16 +78,11 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
         role: 'ADMIN',
         status: 'ACTIVE',
         emailVerified: true,
-        permissionOverrides: {
-          create: {
-            action: 'allow',
-            permission: 'subscribers.write',
-          },
-        },
+        passwordHash: 'dummy-hash', // dummy hash for test purposes
       },
     });
     adminId = admin.id;
-    adminToken = generateTestToken(admin.id, 'ADMIN');
+    adminToken = generateTestToken(admin.id, 'ADMIN', ['subscribers.write']);
 
     // Create a SUSPENDED subscriber (simulating password reset abuse lockout)
     const suspendedUser = await prisma.user.create({
@@ -92,13 +93,13 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
         role: 'USER',
         status: 'SUSPENDED',
         emailVerified: true,
+        passwordHash: 'dummy-hash', // dummy hash for test purposes
       },
     });
     suspendedUserId = suspendedUser.id;
   });
 
   afterAll(async () => {
-    await app.close();
     await prisma.$disconnect();
   });
 
@@ -138,6 +139,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
           role: 'USER',
           status: 'SUSPENDED',
           emailVerified: true,
+          passwordHash: 'dummy-hash',
         },
       });
 
@@ -180,6 +182,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
           role: 'USER',
           status: 'ACTIVE',
           emailVerified: true,
+          passwordHash: 'dummy-hash',
         },
       });
 
@@ -211,6 +214,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
           role: 'USER',
           status: 'DELETED',
           emailVerified: true,
+          passwordHash: 'dummy-hash',
         },
       });
 
@@ -232,6 +236,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
           role: 'USER',
           status: 'ARCHIVED',
           emailVerified: true,
+          passwordHash: 'dummy-hash',
         },
       });
 
@@ -255,6 +260,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
           role: 'USER',
           status: 'SUSPENDED',
           emailVerified: true,
+          passwordHash: 'dummy-hash',
         },
       });
 

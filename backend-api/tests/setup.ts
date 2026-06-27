@@ -378,3 +378,12 @@ afterAll(async () => {
   // Cleanup and disconnect
   await prisma.$disconnect();
 });
+
+// ─── Test app factory ─────────────────────────────────────────────────────────
+// createTestApp imports src/server which mounts all routes and initializes
+// the Express app. It is called once per test file (jest.resetModules() clears
+// the cached module, so each file gets a fresh app instance).
+export async function createTestApp() {
+  const { app } = await import('../src/server');
+  return app;
+}

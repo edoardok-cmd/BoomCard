@@ -2,10 +2,12 @@ import { Router, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { asyncHandler } from '../utils/asyncHandler';
 import { emailService } from '../services/email.service';
+import { notificationService } from '../services/notification.service';
 import { createHelpTicketFromInbound } from '../services/helpTicketIntake.service';
 import { buildTicketSubject } from '../services/ticketEmail.service';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
+import { detach } from '../utils/detach';
 
 const router = Router();
 
@@ -77,11 +79,22 @@ router.post('/', contactRateLimiter, asyncHandler(async (req: Request, res: Resp
     // BC-ADMIN-SPEC-REAUDIT5-SHORTREF-RETRY-1: Read persisted shortRef from the ticket
     // instead of deriving ad-hoc from ticketId. This ensures the reference matches
     // what the inbound parser will use (may be longer than 8 chars on collision resolution).
+    // The ticket creation path (helpTicketIntake.service.ts) guarantees shortRef is
+    // non-NULL via persistShortRefWithCollisionRetry, so this query should never return
+    // a falsy value in normal operation. If it does, log CRITICAL and reject.
     const ticket = await prisma.helpTicket.findUnique({
       where: { id: ticketId },
       select: { shortRef: true },
     });
-    const shortRef = ticket?.shortRef || ticketId.replace(/-/g, '').slice(0, 8);
+    if (!ticket?.shortRef) {
+      logger.error(
+        `[contact.routes] CRITICAL: ticket ${ticketId} missing persisted shortRef; ` +
+        'this indicates shortRef persistence failed in helpTicketIntake.service. ' +
+        'Admin notification email will NOT be sent.'
+      );
+      throw new Error('Internal error: ticket shortRef not found');
+    }
+    const shortRef = ticket.shortRef;
 
     const adminHtml = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
@@ -107,6 +120,10 @@ router.post('/', contactRateLimiter, asyncHandler(async (req: Request, res: Resp
 
     const adminText = `New contact form submission\n\nTicket ID: ${ticketId}\n\nName: ${name}\nEmail: ${email}\n\nMessage:\n${message}\n`;
 
+    // BC-ADMIN-SPEC-REAUDIT5-SHORTREF-RETRY-1: If admin notification email fails,
+    // alert ops so this unrouted incoming contact doesn't get silently lost.
+    // Mirrors the behavior in ticketInbound.service.ts when inbound replies are
+    // unassigned (lines 931-941).
     await emailService.sendEmail({
       to: CONTACT_RECIPIENT,
       subject: adminSubject,
@@ -115,6 +132,20 @@ router.post('/', contactRateLimiter, asyncHandler(async (req: Request, res: Resp
       replyTo: email,
     }).catch((err) => {
       logger.warn('Contact form admin notification send failed (non-blocking):', err);
+      // Alert ops so this contact form submission is not lost
+      detach(notificationService
+        .notifyAdminOps({
+          opsType: `contact_form_notification_failed_${ticketId}`,
+          title: 'Contact form admin notification email failed',
+          message: `Contact from ${name} (${email}) could not be delivered to ${CONTACT_RECIPIENT}`,
+          severity: 'warning',
+          fields: [
+            { label: 'From', value: email },
+            { label: 'Ticket ID', value: ticketId },
+            { label: 'Error', value: String(err) },
+          ],
+        }), (opsErr) => logger.error('Failed to alert ops of contact form notification failure:', opsErr)
+      );
     });
 
     logger.info(`Contact form submitted by ${email} → ticket ${ticketId}`);
