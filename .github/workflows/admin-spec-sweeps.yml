@@ -1,0 +1,77 @@
+# Admin Spec Coverage Sweeps — REQUIRED merge gate (enforcement, not advisory).
+#
+# Why this exists: the BoomCard admin spec was re-audited 6 times and each round
+# surfaced a different, unrelated batch of defects — classic low-recall *sampling*.
+# The fix was to convert the recurring finding-classes (raw-BGN currency leaks past
+# the dual-currency window gate; malformed-:id 500s) into EXHAUSTIVE, route-
+# introspecting jest sweeps that enumerate the live Express route table, so every
+# admin endpoint — including ones added later — is checked automatically.
+#
+# Those sweeps only enforce anything if a red sweep blocks the build. The existing
+# `qa-cycle.yml` runs backend tests with `continue-on-error: true` + `--passWithNoTests`,
+# so a failing test never gates a merge. This workflow is the deliberate opposite:
+# it runs ONLY the two deterministic admin-spec sweeps, with NO continue-on-error,
+# so a currency leak or input-boundary 500 anywhere on the admin surface fails CI.
+# Mark this check "Required" in the branch protection rules to make it un-skippable.
+name: Admin Spec Coverage Sweeps
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  admin-spec-sweeps:
+    name: Exhaustive admin-spec sweeps (currency-leak + uuid-500)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: boomcard_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/boomcard_test
+      JWT_SECRET: test-jwt-secret
+      JWT_REFRESH_SECRET: test-jwt-refresh-secret
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: backend-api/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend-api
+        run: npm ci
+
+      - name: Apply migrations to test DB
+        working-directory: backend-api
+        run: npx prisma migrate deploy
+
+      # No continue-on-error: a red sweep MUST fail the build. --runInBand keeps the
+      # route-introspection deterministic. Add new <class>-sweep.test.ts files here as
+      # more recurring finding-classes are converted to exhaustive sweeps.
+      - name: Run admin-spec coverage sweeps
+        working-directory: backend-api
+        run: >-
+          npx jest
+          tests/integration/admin-currency-leak-sweep.test.ts
+          tests/integration/admin-uuid-500-sweep.test.ts
+          --runInBand --ci

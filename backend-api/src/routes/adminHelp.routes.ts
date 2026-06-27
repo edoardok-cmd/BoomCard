@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma';
 import { notificationService } from '../services/notification.service';
 import { emailService } from '../services/email.service';
 import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef, withCanonicalRequestStatus, withCanonicalRequestType, toRawStatusFilter } from '../services/ticketEmail.service';
+import { persistShortRefWithCollisionRetry } from '../services/helpTicketIntake.service';
 import { fireAutomation } from '../lib/automationDispatcher';
 import { logger } from '../utils/logger';
 import { parsePagination } from '../utils/pagination';
@@ -206,10 +207,16 @@ router.post('/', requirePermission('help.write'), async (req: AuthRequest, res, 
         // Message-ID sent in the email (a second newMessageId() call would
         // produce a different value, breaking Priority-2 In-Reply-To threading).
         const threading = buildTicketHeaders({ ticketId: ticket.id });
+        // Update rootMessageId separately from shortRef persistence, which is handled
+        // by persistShortRefWithCollisionRetry (BC-ADMIN-SPEC-REAUDIT6-SHORTREF-RETRY-SWEEP-2 HIGH #1).
         await prisma.helpTicket.update({
           where: { id: ticket.id },
-          data: { rootMessageId: threading.messageId, shortRef: computeShortRef(ticket.id) },
+          data: { rootMessageId: threading.messageId },
         });
+        // BC-ADMIN-SPEC-REAUDIT6-SHORTREF-RETRY-SWEEP-2 (HIGH #1): Use collision-retry helper
+        // to ensure shortRef is unique and never null (or logs ops alert on exhausted retries).
+        // This may issue retries on collision, so call it after the main update.
+        const persistedShortRef = await persistShortRefWithCollisionRetry(ticket.id);
         // Persist the reply row BEFORE sending so Priority-2 In-Reply-To threading
         // resolves via TicketReply.messageId lookup even if the mailer later fails.
         // Mirrors the same pattern in help.routes.ts (user ticket creation).
@@ -905,6 +912,30 @@ router.patch('/:id', requirePermission('help.write'), async (req: AuthRequest, r
       }
       if (status && Object.values(TicketStatus).includes(status as TicketStatus) && status !== 'RESOLVED') {
         return res.status(403).json({ error: 'Заявителят може само да маркира заявка като решена' });
+      }
+    }
+
+    // BC-ADMIN-SPEC-REAUDIT6-SHORTREF-RETRY-SWEEP-2 (HIGH #2): Forward-only state-machine guard.
+    // Valid transitions: NEW/OPEN → IN_REVIEW → WAITING → RESOLVED → CLOSED.
+    // Terminal states (REJECTED, CANCELLED) are immutable (no regress from any state).
+    // Backward transitions (e.g., IN_REVIEW → OPEN, RESOLVED → IN_REVIEW) are forbidden.
+    if (status && status !== ticket.status) {
+      const validTransitions: Record<string, string[]> = {
+        'NEW': ['OPEN', 'IN_REVIEW'],
+        'OPEN': ['IN_REVIEW', 'WAITING', 'RESOLVED'],
+        'IN_REVIEW': ['WAITING', 'RESOLVED'],
+        'WAITING': ['RESOLVED'],
+        'RESOLVED': ['CLOSED'],
+        // Terminal states cannot transition to any other state (except via dedicated endpoints)
+        'CLOSED': [],
+        'REJECTED': [],
+        'CANCELLED': [],
+      };
+      const allowedNextStates = validTransitions[ticket.status] ?? [];
+      if (!allowedNextStates.includes(status)) {
+        return res.status(400).json({
+          error: `Невалидна смяна на статус: ${ticket.status} → ${status}. Статусът може да се променя само напред.`,
+        });
       }
     }
 

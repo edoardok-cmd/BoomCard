@@ -67,11 +67,6 @@ router.post('/', contactRateLimiter, asyncHandler(async (req: Request, res: Resp
       language,
     });
 
-    // Optional: send admin notification email (targets office@ instead of partner@)
-    const adminSubject = language === 'bg'
-      ? `[BOOM Card] Запитване от ${name}`
-      : `[BOOM Card] Inquiry from ${name}`;
-
     const safeName = escapeHtml(name);
     const safeEmail = escapeHtml(email);
     const safeMessage = escapeHtml(message).replace(/\n/g, '<br>');
@@ -86,6 +81,12 @@ router.post('/', contactRateLimiter, asyncHandler(async (req: Request, res: Resp
       select: { shortRef: true },
     });
     const shortRef = ticket?.shortRef ?? ticketId.slice(0, 8);
+
+    // BC-ADMIN-SPEC-REAUDIT6-SHORTREF-RETRY-SWEEP-2 (MEDIUM #3): Include [#shortRef] in subject
+    // for proper email threading in the admin inbox (per Spec §6.2).
+    const adminSubject = language === 'bg'
+      ? `[BOOM Card] [#${shortRef}] Запитване от ${name}`
+      : `[BOOM Card] [#${shortRef}] Inquiry from ${name}`;
 
     const adminHtml = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">

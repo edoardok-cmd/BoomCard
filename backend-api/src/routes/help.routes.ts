@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma';
 import { notificationService } from '../services/notification.service';
 import { emailService } from '../services/email.service';
 import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef } from '../services/ticketEmail.service';
+import { persistShortRefWithCollisionRetry } from '../services/helpTicketIntake.service';
 import { logger } from '../utils/logger';
 import { getSystemSettingStr } from '../utils/systemSettings';
 import { DisputeSubjectType, TicketStatus } from '@prisma/client';
@@ -97,13 +98,20 @@ router.post(
     detach((async () => {
       try {
         const threading = buildTicketHeaders({ ticketId: ticket.id });
+        // Update rootMessageId separately from shortRef persistence, which is handled
+        // by persistShortRefWithCollisionRetry (BC-ADMIN-SPEC-REAUDIT6-SHORTREF-RETRY-SWEEP-2 HIGH #1).
         await prisma.helpTicket.update({
           where: { id: ticket.id },
-          data: { rootMessageId: threading.messageId, shortRef: computeShortRef(ticket.id) },
+          data: { rootMessageId: threading.messageId },
         });
+        // BC-ADMIN-SPEC-REAUDIT6-SHORTREF-RETRY-SWEEP-2 (HIGH #1): Use collision-retry helper
+        // to ensure shortRef is unique and never null (or logs ops alert on exhausted retries).
+        const persistedShortRef = await persistShortRefWithCollisionRetry(ticket.id);
         const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, firstName: true } });
         if (user?.email) {
-          const emailSubject = buildTicketSubject(ticket.id, 'Вашата заявка е получена');
+          // BC-ADMIN-SPEC-REAUDIT6-SHORTREF-RETRY-SWEEP-2 (HIGH #1): Pass persisted shortRef
+          // so the email subject uses the actual collision-resolved ref (may be longer than 8 chars).
+          const emailSubject = buildTicketSubject(ticket.id, 'Вашата заявка е получена', persistedShortRef ?? undefined);
           const ref = emailSubject.match(SUBJECT_REF_RE)?.[0] ?? '';
           // Persist the auto-reply row BEFORE sending — ensures the Message-ID is
           // anchored in the DB so an inbound In-Reply-To resolves via Priority-2

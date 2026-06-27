@@ -9,7 +9,7 @@ import { Router, Response } from 'express';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
-import { buildDualCurrencyMap, isCurrencyTransitionWindowOpen } from '../utils/currencyDisplay';
+import { buildDualCurrencyMap, isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 const router = Router();
 
@@ -235,6 +235,7 @@ router.get(
       ? parseFloat((todayVolume / todayTxCount).toFixed(2))
       : 0;
     const payoutsDue = Math.abs(payoutsDueAgg._sum.amount ?? 0);
+    const windowOpen = await isCurrencyTransitionWindowOpen();
 
     // §3.1 cashback status breakdown — zero-fill all 7 canonical statuses so the
     // tile always renders every state even when no rows exist for it.
@@ -264,7 +265,6 @@ router.get(
     // already computed above.
     const partnerReceivablesAmt = partnerReceivables._sum.totalCashbackOwed ?? 0;
     const marginAmt = totalMargin._sum.marginAmount ?? 0;
-    const windowOpen = await isCurrencyTransitionWindowOpen();
     const financeDisplay = await buildDualCurrencyMap({
       payoutsDue,
       partnerReceivables: partnerReceivablesAmt,

@@ -7,6 +7,7 @@ import { prisma } from '../lib/prisma';
 import { notificationService } from '../services/notification.service';
 import { emailService } from '../services/email.service';
 import { buildTicketSubject, buildTicketHeaders, buildPlusReplyTo, computeShortRef } from '../services/ticketEmail.service';
+import { persistShortRefWithCollisionRetry } from '../services/helpTicketIntake.service';
 import { getSystemSettingStr } from '../utils/systemSettings';
 import { logger } from '../utils/logger';
 import { parsePagination } from '../utils/pagination';
@@ -185,16 +186,23 @@ router.post('/ticket', requireNonArchivedPartner, asyncHandler(async (req: AuthR
   // under test (no cross-suite mock-queue leak); no-op .catch in prod.
   detach((async () => {
     try {
-      const subject_built = buildTicketSubject(ticket.id, 'Вашата заявка е получена');
-      const ref = subject_built.match(SUBJECT_REF_RE)?.[0] ?? '';
       // Generate threading headers first so rootMessageId matches the actual
       // Message-ID sent in the email (a second newMessageId() call would
       // produce a different value, breaking Priority-2 In-Reply-To threading).
       const threading = buildTicketHeaders({ ticketId: ticket.id });
+      // Update rootMessageId separately from shortRef persistence, which is handled
+      // by persistShortRefWithCollisionRetry (BC-ADMIN-SPEC-REAUDIT6-SHORTREF-RETRY-SWEEP-2 HIGH #1).
       await prisma.helpTicket.update({
         where: { id: ticket.id },
-        data: { rootMessageId: threading.messageId, shortRef: computeShortRef(ticket.id) },
+        data: { rootMessageId: threading.messageId },
       });
+      // BC-ADMIN-SPEC-REAUDIT6-SHORTREF-RETRY-SWEEP-2 (HIGH #1): Use collision-retry helper
+      // to ensure shortRef is unique and never null (or logs ops alert on exhausted retries).
+      const persistedShortRef = await persistShortRefWithCollisionRetry(ticket.id);
+      // BC-ADMIN-SPEC-REAUDIT6-SHORTREF-RETRY-SWEEP-2 (HIGH #1): Pass persisted shortRef
+      // so the email subject uses the actual collision-resolved ref (may be longer than 8 chars).
+      const subject_built = buildTicketSubject(ticket.id, 'Вашата заявка е получена', persistedShortRef ?? undefined);
+      const ref = subject_built.match(SUBJECT_REF_RE)?.[0] ?? '';
       // Persist the reply row BEFORE sending so Priority-2 In-Reply-To threading
       // resolves via TicketReply.messageId lookup even if the mailer later fails.
       // Mirrors the same pattern in help.routes.ts (user ticket creation).

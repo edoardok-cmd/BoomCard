@@ -73,7 +73,7 @@ async function getSystemOwnerId(): Promise<string | null> {
  * @param ticketId — the newly created ticket UUID
  * @returns The persisted shortRef string, or null on failure (after all retries)
  */
-async function persistShortRefWithCollisionRetry(ticketId: string): Promise<string | null> {
+export async function persistShortRefWithCollisionRetry(ticketId: string): Promise<string | null> {
   const MAX_ATTEMPTS = 4;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
