@@ -500,6 +500,8 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
     );
 
     const now = new Date();
+    const windowOpen = await isCurrencyTransitionWindowOpen();
+
     const rows = transactions.map((tx) => {
       // Recover partner from venue when Transaction.partnerId is null.
       // Both the partner field on the wire response and the discountRate used
@@ -581,7 +583,21 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
         ...rest,
         partner: partnerOut,
         venue: venueOut,
-        cashbackAmount: cashbackAmountResolved,
+        // M7 / Spec §3.7 + §8.1 rule 4 — gate raw BGN scalars by window state
+        ...(windowOpen && { amount: tx.amount }),
+        ...(windowOpen && { marginAmount: tx.marginAmount }),
+        ...(windowOpen && { cashbackAmount: cashbackAmountResolved }),
+        ...(windowOpen && { discountAmount: tx.discountAmount }),
+        ...(windowOpen && { finalAmount: tx.finalAmount }),
+        ...(windowOpen && { netAmount: tx.netAmount }),
+        display: {
+          amount: toDualCurrency(tx.amount ?? 0, windowOpen),
+          marginAmount: toDualCurrency(margin ?? 0, windowOpen),
+          cashbackAmount: toDualCurrency(cashback ?? 0, windowOpen),
+          discountAmount: toDualCurrency(tx.discountAmount ?? 0, windowOpen),
+          finalAmount: toDualCurrency(tx.finalAmount ?? 0, windowOpen),
+          netAmount: toDualCurrency(tx.netAmount ?? 0, windowOpen),
+        },
         margin,
         partnerDiscountRate,
         riskScore,
