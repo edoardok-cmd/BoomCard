@@ -64,6 +64,28 @@ const TICKET_SELECT_ALL = {
   assignee: { select: { id: true, firstName: true, lastName: true, email: true } },
 } as const;
 
+// F1 fix: expand canonical request type (Support/Dispute/Change/Other) or raw
+// enum form to the DB filter. When canonical 'Change' is used, expand to all
+// *_CHANGE sub-types to prevent fragmentation (Spec §1.7 / Clash 8.2).
+// Returns a Prisma WHERE condition (either a single requestType or an IN clause).
+function expandRequestTypeFilter(value: string): { requestType: { in: TicketRequestType[] } } | { requestType: TicketRequestType } {
+  switch (value) {
+    case 'Support':
+      return { requestType: 'SUPPORT' as TicketRequestType };
+    case 'Dispute':
+      return { requestType: 'DISPUTE' as TicketRequestType };
+    case 'Change':
+      return { requestType: { in: ['CHANGE', 'DATA_CHANGE', 'LOCATION_CHANGE', 'CONTRACT_CHANGE'] as TicketRequestType[] } };
+    case 'Other':
+      return { requestType: 'OTHER' as TicketRequestType };
+    case 'CHANGE':
+      return { requestType: { in: ['CHANGE', 'DATA_CHANGE', 'LOCATION_CHANGE', 'CONTRACT_CHANGE'] as TicketRequestType[] } };
+    default:
+      // Raw enum token (SUPPORT, DISPUTE, etc.) or already-enumerated sub-type
+      return { requestType: value as TicketRequestType };
+  }
+}
+
 // Returns true when the caller may access any ticket (not just their own).
 // SUPER_ADMIN always has full access. Roles granted help.read.all (e.g. SUPPORT)
 // are also given full visibility so they can manage the help queue per §13.
@@ -87,6 +109,14 @@ const ADMIN_VALID_REQUEST_TYPES = ['SUPPORT', 'DISPUTE', 'CHANGE', 'DATA_CHANGE'
 const VALID_STATUS_TOKENS: ReadonlyArray<string> = [
   ...Object.values(TicketStatus),
   'Cancelled', 'Closed', 'In Progress', 'IN_PROGRESS', 'New', 'Waiting',
+];
+
+// F1 fix: canonical request type names + raw enum tokens. Accept both forms for
+// symmetry with status filtering. Canonical forms per spec §1.7: Support/Dispute/Change/Other.
+// Change is expanded to all *_CHANGE sub-types (CHANGE/DATA_CHANGE/LOCATION_CHANGE/CONTRACT_CHANGE).
+const VALID_REQUEST_TYPE_TOKENS: ReadonlyArray<string> = [
+  ...ADMIN_VALID_REQUEST_TYPES,
+  'Support', 'Dispute', 'Change', 'Other',
 ];
 
 // POST /api/admin/help — G8: admin creates a new help ticket (Spec §11 "Нова заявка")
@@ -293,16 +323,13 @@ router.get('/', requirePermission('help.read.all'), async (req, res, next) => {
       conditions.push({ category: category as TicketCategory });
     }
     if (req.query.requestType && typeof req.query.requestType === 'string') {
-      if (!ADMIN_VALID_REQUEST_TYPES.includes(req.query.requestType)) {
+      if (!VALID_REQUEST_TYPE_TOKENS.includes(req.query.requestType)) {
         return res.status(400).json({ error: 'Невалиден тип заявка' });
       }
-      // M7: When filtering by canonical CHANGE, include all *_CHANGE sub-types
+      // F1 fix: expand canonical (Support/Dispute/Change/Other) or raw enum form.
+      // When canonical 'Change' is used, include all *_CHANGE sub-types
       // to prevent fragmentation of the Change bucket (Spec §1.7 / Clash 8.2).
-      if (req.query.requestType === 'CHANGE') {
-        conditions.push({ requestType: { in: ['CHANGE', 'DATA_CHANGE', 'LOCATION_CHANGE', 'CONTRACT_CHANGE'] as TicketRequestType[] } });
-      } else {
-        conditions.push({ requestType: req.query.requestType as TicketRequestType });
-      }
+      conditions.push(expandRequestTypeFilter(req.query.requestType));
     }
     // Spec §11.5 "період" — date range filter on createdAt.
     // `from` and `to` are ISO-8601 strings; invalid values are silently ignored.
@@ -378,16 +405,13 @@ router.get('/mine', requirePermission('help.read'), async (req: AuthRequest, res
       conditions.push({ category: category as TicketCategory });
     }
     if (req.query.requestType && typeof req.query.requestType === 'string') {
-      if (!ADMIN_VALID_REQUEST_TYPES.includes(req.query.requestType)) {
+      if (!VALID_REQUEST_TYPE_TOKENS.includes(req.query.requestType)) {
         return res.status(400).json({ error: 'Невалиден тип заявка' });
       }
-      // M7: When filtering by canonical CHANGE, include all *_CHANGE sub-types
+      // F1 fix: expand canonical (Support/Dispute/Change/Other) or raw enum form.
+      // When canonical 'Change' is used, include all *_CHANGE sub-types
       // to prevent fragmentation of the Change bucket (Spec §1.7 / Clash 8.2).
-      if (req.query.requestType === 'CHANGE') {
-        conditions.push({ requestType: { in: ['CHANGE', 'DATA_CHANGE', 'LOCATION_CHANGE', 'CONTRACT_CHANGE'] as TicketRequestType[] } });
-      } else {
-        conditions.push({ requestType: req.query.requestType as TicketRequestType });
-      }
+      conditions.push(expandRequestTypeFilter(req.query.requestType));
     }
     if (search) {
       conditions.push({ OR: [
