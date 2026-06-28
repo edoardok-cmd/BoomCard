@@ -269,19 +269,18 @@ describe('INV-RDM-002 — GET /api/stickers/my-scans returns only own scans', ()
     rdm002CardId = card.id;
 
     const sticker = await prisma.sticker.findFirst({ where: { venueId: venueAId } });
-    if (sticker) {
-      const scan = await prisma.stickerScan.create({
-        data: {
-          userId: userAUserId,
-          stickerId: sticker.id,
-          venueId: venueAId,
-          cardId: rdm002CardId,
-          billAmount: 100,
-          status: 'PENDING',
-        },
-      });
-      scanId = scan.id;
-    }
+    if (!sticker) throw new Error(`INV-RDM-002 setup: no sticker found for venueId ${venueAId}`);
+    const scan = await prisma.stickerScan.create({
+      data: {
+        userId: userAUserId,
+        stickerId: sticker.id,
+        venueId: venueAId,
+        cardId: rdm002CardId,
+        billAmount: 100,
+        status: 'PENDING',
+      },
+    });
+    scanId = scan.id;
   });
 
   afterAll(async () => {
@@ -294,8 +293,6 @@ describe('INV-RDM-002 — GET /api/stickers/my-scans returns only own scans', ()
   });
 
   it('[XSCOPE] User B cannot see User A scans via GET /my-scans', async () => {
-    if (!scanId) return; // skip if sticker setup failed
-
     const resB = await authRequest(userBToken).get('/api/stickers/my-scans');
     expect(resB.status).toBe(200);
     const ids = (resB.body.data || []).map((s: any) => s.id);
@@ -303,8 +300,6 @@ describe('INV-RDM-002 — GET /api/stickers/my-scans returns only own scans', ()
   });
 
   it('[POSITIVE] User A sees their own scan in GET /my-scans', async () => {
-    if (!scanId) return;
-
     const resA = await authRequest(userAToken).get('/api/stickers/my-scans');
     expect(resA.status).toBe(200);
     const ids = (resA.body.data || []).map((s: any) => s.id);
@@ -431,11 +426,15 @@ describe('INV-RDM-004..010 — Partner cannot mutate venue or menu (admin-only r
     expect(res.status).toBe(403);
   });
 
-  // ─── Positive control: ADMIN can DELETE a venue ───────────────────────────
-  // Creates a fresh venue belonging to Partner A so venueAId is not destroyed.
-  // The venue is deleted by the test itself; no afterAll cleanup needed for it.
-  it('[POSITIVE] INV-RDM-006: ADMIN can delete a venue — DELETE /api/venues/:id returns 200', async () => {
-    // Get Partner A's partner record to use as the owner of the ephemeral venue
+  // ─── Positive controls: ADMIN can access admin-only venue/menu routes ────────
+  // throwawayVenueId is created in a nested beforeAll so it is available for
+  // RDM-005, RDM-007, RDM-008, RDM-009, and RDM-010 positive-control tests
+  // without risking venueAId or venueBId (which the XSCOPE tests above depend on).
+  let throwawayVenueId: string;
+  let throwawayVenueDeleteId: string;
+  let partnerAPartnerId: string;
+
+  beforeAll(async () => {
     const partnerRecord = await prisma.partner.findFirst({
       where: { userId: partnerAUserId },
       select: { id: true },
@@ -443,13 +442,28 @@ describe('INV-RDM-004..010 — Partner cannot mutate venue or menu (admin-only r
     if (!partnerRecord) {
       throw new Error('Positive-control setup: Partner A record not found');
     }
+    partnerAPartnerId = partnerRecord.id;
 
-    // Create a fresh venue that this test will delete — venueAId is intentionally
-    // left intact so the six [XSCOPE] tests above continue to work.
-    const ephemeralVenue = await prisma.venue.create({
+    // Venue used for menu upload / submit / withdraw positive controls.
+    const tv = await prisma.venue.create({
       data: {
         partnerId: partnerRecord.id,
-        name: `Ephemeral Venue ${Date.now()}`,
+        name: `Throwaway Menu Venue ${Date.now()}`,
+        address: '1 Throwaway Rd',
+        city: 'Sofia',
+        latitude: 42.6977,
+        longitude: 23.3219,
+        venueStatus: 'ACTIVE',
+      },
+    });
+    throwawayVenueId = tv.id;
+
+    // Separate venue used only by the DELETE positive-control test so it is
+    // not destroyed before the menu tests run.
+    const td = await prisma.venue.create({
+      data: {
+        partnerId: partnerRecord.id,
+        name: `Ephemeral Delete Venue ${Date.now()}`,
         address: '99 Delete Me St',
         city: 'Sofia',
         latitude: 42.6977,
@@ -457,8 +471,83 @@ describe('INV-RDM-004..010 — Partner cannot mutate venue or menu (admin-only r
         venueStatus: 'ACTIVE',
       },
     });
+    throwawayVenueDeleteId = td.id;
+  });
 
-    const res = await authRequest(adminToken).delete(`/api/venues/${ephemeralVenue.id}`);
+  afterAll(async () => {
+    // Best-effort cleanup — the DELETE positive test may have already removed
+    // throwawayVenueDeleteId; the menu venue is cleaned up here.
+    if (throwawayVenueId) {
+      await prisma.venue.delete({ where: { id: throwawayVenueId } }).catch(() => {});
+    }
+    if (throwawayVenueDeleteId) {
+      await prisma.venue.delete({ where: { id: throwawayVenueDeleteId } }).catch(() => {});
+    }
+  });
+
+  it('[POSITIVE] INV-RDM-006: ADMIN can delete a venue — DELETE /api/venues/:id returns 200', async () => {
+    const res = await authRequest(adminToken).delete(`/api/venues/${throwawayVenueDeleteId}`);
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  it('[POSITIVE] INV-RDM-007: ADMIN can upload menu images — POST /api/venues/:id/menu returns 200, 400, or 500 (not 403)', async () => {
+    // In the test environment the image-upload backend (S3/Cloudinary) is
+    // unavailable, so the route returns 500 ("All image uploads failed") instead
+    // of 200. That is still proof the request passed the auth gate — a 403 would
+    // mean the ADMIN role was rejected, which is what we are ruling out.
+    const fakeImg = Buffer.from('89504e47', 'hex');
+    const res = await authRequest(adminToken)
+      .post(`/api/venues/${throwawayVenueId}/menu`)
+      .attach('images', fakeImg, { filename: 'menu.png', contentType: 'image/png' });
+    expect([200, 400, 500]).toContain(res.status);
+    expect(res.status).not.toBe(403);
+  });
+
+  it('[POSITIVE] INV-RDM-009: ADMIN can submit menu URL — POST /api/venues/:id/menu/submit returns 200 or 400 (not 403)', async () => {
+    const res = await authRequest(adminToken)
+      .post(`/api/venues/${throwawayVenueId}/menu/submit`)
+      .send({ url: 'https://example.com/menu.pdf' });
+    expect([200, 400]).toContain(res.status);
+    expect(res.status).not.toBe(403);
+  });
+
+  it('[POSITIVE] INV-RDM-010: ADMIN can withdraw menu submission — POST /api/venues/:id/menu/withdraw returns 200 or 400 (not 403)', async () => {
+    const res = await authRequest(adminToken)
+      .post(`/api/venues/${throwawayVenueId}/menu/withdraw`);
+    expect([200, 400]).toContain(res.status);
+    expect(res.status).not.toBe(403);
+  });
+
+  it('[POSITIVE] INV-RDM-004: ADMIN can create venue — POST /api/venues/ returns 201 or 400 (not 403)', async () => {
+    const res = await authRequest(adminToken)
+      .post('/api/venues/')
+      .send({
+        partnerId: partnerAPartnerId,
+        name: `Positive-RDM004-Venue-${Date.now()}`,
+        address: '1 Admin Create St',
+        city: 'Sofia',
+        latitude: 42.6977,
+        longitude: 23.3219,
+      });
+    expect([201, 400]).toContain(res.status);
+    expect(res.status).not.toBe(403);
+    // Clean up the venue if it was created
+    if (res.status === 201 && res.body?.data?.id) {
+      await prisma.venue.delete({ where: { id: res.body.data.id } }).catch(() => {});
+    }
+  });
+
+  it('[POSITIVE] INV-RDM-005: ADMIN can update venue — PUT /api/venues/:id returns 200 (not 403)', async () => {
+    const res = await authRequest(adminToken)
+      .put(`/api/venues/${throwawayVenueId}`)
+      .send({ name: `Admin Updated ${Date.now()}` });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  it('[POSITIVE] INV-RDM-008: ADMIN can clear menu images — DELETE /api/venues/:id/menu returns 200 (not 403)', async () => {
+    const res = await authRequest(adminToken).delete(`/api/venues/${throwawayVenueId}/menu`);
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
   });

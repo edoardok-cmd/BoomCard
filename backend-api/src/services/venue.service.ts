@@ -437,6 +437,15 @@ export const venueService = {
    * Delete venue
    */
   async deleteVenue(id: string): Promise<void> {
+    // Guard: if the venue doesn't exist Prisma throws P2025 which surfaces as
+    // a 500. Return a sentinel so the route can issue a proper 404 instead.
+    const existing = await prisma.venue.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) {
+      const err: any = new Error('Venue not found');
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+
     await prisma.venue.delete({
       where: { id },
     });

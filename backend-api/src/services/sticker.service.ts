@@ -114,7 +114,7 @@ export interface ScanStickerData {
 
 export interface UploadReceiptData {
   scanId: string;
-  userId?: string;
+  userId: string;
   receiptImageUrl: string;
   /** SHA-256 of raw bytes. Required for duplicate rejection (Finding #6). */
   receiptImageHash?: string;
@@ -1423,20 +1423,14 @@ class StickerService {
     const { scanId, userId, receiptImageUrl, receiptImageHash, ocrData, imageBuffer } = data;
 
     // Spec §4.2 v1.1 — block receipt scanning when subscription = FAILED_PAYMENT.
-    if (userId) await this.assertSubscriptionAllowsScanning(userId);
+    await this.assertSubscriptionAllowsScanning(userId);
 
-    // IDOR guard: when the caller provides a userId, the scan must belong to that user.
-    // Route handlers pass req.user.id here. Internal callers that omit userId fall back
-    // to the old unguarded lookup — they already know what scan they're working with.
-    const scan = userId
-      ? await prisma.stickerScan.findFirst({
-          where: { id: scanId, userId },
-          include: { venue: { include: { stickerConfig: true, partner: true } } },
-        })
-      : await prisma.stickerScan.findUnique({
-          where: { id: scanId },
-          include: { venue: { include: { stickerConfig: true, partner: true } } },
-        });
+    // IDOR guard: the scan must belong to the authenticated user. userId is now
+    // required on UploadReceiptData, so there is no unguarded fallback path.
+    const scan = await prisma.stickerScan.findFirst({
+      where: { id: scanId, userId },
+      include: { venue: { include: { stickerConfig: true, partner: true } } },
+    });
 
     if (!scan) throw new Error('Scan not found');
 
@@ -1475,7 +1469,7 @@ class StickerService {
         // Use { push } to append rather than overwrite — preserves any fraud reasons
         // from the scan phase (GPS, OCR, device checks, etc.).
         await prisma.stickerScan.update({
-          where: { id: scanId },
+          where: { id: scanId, userId: scan.userId },
           data: {
             status: ScanStatus.REJECTED,
             rejectionReason: 'Duplicate receipt image (SHA-256 match)',
@@ -1489,8 +1483,8 @@ class StickerService {
     const verifiedAmount = ocrData?.amount || ocrData?.total;
 
     try {
-      await (prisma.stickerScan.update as any)({
-        where: { id: scanId },
+      await prisma.stickerScan.update({
+        where: { id: scanId, userId },
         data: {
           receiptImageUrl,
           receiptImageHash: receiptImageHash ?? null,
@@ -1505,7 +1499,7 @@ class StickerService {
       // request inserts the same hash between our findFirst and update. Treat as duplicate.
       if (err?.code === 'P2002') {
         await prisma.stickerScan.update({
-          where: { id: scanId },
+          where: { id: scanId, userId: scan.userId },
           data: {
             status: ScanStatus.REJECTED,
             rejectionReason: 'Duplicate receipt image (SHA-256 race)',
@@ -1519,9 +1513,9 @@ class StickerService {
 
     // F-018: Spec requires notifyQRSessionOpened when a QR session is opened /
     // receipt upload is confirmed. Fire non-fatally (must not block the upload flow).
-    if (userId ?? scan.userId) {
+    if (userId) {
       detach(notificationService
-        .notifyQRSessionOpened(userId ?? scan.userId, scanId), (err) => logger.error(`[uploadReceipt] notifyQRSessionOpened failed for scan ${scanId}:`, err));
+        .notifyQRSessionOpened(userId, scanId), (err) => logger.error(`[uploadReceipt] notifyQRSessionOpened failed for scan ${scanId}:`, err));
     }
 
     // Server-side OCR merchant verification is run asynchronously after the response
@@ -1589,7 +1583,7 @@ class StickerService {
 
     // Spec §2.1 five-signal risk level — drives manual-review gate
     const specRisk = await fraudDetectionService.computeSpecRiskLevel({
-      userId: userId ?? scan.userId,
+      userId,
       partnerId,
       ibanChangedRecently,
       ocrConfidence,
@@ -1606,7 +1600,7 @@ class StickerService {
     // to users). Nothing downstream parses "SPEC_RISK:" out of fraudReasons (verified by
     // grep), so dropping the tag has no consumers to repoint.
     await prisma.stickerScan.update({
-      where: { id: scanId },
+      where: { id: scanId, userId },
       data: { specRiskLevel: specRisk.riskLevel },
     }).catch((err: unknown) => logger.error(`[uploadReceipt] failed to store spec risk level:`, err));
 
@@ -1619,7 +1613,7 @@ class StickerService {
       // then immediately promote. This reuses all cashback-credit, wallet,
       // audit-trail, and notification logic in a single call.
       await prisma.stickerScan.update({
-        where: { id: scanId },
+        where: { id: scanId, userId },
         data: { status: ScanStatus.MANUAL_REVIEW },
       });
 
@@ -1661,7 +1655,7 @@ class StickerService {
       // Zero cashback (no active subscription) — just mark APPROVED; no
       // wallet or cashback record needed.
       return prisma.stickerScan.update({
-        where: { id: scanId },
+        where: { id: scanId, userId },
         data: { status: ScanStatus.APPROVED, processedAt: new Date() },
         // Safe select — internal fields excluded (spec §11.3, r2d HIGH).
         select: {
@@ -1677,7 +1671,7 @@ class StickerService {
     // Spec §2.1 thresholds: High = 51+. Only High-risk submissions enter the
     // admin queue; Medium (21–50) and Low (0–20) take the auto-process path.
     const finalScan = await prisma.stickerScan.update({
-      where: { id: scanId },
+      where: { id: scanId, userId },
       data: { status: ScanStatus.MANUAL_REVIEW },
       // Safe select — internal fields excluded (spec §11.3, r2d HIGH).
       select: {

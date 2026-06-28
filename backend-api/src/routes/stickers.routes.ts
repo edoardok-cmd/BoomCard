@@ -249,7 +249,10 @@ router.post('/scan/:scanId/receipt', authenticate, requireActiveSubscription, up
         where: { id: scanId, userId },
         select: { sessionStartedAt: true, createdAt: true },
       });
-      const sessionStart = scanForGate?.sessionStartedAt ?? scanForGate?.createdAt ?? null;
+      if (!scanForGate) {
+        return res.status(400).json({ success: false, error: 'Scan not found' });
+      }
+      const sessionStart = scanForGate.sessionStartedAt ?? scanForGate.createdAt ?? null;
       const gate = await checkLivePhoto(req.file.buffer, sessionStart);
       if (gate.ok === false) {
         return res.status(400).json({ success: false, error: gate.message });
@@ -343,6 +346,7 @@ router.get('/my-scans', authenticate, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
     // Clamp untrusted limit before it reaches the service → Prisma. Default 50, cap 100.
+    // Limit-only pagination by design (spec INV-RDM-029) — no offset or cursor.
     const { limit } = parsePagination(req.query, { defaultLimit: 50, maxLimit: 100 });
 
     const scans = await stickerService.getScansByUser(userId, limit);

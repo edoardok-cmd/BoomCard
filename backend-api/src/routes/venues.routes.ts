@@ -6,7 +6,7 @@
 import { Router, Response } from 'express';
 import multer from 'multer';
 import { asyncHandler } from '../middleware/error.middleware';
-import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
+import { authenticate, authorize, requireActiveAdmin, AuthRequest } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
 import { venueService } from '../services/venue.service';
 import { imageUploadService } from '../services/imageUpload.service';
@@ -214,6 +214,7 @@ router.post(
   '/',
   authenticate,
   authorize('ADMIN', 'SUPER_ADMIN'),
+  requireActiveAdmin,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const {
       partnerId,
@@ -300,6 +301,7 @@ router.put(
   '/:id',
   authenticate,
   authorize('ADMIN', 'SUPER_ADMIN'),
+  requireActiveAdmin,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
@@ -339,10 +341,18 @@ router.delete(
   '/:id',
   authenticate,
   authorize('ADMIN', 'SUPER_ADMIN'),
+  requireActiveAdmin,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
-    await venueService.deleteVenue(id);
+    try {
+      await venueService.deleteVenue(id);
+    } catch (err: any) {
+      if (err?.code === 'NOT_FOUND') {
+        return res.status(404).json({ success: false, error: 'Venue not found' });
+      }
+      throw err;
+    }
 
     res.json({
       success: true,
@@ -367,6 +377,7 @@ router.post(
   '/:id/menu',
   authenticate,
   authorize('ADMIN', 'SUPER_ADMIN'),
+  requireActiveAdmin,
   menuUpload.array('images', 20),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
@@ -447,6 +458,7 @@ router.delete(
   '/:id/menu',
   authenticate,
   authorize('ADMIN', 'SUPER_ADMIN'),
+  requireActiveAdmin,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
@@ -475,6 +487,7 @@ router.post(
   '/:id/menu/submit',
   authenticate,
   authorize('ADMIN', 'SUPER_ADMIN'),
+  requireActiveAdmin,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const { url } = req.body as { url?: string };
@@ -548,6 +561,7 @@ router.post(
   '/:id/menu/withdraw',
   authenticate,
   authorize('ADMIN', 'SUPER_ADMIN'),
+  requireActiveAdmin,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
