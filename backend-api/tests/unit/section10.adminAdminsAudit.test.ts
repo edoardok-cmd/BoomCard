@@ -9,7 +9,7 @@
  *   Gap 1  — POST /risk-queue/:id/approve requires notes
  *   Gap 2  — POST /:id/resend-activation writes rich AuditLog entry
  *   Gap 3  — SUPER_ADMIN request approve/reject notifies the requester by email
- *   Gap 4  — PATCH /:id/status requires reason when suspending
+ *   Gap 4  — PATCH /:id/status requires reason when archiving or deactivating
  *   Minor  — GET /admins and GET /admins/:id expose mustChangePassword
  *
  * All Prisma and service interactions are mocked. No DB connection required.
@@ -516,16 +516,16 @@ describe('Gap 3 — SUPER_ADMIN request approve/reject notifies the requester', 
 
 // ─── Gap 4: require reason when suspending ────────────────────────────────────
 
-describe('Gap 4 — PATCH /:id/status requires reason when suspending', () => {
+describe('Gap 4 — PATCH /:id/status requires reason when archiving or deactivating', () => {
   beforeEach(() => {
     userFindUniqueResult = { id: 'u-target', role: 'ADMIN', status: 'ACTIVE' };
   });
 
-  it('returns 400 when suspending without a reason', async () => {
+  it('returns 400 when archiving without a reason', async () => {
     const res = await request(app)
       .patch('/api/admin/admins/u-target/status')
       .set('x-test-role', 'SUPER_ADMIN')
-      .send({ status: 'SUSPENDED' });
+      .send({ status: 'ARCHIVED' });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/reason.*required/i);
@@ -535,17 +535,17 @@ describe('Gap 4 — PATCH /:id/status requires reason when suspending', () => {
     const res = await request(app)
       .patch('/api/admin/admins/u-target/status')
       .set('x-test-role', 'SUPER_ADMIN')
-      .send({ status: 'SUSPENDED', reason: '   ' });
+      .send({ status: 'ARCHIVED', reason: '   ' });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/reason.*required/i);
   });
 
-  it('succeeds when suspending with a reason', async () => {
+  it('succeeds when archiving with a reason', async () => {
     const res = await request(app)
       .patch('/api/admin/admins/u-target/status')
       .set('x-test-role', 'SUPER_ADMIN')
-      .send({ status: 'SUSPENDED', reason: 'Policy violation' });
+      .send({ status: 'ARCHIVED', reason: 'Policy violation' });
 
     expect(res.status).toBe(200);
     const audit = auditCreateCalls.find((c) => c.action === 'admin.status');
@@ -582,12 +582,12 @@ describe('Gap 4 — PATCH /:id/status requires reason when suspending', () => {
     const res = await request(app)
       .patch('/api/admin/admins/u-target/status')
       .set('x-test-role', 'SUPER_ADMIN')
-      .send({ status: 'SUSPENDED', reason: 'Policy violation' });
+      .send({ status: 'ARCHIVED', reason: 'Policy violation' });
 
     expect(res.status).toBe(200);
   });
 
-  it('returns 409 (not 403) when suspending the last active SUPER_ADMIN', async () => {
+  it('returns 409 (not 403) when archiving the last active SUPER_ADMIN', async () => {
     // last-SA guard must take precedence over a generic "not allowed" error;
     // the actor IS a SUPER_ADMIN so the privilege guard passes, but the count
     // of OTHER active SAs is 0 → should 409 with a meaningful message.
@@ -597,7 +597,7 @@ describe('Gap 4 — PATCH /:id/status requires reason when suspending', () => {
     const res = await request(app)
       .patch('/api/admin/admins/u-target/status')
       .set('x-test-role', 'SUPER_ADMIN')
-      .send({ status: 'SUSPENDED', reason: 'Policy violation' });
+      .send({ status: 'ARCHIVED', reason: 'Policy violation' });
 
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/last.*SUPER_ADMIN/i);
