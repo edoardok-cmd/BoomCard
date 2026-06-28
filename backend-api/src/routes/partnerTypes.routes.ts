@@ -161,10 +161,19 @@ router.put(
 
     const validPlans = Object.values(SubscriptionPlan);
     for (const rule of rules) {
+      if (!rule || typeof rule !== 'object') {
+        return res.status(400).json({ success: false, error: 'Each rule must be a non-null object' });
+      }
       if (!validPlans.includes(rule.plan)) {
         return res.status(400).json({
           success: false,
           error: `Invalid plan "${rule.plan}". Must be one of: ${validPlans.join(', ')}`,
+        });
+      }
+      if (typeof rule.canView !== 'boolean' || typeof rule.canRedeem !== 'boolean') {
+        return res.status(400).json({
+          success: false,
+          error: 'each rule must include boolean canView and canRedeem',
         });
       }
     }
