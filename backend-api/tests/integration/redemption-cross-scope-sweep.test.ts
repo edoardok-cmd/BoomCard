@@ -13,7 +13,7 @@
  *   INV-RDM-006 — Partner cannot delete venue (admin-only)
  *   INV-RDM-007 — Partner cannot upload menu images (admin-only)
  *   INV-RDM-008 — Partner cannot clear venue menu (admin-only)
- *   INV-RDM-009 — Partner CAN submit menu URL for own venue; cross-partner access returns 403
+ *   INV-RDM-009 — Partner cannot submit menu URL (admin-only)
  *   INV-RDM-010 — Partner cannot withdraw menu submission (admin-only)
  *   INV-RDM-011 — Dashboard scoped to authenticated user
  *   INV-RDM-055 — Admin-only venue fields not returned in public GET
@@ -578,7 +578,7 @@ describe('INV-RDM-011 — Dashboard scoped to authenticated user', () => {
     rdm011CardId = card.id;
 
     const sticker = await prisma.sticker.findFirst({ where: { venueId: venueAId } });
-    if (!sticker) return;
+    if (!sticker) throw new Error(`INV-RDM-011 setup: no sticker found for venueId ${venueAId}`);
 
     const scan = await prisma.stickerScan.create({
       data: {
@@ -612,7 +612,7 @@ describe('INV-RDM-011 — Dashboard scoped to authenticated user', () => {
   });
 
   it('[XSCOPE] User B cannot see User A scan in GET /api/dashboard/me receipts', async () => {
-    if (!rdm011ScanId) return;
+    if (!rdm011ScanId) throw new Error('INV-RDM-011 beforeAll: sticker not found — isolation test cannot proceed');
     const res = await authRequest(userBToken).get('/api/dashboard/me');
     expect(res.status).toBe(200);
     const receiptIds: string[] = (res.body.receipts as Array<{ id: string }>).map((r) => r.id);
