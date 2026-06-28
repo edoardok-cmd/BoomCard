@@ -32,6 +32,7 @@ async function setupTestPartner(status: PartnerStatus = PartnerStatus.ACTIVE) {
       lastName: 'Partner',
       role: 'PARTNER',
       status: 'ACTIVE',
+      phone: '+359000000000',
     },
   });
 
@@ -435,6 +436,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-QR-SYNC-DURABILITY-1 — QR sync atomic durabili
           lastName: 'NoVenues',
           role: 'PARTNER',
           status: 'ACTIVE',
+          phone: '+359000000001',
         },
       });
 

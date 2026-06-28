@@ -69,6 +69,7 @@ async function createUser() {
       role: 'USER',
       status: 'ACTIVE',
       emailVerified: true,
+      phone: '+359000000000',
     },
   });
   return user;
@@ -86,6 +87,7 @@ async function createPartner() {
       role: 'PARTNER',
       status: 'ACTIVE',
       emailVerified: true,
+      phone: '+359000000001',
     },
   });
   const partner = await prisma.partner.create({
@@ -110,6 +112,7 @@ async function createAdmin() {
       role: 'ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
+      phone: '+359000000002',
     },
   });
   return user;

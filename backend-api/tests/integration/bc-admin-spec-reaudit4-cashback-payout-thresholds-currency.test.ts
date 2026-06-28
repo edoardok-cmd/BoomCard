@@ -68,6 +68,7 @@ describe('BC-ADMIN-SPEC-REAUDIT4-PAYOUT-THRESH-BGN-LEAK-1: Cashback payout-thres
         role: 'SUPER_ADMIN',
         emailVerified: true,
         passwordHash: 'unused',
+        phone: '+359000000000',
       },
     });
     adminToken = generateTestToken(adminUser.id, 'SUPER_ADMIN');
@@ -221,6 +222,7 @@ describe('BC-ADMIN-SPEC-REAUDIT4-PAYOUT-THRESH-BGN-LEAK-1: Cashback payout-thres
           role: 'ADMIN',
           emailVerified: true,
           passwordHash: 'unused',
+          phone: '+359000000001',
         },
       });
       // Track this user for cleanup in afterEach

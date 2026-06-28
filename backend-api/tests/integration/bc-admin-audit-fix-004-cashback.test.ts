@@ -49,6 +49,7 @@ async function createTestFixtures(): Promise<TestFixtures> {
       role: 'SUPER_ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
+      phone: '+359000000000',
     },
   });
 
@@ -74,6 +75,7 @@ async function createTestFixtures(): Promise<TestFixtures> {
       role: 'ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
+      phone: '+359000000001',
     },
   });
 
@@ -108,6 +110,7 @@ async function createTestFixtures(): Promise<TestFixtures> {
       status: 'ACTIVE',
       emailVerified: true,
       iban: 'BG80BCCI00123456789012', // Valid IBAN
+      phone: '+359000000002',
     },
   });
 
@@ -235,6 +238,7 @@ describe('Admin Cashback Audit Fixes (BC-ADMIN-AUDIT-FIX-004)', () => {
           status: 'ACTIVE',
           emailVerified: true,
           iban: 'BG80BCCI00123456789012', // Has IBAN
+          phone: '+359000000003',
         },
       });
       failedPaymentUserId = failedPaymentUser.id;
@@ -276,6 +280,7 @@ describe('Admin Cashback Audit Fixes (BC-ADMIN-AUDIT-FIX-004)', () => {
           status: 'ACTIVE',
           emailVerified: true,
           // No IBAN
+          phone: '+359000000004',
         },
       });
       noIbanUserId = noIbanUser.id;

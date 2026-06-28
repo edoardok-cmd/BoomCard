@@ -68,6 +68,7 @@ async function createAdmin(role: 'ADMIN' | 'SUPER_ADMIN' = 'SUPER_ADMIN') {
       role,
       status: 'ACTIVE',
       emailVerified: true,
+      phone: '+359000000000',
     },
   });
   return user;

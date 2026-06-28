@@ -53,6 +53,7 @@ jest.mock('../../src/lib/prisma', () => {
         { id: 'role-1', key: 'ADMIN', label: 'Admin' },
         { id: 'role-2', key: 'SUPER_ADMIN', label: 'Super Admin' },
       ]),
+      upsert: jest.fn(async () => adminRoleFindUniqueResult ?? { id: 'role-sa', key: 'SUPER_ADMIN', label: 'Super Administrator' }),
     },
     user: {
       findFirst: jest.fn(async () => userFindFirstResult),
@@ -235,7 +236,7 @@ describe('Bug 1 — POST /admins duplicate-email pre-check', () => {
     const res = await request(app)
       .post('/api/admin/admins')
       .set('x-test-role', 'SUPER_ADMIN')
-      .send({ email: 'dup@test.com', password: 'pass123', roleKey: 'ADMIN' });
+      .send({ email: 'dup@test.com', firstName: 'Dup', lastName: 'Admin', phone: '+359000000001', password: 'pass123', roleKey: 'ADMIN' });
 
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/already exists/i);
@@ -247,7 +248,7 @@ describe('Bug 1 — POST /admins duplicate-email pre-check', () => {
     const res = await request(app)
       .post('/api/admin/admins')
       .set('x-test-role', 'SUPER_ADMIN')
-      .send({ email: 'dup@test.com', password: 'pass123', roleKey: 'ADMIN' });
+      .send({ email: 'dup@test.com', firstName: 'Dup', lastName: 'Admin', phone: '+359000000002', password: 'pass123', roleKey: 'ADMIN' });
 
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/already exists/i);
@@ -259,7 +260,7 @@ describe('Bug 1 — POST /admins duplicate-email pre-check', () => {
     const res = await request(app)
       .post('/api/admin/admins')
       .set('x-test-role', 'SUPER_ADMIN')
-      .send({ email: 'new@test.com', password: 'pass123', roleKey: 'ADMIN' });
+      .send({ email: 'new@test.com', firstName: 'New', lastName: 'Admin', phone: '+359000000003', password: 'pass123', roleKey: 'ADMIN' });
 
     expect(res.status).toBe(201);
     expect(res.body.ok).toBe(true);
@@ -424,7 +425,7 @@ describe('Gap 3 — SUPER_ADMIN request approve/reject notifies the requester', 
     email: 'newsuper@test.com',
     firstName: 'New',
     lastName: 'Super',
-    phone: null,
+    phone: '+359000000010',
     passwordHash: '$2b$12$hash',
     requestedById: 'u-other',
     createdAt: new Date(),
@@ -434,6 +435,8 @@ describe('Gap 3 — SUPER_ADMIN request approve/reject notifies the requester', 
   it('sends an approval email to the requester when SUPER_ADMIN request is approved', async () => {
     pendingRequestFindUniqueResult = baseRequest;
     adminRoleFindUniqueResult = { id: 'role-sa', key: 'SUPER_ADMIN', label: 'Super Admin' };
+    // SA-APPROVE-INITIATOR fix added initiator re-check: mock the initiator (requestedById='u-other') as ACTIVE SUPER_ADMIN.
+    userFindUniqueResult = { role: 'SUPER_ADMIN', status: 'ACTIVE' };
 
     const res = await request(app)
       .post('/api/admin/admins/pending-super/psa-1/approve')
@@ -468,6 +471,8 @@ describe('Gap 3 — SUPER_ADMIN request approve/reject notifies the requester', 
       requestedBy: { email: null, firstName: 'Alice', lastName: 'Smith' },
     };
     adminRoleFindUniqueResult = { id: 'role-sa', key: 'SUPER_ADMIN', label: 'Super Admin' };
+    // SA-APPROVE-INITIATOR fix added initiator re-check: mock the initiator (requestedById='u-other') as ACTIVE SUPER_ADMIN.
+    userFindUniqueResult = { role: 'SUPER_ADMIN', status: 'ACTIVE' };
 
     const res = await request(app)
       .post('/api/admin/admins/pending-super/psa-1/approve')

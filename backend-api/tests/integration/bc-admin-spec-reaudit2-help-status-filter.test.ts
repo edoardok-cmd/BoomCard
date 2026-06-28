@@ -85,6 +85,7 @@ async function createSuperAdmin() {
       lastName: 'SuperAdmin',
       role: 'SUPER_ADMIN',
       isVerified: true,
+      phone: '+359000000000',
     },
   });
   userIds.push(user.id);
@@ -103,6 +104,7 @@ async function createAdmin() {
       lastName: 'Admin',
       role: 'ADMIN',
       isVerified: true,
+      phone: '+359000000001',
     },
   });
   userIds.push(user.id);

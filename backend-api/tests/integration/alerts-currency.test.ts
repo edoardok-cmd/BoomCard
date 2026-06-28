@@ -39,6 +39,7 @@ describe('GET /api/admin/alerts currency gating', () => {
         role: 'SUPER_ADMIN',
         emailVerified: true,
         passwordHash: 'unused',
+        phone: '+359000000000',
       },
     });
 

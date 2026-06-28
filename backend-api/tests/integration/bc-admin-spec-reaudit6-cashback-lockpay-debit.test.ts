@@ -64,6 +64,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6-CASHBACK-LOCKPAY-DEBIT-1 (H1 Fix)', () => {
         emailVerified: true,
         firstName: 'Test',
         lastName: 'Admin',
+        phone: '+359000000000',
       },
     });
 

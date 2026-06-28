@@ -30,6 +30,9 @@ describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates ac
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
         emailVerified: true,
+        phone: '+359000000000',
+        firstName: 'Test',
+        lastName: 'User',
       },
     });
 

@@ -33,6 +33,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
     // Pre-cleanup stale users from previous runs before creating fixtures.
     await prisma.pendingSuperAdminRequest.deleteMany({});
     await prisma.helpTicket.deleteMany({ where: { user: { email: { contains: '@test.local' } } } });
+    await prisma.partnerRequestNote.deleteMany({ where: { author: { email: { contains: '@test.local' } } } });
     await prisma.user.deleteMany({ where: { email: { contains: '@test.local' } } });
 
     // Create a SUPER_ADMIN user for auth.
@@ -41,6 +42,9 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
       data: {
         email: 'super-admin-test@test.local',
         passwordHash: 'hash',
+        firstName: 'Super',
+        lastName: 'Admin',
+        phone: '+359000000000',
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
         emailVerified: true,
@@ -52,6 +56,9 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
       data: {
         email: 'admin-test@test.local',
         passwordHash: 'hash',
+        firstName: 'Regular',
+        lastName: 'Admin',
+        phone: '+359000000001',
         role: 'ADMIN',
         status: 'ACTIVE',
         emailVerified: true,
@@ -62,9 +69,10 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
   });
 
   afterAll(async () => {
-    // Delete in FK-safe order: HelpTickets before Users.
+    // Delete in FK-safe order: HelpTickets and PartnerRequestNotes before Users.
     await prisma.pendingSuperAdminRequest.deleteMany({});
     await prisma.helpTicket.deleteMany({ where: { user: { email: { contains: '@test.local' } } } });
+    await prisma.partnerRequestNote.deleteMany({ where: { author: { email: { contains: '@test.local' } } } });
     await prisma.user.deleteMany({ where: { email: { contains: '@test.local' } } });
   });
 
@@ -85,6 +93,9 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
         data: {
           email: testEmail,
           passwordHash: 'hash',
+          firstName: 'Test',
+          lastName: 'User',
+          phone: '+359000000002',
           role: 'ADMIN',
           status: 'ACTIVE',
           emailVerified: true,
@@ -99,6 +110,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           email: testEmail,
           firstName: 'Test',
           lastName: 'User',
+          phone: '+359000000010',
           password: 'SecurePassword123!',
           roleKey: 'SUPER_ADMIN',
         });
@@ -117,6 +129,9 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
         data: {
           email: testEmail,
           passwordHash: 'hash',
+          firstName: 'Super',
+          lastName: 'Collision',
+          phone: '+359000000003',
           role: 'SUPER_ADMIN',
           status: 'ACTIVE',
           emailVerified: true,
@@ -131,6 +146,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           email: testEmail,
           firstName: 'Test',
           lastName: 'User',
+          phone: '+359000000011',
           password: 'SecurePassword123!',
           roleKey: 'SUPER_ADMIN',
         });
@@ -161,6 +177,9 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
         data: {
           email: pendingEmail,
           passwordHash: 'hash',
+          firstName: 'Pending',
+          lastName: 'Collision',
+          phone: '+359000000004',
           role: 'ADMIN',
           status: 'ACTIVE',
           emailVerified: true,
@@ -192,6 +211,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           email: testEmail,
           firstName: 'NoCollision',
           lastName: 'User',
+          phone: '+359000000012',
           password,
           roleKey: 'SUPER_ADMIN',
         });
@@ -235,6 +255,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           email: testEmail,
           firstName: 'First',
           lastName: 'Request',
+          phone: '+359000000013',
           password,
           roleKey: 'SUPER_ADMIN',
         });
@@ -249,6 +270,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           email: testEmail,
           firstName: 'Second',
           lastName: 'Request',
+          phone: '+359000000014',
           password,
           roleKey: 'SUPER_ADMIN',
         });
@@ -286,6 +308,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           email: testEmail,
           firstName: 'New',
           lastName: 'Request',
+          phone: '+359000000015',
           password,
           roleKey: 'SUPER_ADMIN',
         });
@@ -399,6 +422,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           email: testEmail,
           firstName: 'New',
           lastName: 'Request',
+          phone: '+359000000016',
           password,
           roleKey: 'SUPER_ADMIN',
         });

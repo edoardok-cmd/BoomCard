@@ -41,6 +41,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6 — Fraud-bounds SA-only enforcement', () => {
         status: 'ACTIVE',
         passwordHash: 'unused',
         emailVerified: true,
+        phone: '+359000000000',
       },
     });
     adminId = admin.id;
@@ -56,6 +57,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6 — Fraud-bounds SA-only enforcement', () => {
         status: 'ACTIVE',
         passwordHash: 'unused',
         emailVerified: true,
+        phone: '+359000000001',
       },
     });
     superAdminId = superAdmin.id;

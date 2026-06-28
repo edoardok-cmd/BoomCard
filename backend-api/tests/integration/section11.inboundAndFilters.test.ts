@@ -92,6 +92,7 @@ async function createUser(overrides: Partial<{
       passwordHash: hash,
       firstName: overrides.firstName ?? 'Test',
       lastName: 'User',
+      phone: '+359000000000',
       role: (overrides.role as any) ?? 'USER',
       status: 'ACTIVE',
       emailVerified: true,

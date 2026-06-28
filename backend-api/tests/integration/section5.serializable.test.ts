@@ -46,6 +46,7 @@ async function seedPartner(suffix: string) {
       role: 'PARTNER',
       status: UserStatus.ACTIVE,
       emailVerified: true,
+      phone: '+359000000000',
     },
   });
 

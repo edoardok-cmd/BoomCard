@@ -31,6 +31,7 @@ async function createWebSiblings() {
       passwordHash,
       firstName: 'Partner',
       lastName: 'Sibling',
+      phone: '+359000000000',
       role: 'PARTNER',
       status: 'ACTIVE',
       emailVerified: true,
@@ -54,6 +55,7 @@ async function createWebSiblings() {
       passwordHash,
       firstName: 'Admin',
       lastName: 'Sibling',
+      phone: '+359000000001',
       role: 'ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
@@ -173,6 +175,9 @@ describe('Account Switching (web)', () => {
           passwordHash: await bcrypt.hash('VictimPass123!', 10),
           role: 'USER',
           status: 'ACTIVE',
+          phone: '+359000000002',
+          firstName: 'Test',
+          lastName: 'User',
         },
       });
       createdUserIds.push(victim.id);
@@ -213,6 +218,9 @@ describe('Account Switching (web)', () => {
           role: 'PARTNER',
           status: 'ACTIVE',
           emailVerified: true,
+          phone: '+359000000003',
+          firstName: 'Test',
+          lastName: 'User',
         },
       });
       await prisma.partner.create({
@@ -232,6 +240,9 @@ describe('Account Switching (web)', () => {
           passwordHash,
           role: 'ADMIN',
           status: 'SUSPENDED',
+          phone: '+359000000004',
+          firstName: 'Test',
+          lastName: 'User',
         },
       });
       createdUserIds.push(live.id, suspended.id);
@@ -333,13 +344,13 @@ describe('Account Switching (web)', () => {
       const email = `pivot-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@boomcard.bg`;
       const passwordHash = await bcrypt.hash(SHARED_PASSWORD, 10);
       const pPartner = await prisma.user.create({
-        data: { email, passwordHash, role: 'PARTNER', status: 'ACTIVE', emailVerified: true, firstName: 'Pivot', lastName: 'Partner' },
+        data: { email, passwordHash, role: 'PARTNER', status: 'ACTIVE', emailVerified: true, firstName: 'Pivot', lastName: 'Partner', phone: '+359000000005' },
       });
       await prisma.partner.create({
         data: { userId: pPartner.id, businessName: `Pivot ${tag}`, category: 'Restaurant', status: 'ACTIVE', email, verifiedAt: new Date() },
       });
       const pAdmin = await prisma.user.create({
-        data: { email, passwordHash, role: 'ADMIN', status: 'ACTIVE', firstName: 'Pivot', lastName: 'Admin' },
+        data: { email, passwordHash, role: 'ADMIN', status: 'ACTIVE', firstName: 'Pivot', lastName: 'Admin', phone: '+359000000006' },
       });
       createdUserIds.push(pPartner.id, pAdmin.id);
       return { email, pPartnerId: pPartner.id, pAdminId: pAdmin.id };
@@ -420,13 +431,13 @@ describe('Account Switching (web)', () => {
       const email = `no-origin-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@boomcard.bg`;
       const passwordHash = await bcrypt.hash(SHARED_PASSWORD, 10);
       const noOrigPartner = await prisma.user.create({
-        data: { email, passwordHash, role: 'PARTNER', status: 'ACTIVE', emailVerified: true },
+        data: { email, passwordHash, role: 'PARTNER', status: 'ACTIVE', emailVerified: true, phone: '+359000000007', firstName: 'Test', lastName: 'User' },
       });
       await prisma.partner.create({
         data: { userId: noOrigPartner.id, businessName: 'No-Origin Partner', category: 'Retail', status: 'ACTIVE', email, verifiedAt: new Date() },
       });
       const noOrigAdmin = await prisma.user.create({
-        data: { email, passwordHash, role: 'ADMIN', status: 'ACTIVE' },
+        data: { email, passwordHash, role: 'ADMIN', status: 'ACTIVE', phone: '+359000000008', firstName: 'Test', lastName: 'User' },
       });
       createdUserIds.push(noOrigPartner.id, noOrigAdmin.id);
 
@@ -468,13 +479,13 @@ describe('Account Switching (web)', () => {
       const burstEmail = `burst-${Date.now()}@boomcard.bg`;
       const passwordHash = await bcrypt.hash(SHARED_PASSWORD, 10);
       const a = await prisma.user.create({
-        data: { email: burstEmail, passwordHash, role: 'PARTNER', status: 'ACTIVE', emailVerified: true },
+        data: { email: burstEmail, passwordHash, role: 'PARTNER', status: 'ACTIVE', emailVerified: true, phone: '+359000000009', firstName: 'Test', lastName: 'User' },
       });
       await prisma.partner.create({
         data: { userId: a.id, businessName: 'Burst A', category: 'Retail', status: 'ACTIVE', email: burstEmail, verifiedAt: new Date() },
       });
       const b = await prisma.user.create({
-        data: { email: burstEmail, passwordHash, role: 'ADMIN', status: 'ACTIVE' },
+        data: { email: burstEmail, passwordHash, role: 'ADMIN', status: 'ACTIVE', phone: '+359000000010', firstName: 'Test', lastName: 'User' },
       });
       createdUserIds.push(a.id, b.id);
 
@@ -512,13 +523,13 @@ describe('Account Switching (web)', () => {
       const raceEmail = `race-${Date.now()}@boomcard.bg`;
       const passwordHash = await bcrypt.hash(SHARED_PASSWORD, 10);
       const pA = await prisma.user.create({
-        data: { email: raceEmail, passwordHash, role: 'PARTNER', status: 'ACTIVE', emailVerified: true },
+        data: { email: raceEmail, passwordHash, role: 'PARTNER', status: 'ACTIVE', emailVerified: true, phone: '+359000000011', firstName: 'Test', lastName: 'User' },
       });
       await prisma.partner.create({
         data: { userId: pA.id, businessName: 'Race Partner', category: 'Retail', status: 'ACTIVE', email: raceEmail, verifiedAt: new Date() },
       });
       const aA = await prisma.user.create({
-        data: { email: raceEmail, passwordHash, role: 'ADMIN', status: 'ACTIVE' },
+        data: { email: raceEmail, passwordHash, role: 'ADMIN', status: 'ACTIVE', phone: '+359000000012', firstName: 'Test', lastName: 'User' },
       });
       createdUserIds.push(pA.id, aA.id);
 

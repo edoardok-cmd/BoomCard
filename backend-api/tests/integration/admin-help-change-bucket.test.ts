@@ -65,11 +65,13 @@ async function createAdmin() {
   const user = await prisma.user.create({
     data: {
       email: `admin-${suffix}@boomcard.bg`,
-      hashedPassword: hash,
+      passwordHash: hash,
       firstName: 'Test',
       lastName: 'Admin',
       role: 'SUPER_ADMIN',
-      isVerified: true,
+      status: 'ACTIVE',
+      emailVerified: true,
+      phone: '+359000000000',
     },
   });
   userIds.push(user.id);

@@ -82,6 +82,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-SA-APPROVE-INITIATOR-2: Initiator status valida
         email: `sa-approve-initiator-${opts.suffix}@test.local`,
         firstName: opts.name,
         lastName: 'Test',
+        phone: '+359000000000',
         role: 'SUPER_ADMIN',
         status,
         emailVerified: true,
@@ -118,6 +119,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-SA-APPROVE-INITIATOR-2: Initiator status valida
         email: opts.email,
         firstName: opts.firstName || 'NewAdmin',
         lastName: opts.lastName || 'Test',
+        phone: '+359000000010',
         password: 'TestPassword123!@#',
         roleKey: 'SUPER_ADMIN',
       });

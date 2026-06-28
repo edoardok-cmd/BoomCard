@@ -76,6 +76,7 @@ describe('BC-ALIGN-PARTNER: Partner Account Access Rules', () => {
           emailVerified: true,
           firstName: 'Active',
           lastName: 'Partner',
+          phone: '+359000000000',
         },
       });
 
@@ -131,6 +132,7 @@ describe('BC-ALIGN-PARTNER: Partner Account Access Rules', () => {
           emailVerified: true,
           firstName: 'Pending',
           lastName: 'Partner',
+          phone: '+359000000001',
         },
       });
 

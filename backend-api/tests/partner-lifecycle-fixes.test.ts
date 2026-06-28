@@ -35,6 +35,7 @@ async function createTestUser(email: string, role: string = 'PARTNER') {
       passwordHash: 'hash',
       firstName: role,
       lastName: 'Test',
+      phone: '+359000000000',
       role,
       status: 'ACTIVE',
       emailVerified: true,
@@ -126,6 +127,9 @@ describe('Partner Lifecycle Bug Fixes', () => {
       data: {
         email: `sa-lifecycle-${Date.now()}@test.local`,
         passwordHash: 'hash',
+        firstName: 'Super',
+        lastName: 'Admin',
+        phone: '+359000000001',
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
         emailVerified: true,

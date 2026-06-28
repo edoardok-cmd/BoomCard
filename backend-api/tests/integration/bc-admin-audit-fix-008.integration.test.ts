@@ -55,6 +55,7 @@ beforeAll(async () => {
       emailVerified: true,
       firstName: 'Test',
       lastName: 'Admin',
+      phone: '+359000000000',
     },
   });
 
@@ -75,6 +76,7 @@ beforeAll(async () => {
       emailVerified: true,
       firstName: 'Active',
       lastName: 'Partner',
+      phone: '+359000000001',
     },
   });
 
@@ -99,6 +101,7 @@ beforeAll(async () => {
       emailVerified: true,
       firstName: 'Inactive',
       lastName: 'Partner',
+      phone: '+359000000002',
     },
   });
 
@@ -123,6 +126,7 @@ beforeAll(async () => {
       emailVerified: true,
       firstName: 'Suspended',
       lastName: 'Partner',
+      phone: '+359000000003',
     },
   });
 

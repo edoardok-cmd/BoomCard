@@ -50,6 +50,7 @@ async function createFixtures(): Promise<Fixtures> {
       passwordHash: adminHash,
       firstName: 'Imp',
       lastName: 'Admin',
+      phone: '+359000000000',
       role: 'ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
@@ -62,6 +63,7 @@ async function createFixtures(): Promise<Fixtures> {
       passwordHash: partnerHash,
       firstName: 'Imp',
       lastName: 'Partner',
+      phone: '+359000000001',
       role: 'PARTNER',
       status: 'ACTIVE',
       emailVerified: true,
@@ -83,6 +85,7 @@ async function createFixtures(): Promise<Fixtures> {
       passwordHash: userHash,
       firstName: 'Imp',
       lastName: 'User',
+      phone: '+359000000002',
       role: 'USER',
       status: 'ACTIVE',
       emailVerified: true,
@@ -95,6 +98,7 @@ async function createFixtures(): Promise<Fixtures> {
       passwordHash: partnerHash,
       firstName: 'Susp',
       lastName: 'Partner',
+      phone: '+359000000003',
       role: 'PARTNER',
       status: 'SUSPENDED',
       emailVerified: true,
@@ -505,6 +509,7 @@ describe('Admin Impersonation', () => {
           role: 'SUPER_ADMIN',
           status: 'ACTIVE',
           emailVerified: true,
+          phone: '+359000000000',
         },
       });
       createdUserIds.push(superAdmin.id);
@@ -615,7 +620,8 @@ describe('Admin Impersonation', () => {
             role: 'ADMIN',
             status: 'ACTIVE',
             emailVerified: true,
-          },
+          phone: '+359000000001',
+        },
         }),
         prisma.user.create({
           data: {
@@ -626,7 +632,8 @@ describe('Admin Impersonation', () => {
             role: 'ADMIN',
             status: 'ACTIVE',
             emailVerified: true,
-          },
+          phone: '+359000000002',
+        },
         }),
       ]);
       createdUserIds.push(bystander.id, caller.id);

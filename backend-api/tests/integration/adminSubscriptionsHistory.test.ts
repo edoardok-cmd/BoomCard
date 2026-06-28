@@ -27,6 +27,9 @@ describe('BC-ADMIN-AUDIT-FIX-006: Per-subscription payment history', () => {
         role: 'USER',
         status: 'ACTIVE',
         emailVerified: true,
+        phone: '+359000000000',
+        firstName: 'Test',
+        lastName: 'User',
       },
     });
     userId = user.id;

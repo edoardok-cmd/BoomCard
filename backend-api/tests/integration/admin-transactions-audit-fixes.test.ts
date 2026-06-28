@@ -39,6 +39,7 @@ async function createTestFixtures(): Promise<TestFixtures> {
       role: 'SUPER_ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
+      phone: '+359000000000',
     },
   });
 
@@ -59,6 +60,7 @@ async function createTestFixtures(): Promise<TestFixtures> {
       role: 'USER',
       status: 'ACTIVE',
       emailVerified: true,
+      phone: '+359000000001',
     },
   });
 
@@ -193,6 +195,7 @@ describe('Admin Transactions Audit Fixes (BC-ADMIN-AUDIT-FIX-007)', () => {
           role: 'USER',
           status: 'ACTIVE',
           emailVerified: true,
+          phone: '+359000000002',
         },
       });
       userId = user.id;

@@ -50,6 +50,7 @@ async function createTestFixtures(): Promise<TestFixtures> {
       role: 'ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
+      phone: '+359000000000',
     },
   });
 
@@ -63,6 +64,7 @@ async function createTestFixtures(): Promise<TestFixtures> {
       role: 'USER',
       status: 'ACTIVE',
       emailVerified: true,
+      phone: '+359000000001',
     },
   });
 
@@ -221,6 +223,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-VOID-ACTOR-FALLBACK-1', () => {
           role: 'USER',
           status: 'ACTIVE',
           emailVerified: true,
+          phone: '+359000000002',
         },
       });
 

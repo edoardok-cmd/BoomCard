@@ -66,6 +66,7 @@ async function createFixtures(): Promise<Fixtures> {
       role: 'SUPER_ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
+      phone: '+359000000000',
     },
   });
 
@@ -78,6 +79,7 @@ async function createFixtures(): Promise<Fixtures> {
       role: 'PARTNER',
       status: 'ACTIVE',
       emailVerified: true,
+      phone: '+359000000001',
     },
   });
 

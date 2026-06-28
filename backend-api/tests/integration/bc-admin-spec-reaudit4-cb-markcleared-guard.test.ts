@@ -44,6 +44,7 @@ async function createTestFixtures(): Promise<TestFixtures> {
       role: 'USER',
       status: 'ACTIVE',
       emailVerified: true,
+      phone: '+359000000000',
     },
   });
 

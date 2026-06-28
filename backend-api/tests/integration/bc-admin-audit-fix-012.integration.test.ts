@@ -60,6 +60,7 @@ beforeAll(async () => {
       emailVerified: true,
       firstName: 'Test',
       lastName: 'Admin',
+      phone: '+359000000000',
     },
   });
 

@@ -77,6 +77,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-SA-LASTACTIVE-GUARD-1: ACTIVE-only liveness pre
         email: `lastactive-guard-${opts.suffix}@test.local`,
         firstName: opts.name,
         lastName: 'Test',
+        phone: '+359000000000',
         role: 'SUPER_ADMIN',
         status,
         emailVerified: true,

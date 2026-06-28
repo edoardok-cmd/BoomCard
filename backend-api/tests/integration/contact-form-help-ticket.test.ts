@@ -84,6 +84,7 @@ async function createAdmin() {
       role: 'ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
+      phone: '+359000000000',
     },
   });
   userIds.push(user.id);

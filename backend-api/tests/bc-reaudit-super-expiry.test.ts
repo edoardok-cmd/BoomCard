@@ -38,6 +38,8 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
         email: 'initiator@test.local',
         firstName: 'Initiator',
         lastName: 'SA',
+        phone: '+359000000000',
+        passwordHash: 'hashed_password',
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
         emailVerified: true,
@@ -51,6 +53,8 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
         email: 'approver@test.local',
         firstName: 'Approver',
         lastName: 'SA',
+        phone: '+359000000001',
+        passwordHash: 'hashed_password',
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
         emailVerified: true,
@@ -192,6 +196,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
           email: testEmail,
           firstName: 'Second',
           lastName: 'Attempt',
+          phone: '+359000000010',
           password: 'TestPassword123!',
           roleKey: 'SUPER_ADMIN',
         });
@@ -225,6 +230,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
           email: testEmail,
           firstName: 'Second',
           lastName: 'Attempt',
+          phone: '+359000000010',
           password: 'TestPassword123!',
           roleKey: 'SUPER_ADMIN',
         });
@@ -307,6 +313,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
           email: testEmail,
           firstName: 'Life',
           lastName: 'Cycle',
+          phone: '+359000000011',
           password: 'TestPassword123!',
           roleKey: 'SUPER_ADMIN',
         });
@@ -334,6 +341,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
           email: testEmail,
           firstName: 'Life',
           lastName: 'Cycle',
+          phone: '+359000000011',
           password: 'TestPassword123!',
           roleKey: 'SUPER_ADMIN',
         });

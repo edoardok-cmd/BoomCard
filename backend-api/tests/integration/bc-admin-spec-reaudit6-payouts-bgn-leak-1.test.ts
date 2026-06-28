@@ -81,6 +81,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6-PAYOUTS-BGN-LEAK-1: Payouts currency display ga
         role: 'SUPER_ADMIN',
         emailVerified: true,
         passwordHash: 'unused',
+        phone: '+359000000000',
       },
     });
     adminToken = generateTestToken(adminUser.id, 'SUPER_ADMIN');
@@ -105,6 +106,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6-PAYOUTS-BGN-LEAK-1: Payouts currency display ga
               currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
             },
           },
+          phone: '+359000000001',
         },
       });
       testUserIds.push(user.id);
@@ -392,6 +394,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6-PAYOUTS-BGN-LEAK-1: Payouts currency display ga
               currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
             },
           },
+          phone: '+359000000002',
         },
       });
 

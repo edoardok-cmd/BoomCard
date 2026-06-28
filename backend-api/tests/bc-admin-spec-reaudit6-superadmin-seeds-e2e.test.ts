@@ -104,6 +104,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6-SUPERADMIN-SEEDS-E2E: Seeding and approval flow
         email: `e2e-sa-${suffix}@test.local`,
         firstName: 'E2E',
         lastName: 'SA',
+        phone: '+359000000000',
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
         emailVerified: true,
@@ -181,6 +182,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6-SUPERADMIN-SEEDS-E2E: Seeding and approval flow
           email: newAdminEmail,
           firstName: 'E2ENewAdmin',
           lastName: 'Test',
+          phone: '+359000000010',
           password: 'E2ETestPassword123!@#',
           roleKey: 'SUPER_ADMIN',
         });
@@ -235,6 +237,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6-SUPERADMIN-SEEDS-E2E: Seeding and approval flow
           email: newAdminEmail,
           firstName: 'E2ESelfApprove',
           lastName: 'Test',
+          phone: '+359000000011',
           password: 'E2ETestPassword123!@#',
           roleKey: 'SUPER_ADMIN',
         });
@@ -337,6 +340,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6-SUPERADMIN-SEEDS-E2E: Seeding and approval flow
           email: newAdminEmail,
           firstName: 'E2ENo500',
           lastName: 'Test',
+          phone: '+359000000012',
           password: 'E2ETestPassword123!@#',
           roleKey: 'SUPER_ADMIN',
         });
