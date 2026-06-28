@@ -32,6 +32,14 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
   beforeAll(async () => {
     app = await createTestApp();
 
+    // Pre-cleanup: remove stale test users from previous runs.
+    await prisma.pendingSuperAdminRequest.deleteMany({
+      where: { requestedBy: { email: { in: ['initiator@test.local', 'approver@test.local'] } } },
+    });
+    await prisma.user.deleteMany({
+      where: { email: { in: ['initiator@test.local', 'approver@test.local'] } },
+    });
+
     // Create two SUPER_ADMINs
     const initiator = await prisma.user.create({
       data: {
@@ -69,6 +77,13 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
 
   afterAll(async () => {
     await app.close();
+    // Clean up test users and their pending requests.
+    await prisma.pendingSuperAdminRequest.deleteMany({
+      where: { requestedBy: { email: { in: ['initiator@test.local', 'approver@test.local'] } } },
+    });
+    await prisma.user.deleteMany({
+      where: { email: { in: ['initiator@test.local', 'approver@test.local'] } },
+    });
     await prisma.$disconnect();
   });
 

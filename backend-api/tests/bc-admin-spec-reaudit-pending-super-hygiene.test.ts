@@ -171,6 +171,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           email: pendingEmail,
           firstName: 'Pending',
           lastName: 'User',
+          phone: '+359000000005',
           passwordHash: 'hash',
           status: 'PENDING',
           expiresAt: new Date(Date.now() + PENDING_SUPER_ADMIN_TTL_MS),
