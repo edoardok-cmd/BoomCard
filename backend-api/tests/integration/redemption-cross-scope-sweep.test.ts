@@ -413,16 +413,8 @@ describe('INV-RDM-004..010 — Partner cannot mutate venue or menu (admin-only r
     expect(res.status).toBe(403);
   });
 
-  it('[POSITIVE] INV-RDM-009: Partner CAN submit menu URL for own venue — POST /api/venues/:id/menu/submit returns 200 or 400 (not 403)', async () => {
-    if (!throwawayVenueId) { return; }
+  it('[XSCOPE] INV-RDM-009: Partner cannot submit menu URL — POST /api/venues/:id/menu/submit returns 403', async () => {
     const res = await authRequest(partnerAToken)
-      .post(`/api/venues/${throwawayVenueId}/menu/submit`)
-      .send({ url: 'https://example.com/menu.pdf' });
-    expect([200, 400]).toContain(res.status);
-  });
-
-  it('[XSCOPE] INV-RDM-009-CROSS: Partner CANNOT submit menu URL for another partner\'s venue — returns 403', async () => {
-    const res = await authRequest(partnerBToken)
       .post(`/api/venues/${venueAId}/menu/submit`)
       .send({ url: 'https://example.com/menu.pdf' });
     expect(res.status).toBe(403);
@@ -430,12 +422,6 @@ describe('INV-RDM-004..010 — Partner cannot mutate venue or menu (admin-only r
 
   it('[XSCOPE] INV-RDM-010: Partner cannot withdraw menu submission — POST /api/venues/:id/menu/withdraw returns 403', async () => {
     const res = await authRequest(partnerAToken)
-      .post(`/api/venues/${venueAId}/menu/withdraw`);
-    expect(res.status).toBe(403);
-  });
-
-  it('[XSCOPE] INV-RDM-010-CROSS: Partner CANNOT withdraw menu submission for another partner\'s venue — returns 403', async () => {
-    const res = await authRequest(partnerBToken)
       .post(`/api/venues/${venueAId}/menu/withdraw`);
     expect(res.status).toBe(403);
   });
