@@ -73,6 +73,9 @@ jobs:
 
           if grep -q "§6" "$PLAN"; then
             echo "OK: docs/specs/boomcard-convergence-plan.md exists and contains §6 prompts."
+            grep -q "BC-ADMIN-SPEC-REAUDIT" "$PLAN" || { echo "ERROR: boomcard-convergence-plan.md §6 missing BC-ADMIN-SPEC-REAUDIT prompt"; exit 1; }
+            grep -q "BC-PARTNER-SPEC-REAUDIT" "$PLAN" || { echo "ERROR: boomcard-convergence-plan.md §6 missing BC-PARTNER-SPEC-REAUDIT prompt"; exit 1; }
+            grep -q "BC-USER-SPEC-REAUDIT" "$PLAN" || { echo "ERROR: boomcard-convergence-plan.md §6 missing BC-USER-SPEC-REAUDIT prompt"; exit 1; }
           else
             echo "FAIL: docs/specs/boomcard-convergence-plan.md exists but is missing §6 (Re-audit prompts)."
             echo ""
