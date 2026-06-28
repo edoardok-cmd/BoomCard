@@ -48,6 +48,9 @@ let userAUserId: string;
 let userAToken: string;
 let userBUserId: string;
 let userBToken: string;
+// Admin credentials for positive-control tests in INV-RDM-004..010
+let adminToken: string;
+let adminUserId: string;
 
 // Venues and stickers owned by Partner A / Partner B
 let venueAId: string;
@@ -170,6 +173,24 @@ beforeAll(async () => {
   cleanupUserIds.push(userBUserId);
   await prisma.user.update({ where: { id: userBUserId }, data: { status: 'ACTIVE' } });
   await createTestSubscription(userBUserId, 'BASIC', 'ACTIVE');
+
+  // Admin user for positive-control tests in INV-RDM-004..010.
+  // Register normally, then elevate role+status, then re-login to get a fresh
+  // JWT that carries role=ADMIN through the auth.middleware.ts token check.
+  const adminRegistered = await createTestUser();
+  adminUserId = adminRegistered.user.id;
+  cleanupUserIds.push(adminUserId);
+  await prisma.user.update({
+    where: { id: adminUserId },
+    data: { role: 'ADMIN', status: 'ACTIVE' },
+  });
+  const adminLoginRes = await request(app)
+    .post('/api/auth/login')
+    .send({ email: adminRegistered.email, password: adminRegistered.password, clientType: 'web' });
+  if (adminLoginRes.status !== 200) {
+    throw new Error(`Admin login failed (${adminLoginRes.status}): ${JSON.stringify(adminLoginRes.body)}`);
+  }
+  adminToken = adminLoginRes.body.data.accessToken;
 }, 30_000);
 
 afterAll(async () => {
@@ -408,6 +429,38 @@ describe('INV-RDM-004..010 — Partner cannot mutate venue or menu (admin-only r
     const res = await authRequest(partnerAToken)
       .post(`/api/venues/${venueAId}/menu/withdraw`);
     expect(res.status).toBe(403);
+  });
+
+  // ─── Positive control: ADMIN can DELETE a venue ───────────────────────────
+  // Creates a fresh venue belonging to Partner A so venueAId is not destroyed.
+  // The venue is deleted by the test itself; no afterAll cleanup needed for it.
+  it('[POSITIVE] INV-RDM-006: ADMIN can delete a venue — DELETE /api/venues/:id returns 200', async () => {
+    // Get Partner A's partner record to use as the owner of the ephemeral venue
+    const partnerRecord = await prisma.partner.findFirst({
+      where: { userId: partnerAUserId },
+      select: { id: true },
+    });
+    if (!partnerRecord) {
+      throw new Error('Positive-control setup: Partner A record not found');
+    }
+
+    // Create a fresh venue that this test will delete — venueAId is intentionally
+    // left intact so the six [XSCOPE] tests above continue to work.
+    const ephemeralVenue = await prisma.venue.create({
+      data: {
+        partnerId: partnerRecord.id,
+        name: `Ephemeral Venue ${Date.now()}`,
+        address: '99 Delete Me St',
+        city: 'Sofia',
+        latitude: 42.6977,
+        longitude: 23.3219,
+        venueStatus: 'ACTIVE',
+      },
+    });
+
+    const res = await authRequest(adminToken).delete(`/api/venues/${ephemeralVenue.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
   });
 });
 
