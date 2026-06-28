@@ -1,0 +1,1146 @@
+{
+  "generated": "run UPDATE_ENDPOINT_MANIFEST=1 to refresh",
+  "count": 228,
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/admins/",
+      "coverage": "matrix:INV-AUTH-001,INV-ROLE-019"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/admins/:id/approve",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/:id/permissions",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/admins/:id/permissions/overrides",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/admins/:id/reset-2fa",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/admins/:id/roles/:roleKey",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/admins/:id/status",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/audit",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/critical-actions",
+      "coverage": "matrix:INV-ROLE-021"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/admins/critical-actions",
+      "coverage": "matrix:INV-ROLE-010"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/admins/critical-actions/:id/approve",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/admins/critical-actions/:id/reject",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/pending",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/pending-all",
+      "coverage": "matrix:INV-ROLE-021"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/pending-super",
+      "coverage": "matrix:INV-AUTH-005"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/admins/pending-super/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/admins/pending-super/:id/approve",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/permissions/catalog",
+      "coverage": "matrix:INV-ROLE-004"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/roles",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/alerts/",
+      "coverage": "matrix:INV-ROLE-011"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/bulk-import/",
+      "coverage": "review"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/bulk-import/partners",
+      "coverage": "review"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/bulk-import/template",
+      "coverage": "review"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/bulk-import/template/partners",
+      "coverage": "review"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/cashback/:partnerId/:month/mark-paid",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/cashback/:partnerId/:month/receipts",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/cashback/:partnerId/remind",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/cashback/backfill-expiry",
+      "coverage": "review"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/cashback/entries",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/cashback/entries/:id/approve",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/cashback/entries/:id/expire",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/cashback/entries/:id/lock",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/cashback/entries/:id/pay",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/cashback/entries/:id/void",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/cashback/entries/export",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/cashback/payout-thresholds",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/cashback/rates",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/cashback/rates",
+      "coverage": "matrix:INV-FIN-012"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/cashback/rates/current",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/cashback/rates/snapshot/:iso",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/cashback/stats",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/cashback/subscriber/:userId",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/cashback/summary",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/control/dispute-cases",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/control/dispute-cases",
+      "coverage": "matrix:INV-SM-DISP-004"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/control/dispute-cases/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/control/dispute-cases/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/control/dispute-cases/:id/notes",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/control/dispute-cases/:id/notes",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/control/disputes",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/control/disputes/:id/approve",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/control/disputes/:id/reject",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/control/receipt-templates",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/control/receipt-templates",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/control/receipt-templates/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/control/receipt-templates/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/control/risk-queue",
+      "coverage": "matrix:INV-RISK-009"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/control/risk-queue/:id/approve",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/control/risk-queue/:id/reject",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/control/risk-queue/bulk-reject",
+      "coverage": "matrix:INV-SM-CASH-002"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/control/risk-queue/summary",
+      "coverage": "matrix:INV-RISK-001"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/control/security",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/dashboard/",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/finance/export",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/finance/invoices",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/finance/invoices/:id/notes",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/finance/invoices/:id/pay",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/finance/invoices/:id/status",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/finance/invoices/backfill-numbers",
+      "coverage": "matrix:INV-FIN-011"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/finance/invoices/generate",
+      "coverage": "matrix:INV-SM-INV-003,INV-SM-INV-004,INV-FIN-011"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/finance/payout-thresholds",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/finance/periods",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/finance/report-partners",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/finance/reporting-periods",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/finance/reporting-periods",
+      "coverage": "matrix:INV-SM-INV-001"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/finance/reporting-periods/:month",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/finance/reporting-periods/:month/notes",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/finance/reporting-periods/:month/status",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/finance/reports",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/help/",
+      "coverage": "matrix:INV-HELP-009"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/help/",
+      "coverage": "matrix:INV-HELP-003,INV-SM-HELP-001"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/help/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/help/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/help/:id/assign",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/help/:id/cancel",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/help/:id/reject",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/help/:id/replies",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/help/:id/reply",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/help/count",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/help/mine",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/automations",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/marketing/automations",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/marketing/automations/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/automations/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/marketing/automations/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/marketing/automations/:id/status",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/marketing/automations/ensure-defaults",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/campaigns",
+      "coverage": "matrix:INV-SM-CAMP-002"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/marketing/campaigns",
+      "coverage": "matrix:INV-SM-CAMP-001,INV-SM-CAMP-002"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/marketing/campaigns/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/campaigns/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/marketing/campaigns/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/marketing/campaigns/:id/status",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/lists",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/marketing/lists",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/marketing/lists/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/lists/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/marketing/lists/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/lists/:id/members",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/marketing/lists/:id/members",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/marketing/lists/:id/members/:memberId",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/marketing/lists/ensure-defaults",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/partners/search",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/templates",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/marketing/templates",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/marketing/templates/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/templates/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/marketing/templates/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/users/search",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/me/",
+      "coverage": "matrix:INV-ROLE-012"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/me/",
+      "coverage": "matrix:INV-ROLE-012"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/me/2fa",
+      "coverage": "matrix:INV-AUTH-018"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/me/2fa/enable",
+      "coverage": "matrix:INV-AUTH-018"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/me/2fa/recovery-codes/regenerate",
+      "coverage": "matrix:INV-AUTH-018"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/me/2fa/setup",
+      "coverage": "matrix:INV-AUTH-018"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/me/avatar",
+      "coverage": "matrix:INV-ROLE-012"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/me/email-change/confirm",
+      "coverage": "matrix:INV-AUTH-017"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/me/email-change/request",
+      "coverage": "matrix:INV-AUTH-017"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/me/login-history",
+      "coverage": "matrix:INV-ROLE-012"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/me/password",
+      "coverage": "matrix:INV-ROLE-012"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/me/sessions",
+      "coverage": "matrix:INV-ROLE-012"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/me/sessions",
+      "coverage": "matrix:INV-ROLE-012"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/me/sessions/:tokenId",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/menus/pending",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-requests/",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-requests/_assignable-admins",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-requests/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-requests/:id/activation-links",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/partner-requests/:id/approve",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/partner-requests/:id/assign",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-requests/:id/audit",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/partner-requests/:id/category",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/partner-requests/:id/contract",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/partner-requests/:id/discount-rate",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-requests/:id/notes",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/partner-requests/:id/notes",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-requests/:id/onboarding-readiness",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/partner-requests/:id/partner-status",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/partner-requests/:id/propose-discount-rate",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/partner-requests/:id/reject",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/partner-requests/:id/resend-activation",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/partner-requests/:id/risk-flag",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/partner-requests/:id/status",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-requests/:id/status-history",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/partner-requests/:id/visibility",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-types/",
+      "coverage": "review"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/partner-types/",
+      "coverage": "review"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/partner-types/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/partner-types/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-types/:id/plan-access",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/partner-types/:id/plan-access",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/payouts/",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/payouts/:id/approve",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/payouts/:id/complete",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/payouts/:id/fail",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/payouts/:id/hold",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/payouts/:id/reject",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/payouts/:id/release",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/payouts/:id/reset-stuck",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/payouts/bulk-approve",
+      "coverage": "matrix:INV-FIN-001,INV-FIN-004"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/currency-display-mode",
+      "coverage": "matrix:INV-CUR-026"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/fraud-rules",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/settings/fraud-rules",
+      "coverage": "matrix:INV-ROLE-007"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/settings/fraud-rules/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/settings/fraud-rules/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/fraud-rules/:id/overrides",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/settings/fraud-rules/:id/overrides",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/settings/fraud-rules/:id/overrides/:overId",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/mobile-app",
+      "coverage": "review"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/settings/mobile-app",
+      "coverage": "review"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/mobile-app/history",
+      "coverage": "review"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/settings/mobile-errors",
+      "coverage": "review"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/mobile-errors",
+      "coverage": "review"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/payout-thresholds",
+      "coverage": "matrix:INV-FIN-009,INV-CUR-025"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/settings/payout-thresholds",
+      "coverage": "matrix:INV-FIN-009"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/payout-thresholds/history",
+      "coverage": "matrix:INV-CUR-025"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/system",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/settings/system",
+      "coverage": "matrix:INV-CUR-026"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/system/history",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscribers/",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscribers/:userId",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/subscribers/:userId/account",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/subscribers/:userId/cancel",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscribers/:userId/cashback",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscribers/:userId/login-history",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/subscribers/:userId/plan",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/subscribers/:userId/profile",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/subscribers/:userId/refund",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscribers/:userId/refund-preview",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/subscribers/:userId/restore",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/subscribers/:userId/sessions",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/subscribers/:userId/status",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscribers/export",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscriptions/",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/subscriptions/:id/auto-renewal",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/subscriptions/:id/cancel",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/subscriptions/:id/reactivate",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/subscriptions/:id/resume",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscriptions/export",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscriptions/pending",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/subscriptions/pending/:id",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/subscriptions/pending/:id/resend-token",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscriptions/user/:userId/history",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/transactions/",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/transactions/adjust",
+      "coverage": "matrix:INV-FIN-010,INV-CUR-021"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/transactions/business",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/transactions/business/partner-risk/:partnerId",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/transactions/business/stats",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/transactions/stats",
+      "coverage": "sweep:CUR"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/venues/",
+      "coverage": "matrix:INV-ROLE-014"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/venues/:id/menu",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/venues/:id/menu",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/venues/:id/menu/approve",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/venues/:id/menu/reject",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/venues/:id/status",
+      "coverage": "sweep:INPUT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/venues/:id/status-history",
+      "coverage": "sweep:INPUT"
+    }
+  ]
+}

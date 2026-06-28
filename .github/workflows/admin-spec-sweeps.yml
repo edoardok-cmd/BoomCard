@@ -68,10 +68,16 @@ jobs:
       # No continue-on-error: a red sweep MUST fail the build. --runInBand keeps the
       # route-introspection deterministic. Add new <class>-sweep.test.ts files here as
       # more recurring finding-classes are converted to exhaustive sweeps.
-      - name: Run admin-spec coverage sweeps
+      #
+      # admin-endpoint-coverage enforces coverage BREADTH: a new admin route that
+      # isn't accounted for in tests/admin-endpoint-manifest.json fails the build,
+      # so no endpoint can be added without being classified/reviewed. The two
+      # sweeps enforce coverage DEPTH for the CUR + INPUT classes.
+      - name: Run admin-spec coverage sweeps + endpoint-coverage gate
         working-directory: backend-api
         run: >-
           npx jest
           tests/integration/admin-currency-leak-sweep.test.ts
           tests/integration/admin-uuid-500-sweep.test.ts
+          tests/integration/admin-endpoint-coverage.test.ts
           --runInBand --ci
