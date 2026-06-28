@@ -2062,16 +2062,15 @@ router.post(
         },
       });
 
-      // Spec §5.2 v1.1 — admin-onboarded partners get status=ACTIVE but
-      // verifiedAt stays null. We issue an activation link below so the
-      // partner can set their own password (admin onboarding generates a
-      // random temp password the partner never sees). A request-body
-      // status override is still honoured (bulk-import with explicit
-      // PENDING etc.), but verifiedAt is NEVER stamped by admin onboard —
+      // Spec §5.2 v1.1 — admin-onboarded partners start as PENDING (canonical
+      // "Inactive") because the partner has not yet consumed their activation
+      // link. We issue an activation link below so the partner can set their
+      // own password (admin onboarding generates a random temp password the
+      // partner never sees). Once the partner follows the link,
+      // activationLinkService.consume() advances the status PENDING → ACTIVE
+      // and stamps verifiedAt. verifiedAt is NEVER stamped by admin onboard —
       // only by activationLinkService.consume.
-      const resolvedStatus = status && Object.values(PartnerStatus).includes(status)
-        ? (status as PartnerStatus)
-        : PartnerStatus.ACTIVE;
+      const resolvedStatus = PartnerStatus.PENDING;
 
       const partner = await tx.partner.create({
         data: {
@@ -2151,7 +2150,7 @@ router.post(
     // without the activation link they would have no way to log in. They
     // can't log in until verifiedAt is stamped anyway (login gate), so this
     // is also the only path that brings them online.
-    if (result.partner.status === PartnerStatus.ACTIVE) {
+    if (result.partner.status !== PartnerStatus.ACTIVE && !result.partner.verifiedAt) {
       try {
         const issued = await issueActivationLink({
           partnerId: result.partner.id,
