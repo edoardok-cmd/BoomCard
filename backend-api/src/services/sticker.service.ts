@@ -2205,18 +2205,6 @@ class StickerService {
       logger.error(`Failed to send notification for sticker scan ${scanId}:`, notifyError);
     }
 
-    // Notify the venue's partner owner so they see live activity at their venue.
-    // Non-fatal — a failure here must not affect the already-credited cashback.
-    try {
-      await notificationService.notifyPartnerScanAtVenue({
-        venueId: scan.venueId,
-        scanId,
-        billAmount: effectiveBillAmount,
-      });
-    } catch (partnerNotifyError) {
-      logger.error(`Failed to notify partner of scan ${scanId}:`, partnerNotifyError);
-    }
-
     return updated!;
   }
 

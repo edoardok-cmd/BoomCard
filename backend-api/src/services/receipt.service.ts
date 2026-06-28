@@ -1237,21 +1237,6 @@ class ReceiptService {
         logger.error(`Failed to send notification for receipt ${params.receiptId} — review stands:`, notifyError);
       }
 
-      // Also notify the venue's partner owner on approval — gives partners real-time
-      // visibility into activity at their venue. Guarded by venueId since older
-      // receipts (sticker-less OCR path) may not have a venue linked.
-      if (newStatus === 'APPROVED' && receipt.venueId) {
-        try {
-          await notificationService.notifyPartnerReceiptAtVenue({
-            venueId: receipt.venueId,
-            receiptId: receipt.id,
-            totalAmount: updated.totalAmount || 0,
-          });
-        } catch (partnerNotifyError) {
-          logger.error(`Failed to notify partner of receipt ${params.receiptId}:`, partnerNotifyError);
-        }
-      }
-
       // Send email notification to user (non-fatal)
       try {
         const user = await prisma.user.findUnique({

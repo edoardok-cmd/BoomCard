@@ -3,9 +3,7 @@ import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { partnerTypeService } from './partnerType.service';
 import { imageUploadService } from './imageUpload.service';
-import { notificationService } from './notification.service';
 import { logger } from '../utils/logger';
-import { detach } from '../utils/detach';
 import { CASHBACK_MATRIX_STEPS } from '../constants/receipt.constants';
 import { getSystemSettingInt } from '../utils/systemSettings';
 import { publicPartnerFilter } from './publicPartnerFilter';
@@ -745,24 +743,6 @@ class OffersService {
     } catch (err: any) {
       throw err;
     }
-
-    // Notify the partner that owns this offer (non-fatal). Fire-and-forget so
-    // a notification hiccup can never mask a successful redemption. Routed
-    // through detach() so the detached DB reads/notification settle inside this
-    // suite under test (no cross-suite mock-queue leak); no-op .catch in prod.
-    detach((async () => {
-      try {
-        const user = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { firstName: true, lastName: true },
-        });
-        const userName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || undefined;
-        await notificationService.notifyPartnerOfferRedeemed({ offerId, userName, code });
-
-      } catch (err) {
-        logger.error('[offers] notifyPartnerOfferRedeemed failed:', err);
-      }
-    })(), () => {});
 
     return { code, expiresAt: expiresAt.toISOString() };
   }

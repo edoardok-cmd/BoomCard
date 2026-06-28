@@ -588,79 +588,10 @@ export class NotificationService {
     }
   }
 
-  // ===== Partner-facing event notifications =====
-
-  /**
-   * Notify a venue's partner owner that a customer just had a cashback
-   * sticker scan approved at their venue. Fires alongside the existing
-   * customer-facing notifyStickerScanApproved so both sides learn about
-   * the event in real time.
-   */
-  async notifyPartnerScanAtVenue(params: {
-    venueId: string;
-    scanId: string;
-    billAmount: number;
-    // cashbackAmount intentionally excluded — spec §11.3 prohibits exposing
-    // the internal cashback figure to partners via any notification channel.
-  }): Promise<void> {
-    try {
-      const venue = await this.getVenuePartnerOwner(params.venueId);
-      if (!venue) return;
-      await this.createNotification({
-        userId: venue.partnerUserId,
-        type: 'SYSTEM',
-        title: 'New scan at your venue',
-        titleBg: 'Ново сканиране във вашия обект',
-        // Spec §11.3 Clash 10.6: cashbackAmount is internal — show only billAmount
-        message: `A customer just scanned at ${venue.venueName} — ${params.billAmount.toFixed(2)} BGN.`,
-        messageBg: `Клиент току-що сканира в ${venue.venueName} — сметка ${params.billAmount.toFixed(2).replace('.', ',')} лв.`,
-        priority: 'low',
-        actionUrl: '/analytics',
-        actionText: 'View analytics',
-        actionTextBg: 'Виж анализа',
-        relatedEntityType: 'sticker_scan',
-        relatedEntityId: params.scanId,
-        data: { venueId: params.venueId, scanId: params.scanId, billAmount: params.billAmount },
-      });
-    } catch (error) {
-      logger.error('❌ Error sending partner scan notification:', error);
-    }
-  }
-
-  /**
-   * Notify a venue's partner owner that a customer's uploaded receipt
-   * (classic OCR flow, not sticker) at their venue was approved.
-   */
-  async notifyPartnerReceiptAtVenue(params: {
-    venueId: string;
-    receiptId: string;
-    totalAmount: number;
-    // cashbackAmount intentionally excluded — spec §11.3 prohibits exposing
-    // the internal cashback figure to partners via any notification channel.
-  }): Promise<void> {
-    try {
-      const venue = await this.getVenuePartnerOwner(params.venueId);
-      if (!venue) return;
-      await this.createNotification({
-        userId: venue.partnerUserId,
-        type: 'SYSTEM',
-        title: 'New receipt at your venue',
-        titleBg: 'Нова касова бележка във вашия обект',
-        // Spec §11.3 Clash 10.6: cashbackAmount is internal — show only totalAmount to partner
-        message: `A customer submitted a ${params.totalAmount.toFixed(2)} BGN receipt at ${venue.venueName}.`,
-        messageBg: `Клиент качи касова бележка за ${params.totalAmount.toFixed(2).replace('.', ',')} лв. в ${venue.venueName}.`,
-        priority: 'low',
-        actionUrl: '/analytics',
-        actionText: 'View analytics',
-        actionTextBg: 'Виж анализа',
-        relatedEntityType: 'receipt',
-        relatedEntityId: params.receiptId,
-        data: { venueId: params.venueId, receiptId: params.receiptId, totalAmount: params.totalAmount },
-      });
-    } catch (error) {
-      logger.error('❌ Error sending partner receipt notification:', error);
-    }
-  }
+  // ===== Partner-facing canonical §9.1 notification methods =====
+  // Contains ONLY the 8 canonical templates defined in spec §9.1 / Clash 6.1.
+  // Non-canonical per-event methods (scan-at-venue, receipt-at-venue, offer-redeemed)
+  // were removed — "New Transaction" (#3) is a daily/weekly digest only.
 
   /**
    * Spec §9.1 canonical template #6 — Status Changes.
@@ -797,53 +728,7 @@ export class NotificationService {
   }
 
   /**
-   * Notify the partner that owns an offer that a customer just redeemed it.
-   */
-  async notifyPartnerOfferRedeemed(params: {
-    offerId: string;
-    userName?: string;
-    code: string;
-  }): Promise<void> {
-    try {
-      const offer = await prisma.offer.findUnique({
-        where: { id: params.offerId },
-        select: {
-          title: true,
-          partner: { select: { businessName: true, user: { select: { id: true } } } },
-        },
-      });
-      const partnerUserId = offer?.partner?.user?.id;
-      if (!partnerUserId) return;
-      const who = params.userName?.trim() || 'A customer';
-      const whoBg = params.userName?.trim() || 'Клиент';
-      await this.createNotification({
-        userId: partnerUserId,
-        type: 'SYSTEM',
-        title: 'Offer redeemed',
-        titleBg: 'Офертата е използвана',
-        message: `${who} just redeemed "${offer?.title || 'your offer'}" — code ${params.code}.`,
-        messageBg: `${whoBg} използва "${offer?.title || 'вашата оферта'}" — код ${params.code}.`,
-        priority: 'medium',
-        actionUrl: '/partners/offers',
-        actionText: 'View offers',
-        actionTextBg: 'Виж офертите',
-        relatedEntityType: 'offer',
-        relatedEntityId: params.offerId,
-        data: { offerId: params.offerId, code: params.code, userName: params.userName },
-      });
-
-      await this.sendPushNotification({
-        userId: partnerUserId,
-        title: 'Offer redeemed',
-        body: `${who} redeemed your offer.`,
-        data: { offerId: params.offerId, type: 'offer_redeemed', url: '/partners/offers' },
-      });
-    } catch (error) {
-      logger.error('❌ Error sending offer redeemed notification:', error);
-    }
-  }
-
-  /**
+   * Spec §9.1 canonical template #1 — Activation Link / Welcome.
    * Welcome a freshly-created partner — covers both self-signup and admin
    * bulk import. Writes an in-app notification the partner sees the first
    * time they log in plus an email when we have one.
@@ -1859,29 +1744,6 @@ export class NotificationService {
       // allowing a daily digest every evening.
       cooldownHours: 20,
     });
-  }
-
-  // ===== Internal helpers for partner lookup =====
-
-  /**
-   * Look up the partner owner (User.id) and business context for a venueId.
-   * Returns null if the venue has no owning partner — we treat that as a
-   * silent no-op so callers don't need to null-check.
-   */
-  private async getVenuePartnerOwner(venueId: string): Promise<{ partnerUserId: string; venueName: string; businessName: string } | null> {
-    const venue = await prisma.venue.findUnique({
-      where: { id: venueId },
-      select: {
-        name: true,
-        partner: { select: { businessName: true, userId: true } },
-      },
-    });
-    if (!venue?.partner?.userId) return null;
-    return {
-      partnerUserId: venue.partner.userId,
-      venueName: venue.name,
-      businessName: venue.partner.businessName,
-    };
   }
 
   // ===== Internal Methods =====

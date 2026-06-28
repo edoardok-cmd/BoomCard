@@ -183,7 +183,6 @@ jest.mock('../../src/services/wallet.service', () => ({
 jest.mock('../../src/services/notification.service', () => ({
   notificationService: {
     notifyStickerScanApproved: jest.fn(async () => {}),
-    notifyPartnerScanAtVenue: jest.fn(async () => {}),
     notifyQRSessionOpened: jest.fn(async () => {}),
   },
 }));
