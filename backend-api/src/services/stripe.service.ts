@@ -1155,13 +1155,6 @@ class StripeService {
       const price = `${amountDue.toFixed(2)} ${currency}`;
       const renewalDate = new Date((invoice.period_end ?? 0) * 1000);
 
-      await notificationService.notifyPartnerRenewalUpcoming({
-        userId: dbSub.userId,
-        planName,
-        renewalDate,
-        price,
-      });
-
       if (dbSub.user?.email) {
         detach(emailService
           .sendExpiryNotice(dbSub.user.email, {

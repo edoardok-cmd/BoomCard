@@ -844,42 +844,6 @@ export class NotificationService {
   }
 
   /**
-   * Notify the partner when a receipt at their venue was flagged for high
-   * fraud score. Distinct from notifyFraudAlert (admins only) — partners
-   * don't see the user identity, only the venue/receipt context so they
-   * can follow up in person if needed.
-   *
-   * Spec §11.3 / LOW S5: fraudScore and reasons are intentionally NOT accepted
-   * as parameters to eliminate any risk of a future maintainer accidentally
-   * exposing them in the message or data payload. Callers can log them
-   * separately without passing them into this function.
-   */
-  async notifyPartnerFraudFlag(params: {
-    venueId: string;
-    receiptId: string;
-  }): Promise<void> {
-    try {
-      const venue = await this.getVenuePartnerOwner(params.venueId);
-      if (!venue) return;
-      await this.createNotification({
-        userId: venue.partnerUserId,
-        type: 'FRAUD_ALERT',
-        title: 'Suspicious receipt at your venue',
-        titleBg: 'Подозрителна касова бележка',
-        // Spec §11.3: fraudScore and reasons are internal-only — never expose to partner
-        message: `A receipt at ${venue.venueName} is under manual review. Our team will verify before cashback is credited.`,
-        messageBg: `Касова бележка в ${venue.venueName} е на ръчна проверка. Екипът ни ще я прегледа преди начисление.`,
-        priority: 'medium',
-        relatedEntityType: 'receipt',
-        relatedEntityId: params.receiptId,
-        data: { venueId: params.venueId, receiptId: params.receiptId },
-      });
-    } catch (error) {
-      logger.error('❌ Error sending partner fraud flag notification:', error);
-    }
-  }
-
-  /**
    * Welcome a freshly-created partner — covers both self-signup and admin
    * bulk import. Writes an in-app notification the partner sees the first
    * time they log in plus an email when we have one.
@@ -1329,39 +1293,6 @@ export class NotificationService {
   }
 
   /**
-   * Alert the partner that one of their offers is nearly out of capacity
-   * (usageCount / usageLimit). Fires once per offer; partner dashboard
-   * should show it so they can raise the limit or launch a replacement.
-   */
-  async notifyPartnerOfferLowCapacity(params: {
-    partnerUserId: string;
-    offerId: string;
-    offerTitle: string;
-    remaining: number;
-    usageLimit: number;
-  }): Promise<void> {
-    try {
-      await this.createNotification({
-        userId: params.partnerUserId,
-        type: 'OFFER_EXPIRING',
-        title: 'Offer nearly used up',
-        titleBg: 'Офертата почти се изчерпа',
-        message: `"${params.offerTitle}" has ${params.remaining} redemption${params.remaining === 1 ? '' : 's'} left (of ${params.usageLimit}). Consider raising the limit.`,
-        messageBg: `"${params.offerTitle}" има ${params.remaining} оставащи използвания (от ${params.usageLimit}).`,
-        priority: 'medium',
-        actionUrl: '/partners/offers',
-        actionText: 'Edit offer',
-        actionTextBg: 'Редактирай',
-        relatedEntityType: 'offer',
-        relatedEntityId: params.offerId,
-        data: { offerId: params.offerId, remaining: params.remaining, usageLimit: params.usageLimit },
-      });
-    } catch (error) {
-      logger.error('❌ Error sending partner low-capacity notification:', error);
-    }
-  }
-
-  /**
    * Nudge a partner whose profile is missing critical fields (logo, menu,
    * description). Scheduled daily; each nudge only fires when at least one
    * required field is still empty.
@@ -1563,36 +1494,6 @@ export class NotificationService {
       }).catch((err) => logger.error('[notifyPartnerContractChange] push failed:', err));
     } catch (error) {
       logger.error('❌ Error sending partner contract-change notification:', error);
-    }
-  }
-
-  /**
-   * Partner subscription renewal reminder — the existing standalone job
-   * fires the email; this wraps the same logic in an in-app notification
-   * so partners who live in the dashboard see it too.
-   */
-  async notifyPartnerRenewalUpcoming(params: {
-    userId: string;
-    planName: string;
-    renewalDate: Date;
-    price: string;
-  }): Promise<void> {
-    try {
-      await this.createNotification({
-        userId: params.userId,
-        type: 'SYSTEM',
-        title: 'Subscription renewing soon',
-        titleBg: 'Абонаментът ви се подновява скоро',
-        message: `Your ${params.planName} subscription renews on ${params.renewalDate.toLocaleDateString('en-GB')} for ${params.price}.`,
-        messageBg: `Абонаментът ${params.planName} се подновява на ${params.renewalDate.toLocaleDateString('bg-BG')} за ${params.price}.`,
-        priority: 'medium',
-        actionUrl: '/dashboard/subscription',
-        actionText: 'Manage',
-        actionTextBg: 'Управлявай',
-        data: { planName: params.planName, price: params.price, renewalDate: params.renewalDate.toISOString() },
-      });
-    } catch (error) {
-      logger.error('❌ Error sending renewal reminder notification:', error);
     }
   }
 

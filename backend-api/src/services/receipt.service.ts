@@ -856,18 +856,8 @@ class ReceiptService {
           fraudScore: fraudCheck.fraudScore,
           fraudReasons: fraudCheck.fraudReasons,
         });
-        // Also notify the venue's partner owner — they should know a flagged
-        // submission occurred at their venue so they can corroborate in person.
-        // Customer identity is intentionally NOT exposed to the partner here.
         if (receipt.venueId) {
-          // fraudScore/reasons are internal-only (spec §11.3) — logged here but
-          // NOT passed to notifyPartnerFraudFlag (signature accepts only venueId
-          // and receiptId to prevent accidental exposure to partners).
           logger.info(`Receipt ${receipt.id} fraud flag: score=${fraudCheck.fraudScore}, reasons=${(fraudCheck.fraudReasons || []).join(',')}`);
-          await notificationService.notifyPartnerFraudFlag({
-            venueId: receipt.venueId,
-            receiptId: receipt.id,
-          }).catch((err) => logger.error('Failed to notify partner of fraud flag:', err));
         }
       }
 

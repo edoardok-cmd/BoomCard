@@ -759,31 +759,6 @@ class OffersService {
         const userName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || undefined;
         await notificationService.notifyPartnerOfferRedeemed({ offerId, userName, code });
 
-        // Low-capacity alert: notify the partner when the offer crosses the
-        // 90% usage mark. Only fires once per offer — the next tick's count
-        // will be above the threshold so this branch won't re-enter.
-        if (updatedOffer.usageLimit && updatedOffer.usageLimit > 0) {
-          const remaining = updatedOffer.usageLimit - updatedOffer.usageCount;
-          const prevRemaining = remaining + 1;
-          const tenPercent = Math.max(1, Math.ceil(updatedOffer.usageLimit * 0.1));
-          // Edge crossing: previous tick was above threshold, current tick is at/below.
-          if (remaining <= tenPercent && prevRemaining > tenPercent) {
-            const partner = await prisma.offer.findUnique({
-              where: { id: offerId },
-              select: { title: true, partner: { select: { user: { select: { id: true } } } } },
-            });
-            const partnerUserId = partner?.partner?.user?.id;
-            if (partnerUserId) {
-              await notificationService.notifyPartnerOfferLowCapacity({
-                partnerUserId,
-                offerId,
-                offerTitle: partner!.title,
-                remaining,
-                usageLimit: updatedOffer.usageLimit,
-              });
-            }
-          }
-        }
       } catch (err) {
         logger.error('[offers] notifyPartnerOfferRedeemed failed:', err);
       }
