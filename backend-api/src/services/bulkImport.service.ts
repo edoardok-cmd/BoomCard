@@ -517,13 +517,20 @@ export async function importFromSpreadsheet(
       picIndex++;
     }
 
+    const offerDescription = str(row[COL.OFFER_DESCRIPTION]);
+    if (!offerDescription) {
+      errors.push(`Row ${rowNum}: offer "${offerTitle}" is missing required field offer_description`);
+      offersSkipped++;
+      continue;
+    }
+
     try {
       await prisma.offer.create({
         data: {
           partnerId: partner.id,
           title: offerTitle,
           titleBg: str(row[COL.OFFER_TITLE_BG]) || undefined,
-          description: str(row[COL.OFFER_DESCRIPTION]) || undefined,
+          description: offerDescription,
           descriptionBg: str(row[COL.OFFER_DESCRIPTION_BG]) || undefined,
           type: offerType,
           discountPercent: toNumber(row[COL.OFFER_DISCOUNT_PERCENT]),

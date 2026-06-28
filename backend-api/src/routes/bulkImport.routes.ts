@@ -7,7 +7,7 @@
 
 import { Router, Response } from 'express';
 import multer from 'multer';
-import { asyncHandler } from '../middleware/error.middleware';
+import { asyncHandler, AppError } from '../middleware/error.middleware';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
 import { generateTemplate, importFromSpreadsheet, generatePartnersTemplate, importPartnersFromSpreadsheet } from '../services/bulkImport.service';
 import { notificationService } from '../services/notification.service';
@@ -40,7 +40,7 @@ const upload = multer({
     if (allowed.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error(`Unsupported file type: ${file.mimetype}`));
+      cb(new AppError(`Unsupported file type: ${file.mimetype}`, 400));
     }
   },
 });

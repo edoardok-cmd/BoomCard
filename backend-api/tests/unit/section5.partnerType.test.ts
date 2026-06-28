@@ -8,6 +8,16 @@
  * getVisibleTypeIdsForPlan.
  */
 
+// ─── Auth middleware mock (shared by route tests below) ──────────────────────
+
+jest.mock('../../src/middleware/auth.middleware', () => ({
+  authenticate: (req: any, _res: any, next: any) => {
+    req.user = { id: 'admin-1', role: 'SUPER_ADMIN' };
+    next();
+  },
+  authorize: () => (_req: any, _res: any, next: any) => next(),
+}));
+
 // ─── Prisma mock ─────────────────────────────────────────────────────────────
 
 const mockPrisma: any = {
@@ -251,5 +261,71 @@ describe('partnerTypeService.getMaxDiscountForType', () => {
       where: { id: 'pt-1' },
       select: { maxDiscountRate: true },
     });
+  });
+});
+
+// ─── PUT /:id/plan-access — route-level boolean validation ───────────────────
+// INV-PTYPE-009: canView and canRedeem must be explicitly boolean; omitting
+// them must NOT silently fall through to Prisma schema defaults.
+
+import express from 'express';
+import request from 'supertest';
+import partnerTypesRouter from '../../src/routes/partnerTypes.routes';
+
+const routeApp = express();
+routeApp.use(express.json());
+routeApp.use('/api/admin/partner-types', partnerTypesRouter);
+
+describe('PUT /api/admin/partner-types/:id/plan-access — canView/canRedeem boolean validation', () => {
+  it('returns 400 when canView and canRedeem are omitted (INV-PTYPE-009)', async () => {
+    const res = await request(routeApp)
+      .put('/api/admin/partner-types/pt-1/plan-access')
+      .send({ rules: [{ plan: 'BASIC' }] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toMatch(/canView/);
+    expect(res.body.error).toMatch(/canRedeem/);
+  });
+
+  it('returns 400 when canRedeem is a string instead of a boolean', async () => {
+    const res = await request(routeApp)
+      .put('/api/admin/partner-types/pt-1/plan-access')
+      .send({ rules: [{ plan: 'BASIC', canView: true, canRedeem: 'yes' }] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toMatch(/canView|canRedeem/);
+  });
+
+  it('returns 400 when rules contain duplicate plan values', async () => {
+    const res = await request(routeApp)
+      .put('/api/admin/partner-types/pt-1/plan-access')
+      .send({
+        rules: [
+          { plan: 'BASIC', canView: true, canRedeem: true },
+          { plan: 'BASIC', canView: false, canRedeem: false },
+        ],
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toMatch(/duplicate plan/);
+  });
+
+  it('returns 200 when both canView and canRedeem are valid booleans', async () => {
+    // Stub the DB: type exists, transaction succeeds
+    mockPrisma.partnerType.findUnique.mockResolvedValueOnce({ id: 'pt-1', name: 'Cafe' });
+    mockPrisma.$transaction.mockResolvedValueOnce([{ count: 0 }, { count: 1 }]);
+    mockPrisma.planTypeAccess.findMany.mockResolvedValueOnce([
+      { plan: 'BASIC', canView: true, canRedeem: false },
+    ]);
+
+    const res = await request(routeApp)
+      .put('/api/admin/partner-types/pt-1/plan-access')
+      .send({ rules: [{ plan: 'BASIC', canView: true, canRedeem: false }] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
   });
 });

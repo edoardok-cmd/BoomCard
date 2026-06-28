@@ -419,7 +419,7 @@ Rule: a malformed/garbage path param MUST yield a clean 4xx (404/400), never a 5
 |----|-----------|----------|---------|---------------|
 | INV-PTYPE-001 | GET /api/admin/partner-types/ lists all types; 200 | impl | GET /partner-types | runtime probe |
 | INV-PTYPE-002 | POST /api/admin/partner-types/ requires `name` and `maxDiscountRate`; missing either → 400 | impl | POST /partner-types | runtime probe (missing name, missing maxDiscountRate) |
-| INV-PTYPE-003 | POST /api/admin/partner-types/ rejects `maxDiscountRate` not in CASHBACK_MATRIX_STEPS; must be a valid step value (0.5, 1, 1.5, ... per constants) → 400 | §3.7, impl | POST /partner-types | runtime probe (invalid rate like 2.5 if not in steps) |
+| INV-PTYPE-003 | POST /api/admin/partner-types/ rejects `maxDiscountRate` not in CASHBACK_MATRIX_STEPS; must be one of [5, 10, 15, 20, 25] (receipt.constants.ts:70) → 400 | §3.7, impl | POST /partner-types | runtime probe (invalid rate like 7 if not in steps) |
 | INV-PTYPE-004 | POST /api/admin/partner-types/ returns 409 (not 500) if name already exists (P2002 duplicate-key guard) | impl | POST /partner-types | runtime probe (duplicate name) |
 | INV-PTYPE-005 | PUT /api/admin/partner-types/:id validates `maxDiscountRate` same as POST (in CASHBACK_MATRIX_STEPS if provided); 400 on invalid | impl | PUT /partner-types/:id | runtime probe (invalid rate) |
 | INV-PTYPE-006 | PUT /api/admin/partner-types/:id returns 404 if type not found; 409 if update would create duplicate name | impl | PUT /partner-types/:id | runtime probe (nonexistent id; duplicate name update) |

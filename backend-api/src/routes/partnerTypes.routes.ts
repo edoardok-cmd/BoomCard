@@ -178,6 +178,10 @@ router.put(
       }
     }
 
+    if (new Set(rules.map((r: any) => r.plan)).size !== rules.length) {
+      return res.status(400).json({ success: false, error: 'rules must not contain duplicate plan values' });
+    }
+
     try {
       const access = await partnerTypeService.setPlanAccess(req.params.id, rules);
       res.json({ success: true, data: access });
