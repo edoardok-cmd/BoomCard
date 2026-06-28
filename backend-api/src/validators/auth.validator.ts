@@ -212,6 +212,14 @@ export const registerValidation = [
     .if(body('accountType').equals('partner'))
     .custom((value) => value === true)
     .withMessage('You must accept the Privacy Policy to register as a partner'),
+
+  // Spec §2.2 — Terms of Service consent is required alongside Privacy Policy
+  // for partner applications. Must be exactly true; reject the registration
+  // otherwise.
+  body('acceptTerms')
+    .if(body('accountType').equals('partner'))
+    .custom((value) => value === true)
+    .withMessage('You must accept the Terms of Service to register as a partner'),
 ];
 
 export const loginValidation = [

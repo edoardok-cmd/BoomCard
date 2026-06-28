@@ -226,6 +226,9 @@ export class AuthService {
       if (acceptPrivacy !== true) {
         throw new AppError('You must accept the Privacy Policy to register as a partner', 400);
       }
+      if (acceptTerms !== true) {
+        throw new AppError('You must accept the Terms of Service to register as a partner', 400);
+      }
       const level = businessInfo?.participationLevel;
       if (!level || !['basic', 'active', 'growth'].includes(level)) {
         throw new AppError('participationLevel must be one of: basic, active, growth', 400);
