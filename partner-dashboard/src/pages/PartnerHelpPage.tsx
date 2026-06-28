@@ -68,8 +68,8 @@ const p = {
 // ── Labels ─────────────────────────────────────────────────────────────────
 // S1 fix (r2ae): CANCELLED added to STATUS_LABELS
 const STATUS_LABELS: Record<TicketStatus, string> = {
-  NEW: 'Отворена', OPEN: 'Отворена', IN_REVIEW: 'В преглед', WAITING: 'Чака отговор',
-  RESOLVED: 'Решена', CLOSED: 'Затворена', REJECTED: 'Отказана', CANCELLED: 'Отменена',
+  NEW: 'Нова', OPEN: 'В процес', IN_REVIEW: 'В процес', WAITING: 'Чака',
+  RESOLVED: 'Затворена', CLOSED: 'Затворена', REJECTED: 'Затворена', CANCELLED: 'Отменена',
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -80,7 +80,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 const REQUEST_TYPE_LABELS: Record<string, string> = {
   SUPPORT: 'Поддръжка', DATA_CHANGE: 'Промяна на данни',
   LOCATION_CHANGE: 'Промяна на локация', CONTRACT_CHANGE: 'Промяна на договор',
-  DISPUTE: 'Спор', OTHER: 'Друго',
+  DISPUTE: 'Спор', OTHER: 'Друго', CHANGE: 'Промяна',
 };
 
 const VALID_CATEGORIES = ['CASHBACK', 'ACCOUNT', 'PAYMENT', 'TECHNICAL', 'OTHER'] as const;
@@ -99,6 +99,8 @@ function extractApiError(err: unknown, fallback: string): string {
 
 // S1 fix (r2ae): CANCELLED added to isTerminal so the reply box closes for
 // cancelled tickets (spec §10.4 canonical status includes CANCELLED as final).
+// F1 fix: RESOLVED removed — backend intentionally allows replies on RESOLVED
+// tickets and reopens them to OPEN on partner reply (partnerHelp.routes.ts:310).
 function isTerminal(status: TicketStatus) {
   return status === 'CLOSED' || status === 'REJECTED' || status === 'CANCELLED';
 }
@@ -129,13 +131,18 @@ const partnerHelpApi = {
 // the same as NEW/OPEN, misleading the partner into thinking the ticket is active).
 function statusColor(status: TicketStatus): { bg: string; text: string } {
   switch (status) {
+    case 'NEW':
+    case 'OPEN':       return { bg: p.infoSoft, text: p.info };
     case 'IN_REVIEW':  return { bg: p.infoSoft, text: p.info };
     case 'WAITING':    return { bg: p.warningSoft, text: p.warning };
-    case 'RESOLVED':   return { bg: p.successSoft, text: p.success };
-    case 'CLOSED':     return { bg: p.border, text: p.subtle };
-    case 'REJECTED':   return { bg: p.dangerSoft, text: p.danger };
+    case 'RESOLVED':
+    case 'CLOSED':
+    case 'REJECTED':
     case 'CANCELLED':  return { bg: p.border, text: p.subtle };
-    default:           return { bg: p.infoSoft, text: p.info };
+    default: {
+      const _: never = status;
+      return { bg: p.infoSoft, text: p.info };
+    }
   }
 }
 
@@ -340,10 +347,7 @@ export default function PartnerHelpPage() {
 
         {terminal ? (
           <ClosedNote>
-            {/* S1 fix (r2ae): CANCELLED message added */}
-            {ticket?.status === 'REJECTED'
-              ? 'Заявката е отказана — нови отговори не се приемат.'
-              : ticket?.status === 'CANCELLED'
+            {ticket?.status === 'CANCELLED'
               ? 'Заявката е отменена — нови отговори не се приемат.'
               : 'Заявката е затворена — нови отговори не се приемат.'}
           </ClosedNote>
@@ -415,7 +419,7 @@ export default function PartnerHelpPage() {
         <Pagination>
           <PageBtn onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>←</PageBtn>
           <span style={{ fontSize: '0.875rem', color: p.muted }}>{page}</span>
-          <PageBtn onClick={() => setPage((pg) => pg + 1)} disabled={tickets.length < 20}>→</PageBtn>
+          <PageBtn onClick={() => setPage((pg) => pg + 1)} disabled={tickets.length < 20 || page * 20 >= total}>→</PageBtn>
         </Pagination>
       )}
     </Shell>
