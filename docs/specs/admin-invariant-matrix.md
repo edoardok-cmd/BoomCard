@@ -397,6 +397,70 @@ Rule: a malformed/garbage path param MUST yield a clean 4xx (404/400), never a 5
 
 ---
 
+## IMPORT — Bulk data import (§9 admin file upload)
+
+| ID | Invariant | Spec ref | Surface | How to verify |
+|----|-----------|----------|---------|---------------|
+| INV-IMPORT-001 | POST /api/admin/bulk-import/ requires `spreadsheet` field (CSV or XLSX); missing field → 400, not 500 | impl | POST /bulk-import | runtime probe (no field) |
+| INV-IMPORT-002 | POST /api/admin/bulk-import/ rejects file >50 MB (multer limit); 413 or error message, never 500 | impl | POST /bulk-import | runtime probe (50MB+ file) |
+| INV-IMPORT-003 | POST /api/admin/bulk-import/ rejects unsupported MIME type (allows CSV/XLSX/images only); returns 400 | impl | POST /bulk-import | runtime probe (application/json) |
+| INV-IMPORT-004 | POST /api/admin/bulk-import/ success returns 200 (full) or 207 (partial errors); 207 iff errors.length > 0 | impl | POST /bulk-import | executable test (happy path, error path) |
+| INV-IMPORT-005 | POST /api/admin/bulk-import/ audit-logs admin ID and import kind ('offers') via fire-and-forget notification (non-blocking) | impl | POST /bulk-import | static read (detach + notifyAdminBulkImportComplete) |
+| INV-IMPORT-006 | GET /api/admin/bulk-import/template returns XLSX buffer with proper Content-Type header; 200 no params | impl | GET /bulk-import/template | runtime probe |
+| INV-IMPORT-007 | POST /api/admin/bulk-import/partners requires `spreadsheet` field; same multipart guards as offers import (file size, MIME type, field presence) | impl | POST /bulk-import/partners | runtime probe (no field, 50MB+) |
+| INV-IMPORT-008 | GET /api/admin/bulk-import/template/partners returns XLSX buffer; 200 no params | impl | GET /bulk-import/template/partners | runtime probe |
+| INV-IMPORT-009 | All 4 bulk-import routes require ADMIN or SUPER_ADMIN; non-admin → 403 | Part 4 impl | all 4 routes | runtime probe (token without admin role) |
+
+---
+
+## PTYPE — Partner Types (maxDiscountRate constraint)
+
+| ID | Invariant | Spec ref | Surface | How to verify |
+|----|-----------|----------|---------|---------------|
+| INV-PTYPE-001 | GET /api/admin/partner-types/ lists all types; 200 | impl | GET /partner-types | runtime probe |
+| INV-PTYPE-002 | POST /api/admin/partner-types/ requires `name` and `maxDiscountRate`; missing either → 400 | impl | POST /partner-types | runtime probe (missing name, missing maxDiscountRate) |
+| INV-PTYPE-003 | POST /api/admin/partner-types/ rejects `maxDiscountRate` not in CASHBACK_MATRIX_STEPS; must be a valid step value (0.5, 1, 1.5, ... per constants) → 400 | §3.7, impl | POST /partner-types | runtime probe (invalid rate like 2.5 if not in steps) |
+| INV-PTYPE-004 | POST /api/admin/partner-types/ returns 409 (not 500) if name already exists (P2002 duplicate-key guard) | impl | POST /partner-types | runtime probe (duplicate name) |
+| INV-PTYPE-005 | PUT /api/admin/partner-types/:id validates `maxDiscountRate` same as POST (in CASHBACK_MATRIX_STEPS if provided); 400 on invalid | impl | PUT /partner-types/:id | runtime probe (invalid rate) |
+| INV-PTYPE-006 | PUT /api/admin/partner-types/:id returns 404 if type not found; 409 if update would create duplicate name | impl | PUT /partner-types/:id | runtime probe (nonexistent id; duplicate name update) |
+| INV-PTYPE-007 | DELETE /api/admin/partner-types/:id returns 404 if not found; 409 if partners are assigned to type (cannot delete) | impl | DELETE /partner-types/:id | runtime probe (nonexistent id; type with partners) |
+| INV-PTYPE-008 | GET /api/admin/partner-types/:id/plan-access retrieves access rules; 404 if type not found | impl | GET /partner-types/:id/plan-access | runtime probe (nonexistent id) |
+| INV-PTYPE-009 | PUT /api/admin/partner-types/:id/plan-access requires `rules` array; validates each rule.plan against SubscriptionPlan enum → 400 on invalid plan | impl | PUT /partner-types/:id/plan-access | runtime probe (invalid plan like 'BOGUS') |
+| INV-PTYPE-010 | All partner-types routes require ADMIN or SUPER_ADMIN; non-admin → 403 | Part 4 impl | all routes | runtime probe |
+
+---
+
+## MOBILE — Mobile app settings & error logs (Spec §9)
+
+| ID | Invariant | Spec ref | Surface | How to verify |
+|----|-----------|----------|---------|---------------|
+| INV-MOBILE-001 | GET /api/admin/settings/mobile-app returns all MOBILE_APP_KEYS as structured object; null for unset keys; 200 | §9 impl | GET /settings/mobile-app | runtime probe |
+| INV-MOBILE-002 | PUT /api/admin/settings/mobile-app requires `settings` object with at least one key; empty object → 400 | §9 impl | PUT /settings/mobile-app | runtime probe (empty settings) |
+| INV-MOBILE-003 | PUT /api/admin/settings/mobile-app rejects unknown key (not in MOBILE_APP_KEYS); → 400 | §9 impl | PUT /settings/mobile-app | runtime probe (bogus key) |
+| INV-MOBILE-004 | PUT /api/admin/settings/mobile-app version fields (`mobile_app.min_ios_version`, `min_android_version`) must match SEMVER_RE (`^\d+\.\d+(\.\d+)?$`); empty string allowed (no minimum); invalid format → 400 | §9 impl | PUT /settings/mobile-app | runtime probe (invalid version like 'latest') |
+| INV-MOBILE-005 | PUT /api/admin/settings/mobile-app platform status fields (`mobile_app.ios_status`, `android_status`) must be one of ['active', 'maintenance', 'deprecated']; → 400 if not | §9 impl | PUT /settings/mobile-app | runtime probe (invalid status like 'suspended') |
+| INV-MOBILE-006 | PUT /api/admin/settings/mobile-app boolean fields (`feature_*`, `push_notifications_enabled`) must be 'true' or 'false' strings; → 400 otherwise | §9 impl | PUT /settings/mobile-app | runtime probe (boolean=1 instead of 'true') |
+| INV-MOBILE-007 | PUT /api/admin/settings/mobile-app `mobile_app.error_log_url` if provided must be valid HTTPS or HTTP URL; empty string allowed; invalid URL → 400 | §9 impl | PUT /settings/mobile-app | runtime probe (invalid URL, ftp://...) |
+| INV-MOBILE-008 | PUT /api/admin/settings/mobile-app writes SystemSettingHistory only for keys whose value actually changed (idempotent); cache invalidated per key | impl | PUT /settings/mobile-app | static read (currentMobileMap comparison, invalidateSystemSettingCache loop) |
+| INV-MOBILE-009 | GET /api/admin/settings/mobile-app/history returns last 30 changes, ordered by createdAt DESC; 200 | §9 impl | GET /settings/mobile-app/history | runtime probe |
+| INV-MOBILE-010 | GET /api/admin/settings/mobile-errors returns last 50 most recent error log entries; 200; null values must not expose internal stack traces to non-admin queries | §9 impl | GET /settings/mobile-errors | runtime probe |
+| INV-MOBILE-011 | DELETE /api/admin/settings/mobile-errors is a truncate (deleteMany with no filter); returns count of deleted entries; **DESTRUCTIVE — no undo, no confirmation flow** | §9 impl | DELETE /settings/mobile-errors | runtime probe (verify all logs cleared) |
+| INV-MOBILE-012 | All mobile-settings routes require `settings.read` (GET) or `settings.write` (PUT/DELETE); non-permitted → 403 | Part 4 impl | all mobile-settings routes | runtime probe |
+
+---
+
+## CASH-BACKFILL — Cashback expiry backfill (maintenance operation)
+
+| ID | Invariant | Spec ref | Surface | How to verify |
+|----|-----------|----------|---------|---------------|
+| INV-CASH-BACKFILL-001 | POST /api/admin/cashback/backfill-expiry requires `cashback.write` permission; non-permitted → 403 | impl | POST /cashback/backfill-expiry | runtime probe |
+| INV-CASH-BACKFILL-002 | POST /api/admin/cashback/backfill-expiry takes no body parameters; calls `backfillCashbackExpiry()` service → idempotent (safe to re-run) | impl | POST /cashback/backfill-expiry | static read + test idempotency |
+| INV-CASH-BACKFILL-003 | POST /api/admin/cashback/backfill-expiry returns 200 with `{ success: true, message: 'Backfilled N entries' }` on success | impl | POST /cashback/backfill-expiry | runtime probe (inspect response format) |
+| INV-CASH-BACKFILL-004 | POST /api/admin/cashback/backfill-expiry sets `cashbackExpiresAt` only on entries with null expiry (legacy); does not modify already-set dates | impl | POST /cashback/backfill-expiry | executable test (verify only null → expiresAt, set dates unchanged) |
+| INV-CASH-BACKFILL-005 | POST /api/admin/cashback/backfill-expiry is audit-logged with action='cashback.backfill-expiry' via auditMiddleware; req.auditAction set before response | impl | POST /cashback/backfill-expiry | static read (req.auditAction = ...) |
+
+---
+
 ## Notes for re-audit agents
 
 - **Independence:** when re-auditing, do NOT import a prior run's verdict or finding text. Use only the row skeleton above to know WHAT to check; reach your own conclusion on each.

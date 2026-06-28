@@ -115,22 +115,22 @@
     {
       "method": "POST",
       "path": "/api/admin/bulk-import/",
-      "coverage": "review"
+      "coverage": "matrix:INV-IMPORT-001,INV-IMPORT-004,INV-IMPORT-009"
     },
     {
       "method": "POST",
       "path": "/api/admin/bulk-import/partners",
-      "coverage": "review"
+      "coverage": "matrix:INV-IMPORT-007,INV-IMPORT-009"
     },
     {
       "method": "GET",
       "path": "/api/admin/bulk-import/template",
-      "coverage": "review"
+      "coverage": "matrix:INV-IMPORT-006"
     },
     {
       "method": "GET",
       "path": "/api/admin/bulk-import/template/partners",
-      "coverage": "review"
+      "coverage": "matrix:INV-IMPORT-008"
     },
     {
       "method": "POST",
@@ -150,7 +150,7 @@
     {
       "method": "POST",
       "path": "/api/admin/cashback/backfill-expiry",
-      "coverage": "review"
+      "coverage": "matrix:INV-CASH-BACKFILL-001,INV-CASH-BACKFILL-002,INV-CASH-BACKFILL-003"
     },
     {
       "method": "GET",
@@ -790,12 +790,12 @@
     {
       "method": "GET",
       "path": "/api/admin/partner-types/",
-      "coverage": "review"
+      "coverage": "matrix:INV-PTYPE-001,INV-PTYPE-010"
     },
     {
       "method": "POST",
       "path": "/api/admin/partner-types/",
-      "coverage": "review"
+      "coverage": "matrix:INV-PTYPE-002,INV-PTYPE-003,INV-PTYPE-004,INV-PTYPE-010"
     },
     {
       "method": "DELETE",
@@ -905,27 +905,27 @@
     {
       "method": "GET",
       "path": "/api/admin/settings/mobile-app",
-      "coverage": "review"
+      "coverage": "matrix:INV-MOBILE-001,INV-MOBILE-012"
     },
     {
       "method": "PUT",
       "path": "/api/admin/settings/mobile-app",
-      "coverage": "review"
+      "coverage": "matrix:INV-MOBILE-002,INV-MOBILE-003,INV-MOBILE-004,INV-MOBILE-005,INV-MOBILE-006,INV-MOBILE-007,INV-MOBILE-008,INV-MOBILE-012"
     },
     {
       "method": "GET",
       "path": "/api/admin/settings/mobile-app/history",
-      "coverage": "review"
+      "coverage": "matrix:INV-MOBILE-009,INV-MOBILE-012"
     },
     {
       "method": "DELETE",
       "path": "/api/admin/settings/mobile-errors",
-      "coverage": "review"
+      "coverage": "matrix:INV-MOBILE-011,INV-MOBILE-012"
     },
     {
       "method": "GET",
       "path": "/api/admin/settings/mobile-errors",
-      "coverage": "review"
+      "coverage": "matrix:INV-MOBILE-010,INV-MOBILE-012"
     },
     {
       "method": "GET",
