@@ -1,0 +1,201 @@
+# boomcard-convergence-ui-sync.yml
+#
+# PURPOSE: Gate ensuring the BoomCard Convergence Monitor UI
+# (ai-automation-platform, http://localhost:5124/boomcard-convergence)
+# is never silently out of date when BoomCard surface artifacts change.
+#
+# Triggers on changes to sweep files, invariant matrices, or route manifests.
+# Checks:
+#   1. boomcard-convergence-plan.md exists with §6 prompts
+#   2. Sweep files referenced in the plan exist on disk
+#   3. At least one coverage ledger exists in the harness (soft check — skip in CI if not accessible)
+#
+# Reference: ai-automation-platform/pages/boomcard-convergence.tsx (the UI)
+#            ai-automation-platform/pages/api/boomcard-convergence/data.ts (the data API)
+
+name: BoomCard Convergence UI Sync Check
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      # Sweep test files
+      - 'backend-api/tests/integration/**sweep*.test.ts'
+      - 'backend-api/tests/integration/**sweep*.test.js'
+      # Invariant matrices
+      - 'docs/specs/admin-invariant-matrix.md'
+      - 'docs/specs/partner-spec-invariant-matrix.md'
+      - 'docs/specs/user-invariant-matrix.md'
+      # Route ownership manifests
+      - 'backend-api/tests/app-route-ownership-manifest.json'
+      - 'backend-api/tests/admin-endpoint-manifest.json'
+      # Convergence plan itself
+      - 'docs/specs/boomcard-convergence-plan.md'
+
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'backend-api/tests/integration/**sweep*.test.ts'
+      - 'backend-api/tests/integration/**sweep*.test.js'
+      - 'docs/specs/admin-invariant-matrix.md'
+      - 'docs/specs/partner-spec-invariant-matrix.md'
+      - 'docs/specs/user-invariant-matrix.md'
+      - 'backend-api/tests/app-route-ownership-manifest.json'
+      - 'backend-api/tests/admin-endpoint-manifest.json'
+      - 'docs/specs/boomcard-convergence-plan.md'
+
+jobs:
+  boomcard-convergence-ui-sync:
+    name: BoomCard Convergence UI artifact sync check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # Check 1: boomcard-convergence-plan.md exists with §6 prompts section
+      # -----------------------------------------------------------------------
+      - name: Check boomcard-convergence-plan.md exists with §6 prompts
+        run: |
+          PLAN="docs/specs/boomcard-convergence-plan.md"
+
+          if [ ! -f "$PLAN" ]; then
+            echo "FAIL: docs/specs/boomcard-convergence-plan.md does not exist."
+            echo ""
+            echo "This file must be present and contain a '§6 Re-audit prompts' section."
+            echo "The BoomCard Convergence Monitor UI (served at :5124/boomcard-convergence)"
+            echo "reads its static prompts from this file."
+            echo ""
+            echo "Create the file with at least §1 (Overview) and §6 (Re-audit prompts)."
+            exit 1
+          fi
+
+          if grep -q "§6" "$PLAN"; then
+            echo "OK: docs/specs/boomcard-convergence-plan.md exists and contains §6 prompts."
+          else
+            echo "FAIL: docs/specs/boomcard-convergence-plan.md exists but is missing §6 (Re-audit prompts)."
+            echo ""
+            echo "The §6 section must contain copy-paste-ready prompts for:"
+            echo "  - BC-ADMIN-SPEC-REAUDIT Round 1 (bootstrap)"
+            echo "  - BC-ADMIN-SPEC-REAUDIT Round N+ (continuation)"
+            echo "  - BC-PARTNER-SPEC-REAUDIT Round 1 (bootstrap)"
+            echo "  - BC-PARTNER-SPEC-REAUDIT Round N+ (continuation)"
+            echo "  - BC-USER-SPEC-REAUDIT Round 1 (bootstrap)"
+            exit 1
+          fi
+
+      # -----------------------------------------------------------------------
+      # Check 2: Referenced sweep files exist on disk
+      # -----------------------------------------------------------------------
+      - name: Check expected sweep files exist
+        run: |
+          INTEGRATION="backend-api/tests/integration"
+          MISSING=()
+
+          # Admin sweeps
+          for f in \
+            "admin-currency-leak-sweep.test.ts" \
+            "admin-uuid-500-sweep.test.ts"; do
+            if [ ! -f "$INTEGRATION/$f" ]; then
+              MISSING+=("$INTEGRATION/$f")
+            fi
+          done
+
+          # Partner sweeps
+          for f in \
+            "partner-cross-scope-sweep.test.ts" \
+            "partner-currency-leak-sweep.test.ts" \
+            "partner-uuid-500-sweep.test.ts"; do
+            if [ ! -f "$INTEGRATION/$f" ]; then
+              MISSING+=("$INTEGRATION/$f")
+            fi
+          done
+
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo "WARN: The following sweep files referenced in the convergence plan are missing:"
+            for f in "${MISSING[@]}"; do
+              echo "  - $f"
+            done
+            echo ""
+            echo "The BoomCard Convergence Monitor UI will show these sweeps as 'missing'."
+            echo "This is expected for bootstraps-in-progress. Not a hard fail."
+            echo "Add sweep files to backend-api/tests/integration/ to make badges go green."
+          else
+            echo "OK: All expected sweep files are present."
+          fi
+
+      # -----------------------------------------------------------------------
+      # Check 3: Manifests have valid JSON if they exist
+      # -----------------------------------------------------------------------
+      - name: Validate manifest JSON (if present)
+        run: |
+          for manifest in \
+            "backend-api/tests/app-route-ownership-manifest.json" \
+            "backend-api/tests/admin-endpoint-manifest.json"; do
+
+            if [ -f "$manifest" ]; then
+              if python3 -m json.tool "$manifest" > /dev/null 2>&1; then
+                echo "OK: $manifest is valid JSON."
+              else
+                echo "FAIL: $manifest exists but is not valid JSON."
+                echo "The BoomCard Convergence Monitor UI reads this file directly."
+                echo "Fix the JSON before merging."
+                exit 1
+              fi
+            else
+              echo "SKIP: $manifest not yet built — bootstrap pending."
+            fi
+          done
+
+      # -----------------------------------------------------------------------
+      # Check 4: Invariant matrices reference the scope IDs the UI expects
+      # -----------------------------------------------------------------------
+      - name: Check invariant matrices contain expected scope markers
+        run: |
+          ADMIN_MATRIX="docs/specs/admin-invariant-matrix.md"
+          PARTNER_MATRIX="docs/specs/partner-spec-invariant-matrix.md"
+
+          if [ -f "$ADMIN_MATRIX" ]; then
+            if grep -q "INV-" "$ADMIN_MATRIX"; then
+              echo "OK: $ADMIN_MATRIX contains INV- invariant rows."
+            else
+              echo "WARN: $ADMIN_MATRIX exists but contains no INV- invariant rows."
+            fi
+          else
+            echo "SKIP: $ADMIN_MATRIX not found."
+          fi
+
+          if [ -f "$PARTNER_MATRIX" ]; then
+            if grep -q "INV-" "$PARTNER_MATRIX"; then
+              echo "OK: $PARTNER_MATRIX contains INV- invariant rows."
+            else
+              echo "WARN: $PARTNER_MATRIX exists but contains no INV- invariant rows."
+            fi
+          else
+            echo "SKIP: $PARTNER_MATRIX not found."
+          fi
+
+      # -----------------------------------------------------------------------
+      # Summary
+      # -----------------------------------------------------------------------
+      - name: Sync gate summary
+        if: always()
+        run: |
+          echo "============================================================"
+          echo "BoomCard Convergence UI Sync Gate"
+          echo "UI served at: http://localhost:5124/boomcard-convergence"
+          echo "Data API: /api/boomcard-convergence/data"
+          echo "============================================================"
+          echo ""
+          echo "This gate runs 4 checks:"
+          echo "  1. boomcard-convergence-plan.md exists with §6 prompts"
+          echo "  2. Sweep files exist in backend-api/tests/integration/ (warn, not fail)"
+          echo "  3. Manifest files are valid JSON (if present)"
+          echo "  4. Invariant matrices contain INV- rows (warn)"
+          echo ""
+          echo "Coverage ledgers (.claude/reviews/*-coverage-ledger.md) live"
+          echo "in the Agent X harness workspace — the finish-task.py + effectiveStatusFor"
+          echo "gates in Agent X already enforce them. This CI gate covers BoomCard-repo"
+          echo "artifacts only: sweep files, matrices, manifests, and the convergence plan."
+          echo "============================================================"
