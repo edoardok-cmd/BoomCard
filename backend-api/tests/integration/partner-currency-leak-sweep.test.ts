@@ -19,6 +19,18 @@
  * exactly like the admin sweep. This file does NOT edit any src/** code.
  */
 
+/**
+ * NOTE — two-layer testing model:
+ *
+ *  Layer 1 (this file): ts-jest compiles TypeScript source on-the-fly.
+ *  Changes to src/ are tested immediately without rebuilding dist/.
+ *
+ *  Layer 2 (task-level audit): curl checks against the live dev server
+ *  (node dist/server.js). After any src/ change, `npm run build` MUST
+ *  be run and the server restarted before live-curl verification is valid.
+ *  Skipping this step causes a false-green: Jest passes the TS source
+ *  while the live server still runs the stale compiled artifact.
+ */
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { createTestApp } from '../setup';
@@ -181,6 +193,23 @@ function walk(node: any, route: string, path: string, leaks: Leak[]): void {
 
 const fixtures: Record<string, string> = {};
 
+function collectDisplayWindowOpenLeaks(node: any, route: string, path: string, leaks: Array<{route: string; path: string}>): void {
+  if (node === null || node === undefined || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    node.forEach((el, i) => collectDisplayWindowOpenLeaks(el, route, `${path}[${i}]`, leaks));
+    return;
+  }
+  for (const [key, value] of Object.entries(node)) {
+    const childPath = path ? `${path}.${key}` : key;
+    if ((key.endsWith('Display') || key === 'display') && value && typeof value === 'object' && !Array.isArray(value)) {
+      if ('windowOpen' in (value as object)) {
+        leaks.push({ route, path: childPath });
+      }
+    }
+    collectDisplayWindowOpenLeaks(value, route, childPath, leaks);
+  }
+}
+
 describe('partner-currency-leak-sweep: no raw BGN scalar / internal field leaves any partner GET', () => {
   let app: any;
   let partnerToken: string;
@@ -285,6 +314,9 @@ describe('partner-currency-leak-sweep: no raw BGN scalar / internal field leaves
     expect(typeof data.cashback?.display?.total?.eur).toBe('number');
     // display must not expose windowOpen (partner contract: { bgn, eur } only)
     expect(data.revenue?.display?.total).not.toHaveProperty('windowOpen');
+    expect(data.revenue?.display?.average).not.toHaveProperty('windowOpen');
+    expect(data.cashback?.display?.total).not.toHaveProperty('windowOpen');
+    expect(data.cashback?.display?.average).not.toHaveProperty('windowOpen');
   });
 
   it('leaks NO raw BGN scalar and NO internal field from any partner GET (window CLOSED)', async () => {
@@ -319,5 +351,30 @@ describe('partner-currency-leak-sweep: no raw BGN scalar / internal field leaves
         : 'Partner leak(s) (raw BGN while window CLOSED, or internal field):\n' +
           leaks.map((l) => `  [${l.kind}] ${l.route}  path=${l.jsonPath}  value=${JSON.stringify(l.value)}`).join('\n');
     expect({ count: leaks.length, message }).toEqual({ count: 0, message: '' });
+  });
+
+  it('Display objects contain no windowOpen key on any partner GET (window OPEN)', async () => {
+    await setCurrencyWindowOpen(true);
+    const violations: Array<{ route: string; path: string }> = [];
+    for (const route of getRoutes) {
+      const url = materialize(route.path);
+      if (url === null) continue;
+      let res: request.Response;
+      try {
+        res = await request(app).get(url).set('Authorization', `Bearer ${partnerToken}`);
+      } catch {
+        continue;
+      }
+      if (res.status < 200 || res.status >= 300) continue;
+      if (!res.body || typeof res.body !== 'object') continue;
+      collectDisplayWindowOpenLeaks(res.body, `GET ${route.path}`, '', violations);
+    }
+    if (violations.length > 0) {
+      console.log('\n[partner-currency-leak-sweep] windowOpen shape violations:');
+      for (const v of violations) {
+        console.log(`  - ${v.route}  path=${v.path}`);
+      }
+    }
+    expect(violations).toHaveLength(0);
   });
 });
