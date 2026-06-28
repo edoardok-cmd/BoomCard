@@ -31,9 +31,11 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
     });
 
     // Pre-cleanup stale users from previous runs before creating fixtures.
+    // Delete in FK-safe order: child tables with RESTRICT FK before User.
     await prisma.pendingSuperAdminRequest.deleteMany({});
     await prisma.helpTicket.deleteMany({ where: { user: { email: { contains: '@test.local' } } } });
     await prisma.partnerRequestNote.deleteMany({ where: { author: { email: { contains: '@test.local' } } } });
+    await prisma.subscription.deleteMany({ where: { user: { email: { contains: '@test.local' } } } });
     await prisma.user.deleteMany({ where: { email: { contains: '@test.local' } } });
 
     // Create a SUPER_ADMIN user for auth.
@@ -69,10 +71,11 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
   });
 
   afterAll(async () => {
-    // Delete in FK-safe order: HelpTickets and PartnerRequestNotes before Users.
+    // Delete in FK-safe order: child tables with RESTRICT FK before User.
     await prisma.pendingSuperAdminRequest.deleteMany({});
     await prisma.helpTicket.deleteMany({ where: { user: { email: { contains: '@test.local' } } } });
     await prisma.partnerRequestNote.deleteMany({ where: { author: { email: { contains: '@test.local' } } } });
+    await prisma.subscription.deleteMany({ where: { user: { email: { contains: '@test.local' } } } });
     await prisma.user.deleteMany({ where: { email: { contains: '@test.local' } } });
   });
 
