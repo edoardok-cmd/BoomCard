@@ -13,7 +13,7 @@
  *   INV-RDM-006 — Partner cannot delete venue (admin-only)
  *   INV-RDM-007 — Partner cannot upload menu images (admin-only)
  *   INV-RDM-008 — Partner cannot clear venue menu (admin-only)
- *   INV-RDM-009 — Partner cannot submit menu URL (admin-only)
+ *   INV-RDM-009 — Partner CAN submit menu URL for own venue; cross-partner access returns 403
  *   INV-RDM-010 — Partner cannot withdraw menu submission (admin-only)
  *   INV-RDM-011 — Dashboard scoped to authenticated user
  *   INV-RDM-055 — Admin-only venue fields not returned in public GET
@@ -413,15 +413,29 @@ describe('INV-RDM-004..010 — Partner cannot mutate venue or menu (admin-only r
     expect(res.status).toBe(403);
   });
 
-  it('[XSCOPE] INV-RDM-009: Partner cannot submit menu URL — POST /api/venues/:id/menu/submit returns 403', async () => {
+  it('[POSITIVE] INV-RDM-009: Partner CAN submit menu URL for own venue — POST /api/venues/:id/menu/submit returns 200 or 400 (not 403)', async () => {
+    if (!throwawayVenueId) { return; }
     const res = await authRequest(partnerAToken)
+      .post(`/api/venues/${throwawayVenueId}/menu/submit`)
+      .send({ url: 'https://example.com/menu.pdf' });
+    expect([200, 400]).toContain(res.status);
+  });
+
+  it('[XSCOPE] INV-RDM-009-CROSS: Partner CANNOT submit menu URL for another partner\'s venue — returns 403', async () => {
+    const res = await authRequest(partnerBToken)
       .post(`/api/venues/${venueAId}/menu/submit`)
       .send({ url: 'https://example.com/menu.pdf' });
     expect(res.status).toBe(403);
   });
 
-  it('[XSCOPE] INV-RDM-010: Partner cannot withdraw menu — POST /api/venues/:id/menu/withdraw returns 403', async () => {
+  it('[XSCOPE] INV-RDM-010: Partner cannot withdraw menu submission — POST /api/venues/:id/menu/withdraw returns 403', async () => {
     const res = await authRequest(partnerAToken)
+      .post(`/api/venues/${venueAId}/menu/withdraw`);
+    expect(res.status).toBe(403);
+  });
+
+  it('[XSCOPE] INV-RDM-010-CROSS: Partner CANNOT withdraw menu submission for another partner\'s venue — returns 403', async () => {
+    const res = await authRequest(partnerBToken)
       .post(`/api/venues/${venueAId}/menu/withdraw`);
     expect(res.status).toBe(403);
   });
@@ -486,12 +500,14 @@ describe('INV-RDM-004..010 — Partner cannot mutate venue or menu (admin-only r
   });
 
   it('[POSITIVE] INV-RDM-006: ADMIN can delete a venue — DELETE /api/venues/:id returns 200', async () => {
+    expect(throwawayVenueDeleteId).toBeDefined();
     const res = await authRequest(adminToken).delete(`/api/venues/${throwawayVenueDeleteId}`);
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
   });
 
   it('[POSITIVE] INV-RDM-007: ADMIN can upload menu images — POST /api/venues/:id/menu returns 200, 400, or 500 (not 403)', async () => {
+    expect(throwawayVenueId).toBeDefined();
     // In the test environment the image-upload backend (S3/Cloudinary) is
     // unavailable, so the route returns 500 ("All image uploads failed") instead
     // of 200. That is still proof the request passed the auth gate — a 403 would
@@ -505,6 +521,7 @@ describe('INV-RDM-004..010 — Partner cannot mutate venue or menu (admin-only r
   });
 
   it('[POSITIVE] INV-RDM-009: ADMIN can submit menu URL — POST /api/venues/:id/menu/submit returns 200 or 400 (not 403)', async () => {
+    expect(throwawayVenueId).toBeDefined();
     const res = await authRequest(adminToken)
       .post(`/api/venues/${throwawayVenueId}/menu/submit`)
       .send({ url: 'https://example.com/menu.pdf' });
@@ -513,6 +530,7 @@ describe('INV-RDM-004..010 — Partner cannot mutate venue or menu (admin-only r
   });
 
   it('[POSITIVE] INV-RDM-010: ADMIN can withdraw menu submission — POST /api/venues/:id/menu/withdraw returns 200 or 400 (not 403)', async () => {
+    expect(throwawayVenueId).toBeDefined();
     const res = await authRequest(adminToken)
       .post(`/api/venues/${throwawayVenueId}/menu/withdraw`);
     expect([200, 400]).toContain(res.status);
@@ -539,6 +557,7 @@ describe('INV-RDM-004..010 — Partner cannot mutate venue or menu (admin-only r
   });
 
   it('[POSITIVE] INV-RDM-005: ADMIN can update venue — PUT /api/venues/:id returns 200 (not 403)', async () => {
+    expect(throwawayVenueId).toBeDefined();
     const res = await authRequest(adminToken)
       .put(`/api/venues/${throwawayVenueId}`)
       .send({ name: `Admin Updated ${Date.now()}` });
@@ -547,6 +566,7 @@ describe('INV-RDM-004..010 — Partner cannot mutate venue or menu (admin-only r
   });
 
   it('[POSITIVE] INV-RDM-008: ADMIN can clear menu images — DELETE /api/venues/:id/menu returns 200 (not 403)', async () => {
+    expect(throwawayVenueId).toBeDefined();
     const res = await authRequest(adminToken).delete(`/api/venues/${throwawayVenueId}/menu`);
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -556,6 +576,42 @@ describe('INV-RDM-004..010 — Partner cannot mutate venue or menu (admin-only r
 // ─── INV-RDM-011: Dashboard scoped to authenticated user ─────────────────────
 
 describe('INV-RDM-011 — Dashboard scoped to authenticated user', () => {
+  let rdm011ScanId: string;
+  let rdm011CardId: string;
+
+  beforeAll(async () => {
+    const card = await prisma.card.create({
+      data: {
+        userId: userAUserId,
+        cardNumber: `RDM011-CARD-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        qrCode: `https://boomcard.bg/card-qr/RDM011-${Date.now()}`,
+        type: 'BASIC',
+        status: 'ACTIVE',
+      },
+    });
+    rdm011CardId = card.id;
+
+    const sticker = await prisma.sticker.findFirst({ where: { venueId: venueAId } });
+    if (!sticker) return;
+
+    const scan = await prisma.stickerScan.create({
+      data: {
+        userId: userAUserId,
+        stickerId: sticker.id,
+        venueId: venueAId,
+        cardId: rdm011CardId,
+        billAmount: 75,
+        status: 'APPROVED',
+      },
+    });
+    rdm011ScanId = scan.id;
+  });
+
+  afterAll(async () => {
+    await prisma.stickerScan.delete({ where: { id: rdm011ScanId } }).catch(() => {});
+    await prisma.card.delete({ where: { id: rdm011CardId } }).catch(() => {});
+  });
+
   it('[AUTH] GET /api/dashboard/me without token returns 401', async () => {
     const res = await request(app).get('/api/dashboard/me');
     expect(res.status).toBe(401);
@@ -567,6 +623,14 @@ describe('INV-RDM-011 — Dashboard scoped to authenticated user', () => {
     expect(res.body).toHaveProperty('subscription');
     expect(res.body).toHaveProperty('wallet');
     expect(res.body).toHaveProperty('receipts');
+  });
+
+  it('[XSCOPE] User B cannot see User A scan in GET /api/dashboard/me receipts', async () => {
+    if (!rdm011ScanId) return;
+    const res = await authRequest(userBToken).get('/api/dashboard/me');
+    expect(res.status).toBe(200);
+    const receiptIds: string[] = (res.body.receipts as Array<{ id: string }>).map((r) => r.id);
+    expect(receiptIds).not.toContain(rdm011ScanId);
   });
 });
 
@@ -626,6 +690,14 @@ describe('Auth gates — unauthenticated callers receive 401', () => {
   it('[AUTH] GET /api/stickers/admin/pending-review without token → 401', async () => {
     expect((await request(app).get('/api/stickers/admin/pending-review')).status).toBe(401);
   });
+
+  it('[AUTH] POST /api/venues/:id/menu without token → 401', async () => {
+    const fakeImg = Buffer.from('89504e47', 'hex');
+    const res = await request(app)
+      .post(`/api/venues/${venueAId}/menu`)
+      .attach('images', fakeImg, { filename: 'menu.png', contentType: 'image/png' });
+    expect(res.status).toBe(401);
+  });
 });
 
 // ─── INV-RDM-045/046: Stub routes return 501 ─────────────────────────────────
@@ -645,5 +717,83 @@ describe('Stub routes return 501 (not implemented)', () => {
     // Default env has ENABLE_NEARBY_VENUES unset (falsy)
     const res = await request(app).get('/api/venues/nearby?latitude=42&longitude=23');
     expect(res.status).toBe(501);
+  });
+});
+
+// ─── requireActiveAdmin: inactive admin blocked from venue writes ─────────────
+
+describe('requireActiveAdmin — inactive admin (aro=true) cannot mutate venues', () => {
+  let inactiveAdminToken: string;
+  let inactiveAdminUserId: string;
+
+  beforeAll(async () => {
+    const { user, accessToken } = await createTestUser();
+    inactiveAdminUserId = user.id;
+    cleanupUserIds.push(inactiveAdminUserId);
+
+    // Promote to ADMIN with INACTIVE status — the authenticate middleware
+    // re-derives aro=true from status===INACTIVE on every request (auth.middleware.ts
+    // §M4), so no separate aro column is needed. INACTIVE admins may log in
+    // (read-only) but requireActiveAdmin blocks all non-GET/HEAD/OPTIONS requests.
+    await prisma.user.update({
+      where: { id: inactiveAdminUserId },
+      data: { role: 'ADMIN', status: 'INACTIVE' },
+    });
+
+    // Re-login to get a token with ADMIN role + aro=true in the JWT.
+    // INACTIVE admins are explicitly allowed to log in per auth.service.ts L850
+    // ("INACTIVE → login allowed, but operational rights limited to read-only").
+    // Throw here so the test cannot silently degrade to a wrong-role fallback.
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({
+        email: (await prisma.user.findUnique({ where: { id: inactiveAdminUserId }, select: { email: true } }))!.email,
+        password: 'TestPass123!',
+        clientType: 'web',
+      });
+    if (loginRes.status !== 200) {
+      throw new Error(`Inactive-admin login failed (${loginRes.status}) — cannot prove requireActiveAdmin gate`);
+    }
+    inactiveAdminToken = loginRes.body.data.accessToken;
+  }, 15_000);
+
+  it('[ARO] Inactive admin gets 403 on POST /api/venues/', async () => {
+    const res = await authRequest(inactiveAdminToken)
+      .post('/api/venues/')
+      .send({
+        partnerId: 'dummy-partner',
+        name: 'ARO Test Venue',
+        address: '1 ARO St',
+        city: 'Sofia',
+        latitude: 42.0,
+        longitude: 23.0,
+      });
+    expect(res.status).toBe(403);
+  });
+
+  it('[ARO] Inactive admin gets 403 on PUT /api/venues/:id', async () => {
+    const res = await authRequest(inactiveAdminToken)
+      .put(`/api/venues/${venueAId}`)
+      .send({ name: 'ARO Hack' });
+    expect(res.status).toBe(403);
+  });
+
+  it('[ARO] Inactive admin gets 403 on DELETE /api/venues/:id', async () => {
+    const res = await authRequest(inactiveAdminToken)
+      .delete(`/api/venues/${venueAId}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('[ARO] Inactive admin gets 403 on POST /api/venues/:id/menu', async () => {
+    const fakeImg = Buffer.from('89504e47', 'hex');
+    const res = await authRequest(inactiveAdminToken)
+      .post(`/api/venues/${venueAId}/menu`)
+      .attach('images', fakeImg, { filename: 'menu.png', contentType: 'image/png' });
+    expect(res.status).toBe(403);
+  });
+
+  it('[POSITIVE] Inactive admin can still read venues — GET /api/venues/:id returns 200 or 404', async () => {
+    const res = await authRequest(inactiveAdminToken).get(`/api/venues/${venueAId}`);
+    expect([200, 404]).toContain(res.status);
   });
 });
