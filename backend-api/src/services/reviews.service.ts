@@ -3,8 +3,6 @@ import { AppError } from '../middleware/error.middleware';
 import { isReviewCommentAppropriate } from '../utils/profanity-filter';
 import { logger } from '../utils/logger';
 import { prisma } from '../lib/prisma';
-import { notificationService } from './notification.service';
-import { detach } from '../utils/detach';
 
 export interface CreateReviewDTO {
   partnerId: string;
@@ -455,21 +453,6 @@ class ReviewsService {
         // Update partner rating
         await this.updatePartnerRating(review.partnerId);
 
-        // Fire-and-forget partner notification. Only fires on the
-        // PENDING→APPROVED transition so partners aren't pinged twice if an
-        // admin re-clicks approve.
-        if (review.partner?.userId) {
-          const reviewerName = [review.user?.firstName, review.user?.lastName]
-            .filter(Boolean)
-            .join(' ')
-            .trim() || undefined;
-          detach(notificationService.notifyReviewReceived({
-            partnerUserId: review.partner.userId,
-            reviewId: review.id,
-            rating: review.rating,
-            reviewerName,
-          }), (err) => logger.error('Failed to send review notification:', err));
-        }
       }
 
       logger.info(`Review approved: ${id}`);

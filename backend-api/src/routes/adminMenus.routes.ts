@@ -14,7 +14,6 @@ import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { emailService } from '../services/email.service';
-import { notificationService } from '../services/notification.service';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
 
@@ -218,16 +217,6 @@ adminVenueMenuRouter.post(
       at: new Date().toISOString(),
     });
 
-    const partnerUserId = venue.partner?.user?.id;
-    if (partnerUserId && updated.menuUrl) {
-      detach(notificationService.notifyMenuApproved({
-        partnerUserId,
-        venueId: id,
-        venueName: venue.name,
-        menuUrl: updated.menuUrl,
-      }), (err) => logger.error('[menu-audit] Failed to send approval notification:', err));
-    }
-
     const partnerEmail = venue.partner?.user?.email;
     if (partnerEmail) {
       detach(emailService.sendMenuApprovedEmail(partnerEmail, {
@@ -300,16 +289,6 @@ adminVenueMenuRouter.post(
       reason,
       at: new Date().toISOString(),
     });
-
-    const partnerUserId = venue.partner?.user?.id;
-    if (partnerUserId) {
-      detach(notificationService.notifyMenuRejected({
-        partnerUserId,
-        venueId: id,
-        venueName: venue.name,
-        reason,
-      }), (err) => logger.error('[menu-audit] Failed to send rejection notification:', err));
-    }
 
     const partnerEmail = venue.partner?.user?.email;
     if (partnerEmail) {

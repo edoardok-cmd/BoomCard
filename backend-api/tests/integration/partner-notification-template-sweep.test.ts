@@ -79,6 +79,50 @@ function extractPartnerNotifyMethodsWithCreateNotification(src: string): string[
   return found;
 }
 
+/**
+ * Extract the enclosing method name for every `createNotification` call that
+ * passes a `partnerUserId` as the `userId` argument.
+ *
+ * Matches patterns like:
+ *   userId: partnerUserId,
+ *   userId: params.partnerUserId,
+ *
+ * Returns the list of enclosing async method names found in the class body.
+ * After the removals of notifyMenuApproved / notifyMenuRejected /
+ * notifyReviewReceived this set must be empty for non-`notifyPartner*` names.
+ */
+function extractNonCanonicalMethodsSendingToPartnerUserId(src: string): string[] {
+  // Pattern that matches `userId: <expr containing partnerUserId>`
+  const partnerUserIdPattern = /userId:\s*(?:params\.)?partnerUserId\b/g;
+  const results: string[] = [];
+
+  let match: RegExpExecArray | null;
+  while ((match = partnerUserIdPattern.exec(src)) !== null) {
+    // Walk backwards from match.index to find the enclosing `async <name>(`
+    const before = src.slice(0, match.index);
+    // Find the last `async <identifier>(` before this position
+    const methodPattern = /async (\w+)\s*\(/g;
+    let methodMatch: RegExpExecArray | null;
+    let enclosingMethod: string | null = null;
+    let lastIndex = -1;
+    methodPattern.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = methodPattern.exec(before)) !== null) {
+      if (m.index > lastIndex) {
+        lastIndex = m.index;
+        enclosingMethod = m[1];
+      }
+    }
+    if (enclosingMethod && !CANONICAL_PARTNER_NOTIFY_METHODS.has(enclosingMethod)) {
+      if (!results.includes(enclosingMethod)) {
+        results.push(enclosingMethod);
+      }
+    }
+  }
+
+  return results;
+}
+
 describe('partner-notification-template-sweep: INV-NOTIF-002 — exactly 8 canonical §9.1 partner templates', () => {
   let src: string;
 
@@ -90,7 +134,7 @@ describe('partner-notification-template-sweep: INV-NOTIF-002 — exactly 8 canon
     expect(src.length).toBeGreaterThan(0);
   });
 
-  it('contains no partner-facing notify methods beyond the canonical 8', () => {
+  it('contains no notifyPartner* methods beyond the canonical 8', () => {
     const found = extractPartnerNotifyMethodsWithCreateNotification(src);
     const extras = found.filter((m) => !CANONICAL_PARTNER_NOTIFY_METHODS.has(m));
 
@@ -98,7 +142,7 @@ describe('partner-notification-template-sweep: INV-NOTIF-002 — exactly 8 canon
       const extraList = extras.map((m) => `  - ${m}`).join('\n');
       const canonicalList = [...CANONICAL_PARTNER_NOTIFY_METHODS].map((m) => `  - ${m}`).join('\n');
       throw new Error(
-        `INV-NOTIF-002 VIOLATION: Found ${extras.length} non-canonical partner notify method(s) that call createNotification:\n` +
+        `INV-NOTIF-002 VIOLATION: Found ${extras.length} non-canonical notifyPartner* method(s) that call createNotification:\n` +
         `${extraList}\n\n` +
         `Allowed methods (spec §9.1 canonical 8):\n${canonicalList}\n\n` +
         `Remove the extra method(s) or reclassify them per §9.1 / Clash 6.1.`,
@@ -106,6 +150,24 @@ describe('partner-notification-template-sweep: INV-NOTIF-002 — exactly 8 canon
     }
 
     expect(extras).toEqual([]);
+  });
+
+  it('no non-canonical methods send createNotification to a partnerUserId', () => {
+    const offenders = extractNonCanonicalMethodsSendingToPartnerUserId(src);
+
+    if (offenders.length > 0) {
+      const offenderList = offenders.map((m) => `  - ${m}`).join('\n');
+      const canonicalList = [...CANONICAL_PARTNER_NOTIFY_METHODS].map((m) => `  - ${m}`).join('\n');
+      throw new Error(
+        `INV-NOTIF-002 VIOLATION: Found ${offenders.length} non-canonical method(s) that send createNotification ` +
+        `to a partnerUserId (bypassing the notifyPartner* naming gate):\n` +
+        `${offenderList}\n\n` +
+        `These methods are not in the spec §9.1 canonical set:\n${canonicalList}\n\n` +
+        `Remove or reclassify them per §9.1 / Clash 6.1.`,
+      );
+    }
+
+    expect(offenders).toEqual([]);
   });
 
   it('all 8 canonical methods are present — no silent removal', () => {
