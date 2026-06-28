@@ -148,6 +148,7 @@ A suite-covered row is `verified` by suite while that suite is green. A `review`
 | INV-CUR-004 | Window CLOSED → no raw BGN scalar leaves `GET /:id/stats`. | stats | suite | [SUITE: CUR] |
 | INV-CUR-005 | Dual-currency (BGN+EUR) shown during the transition window; rule applies to ALL partner-facing amounts. | all partner money views | runtime probe | review |
 | INV-CUR-006 | No partner monetary endpoint emits an unclassified numeric money field (forces classify-or-gate). | all partner GETs | suite | [SUITE: CUR] |
+| INV-CUR-007 | Every partner money `*Display` object has EXACTLY the contract shape `{bgn,eur}` — no internal `windowOpen` (or other internal) key leaks (spec §7.3). | all partner money GETs | suite | [SUITE: CUR] |
 
 ## 10. Input-Boundary / Never-500 (INV-INPUT)
 
