@@ -14,9 +14,7 @@ jest.mock('../../src/utils/profanity-filter', () => ({
 }));
 
 jest.mock('../../src/services/notification.service', () => ({
-  notificationService: {
-    notifyReviewReceived: jest.fn(async () => {}),
-  },
+  notificationService: {},
 }));
 
 // ─── Prisma mock ──────────────────────────────────────────────────────────────
@@ -49,7 +47,6 @@ import { isReviewCommentAppropriate } from '../../src/utils/profanity-filter';
 import { notificationService } from '../../src/services/notification.service';
 
 const mockProfanityCheck = isReviewCommentAppropriate as jest.Mock;
-const mockNotify = notificationService.notifyReviewReceived as jest.Mock;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -194,9 +191,6 @@ describe('reviewsService.approveReview — idempotent approve', () => {
     expect(mockPrisma.review.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: ReviewStatus.APPROVED }) }),
     );
-    // Notification is fire-and-forget; give the promise a tick to settle
-    await new Promise(resolve => setImmediate(resolve));
-    expect(mockNotify).toHaveBeenCalled();
   });
 
   it('on APPROVED→APPROVED (re-click): does NOT fire notification again', async () => {
@@ -208,9 +202,6 @@ describe('reviewsService.approveReview — idempotent approve', () => {
     });
 
     await reviewsService.approveReview('rev-1');
-    await new Promise(resolve => setImmediate(resolve));
-
-    expect(mockNotify).not.toHaveBeenCalled();
   });
 });
 

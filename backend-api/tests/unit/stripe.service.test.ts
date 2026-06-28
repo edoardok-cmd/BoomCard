@@ -48,7 +48,6 @@ jest.mock('../../src/services/notification.service', () => ({
     notifyPaymentFailed:   mockNotifyPaymentFailed,
     notifyAdminChargeback: mockNotifyAdminChargeback,
     notifyAdminOps:        mockNotifyAdminOps,
-    notifyReviewReceived:  jest.fn(async () => {}),
   },
 }));
 
