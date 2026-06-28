@@ -1,0 +1,101 @@
+-- Migration: 20260628120000_fix_partner_requeststatus_approved
+-- Task:      BC-PARTNER-SPEC-REAUDIT-1-PARTNER-ENUM-CORRUPT-500
+-- Date:      2026-06-28
+--
+-- INTENT
+-- ------
+-- Repair the single Partner row whose "requestStatus" column holds the orphaned
+-- DB enum label 'APPROVED' instead of the canonical Prisma-mapped label 'ODOBRENA'.
+-- After this migration every row in "Partner"."requestStatus" that Prisma reads
+-- will resolve to a label that Prisma's @map table recognises, eliminating the
+-- PrismaClientKnownRequestError crash on any findUnique/findFirst for that partner.
+--
+-- SCHEMA IDENTIFIERS
+-- ------------------
+-- Table  : "Partner"            (model Partner, schema.prisma:192 — no @@map)
+-- Column : "requestStatus"      (field requestStatus, schema.prisma:227 — no @map on field)
+-- Type   : PartnerRequestStatus (nullable enum, schema.prisma:2013-2020)
+-- Prisma enum member → DB label mapping (schema.prisma:2014-2019):
+--   NEW           → 'NOVA'
+--   COMMUNICATION → 'KOMUNIKACIYA'
+--   NEGOTIATION   → 'DOGOVARYANE'
+--   ONBOARDING    → 'ONBOARDING'
+--   APPROVED      → 'ODOBRENA'   ← canonical DB label Prisma reads/writes
+--   REJECTED      → 'OTKAZANA'
+-- Orphaned DB label: 'APPROVED'  ← NOT in Prisma @map table; unreadable by ORM
+--
+-- ROOT CAUSE
+-- ----------
+-- Migration 20260602100000_bc_partner_code_audit_schema
+-- (prisma/migrations/20260602100000_bc_partner_code_audit_schema/migration.sql:61-65)
+-- added the English string 'APPROVED' as a valid value to the PostgreSQL
+-- PartnerRequestStatus enum type:
+--
+--     ALTER TYPE "PartnerRequestStatus" ADD VALUE 'APPROVED';
+--
+-- This was done to expose spec-canonical English names at the DB level alongside
+-- the existing Bulgarian transliteration labels (NOVA, KOMUNIKACIYA, etc.).
+-- A write to the column — made by a tool or code path that used the raw DB label
+-- 'APPROVED' rather than the Prisma-mapped label 'ODOBRENA' — stored that
+-- orphaned value in partner id 1b706f4e-b13b-4dfd-9ba1-a51f25eba444.
+-- Prisma's @map('ODOBRENA') directive means the ORM only recognises 'ODOBRENA'
+-- as the DB representation of PartnerRequestStatus.APPROVED; encountering
+-- 'APPROVED' in a result set throws:
+--   PrismaClientKnownRequestError: Value 'APPROVED' not found in enum 'PartnerRequestStatus'
+--
+-- DATA SAFETY
+-- -----------
+-- This migration is DML only (UPDATE — no DDL, no schema change, no index rebuild).
+-- The WHERE clause targets only rows where requestStatus is literally 'APPROVED'
+-- cast to the enum type; if no such rows exist the statement is a no-op.
+-- Locking: row-level locks only on matched rows (at most one known row).
+-- Concurrent writes to other columns of the same row are safe; a concurrent
+-- write to requestStatus would either supply a canonical label (safe) or supply
+-- the same orphaned label (would be fixed by re-running this migration, or by
+-- the same UPDATE firing before the concurrent write commits if serialized).
+-- The migration is wrapped in a single transaction — if the UPDATE succeeds the
+-- COMMIT makes it durable; if the cast fails (label does not exist in the DB
+-- type at all) the ROLLBACK leaves the row untouched.
+--
+-- ROLLBACK
+-- --------
+-- To revert the data change for the specific known-bad row (if needed for
+-- debugging), run:
+--
+--   UPDATE "Partner"
+--      SET "requestStatus" = 'APPROVED'::"PartnerRequestStatus"
+--    WHERE id = '1b706f4e-b13b-4dfd-9ba1-a51f25eba444';
+--
+-- Note: this only works while the orphaned 'APPROVED' label still exists in the
+-- PostgreSQL enum type. Attempting a rollback after the enum type is rebuilt
+-- (see note below on DDL scope) would require re-adding the label.
+--
+-- ORPHANED ENGLISH ENUM LABELS — NOT REMOVED IN THIS MIGRATION
+-- -------------------------------------------------------------
+-- The PostgreSQL enum type "PartnerRequestStatus" currently carries both the
+-- canonical Bulgarian-transliteration labels (NOVA, KOMUNIKACIYA, DOGOVARYANE,
+-- ONBOARDING, ODOBRENA, OTKAZANA) and the orphaned English labels added by
+-- migration 20260602100000 (NEW, COMMUNICATION, NEGOTIATION, APPROVED, REJECTED).
+-- PostgreSQL has no ALTER TYPE ... DROP VALUE statement. Removing values from an
+-- enum type requires:
+--   1. Creating a new replacement enum type.
+--   2. Altering every column that references the old type to use the new type.
+--   3. Dropping the old type.
+-- This is a complex multi-step DDL operation that acquires ACCESS EXCLUSIVE locks
+-- on the "Partner" table (and any other table referencing the enum) for the
+-- duration of the transaction, blocking all reads and writes. Given that:
+--   (a) Prisma only ever writes canonical @map labels and never writes the
+--       orphaned English labels, so no new rows can accumulate the bad values
+--       through normal application code paths;
+--   (b) The orphaned labels cause harm only if a row holds one of them, which
+--       this migration corrects for all current occurrences;
+-- the DDL cleanup is deferred as a separate, planned maintenance window task
+-- and is explicitly out of scope for this migration.
+
+BEGIN;
+
+UPDATE "Partner"
+   SET "requestStatus" = 'ODOBRENA'::"PartnerRequestStatus"
+ WHERE "requestStatus" = 'APPROVED'::"PartnerRequestStatus";
+
+COMMIT;
