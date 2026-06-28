@@ -30,6 +30,7 @@ import { notificationService } from '../services/notification.service';
 import { publicPartnerFilter } from '../services/publicPartnerFilter';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
+import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 /**
  * Normalize a categories[] payload alongside its main category id.
@@ -330,11 +331,18 @@ router.get(
     const venueIds = partner.venues.map(v => v.id);
 
     if (venueIds.length === 0) {
+      const windowOpenEmpty = await isCurrencyTransitionWindowOpen();
       return res.json({
         success: true,
         data: {
           period: { days, startDate: new Date(), endDate: new Date() },
-          stats: { totalSavings: 0, activeCards: 0, totalUses: 0, avgDiscount: 0 },
+          stats: {
+            ...(windowOpenEmpty && { totalSavings: 0 }),
+            totalSavingsDisplay: toDualCurrency(0, windowOpenEmpty),
+            activeCards: 0,
+            totalUses: 0,
+            avgDiscount: 0,
+          },
           changes: { totalSavings: 0, activeCards: 0, totalUses: 0, avgDiscount: 0 },
           timeSeries: [],
           byVenue: [],
@@ -457,12 +465,16 @@ router.get(
       return { ...v, color: COLORS[i % COLORS.length], percentage };
     });
 
+    const windowOpen = await isCurrencyTransitionWindowOpen();
+    const roundedSavings = Math.round(totalSavings * 100) / 100;
+
     res.json({
       success: true,
       data: {
         period: { days, startDate: currentStart, endDate: now },
         stats: {
-          totalSavings: Math.round(totalSavings * 100) / 100,
+          ...(windowOpen && { totalSavings: roundedSavings }),
+          totalSavingsDisplay: toDualCurrency(roundedSavings, windowOpen),
           activeCards,
           totalUses,
           avgDiscount,
@@ -475,8 +487,16 @@ router.get(
           // period-comparable metric, so there is no meaningful period delta.
           avgDiscount: 0,
         },
-        timeSeries,
-        byVenue,
+        timeSeries: timeSeries.map(({ savings, ...rest }) => ({
+          ...rest,
+          ...(windowOpen && { savings }),
+          savingsDisplay: toDualCurrency(savings, windowOpen),
+        })),
+        byVenue: byVenue.map(({ savings, ...rest }) => ({
+          ...rest,
+          ...(windowOpen && { savings }),
+          savingsDisplay: toDualCurrency(savings, windowOpen),
+        })),
       },
     });
   }),
@@ -694,15 +714,21 @@ router.get(
       prisma.stickerScan.count({ where }),
     ]);
 
-    const data = scans.map((s) => ({
-      id: s.id,
-      createdAt: s.createdAt,
-      venueId: s.venueId,
-      venueName: s.venue?.name ?? null,
-      amount: s.verifiedAmount ?? s.billAmount,
-      status: s.status,
-      transactionId: s.transactionId,
-    }));
+    const windowOpen = await isCurrencyTransitionWindowOpen();
+
+    const data = scans.map((s) => {
+      const rawAmount = s.verifiedAmount ?? s.billAmount;
+      return {
+        id: s.id,
+        createdAt: s.createdAt,
+        venueId: s.venueId,
+        venueName: s.venue?.name ?? null,
+        ...(windowOpen && rawAmount != null && { amount: rawAmount }),
+        amountDisplay: toDualCurrency(rawAmount ?? 0, windowOpen),
+        status: s.status,
+        transactionId: s.transactionId,
+      };
+    });
 
     res.json({
       success: true,
@@ -759,12 +785,15 @@ router.get(
         })
       : [];
     const periodStatusByMonth = new Map(periods.map((p) => [p.month, p.status]));
+    const windowOpen = await isCurrencyTransitionWindowOpen();
 
     const data = payments.map((p) => ({
       month: p.month,
-      turnoverAmount: p.turnoverAmount,
+      ...(windowOpen && { turnoverAmount: p.turnoverAmount }),
+      turnoverAmountDisplay: toDualCurrency(p.turnoverAmount ?? 0, windowOpen),
       contractedRate: p.contractedRate,
-      totalCashbackOwed: p.totalCashbackOwed,
+      ...(windowOpen && { totalCashbackOwed: p.totalCashbackOwed }),
+      totalCashbackOwedDisplay: toDualCurrency(p.totalCashbackOwed ?? 0, windowOpen),
       status: p.status,
       paidAt: p.paidAt,
       invoiceNumber: p.invoiceNumber,
@@ -848,6 +877,9 @@ router.get(
 
     const revenue = approvedScans.reduce((sum, s) => sum + s.cashbackAmount, 0);
     const expectedAmount = expectedAgg._sum.totalCashbackOwed ?? 0;
+    const windowOpen = await isCurrencyTransitionWindowOpen();
+    const roundedRevenue = Math.round(revenue * 100) / 100;
+    const roundedExpected = Math.round(expectedAmount * 100) / 100;
 
     res.json({
       success: true,
@@ -859,9 +891,11 @@ router.get(
         averageRating: partner.rating,
         totalReviews: partner.reviewCount,
         monthlyRedemptions: monthScans,
-        revenue: Math.round(revenue * 100) / 100,
+        ...(windowOpen && { revenue: roundedRevenue }),
+        revenueDisplay: toDualCurrency(roundedRevenue, windowOpen),
         // BC-PARTNER-PORTAL-SCOPE-B B3 — new §5.3 KPI fields.
-        expectedAmount: Math.round(expectedAmount * 100) / 100,
+        ...(windowOpen && { expectedAmount: roundedExpected }),
+        expectedAmountDisplay: toDualCurrency(roundedExpected, windowOpen),
         totalVisits,
       },
     });
@@ -1253,8 +1287,12 @@ router.put(
     // address, phone, email, website) — or the admin-managed contract metadata
     // blob `features` — is rejected with 403 PARTNER_USE_CHANGE_REQUEST,
     // mirroring auth.routes PUT /profile and POST /change-email/request. We do
-    // NOT silently drop disallowed fields. Rate / type / status remain
-    // admin-only and are handled in the isAdmin branch below.
+    // NOT silently drop disallowed fields. The admin-only contract / lifecycle
+    // fields (discountRate (commission %), status, isVisible, partnerTypeId,
+    // verifiedAt) are ALSO rejected here with the same 403 — a partner staging
+    // them as a "pending change" was previously silently dropped while the
+    // handler still claimed success; they remain admin-only and are handled in
+    // the isAdmin branch below.
     if (!isAdmin) {
       // Critical fields a partner may NOT edit here — presence in the body is
       // an attempt to change, even when set to null/empty.
@@ -1269,13 +1307,21 @@ router.put(
         phone !== undefined ||
         email !== undefined ||
         website !== undefined ||
-        features !== undefined;
+        features !== undefined ||
+        // Admin-only contract / lifecycle fields. partnerTypeId, status and
+        // discountRate are destructured above; isVisible and verifiedAt are not,
+        // so read them directly off the body to detect presence.
+        discountRate !== undefined ||
+        status !== undefined ||
+        partnerTypeId !== undefined ||
+        req.body.isVisible !== undefined ||
+        req.body.verifiedAt !== undefined;
 
       if (disallowedPresent) {
         return res.status(403).json({
           success: false,
           error:
-            'Partners cannot directly edit business name, categories, location, contact or payment details. Please submit a change request via the Help system.',
+            'Partners cannot directly edit business name, categories, location, contact, payment, commission or status details. Please submit a change request via the Help system.',
           code: 'PARTNER_USE_CHANGE_REQUEST',
         });
       }
@@ -1285,6 +1331,19 @@ router.put(
       if (descriptionBg !== undefined) partnerUpdates.descriptionBg = descriptionBg;
       if (openingHours !== undefined) partnerUpdates.openingHours = openingHours;
       if (amenities !== undefined) partnerUpdates.amenities = amenities;
+
+      // No editable self-service field supplied: do NOT write a phantom empty
+      // pendingChanges record and do NOT claim "pending approval". The only
+      // partner-stageable fields are description, descriptionBg, openingHours,
+      // amenities — anything else must go through the Help change-request channel.
+      if (Object.keys(partnerUpdates).length === 0) {
+        return res.status(400).json({
+          success: false,
+          error:
+            'No editable fields supplied. Submit a change request via the Help system for other fields.',
+          code: 'NO_EDITABLE_FIELDS',
+        });
+      }
 
       await prisma.partner.update({
         where: { id: req.params.id },

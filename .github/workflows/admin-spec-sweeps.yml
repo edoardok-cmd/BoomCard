@@ -80,4 +80,5 @@ jobs:
           tests/integration/admin-currency-leak-sweep.test.ts
           tests/integration/admin-uuid-500-sweep.test.ts
           tests/integration/admin-endpoint-coverage.test.ts
+          tests/integration/app-route-ownership.test.ts
           --runInBand --ci

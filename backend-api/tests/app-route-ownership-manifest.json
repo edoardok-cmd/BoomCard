@@ -1,0 +1,2399 @@
+{
+  "generated": "run UPDATE_ROUTE_OWNERSHIP=1 to refresh",
+  "total": 477,
+  "byScope": {
+    "admin": 232,
+    "user": 158,
+    "partner": 24,
+    "redemption": 39,
+    "public": 7,
+    "system": 17
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/admins/",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/admins/:id/approve",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/:id/permissions",
+      "scope": "admin"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/admins/:id/permissions/overrides",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/admins/:id/reset-2fa",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/admins/:id/roles/:roleKey",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/admins/:id/status",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/audit",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/critical-actions",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/admins/critical-actions",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/admins/critical-actions/:id/approve",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/admins/critical-actions/:id/reject",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/pending",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/pending-all",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/pending-super",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/admins/pending-super/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/admins/pending-super/:id/approve",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/permissions/catalog",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/admins/roles",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/alerts/",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/bulk-import/",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/bulk-import/partners",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/bulk-import/template",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/bulk-import/template/partners",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/cashback/:partnerId/:month/mark-paid",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/cashback/:partnerId/:month/receipts",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/cashback/:partnerId/remind",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/cashback/backfill-expiry",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/cashback/entries",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/cashback/entries/:id/approve",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/cashback/entries/:id/expire",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/cashback/entries/:id/lock",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/cashback/entries/:id/pay",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/cashback/entries/:id/void",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/cashback/entries/export",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/cashback/payout-thresholds",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/cashback/rates",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/cashback/rates",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/cashback/rates/current",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/cashback/rates/snapshot/:iso",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/cashback/stats",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/cashback/subscriber/:userId",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/cashback/summary",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/control/dispute-cases",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/control/dispute-cases",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/control/dispute-cases/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/control/dispute-cases/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/control/dispute-cases/:id/notes",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/control/dispute-cases/:id/notes",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/control/disputes",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/control/disputes/:id/approve",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/control/disputes/:id/reject",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/control/receipt-templates",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/control/receipt-templates",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/control/receipt-templates/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/control/receipt-templates/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/control/risk-queue",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/control/risk-queue/:id/approve",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/control/risk-queue/:id/reject",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/control/risk-queue/bulk-reject",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/control/risk-queue/summary",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/control/security",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/dashboard/",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/finance/export",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/finance/invoices",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/finance/invoices/:id/notes",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/finance/invoices/:id/pay",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/finance/invoices/:id/status",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/finance/invoices/backfill-numbers",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/finance/invoices/generate",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/finance/payout-thresholds",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/finance/periods",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/finance/report-partners",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/finance/reporting-periods",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/finance/reporting-periods",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/finance/reporting-periods/:month",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/finance/reporting-periods/:month/notes",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/finance/reporting-periods/:month/status",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/finance/reports",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/help/",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/help/",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/help/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/help/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/help/:id/assign",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/help/:id/cancel",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/help/:id/reject",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/help/:id/replies",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/help/:id/reply",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/help/count",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/help/mine",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/automations",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/marketing/automations",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/marketing/automations/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/automations/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/marketing/automations/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/marketing/automations/:id/status",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/marketing/automations/ensure-defaults",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/campaigns",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/marketing/campaigns",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/marketing/campaigns/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/campaigns/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/marketing/campaigns/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/marketing/campaigns/:id/status",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/lists",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/marketing/lists",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/marketing/lists/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/lists/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/marketing/lists/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/lists/:id/members",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/marketing/lists/:id/members",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/marketing/lists/:id/members/:memberId",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/marketing/lists/ensure-defaults",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/partners/search",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/templates",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/marketing/templates",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/marketing/templates/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/templates/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/marketing/templates/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/marketing/users/search",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/me/",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/me/",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/me/2fa",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/me/2fa/enable",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/me/2fa/recovery-codes/regenerate",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/me/2fa/setup",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/me/avatar",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/me/email-change/confirm",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/me/email-change/request",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/me/login-history",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/me/password",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/me/sessions",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/me/sessions",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/me/sessions/:tokenId",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/menus/pending",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-requests/",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-requests/_assignable-admins",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-requests/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-requests/:id/activation-links",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/partner-requests/:id/approve",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/partner-requests/:id/assign",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-requests/:id/audit",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/partner-requests/:id/category",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/partner-requests/:id/contract",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/partner-requests/:id/discount-rate",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-requests/:id/notes",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/partner-requests/:id/notes",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-requests/:id/onboarding-readiness",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/partner-requests/:id/partner-status",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/partner-requests/:id/propose-discount-rate",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/partner-requests/:id/reject",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/partner-requests/:id/resend-activation",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/partner-requests/:id/risk-flag",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/partner-requests/:id/status",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-requests/:id/status-history",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/partner-requests/:id/visibility",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-types/",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/partner-types/",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/partner-types/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/partner-types/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/partner-types/:id/plan-access",
+      "scope": "admin"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/partner-types/:id/plan-access",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/payouts/",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/payouts/:id/approve",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/payouts/:id/complete",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/payouts/:id/fail",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/payouts/:id/hold",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/payouts/:id/reject",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/payouts/:id/release",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/payouts/:id/reset-stuck",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/payouts/bulk-approve",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/currency-display-mode",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/fraud-rules",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/settings/fraud-rules",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/settings/fraud-rules/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/settings/fraud-rules/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/fraud-rules/:id/overrides",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/settings/fraud-rules/:id/overrides",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/settings/fraud-rules/:id/overrides/:overId",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/mobile-app",
+      "scope": "admin"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/settings/mobile-app",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/mobile-app/history",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/settings/mobile-errors",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/mobile-errors",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/payout-thresholds",
+      "scope": "admin"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/settings/payout-thresholds",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/payout-thresholds/history",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/system",
+      "scope": "admin"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/settings/system",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/settings/system/history",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscribers/",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscribers/:userId",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/subscribers/:userId/account",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/subscribers/:userId/cancel",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscribers/:userId/cashback",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscribers/:userId/login-history",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/subscribers/:userId/plan",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/subscribers/:userId/profile",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/subscribers/:userId/refund",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscribers/:userId/refund-preview",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/subscribers/:userId/restore",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/subscribers/:userId/sessions",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/subscribers/:userId/status",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscribers/export",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscriptions/",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/subscriptions/:id/auto-renewal",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/subscriptions/:id/cancel",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/subscriptions/:id/reactivate",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/subscriptions/:id/resume",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscriptions/export",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscriptions/pending",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/subscriptions/pending/:id",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/subscriptions/pending/:id/resend-token",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/subscriptions/user/:userId/history",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/transactions/",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/transactions/adjust",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/transactions/business",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/transactions/business/partner-risk/:partnerId",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/transactions/business/stats",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/transactions/stats",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/venues/",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/venues/:id/menu",
+      "scope": "admin"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/venues/:id/menu",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/venues/:id/menu/approve",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/venues/:id/menu/reject",
+      "scope": "admin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/venues/:id/status",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/venues/:id/status-history",
+      "scope": "admin"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/auth/account",
+      "scope": "user"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/auth/avatar",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/avatar",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/change-email/request",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/change-email/verify",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/change-password",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/complete-profile",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/consent",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/data-export",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/forgot-password",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/impersonatable-partners",
+      "scope": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/impersonatable-users",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/impersonate",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/marketing-consent",
+      "scope": "user"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/auth/marketing-consent",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/partner/activate",
+      "scope": "partner"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/auth/profile",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/refresh",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/register",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/request-email-verification",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/resend-email-verification",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/reset-password",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/stop-impersonate",
+      "scope": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/switch-account",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/switchable-accounts",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/users/partners",
+      "scope": "partner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/verify-email",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/verify-email",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/bookings/",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/cards/",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/cards/:id/activate",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/cards/:id/deactivate",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cards/:id/statistics",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/cards/:id/upgrade",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cards/benefits",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cards/my-card",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/cards/validate",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/checkout/callback",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/checkout/callback",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/checkout/initiate",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/checkout/status/:orderId",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/config/mobile/",
+      "scope": "public"
+    },
+    {
+      "method": "POST",
+      "path": "/api/contact/",
+      "scope": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dashboard/me",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/email/inbound",
+      "scope": "system"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/favorites/",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/favorites/",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/favorites/",
+      "scope": "user"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/favorites/all",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/health/",
+      "scope": "system"
+    },
+    {
+      "method": "GET",
+      "path": "/api/health/detailed",
+      "scope": "system"
+    },
+    {
+      "method": "GET",
+      "path": "/api/health/live",
+      "scope": "system"
+    },
+    {
+      "method": "GET",
+      "path": "/api/health/metrics",
+      "scope": "system"
+    },
+    {
+      "method": "GET",
+      "path": "/api/health/ping",
+      "scope": "system"
+    },
+    {
+      "method": "GET",
+      "path": "/api/health/ready",
+      "scope": "system"
+    },
+    {
+      "method": "POST",
+      "path": "/api/help/ticket",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/help/tickets",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/help/tickets/:id",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/help/tickets/:id/cancel",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/help/tickets/:id/replies",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/help/tickets/:id/reply",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/integrations/available",
+      "scope": "system"
+    },
+    {
+      "method": "GET",
+      "path": "/api/integrations/available/:id",
+      "scope": "system"
+    },
+    {
+      "method": "GET",
+      "path": "/api/integrations/categories",
+      "scope": "system"
+    },
+    {
+      "method": "POST",
+      "path": "/api/integrations/connect",
+      "scope": "system"
+    },
+    {
+      "method": "GET",
+      "path": "/api/integrations/connected",
+      "scope": "system"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/integrations/connected/:id",
+      "scope": "system"
+    },
+    {
+      "method": "GET",
+      "path": "/api/integrations/stats",
+      "scope": "system"
+    },
+    {
+      "method": "POST",
+      "path": "/api/integrations/test/:id",
+      "scope": "system"
+    },
+    {
+      "method": "GET",
+      "path": "/api/loyalty/accounts/me",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/messaging/conversations",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/mobile/errors/",
+      "scope": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/api/notifications/",
+      "scope": "user"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/notifications/:id",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/notifications/:id",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/notifications/:id/archive",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/notifications/:id/read",
+      "scope": "user"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/notifications/all",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/notifications/preferences",
+      "scope": "user"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/notifications/preferences",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/notifications/push/subscribe",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/notifications/push/unsubscribe",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/notifications/push/vapid-public-key",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/notifications/read-all",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/notifications/register-token",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/notifications/statistics",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/notifications/test",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/notifications/unread/count",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/notifications/unregister-token",
+      "scope": "user"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/offers/",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/offers/",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/offers/",
+      "scope": "user"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/offers/:id",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/offers/:id",
+      "scope": "user"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/offers/:id",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/offers/:id/activate",
+      "scope": "user"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/offers/:id/featured",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/offers/:id/image",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/offers/category/:category",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/offers/city/:city",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/offers/featured",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/offers/partner/:partnerId",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/offers/tags",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/offers/top",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/partner/help/ticket",
+      "scope": "partner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/partner/help/tickets",
+      "scope": "partner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/partner/help/tickets/:id",
+      "scope": "partner"
+    },
+    {
+      "method": "POST",
+      "path": "/api/partner/help/tickets/:id/cancel",
+      "scope": "partner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/partner/help/tickets/:id/replies",
+      "scope": "partner"
+    },
+    {
+      "method": "POST",
+      "path": "/api/partner/help/tickets/:id/reply",
+      "scope": "partner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/partners/",
+      "scope": "partner"
+    },
+    {
+      "method": "POST",
+      "path": "/api/partners/",
+      "scope": "partner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/partners/:id",
+      "scope": "partner"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/partners/:id",
+      "scope": "partner"
+    },
+    {
+      "method": "POST",
+      "path": "/api/partners/:id/approve",
+      "scope": "partner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/partners/:id/qr-code",
+      "scope": "partner"
+    },
+    {
+      "method": "POST",
+      "path": "/api/partners/:id/reject",
+      "scope": "partner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/partners/:id/stats",
+      "scope": "partner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/partners/:id/type-info",
+      "scope": "partner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/partners/activation/:token/verify",
+      "scope": "partner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/partners/me",
+      "scope": "partner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/partners/me/analytics",
+      "scope": "partner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/partners/me/finance",
+      "scope": "partner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/partners/me/stickers",
+      "scope": "partner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/partners/me/transactions",
+      "scope": "partner"
+    },
+    {
+      "method": "POST",
+      "path": "/api/partners/onboard",
+      "scope": "partner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/payments/:orderId/status",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/payments/anonymous-subscription",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/payments/callback",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/payments/callback",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/payments/create",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/payments/history",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/payments/methods",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/payments/subscription",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/payments/subscription/callback",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/payments/subscription/callback",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/payments/transfer-callback",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/payments/verify-redirect",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/plans/",
+      "scope": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/api/plans/:id",
+      "scope": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/api/plans/code/:planCode",
+      "scope": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/api/receipts/",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/receipts/",
+      "scope": "user"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/receipts/:id",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/receipts/:id",
+      "scope": "user"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/receipts/:id",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/receipts/:id/cashback",
+      "scope": "user"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/receipts/:id/validate",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/receipts/admin/all",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/receipts/ocr",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/receipts/stats",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/receipts/v2/",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/receipts/v2/:id",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/receipts/v2/:id/review",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/receipts/v2/admin/all",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/receipts/v2/admin/pending-review",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/receipts/v2/analytics",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/receipts/v2/analytics/global",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/receipts/v2/analytics/update",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/receipts/v2/bulk-approve",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/receipts/v2/bulk-reject",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/receipts/v2/check-duplicate",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/receipts/v2/email",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/receipts/v2/merchant-check",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/receipts/v2/merchants/whitelist",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/receipts/v2/merchants/whitelist",
+      "scope": "user"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/receipts/v2/merchants/whitelist/:id",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/receipts/v2/stats/user",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/receipts/v2/submit",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/receipts/v2/upload",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/receipts/v2/venues/:venueId/config",
+      "scope": "user"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/receipts/v2/venues/:venueId/config",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/receipts/v2/venues/:venueId/templates",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/receipts/v2/venues/:venueId/templates",
+      "scope": "user"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/receipts/v2/venues/:venueId/templates/:id",
+      "scope": "user"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/receipts/v2/venues/:venueId/templates/:id",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reviews/",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/reviews/",
+      "scope": "user"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/reviews/:id",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reviews/:id",
+      "scope": "user"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/reviews/:id",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/reviews/:id/admin-response",
+      "scope": "user"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/reviews/:id/approve",
+      "scope": "user"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/reviews/:id/flag",
+      "scope": "user"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/reviews/:id/helpful",
+      "scope": "user"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/reviews/:id/reject",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reviews/partner/:partnerId",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reviews/partner/:partnerId/stats",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reviews/stats",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sidebar/stats",
+      "scope": "public"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/stickers/:stickerId/processing",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stickers/:stickerId/reactivate",
+      "scope": "redemption"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/stickers/:stickerId/replace",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stickers/activate/:stickerId",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stickers/admin/approve/:scanId",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stickers/admin/bulk-approve",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stickers/admin/bulk-reject",
+      "scope": "redemption"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stickers/admin/pending-review",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stickers/admin/reject/:scanId",
+      "scope": "redemption"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stickers/admin/stats",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stickers/generate/:locationId",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stickers/generate/bulk",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stickers/locations",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stickers/locations/bulk",
+      "scope": "redemption"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stickers/my-scans",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stickers/scan",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stickers/scan/:scanId/receipt",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/stickers/session",
+      "scope": "redemption"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stickers/validate/:stickerId",
+      "scope": "redemption"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stickers/venue/:venueId",
+      "scope": "redemption"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stickers/venue/:venueId/analytics",
+      "scope": "redemption"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stickers/venue/:venueId/config",
+      "scope": "redemption"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/stickers/venue/:venueId/config",
+      "scope": "redemption"
+    },
+    {
+      "method": "GET",
+      "path": "/api/stickers/venue/:venueId/scans",
+      "scope": "redemption"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/subscriptions/:id/auto-renewal",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/subscriptions/:id/cancel",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/subscriptions/:id/change-card",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/subscriptions/:id/reactivate",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/subscriptions/:id/retry-payment",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/subscriptions/:id/trial-refund",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/subscriptions/:id/update-plan",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/subscriptions/create",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/subscriptions/current",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/subscriptions/history",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/subscriptions/plans",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/subscriptions/status/:orderId",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/unsubscribe/",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/venues/",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/venues/",
+      "scope": "redemption"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/venues/:id",
+      "scope": "redemption"
+    },
+    {
+      "method": "GET",
+      "path": "/api/venues/:id",
+      "scope": "redemption"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/venues/:id",
+      "scope": "redemption"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/venues/:id/menu",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/venues/:id/menu",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/venues/:id/menu/submit",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/venues/:id/menu/withdraw",
+      "scope": "redemption"
+    },
+    {
+      "method": "GET",
+      "path": "/api/venues/cities",
+      "scope": "redemption"
+    },
+    {
+      "method": "GET",
+      "path": "/api/venues/nearby",
+      "scope": "redemption"
+    },
+    {
+      "method": "GET",
+      "path": "/api/venues/search",
+      "scope": "redemption"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wallet/balance",
+      "scope": "user"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/wallet/payout-account",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wallet/statistics",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/wallet/topup",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wallet/transactions",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/webhooks/health",
+      "scope": "system"
+    },
+    {
+      "method": "POST",
+      "path": "/api/webhooks/stripe",
+      "scope": "system"
+    }
+  ]
+}
