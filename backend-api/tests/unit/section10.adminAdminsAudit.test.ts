@@ -569,10 +569,22 @@ describe('Gap 4 — PATCH /:id/status requires reason when archiving or deactiva
     // No x-test-role header → actor is ADMIN_USER
     const res = await request(app)
       .patch('/api/admin/admins/u-target/status')
-      .send({ status: 'SUSPENDED', reason: 'Privilege escalation attempt' });
+      .send({ status: 'ARCHIVED', reason: 'Privilege escalation attempt' });
 
     expect(res.status).toBe(403);
     expect(res.body.error).toMatch(/SUPER_ADMIN/);
+  });
+
+  it('returns 400 with legacy-deprecation message when attempting to set SUSPENDED status (INV-SM-ADMIN-001)', async () => {
+    // SUSPENDED is a legacy status — the route explicitly rejects it as a new
+    // write regardless of role, so even a SUPER_ADMIN actor cannot set it.
+    const res = await request(app)
+      .patch('/api/admin/admins/u-target/status')
+      .set('x-test-role', 'SUPER_ADMIN')
+      .send({ status: 'SUSPENDED' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/SUSPENDED.*legacy|legacy.*SUSPENDED/i);
   });
 
   it('allows a SUPER_ADMIN to change another SUPER_ADMIN\'s status', async () => {
