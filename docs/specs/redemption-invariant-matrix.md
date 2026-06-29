@@ -49,20 +49,20 @@
 | INV-RDM-022 | INPUT | MEDIUM | POST /api/venues/:id/menu/submit rejects non-http(s) URL with 400 | POST /api/venues/:id/menu/submit | venues.routes.ts L489–493 | none |
 | INV-RDM-023 | INPUT | MEDIUM | POST /api/venues/:id/menu/withdraw returns 400 if menu is not in PENDING state | POST /api/venues/:id/menu/withdraw | venues.routes.ts L561 | none |
 | INV-RDM-024 | INPUT | LOW | POST /api/venues/:id/menu enforces 100-image cap per venue | POST /api/venues/:id/menu | venues.routes.ts L419–424 | none |
-| INV-RDM-025 | INPUT | MEDIUM | POST /admin/bulk-approve: scanIds must be non-empty string array; max 500 items | POST /api/stickers/admin/bulk-approve | stickers.routes.ts L1142–1147 | none |
+| INV-RDM-025 | INPUT | MEDIUM | POST /admin/bulk-approve: scanIds must be non-empty string array; max 500 items | POST /api/stickers/admin/bulk-approve | stickers.routes.ts L1142–1147 | [SUITE: INPUT] admin-bulk-approve-input.test.ts (passing — BC-REDEMPTION-RDM-025-2) |
 | INV-RDM-026 | INPUT | MEDIUM | POST /admin/bulk-reject: scanIds + reason both required; max 500 items | POST /api/stickers/admin/bulk-reject | stickers.routes.ts L1163–1172 | none |
 | INV-RDM-027 | INPUT | LOW | GET /admin/pending-review: dateFromHours clamped to range 1..720 | GET /api/stickers/admin/pending-review | stickers.routes.ts L854–860 | none |
 | INV-RDM-028 | INPUT | LOW | GET /venue/:venueId/analytics: `days` param clamped 1..365 | GET /api/stickers/venue/:venueId/analytics | stickers.routes.ts L713–714 | none |
-| INV-RDM-029 | INPUT | LOW | GET /my-scans: `limit` clamped 0..100 via parsePagination | GET /api/stickers/my-scans | stickers.routes.ts L346 | none |
-| INV-RDM-030 | AUTH | CRITICAL | POST /scan requires active subscription (requireActiveSubscription middleware) | POST /api/stickers/scan | stickers.routes.ts L125 | [SUITE: INPUT] sticker-scan.test.ts (auth issue resolved — BC-REDEMPTION-RDM-012-2; test TBD for RDM-030) |
-| INV-RDM-031 | AUTH | CRITICAL | POST /session requires active subscription (requireActiveSubscription) | POST /api/stickers/session | stickers.routes.ts L66 | none |
+| INV-RDM-029 | INPUT | LOW | GET /my-scans: `limit` clamped 1..100 via parsePagination (0 or negative → default 50) | GET /api/stickers/my-scans | stickers.routes.ts L346 | sticker-scan.test.ts lines 582–689 |
+| INV-RDM-030 | AUTH | CRITICAL | POST /scan requires active subscription (requireActiveSubscription middleware) | POST /api/stickers/scan | stickers.routes.ts L125 | [SUITE: AUTH] sticker-scan.test.ts (passing — BC-REDEMPTION-RDM-030-3) |
+| INV-RDM-031 | AUTH | CRITICAL | POST /session requires active subscription (requireActiveSubscription) | POST /api/stickers/session | stickers.routes.ts L66 | [SUITE: AUTH] sticker-scan.test.ts (INV-RDM-031 test) |
 | INV-RDM-032 | AUTH | CRITICAL | POST /scan/:scanId/receipt requires active subscription (requireActiveSubscription) | POST /api/stickers/scan/:scanId/receipt | stickers.routes.ts L233 | none |
-| INV-RDM-033 | AUTH | HIGH | GET /my-scans requires authentication — returns 401 without token | GET /api/stickers/my-scans | stickers.routes.ts L342 authenticate | none |
-| INV-RDM-034 | AUTH | HIGH | POST /admin/approve/:scanId requires ADMIN/SUPER_ADMIN role | POST /api/stickers/admin/approve/:scanId | stickers.routes.ts L1045 | none |
-| INV-RDM-035 | AUTH | HIGH | POST /admin/reject/:scanId requires ADMIN/SUPER_ADMIN role | POST /api/stickers/admin/reject/:scanId | stickers.routes.ts L1083 | none |
+| INV-RDM-033 | AUTH | HIGH | GET /my-scans requires authentication — returns 401 without token | GET /api/stickers/my-scans | stickers.routes.ts L342 authenticate | [SUITE: AUTH] sticker-scan.test.ts (INV-RDM-033 test — BC-REDEMPTION-RDM-033-3) |
+| INV-RDM-034 | AUTH | HIGH | POST /admin/approve/:scanId requires ADMIN/SUPER_ADMIN role | POST /api/stickers/admin/approve/:scanId | stickers.routes.ts L1048 | [SUITE: AUTH] sticker-scan.test.ts (INV-RDM-034 test — BC-REDEMPTION-RDM-034-3) |
+| INV-RDM-035 | AUTH | HIGH | POST /admin/reject/:scanId requires ADMIN/SUPER_ADMIN role | POST /api/stickers/admin/reject/:scanId | stickers.routes.ts L1086 | [SUITE: AUTH] sticker-scan.test.ts (INV-RDM-035 test) |
 | INV-RDM-036 | AUTH | HIGH | GET /admin/pending-review requires ADMIN/SUPER_ADMIN role | GET /api/stickers/admin/pending-review | stickers.routes.ts L828 | none |
-| INV-RDM-037 | AUTH | HIGH | GET /admin/stats requires ADMIN/SUPER_ADMIN role | GET /api/stickers/admin/stats | stickers.routes.ts L1020 | none |
-| INV-RDM-038 | AUTH | HIGH | POST /admin/bulk-approve requires ADMIN/SUPER_ADMIN role | POST /api/stickers/admin/bulk-approve | stickers.routes.ts L1139 | none |
+| INV-RDM-037 | AUTH | HIGH | GET /admin/stats requires ADMIN/SUPER_ADMIN role | GET /api/stickers/admin/stats | stickers.routes.ts L1020 | [SUITE: AUTH] sticker-scan.test.ts (INV-RDM-037 tests — BC-REDEMPTION-RDM-037-3) |
+| INV-RDM-038 | AUTH | HIGH | POST /admin/bulk-approve requires ADMIN/SUPER_ADMIN role | POST /api/stickers/admin/bulk-approve | stickers.routes.ts L1142 | [SUITE: AUTH] sticker-scan.test.ts (INV-RDM-038 tests — BC-REDEMPTION-RDM-038-3) |
 | INV-RDM-039 | AUTH | HIGH | POST /admin/bulk-reject requires ADMIN/SUPER_ADMIN role | POST /api/stickers/admin/bulk-reject | stickers.routes.ts L1160 | none |
 | INV-RDM-040 | AUTH | HIGH | GET /dashboard/me requires authentication — returns 401 without token | GET /api/dashboard/me | dashboard.routes.ts L22 authenticate | none |
 | INV-RDM-041 | AUTH | HIGH | QR/location write routes (activate, locations, locations/bulk, generate, generate/bulk, venue config PUT) require stickers.write permission | Multiple | stickers.routes.ts requirePermission('stickers.write') | [SUITE: PERM] stickers-permission-gating.test.ts ✓ |

@@ -291,7 +291,22 @@ router.get(
     // default 50, ceiling BULK_RECEIPT_LIMIT (500) for a review workflow.
     const { limit } = parsePagination(req.query, { defaultLimit: 50, maxLimit: BULK_RECEIPT_LIMIT });
 
-    const result = await receiptService.getPendingReviews(limit);
+    // Clamp dateFromHours to integer [1, 720]. Number() rejects '24abc' → NaN
+    // while accepting '24.7' → floor to 24. Fractional values that floor below 1
+    // (e.g. 0.5 → 0) are treated as absent. Values above 720 are capped.
+    // Omitting the param returns all MANUAL_REVIEW receipts regardless of age.
+    const MAX_DATE_FROM_HOURS = 720;
+    let dateFrom: Date | undefined;
+    if (req.query.dateFromHours !== undefined) {
+      const parsed = Number(req.query.dateFromHours);
+      const floored = Math.floor(parsed);
+      if (Number.isFinite(parsed) && floored >= 1) {
+        const clamped = Math.min(floored, MAX_DATE_FROM_HOURS);
+        dateFrom = new Date(Date.now() - clamped * 60 * 60 * 1000);
+      }
+    }
+
+    const result = await receiptService.getPendingReviews(limit, dateFrom);
 
     res.json(result);
   })

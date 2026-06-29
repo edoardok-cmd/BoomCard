@@ -7,7 +7,7 @@ import {
   SUSPICIOUS_EXACT_CODES,
   SUSPICIOUS_PREFIX_CODES,
 } from '../services/adminAlerts.service';
-import { authenticate, authorize, requirePermission, AuthRequest, requireActiveSubscription } from '../middleware/auth.middleware';
+import { authenticate, authorize, requirePermission, AuthRequest, requireActiveSubscription, requireActiveAdmin } from '../middleware/auth.middleware';
 import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
 import { imageUploadService } from '../services/imageUpload.service';
 import { LocationType, ScanStatus } from '@prisma/client';
@@ -713,9 +713,8 @@ router.get('/venue/:venueId/analytics', authenticate, authorize('PARTNER', 'ADMI
   try {
     const { venueId } = req.params;
     if (!await assertPartnerOwnsVenue(req, venueId, res)) return;
-    const rawDays = parseInt(req.query.days as string);
-    // Cap at 365 days — unbounded values trigger full-table scans (r2e S2).
-    const days = Number.isFinite(rawDays) && rawDays > 0 ? Math.min(rawDays, 365) : 30;
+    // Clamp to [1, 365]: missing/NaN → 30 default; negative → 1; over-limit → 365.
+    const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 1), 365);
 
     const analytics = await stickerService.getVenueAnalytics(venueId, days);
 
@@ -1084,7 +1083,7 @@ router.post('/admin/approve/:scanId', authenticate, authorize('ADMIN', 'SUPER_AD
  *   When omitted, sticker.service defaults the category to FRAUD.
  * Requires authentication (Admin role)
  */
-router.post('/admin/reject/:scanId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
+router.post('/admin/reject/:scanId', authenticate, requireActiveAdmin, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
     const { scanId } = req.params;
     const { notes, category } = req.body ?? {};

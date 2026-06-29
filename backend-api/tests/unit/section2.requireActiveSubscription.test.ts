@@ -11,11 +11,18 @@
 
 // ── Prisma mock ───────────────────────────────────────────────────────────────
 const subscriptionFindFirst = jest.fn() as jest.Mock;
+const userFindUnique = jest.fn() as jest.Mock;
 
 jest.mock('../../src/lib/prisma', () => ({
   __esModule: true,
-  default: { subscription: { findFirst: (...a: any[]) => subscriptionFindFirst(...a) } },
-  prisma: { subscription: { findFirst: (...a: any[]) => subscriptionFindFirst(...a) } },
+  default: {
+    subscription: { findFirst: (...a: any[]) => subscriptionFindFirst(...a) },
+    user: { findUnique: (...a: any[]) => userFindUnique(...a) },
+  },
+  prisma: {
+    subscription: { findFirst: (...a: any[]) => subscriptionFindFirst(...a) },
+    user: { findUnique: (...a: any[]) => userFindUnique(...a) },
+  },
 }));
 
 jest.mock('../../src/utils/logger', () => ({
@@ -36,6 +43,9 @@ function makeReq(user?: { id: string; role: string }): AuthRequest {
 
 beforeEach(() => {
   subscriptionFindFirst.mockReset();
+  userFindUnique.mockReset();
+  // Default: ACTIVE user — account-status gate passes through to subscription check.
+  userFindUnique.mockResolvedValue({ status: 'ACTIVE' });
 });
 
 describe('F-005 requireActiveSubscription — non-USER bypass', () => {
@@ -50,6 +60,7 @@ describe('F-005 requireActiveSubscription — non-USER bypass', () => {
       expect(next).toHaveBeenCalledTimes(1);
       expect((next as jest.Mock).mock.calls[0][0]).toBeUndefined(); // no error
       expect(subscriptionFindFirst).not.toHaveBeenCalled();
+      expect(userFindUnique).not.toHaveBeenCalled();
     },
   );
 });
@@ -156,5 +167,80 @@ describe('F-005 requireActiveSubscription — USER gating', () => {
     expect(err).toBeInstanceOf(AppError);
     expect((err as AppError).statusCode).toBe(503);
     expect((err as AppError).details).toEqual({ code: 'SUBSCRIPTION_CHECK_FAILED' });
+  });
+});
+
+describe('F-005 requireActiveSubscription — account status gate (spec §8.1 rule 1)', () => {
+  it('blocks an INACTIVE USER with 402 ACCOUNT_INACTIVE before checking subscription', async () => {
+    userFindUnique.mockResolvedValue({ status: 'INACTIVE' });
+    const req = makeReq({ id: 'u1', role: 'USER' });
+    const next = jest.fn() as unknown as NextFunction;
+
+    await requireActiveSubscription(req, {} as Response, next);
+
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).statusCode).toBe(402);
+    expect((err as AppError).details).toEqual({ code: 'ACCOUNT_INACTIVE' });
+    expect(subscriptionFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('blocks an ARCHIVED USER with 403 ACCOUNT_NOT_ACCESSIBLE before checking subscription', async () => {
+    userFindUnique.mockResolvedValue({ status: 'ARCHIVED' });
+    const req = makeReq({ id: 'u1', role: 'USER' });
+    const next = jest.fn() as unknown as NextFunction;
+
+    await requireActiveSubscription(req, {} as Response, next);
+
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).statusCode).toBe(403);
+    expect((err as AppError).details).toMatchObject({ code: 'ACCOUNT_NOT_ACCESSIBLE', subCode: 'ARCHIVED' });
+    expect(subscriptionFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('blocks a DELETED USER with 403 ACCOUNT_NOT_ACCESSIBLE before checking subscription', async () => {
+    userFindUnique.mockResolvedValue({ status: 'DELETED' });
+    const req = makeReq({ id: 'u1', role: 'USER' });
+    const next = jest.fn() as unknown as NextFunction;
+
+    await requireActiveSubscription(req, {} as Response, next);
+
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).statusCode).toBe(403);
+    expect((err as AppError).details).toMatchObject({ code: 'ACCOUNT_NOT_ACCESSIBLE', subCode: 'DELETED' });
+    expect(subscriptionFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('proceeds to subscription check when user row not found (post-delete race — findUnique returns null)', async () => {
+    // findUnique returns null for a missing record (not a throw). Middleware treats
+    // null as "no account-status block" and falls through to the subscription check.
+    userFindUnique.mockResolvedValue(null);
+    subscriptionFindFirst.mockResolvedValue({ id: 'sub-1' });
+    const req = makeReq({ id: 'u1', role: 'USER' });
+    const next = jest.fn() as unknown as NextFunction;
+
+    await requireActiveSubscription(req, {} as Response, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect((next as jest.Mock).mock.calls[0][0]).toBeUndefined();
+  });
+
+  it('fails closed (503) on any DB error from the user status lookup', async () => {
+    // Any rejection from findUnique (connection failure, pool exhaustion, etc.)
+    // propagates directly to the outer try/catch → must not fail open.
+    const dbErr = Object.assign(new Error('connection reset'), { code: 'P9999' });
+    userFindUnique.mockRejectedValue(dbErr);
+    const req = makeReq({ id: 'u1', role: 'USER' });
+    const next = jest.fn() as unknown as NextFunction;
+
+    await requireActiveSubscription(req, {} as Response, next);
+
+    const err = (next as jest.Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).statusCode).toBe(503);
+    expect((err as AppError).details).toEqual({ code: 'SUBSCRIPTION_CHECK_FAILED' });
+    expect(subscriptionFindFirst).not.toHaveBeenCalled();
   });
 });

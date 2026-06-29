@@ -423,19 +423,11 @@ export const requireActiveSubscription = async (
     // NOTE: PENDING_VERIFICATION and PENDING_PAYMENT users are blocked at the
     // authenticate middleware layer (line 183), so they cannot reach this point.
     // This middleware only handles account statuses that allow login (ACTIVE/INACTIVE/ARCHIVED/DELETED).
+    // findUnique returns null when the record doesn't exist (post-delete race);
+    // it never throws P2025. Real DB errors propagate to the outer catch → 503.
     const freshUser = await prisma.user.findUnique({
       where: { id: req.user.id },
       select: { status: true },
-    }).catch((err) => {
-      // Distinguish between "user not found" (P2025) and other database errors.
-      // P2025 means the user was deleted after login — treat as null (let the
-      // subscription check handle it). Other errors (connection failure, pool
-      // exhaustion) must not fail open — re-throw so the catch block below
-      // returns 503.
-      if ((err as any)?.code === 'P2025') {
-        return null;
-      }
-      throw err;
     });
 
     if (freshUser) {

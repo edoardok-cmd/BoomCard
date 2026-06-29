@@ -968,10 +968,11 @@ class ReceiptService {
    * change cannot accidentally bypass the field-stripping layer by reusing this
    * method from a less-privileged context.
    */
-  async getPendingReviews(limit: number = 50) {
+  async getPendingReviews(limit: number = 50, dateFrom?: Date) {
     const receipts = await prisma.receipt.findMany({
       where: {
         status: 'MANUAL_REVIEW' as any,
+        ...(dateFrom ? { createdAt: { gte: dateFrom } } : {}),
       },
       take: limit,
       orderBy: {

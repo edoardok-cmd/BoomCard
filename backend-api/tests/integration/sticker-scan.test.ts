@@ -11,6 +11,7 @@
 import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
+import jwt from 'jsonwebtoken';
 import {
   createTestUser,
   createTestSubscription,
@@ -21,10 +22,18 @@ import {
   authRequest,
 } from '../helpers/test-utils';
 
+const JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key';
+
+function generateAdminToken(userId: string, role: 'ADMIN' | 'SUPER_ADMIN' = 'ADMIN'): string {
+  return jwt.sign({ id: userId, email: `admin-${userId}@test.local`, role }, JWT_SECRET, { expiresIn: '15m' });
+}
+
 describe('Sticker Scan Flow (F06)', () => {
   const createdUserIds: string[] = [];
   let userId: string;
   let accessToken: string;
+  let adminAccessToken: string;
+  let adminUserId: string;
   let cardId: string;
   let venueId: string;
   let stickerId: string;
@@ -42,6 +51,16 @@ describe('Sticker Scan Flow (F06)', () => {
     userEmail = testData.email;
     userPassword = testData.password;
     createdUserIds.push(userId);
+
+    // Create an ADMIN user for auth-gate positive tests (INV-RDM-034, INV-RDM-038, etc.)
+    const adminData = await createTestUser();
+    await prisma.user.update({
+      where: { id: adminData.user.id },
+      data: { status: 'ACTIVE', role: 'ADMIN' },
+    });
+    adminUserId = adminData.user.id;
+    adminAccessToken = generateAdminToken(adminData.user.id, 'ADMIN');
+    createdUserIds.push(adminData.user.id);
 
     // auth.middleware.ts L189 blocks PENDING_VERIFICATION — promote to ACTIVE
     await prisma.user.update({ where: { id: userId }, data: { status: 'ACTIVE' } });
@@ -119,6 +138,21 @@ describe('Sticker Scan Flow (F06)', () => {
         });
 
       expect(res.status).toBe(401);
+    });
+
+    it('[AUTH] INV-RDM-030: POST /scan returns 402 SUBSCRIPTION_REQUIRED for user with no active subscription', async () => {
+      const noSubData = await createTestUser();
+      const noSubId = noSubData.user.id;
+      try {
+        await prisma.user.update({ where: { id: noSubId }, data: { status: 'ACTIVE' } });
+        const res = await authRequest(noSubData.accessToken)
+          .post('/api/stickers/scan')
+          .send({ stickerId, cardId, billAmount: 50.0 });
+        expect(res.status).toBe(402);
+        expect(res.body.error).toContain('SUBSCRIPTION_REQUIRED');
+      } finally {
+        await cleanupTestUser(noSubId);
+      }
     });
 
     it('should reject scan without required fields', async () => {
@@ -548,6 +582,42 @@ describe('Sticker Scan Flow (F06)', () => {
   // ─── Scan History ─────────────────────────────────────────────
 
   describe('GET /api/stickers/my-scans', () => {
+    // Seed 101 APPROVED scans so the ?limit=200 clamping assertion is meaningful:
+    // without the 100-item cap, ?limit=200 would return all 101 and the count
+    // assertion would fail, proving the cap is enforced.
+    let seededScanIds: string[] = [];
+
+    beforeAll(async () => {
+      // Resolve the Sticker PK (UUID) — the StickerScan FK references Sticker.id,
+      // not the human-readable stickerId string.
+      const stickerRow = await prisma.sticker.findFirst({ where: { venueId } });
+      const stickerPk = stickerRow!.id;
+
+      // Create rows one-by-one so we capture each ID at creation time,
+      // keeping the cleanup scope exactly bounded to these 101 rows.
+      for (let i = 0; i < 101; i++) {
+        const scan = await prisma.stickerScan.create({
+          data: {
+            userId,
+            stickerId: stickerPk,
+            venueId,
+            cardId,
+            status: 'APPROVED' as const,
+            billAmount: 1.0,
+          },
+          select: { id: true },
+        });
+        seededScanIds.push(scan.id);
+      }
+    });
+
+    afterAll(async () => {
+      if (seededScanIds.length > 0) {
+        await prisma.stickerScan.deleteMany({ where: { id: { in: seededScanIds } } });
+        seededScanIds = [];
+      }
+    });
+
     it('should return user scan history', async () => {
       const res = await authRequest(accessToken).get('/api/stickers/my-scans');
 
@@ -556,9 +626,65 @@ describe('Sticker Scan Flow (F06)', () => {
       expect(Array.isArray(res.body.data)).toBe(true);
     });
 
-    it('should require authentication', async () => {
+    it('[AUTH] INV-RDM-033: GET /my-scans without token → 401', async () => {
       const res = await request(app).get('/api/stickers/my-scans');
       expect(res.status).toBe(401);
+    });
+
+    it('[INPUT] INV-RDM-029: ?limit=200 is clamped — returns 200 OK with valid shape', async () => {
+      const res = await authRequest(accessToken).get('/api/stickers/my-scans?limit=200');
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(Array.isArray(res.body.data)).toBe(true);
+      expect(typeof res.body.count).toBe('number');
+      // With 101+ scans seeded, this assertion proves the 100-item cap is enforced:
+      // if parsePagination's maxLimit were removed, ?limit=200 would return all 101
+      // records and this check would fail.
+      expect(res.body.count).toBe(100);
+    });
+
+    it('[INPUT] INV-RDM-029: ?limit=abc (invalid) uses default — returns 200 OK with valid shape', async () => {
+      const res = await authRequest(accessToken).get('/api/stickers/my-scans?limit=abc');
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(Array.isArray(res.body.data)).toBe(true);
+      expect(typeof res.body.count).toBe('number');
+      expect(res.body.count).toBe(50);
+    });
+
+    it('[INPUT] INV-RDM-029: ?limit=0 uses default — returns 200 OK with valid shape', async () => {
+      const res = await authRequest(accessToken).get('/api/stickers/my-scans?limit=0');
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(Array.isArray(res.body.data)).toBe(true);
+      expect(typeof res.body.count).toBe('number');
+      expect(res.body.count).toBe(50);
+    });
+
+    it('[INPUT] INV-RDM-029: ?limit=-5 uses default — returns 200 OK with valid shape', async () => {
+      const res = await authRequest(accessToken).get('/api/stickers/my-scans?limit=-5');
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(Array.isArray(res.body.data)).toBe(true);
+      expect(typeof res.body.count).toBe('number');
+      expect(res.body.count).toBe(50);
+    });
+
+    it('[INPUT] INV-RDM-029: no ?limit param uses default — returns 200 OK with valid shape', async () => {
+      const res = await authRequest(accessToken).get('/api/stickers/my-scans');
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(Array.isArray(res.body.data)).toBe(true);
+      expect(typeof res.body.count).toBe('number');
+      expect(res.body.count).toBe(50);
+    });
+
+    it('[INPUT] INV-RDM-029: ?limit=1 (valid in-range) returns exactly 1 result', async () => {
+      const res = await authRequest(accessToken).get('/api/stickers/my-scans?limit=1');
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(Array.isArray(res.body.data)).toBe(true);
+      expect(res.body.count).toBe(1);
     });
   });
 
@@ -592,6 +718,21 @@ describe('Sticker Scan Flow (F06)', () => {
   describe('POST /api/stickers/session', () => {
     beforeEach(async () => {
       await prisma.user.update({ where: { id: userId }, data: { role: 'USER', status: 'ACTIVE' } });
+    });
+
+    it('[AUTH] INV-RDM-031: POST /session returns 402 SUBSCRIPTION_REQUIRED for user with no active subscription', async () => {
+      const noSubData = await createTestUser();
+      const noSubId = noSubData.user.id;
+      try {
+        await prisma.user.update({ where: { id: noSubId }, data: { status: 'ACTIVE' } });
+        const res = await authRequest(noSubData.accessToken)
+          .post('/api/stickers/session')
+          .send({ stickerId, cardId });
+        expect(res.status).toBe(402);
+        expect(res.body.error).toContain('SUBSCRIPTION_REQUIRED');
+      } finally {
+        await cleanupTestUser(noSubId);
+      }
     });
 
     it('should reject request with missing stickerId with 400 (INV-RDM-016)', async () => {
@@ -637,6 +778,80 @@ describe('Sticker Scan Flow (F06)', () => {
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
       expect(res.body.error).toMatch(/stickerId/i);
+    });
+  });
+
+  // ─── Admin Approve Endpoint Auth ─────────────────────────────
+
+  describe('POST /api/stickers/admin/approve/:scanId', () => {
+    it('[AUTH] INV-RDM-034: POST /admin/approve/:scanId returns 403 for non-admin user', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/admin/approve/00000000-0000-0000-0000-000000000000');
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // ─── Admin Reject Endpoint Auth ──────────────────────────────
+
+  describe('POST /api/stickers/admin/reject/:scanId', () => {
+    it('[AUTH] INV-RDM-035: POST /admin/reject/:scanId returns 401 without token', async () => {
+      const res = await request(app)
+        .post('/api/stickers/admin/reject/00000000-0000-0000-0000-000000000000');
+      expect(res.status).toBe(401);
+    });
+
+    it('[AUTH] INV-RDM-035: POST /admin/reject/:scanId returns 403 for non-admin user', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/admin/reject/00000000-0000-0000-0000-000000000000');
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // ─── Admin Stats Endpoint Auth ───────────────────────────────
+
+  describe('GET /api/stickers/admin/stats', () => {
+    it('[AUTH] INV-RDM-037: GET /admin/stats without token → 401', async () => {
+      const res = await request(app).get('/api/stickers/admin/stats');
+      expect(res.status).toBe(401);
+    });
+
+    it('[AUTH] INV-RDM-037: GET /admin/stats returns 403 for non-admin user', async () => {
+      const res = await authRequest(accessToken).get('/api/stickers/admin/stats');
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // ─── Admin Bulk-Approve Endpoint Auth ───────────────────────
+  describe('POST /api/stickers/admin/bulk-approve', () => {
+    it('[AUTH] INV-RDM-038: POST /admin/bulk-approve without token → 401', async () => {
+      const res = await request(app)
+        .post('/api/stickers/admin/bulk-approve')
+        .send({ scanIds: ['00000000-0000-0000-0000-000000000001'] });
+      expect(res.status).toBe(401);
+    });
+
+    it('[AUTH] INV-RDM-038: POST /admin/bulk-approve returns 403 for non-admin user', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/admin/bulk-approve')
+        .send({ scanIds: ['00000000-0000-0000-0000-000000000001'] });
+      expect(res.status).toBe(403);
+    });
+
+    it('[AUTH] INV-RDM-038: POST /admin/bulk-approve passes auth guard for ADMIN user', async () => {
+      const res = await authRequest(adminAccessToken)
+        .post('/api/stickers/admin/bulk-approve')
+        .send({ scanIds: ['00000000-0000-0000-0000-000000000001'] });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it('[AUTH] INV-RDM-038: POST /admin/bulk-approve passes auth guard for SUPER_ADMIN user', async () => {
+      const superAdminToken = generateAdminToken(adminUserId, 'SUPER_ADMIN');
+      const res = await authRequest(superAdminToken)
+        .post('/api/stickers/admin/bulk-approve')
+        .send({ scanIds: ['00000000-0000-0000-0000-000000000001'] });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
     });
   });
 });
