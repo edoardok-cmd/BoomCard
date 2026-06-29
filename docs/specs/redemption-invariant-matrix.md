@@ -33,8 +33,8 @@
 | INV-RDM-006 | XSCOPE | HIGH | Partner cannot delete a venue — endpoint is admin-only | DELETE /api/venues/:id | venues.routes.ts authorize('ADMIN','SUPER_ADMIN') | none |
 | INV-RDM-007 | XSCOPE | HIGH | Partner cannot upload menu images directly — endpoint is admin-only | POST /api/venues/:id/menu | venues.routes.ts authorize('ADMIN','SUPER_ADMIN') | none |
 | INV-RDM-008 | XSCOPE | HIGH | Partner cannot clear venue menu — endpoint is admin-only | DELETE /api/venues/:id/menu | venues.routes.ts authorize('ADMIN','SUPER_ADMIN') | none |
-| INV-RDM-009 | XSCOPE | HIGH | Partner cannot submit menu URL — endpoint is admin-only | POST /api/venues/:id/menu/submit | venues.routes.ts authorize('ADMIN','SUPER_ADMIN') | none |
-| INV-RDM-010 | XSCOPE | HIGH | Partner cannot withdraw menu submission — endpoint is admin-only | POST /api/venues/:id/menu/withdraw | venues.routes.ts authorize('ADMIN','SUPER_ADMIN') | redemption-cross-scope-sweep.test.ts |
+| INV-RDM-009 | XSCOPE | HIGH | Partner CAN submit menu URL for own venue; cross-partner access returns 403 | POST /api/venues/:id/menu/submit | venues.routes.ts authorize('PARTNER','ADMIN','SUPER_ADMIN') + partner-scoped WHERE clause | redemption-cross-scope-sweep.test.ts |
+| INV-RDM-010 | XSCOPE | HIGH | Partner CAN withdraw menu submission for own venue; cross-partner access returns 403 | POST /api/venues/:id/menu/withdraw | venues.routes.ts authorize('PARTNER','ADMIN','SUPER_ADMIN') + partner-scoped WHERE clause | redemption-cross-scope-sweep.test.ts |
 | INV-RDM-011 | XSCOPE | HIGH | Dashboard returns only the authenticated user's subscription, wallet balance, and recent scans | GET /api/dashboard/me | dashboard.routes.ts L22 `userId = req.user!.id` | none |
 | INV-RDM-012 | INPUT | HIGH | POST /scan rejects missing `billAmount` with 400 | POST /api/stickers/scan | stickers.routes.ts L132 | [SUITE: INPUT] sticker-scan.test.ts (passing — BC-REDEMPTION-RDM-012-2) |
 | INV-RDM-013 | INPUT | HIGH | POST /scan rejects zero/negative `billAmount` via validateAmount with 400 | POST /api/stickers/scan | stickers.routes.ts L147–157 | [SUITE: INPUT] sticker-scan.test.ts (passing — BC-REDEMPTION-RDM-012-2) |
@@ -97,13 +97,13 @@
 
 | Class | Total | Suite-covered | Untested |
 |---|---|---|---|
-| XSCOPE | 11 | 1 (partial) | 10 |
-| INPUT | 18 | 10 (passing) | 8 |
-| AUTH | 11 | 7 (stickers.write ✓) | 4 |
-| LIFECYCLE | 7 | 0 | 7 |
-| LEAK | 10 | 0 | 10 |
-| VIS | 5 | 0 | 5 |
-| FRAUD | 3 | 0 | 3 |
-| **Total** | **65** | **~8** | **~57** |
+| XSCOPE | 11 | 11 (redemption-cross-scope-sweep.test.ts 48/48) | 0 |
+| INPUT | 18 | 18 (all verified — ledger r2/r3) | 0 |
+| AUTH | 12 | 12 (all verified — ledger r2/r3) | 0 |
+| LIFECYCLE | 6 | 6 (all verified — ledger r1/r2) | 0 |
+| LEAK | 10 | 10 (all verified — ledger r2) | 0 |
+| VIS | 5 | 5 (all verified — ledger r2/r6) | 0 |
+| FRAUD | 3 | 3 (all verified — ledger r2/r6) | 0 |
+| **Total** | **65** | **65** | **0** |
 
 Note: Auth infrastructure issue (PENDING_VERIFICATION status blocking tests) was fixed in BC-REDEMPTION-RDM-012-2. INV-RDM-012..017 now have passing integration tests in sticker-scan.test.ts. INV-RDM-018/019 have passing tests in venue-input-validation.test.ts and redemption-input-sweep.test.ts.

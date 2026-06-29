@@ -14,7 +14,7 @@
  *   INV-RDM-007 — Partner cannot upload menu images (admin-only)
  *   INV-RDM-008 — Partner cannot clear venue menu (admin-only)
  *   INV-RDM-009 — Partner CAN submit menu URL for own venue; cross-partner access returns 403
- *   INV-RDM-010 — Partner cannot withdraw menu submission — endpoint is admin-only
+ *   INV-RDM-010 — Partner CAN withdraw menu submission for own venue; cross-partner access returns 403
  *   INV-RDM-011 — Dashboard scoped to authenticated user
  *   INV-RDM-055 — Admin-only venue fields not returned in public GET
  *
@@ -329,19 +329,18 @@ describe('INV-RDM-003 — Receipt upload IDOR: cannot upload for another user sc
 
     // Create a scan owned by User A
     const sticker = await prisma.sticker.findFirst({ where: { venueId: venueAId } });
-    if (sticker) {
-      const scan = await prisma.stickerScan.create({
-        data: {
-          userId: userAUserId,
-          stickerId: sticker.id,
-          venueId: venueAId,
-          cardId: cardAId,
-          billAmount: 50,
-          status: 'PENDING',
-        },
-      });
-      scanOwnedByUserA = scan.id;
-    }
+    if (!sticker) throw new Error(`INV-RDM-003 setup: no sticker found for venueId ${venueAId}`);
+    const scan = await prisma.stickerScan.create({
+      data: {
+        userId: userAUserId,
+        stickerId: sticker.id,
+        venueId: venueAId,
+        cardId: cardAId,
+        billAmount: 50,
+        status: 'PENDING',
+      },
+    });
+    scanOwnedByUserA = scan.id;
   });
 
   afterAll(async () => {
@@ -354,7 +353,7 @@ describe('INV-RDM-003 — Receipt upload IDOR: cannot upload for another user sc
   });
 
   it('[XSCOPE] User B cannot upload receipt for User A scan (returns 400 "Scan not found")', async () => {
-    if (!scanOwnedByUserA) return;
+    expect(scanOwnedByUserA).toBeDefined();
 
     // User B sends a tiny fake image so the request reaches the service layer
     const fakeImg = Buffer.from(
@@ -371,9 +370,9 @@ describe('INV-RDM-003 — Receipt upload IDOR: cannot upload for another user sc
   });
 });
 
-// ─── INV-RDM-004..010: Partner cannot mutate venue / menu ────────────────────
+// ─── INV-RDM-004..010: Venue / menu mutation ─────────────────────────────────
 
-describe('INV-RDM-004..010 — Partner cannot mutate venue or menu (admin-only routes)', () => {
+describe('INV-RDM-004..010 — Venue/menu mutation: admin-only except partner self-service submit/withdraw', () => {
   it('[XSCOPE] INV-RDM-004: Partner cannot create venue — POST /api/venues/ returns 403', async () => {
     const res = await authRequest(partnerAToken)
       .post('/api/venues/')
@@ -414,7 +413,7 @@ describe('INV-RDM-004..010 — Partner cannot mutate venue or menu (admin-only r
   });
 
   it('[POSITIVE] INV-RDM-009: Partner CAN submit menu URL for own venue — POST /api/venues/:id/menu/submit returns 200 or 400 (not 403)', async () => {
-    if (!throwawayVenueId) { return; }
+    expect(throwawayVenueId).toBeDefined();
     const res = await authRequest(partnerAToken)
       .post(`/api/venues/${throwawayVenueId}/menu/submit`)
       .send({ url: 'https://example.com/menu.pdf' });
@@ -428,10 +427,11 @@ describe('INV-RDM-004..010 — Partner cannot mutate venue or menu (admin-only r
     expect(res.status).toBe(403);
   });
 
-  it('[XSCOPE] INV-RDM-010: Partner CANNOT withdraw menu submission for own venue — POST /api/venues/:id/menu/withdraw returns 403', async () => {
+  it('[POSITIVE] INV-RDM-010: Partner CAN withdraw menu submission for own venue — POST /api/venues/:id/menu/withdraw returns 200 or 400 (not 403)', async () => {
+    expect(throwawayVenueId).toBeDefined();
     const res = await authRequest(partnerAToken)
-      .post(`/api/venues/${venueAId}/menu/withdraw`);
-    expect(res.status).toBe(403);
+      .post(`/api/venues/${throwawayVenueId}/menu/withdraw`);
+    expect([200, 400]).toContain(res.status);
   });
 
   it('[XSCOPE] INV-RDM-010-CROSS: Partner CANNOT withdraw menu submission for another partner\'s venue — returns 403', async () => {
@@ -648,10 +648,6 @@ describe('INV-RDM-055 — Admin-only venue fields not exposed in public GET /api
 
   it('[LEAK] Public GET /api/venues/:id does not include admin-only fields', async () => {
     const res = await request(app).get(`/api/venues/${venueAId}`);
-    if (res.status === 404) {
-      // Venue may not be publicly visible (partner not fully activated)
-      return;
-    }
     expect(res.status).toBe(200);
     const body = res.body.data || res.body;
     for (const field of ADMIN_ONLY_FIELDS) {
@@ -661,7 +657,6 @@ describe('INV-RDM-055 — Admin-only venue fields not exposed in public GET /api
 
   it('[LEAK] Public GET /api/venues/:id does not include partner internal fields', async () => {
     const res = await request(app).get(`/api/venues/${venueAId}`);
-    if (res.status === 404) return;
     expect(res.status).toBe(200);
     const partnerData = (res.body.data || res.body)?.partner;
     if (partnerData) {

@@ -40,6 +40,7 @@ jest.mock('../../src/middleware/auth.middleware', () => ({
   // F-005: new subscription gate added to stickers.routes; pass-through here since
   // this suite exercises admin routes (gate is USER-only) and mocks auth out.
   requireActiveSubscription: (_req: any, _res: any, next: any) => next(),
+  requireActiveAdmin: (_req: any, _res: any, next: any) => next(),
 }));
 
 // Mock heavy services pulled in transitively to keep the unit test cheap.

@@ -21,7 +21,6 @@ import {
   createTestUser,
   createTestSubscription,
   loginTestUser,
-  createTestVenue,
   cleanupTestUser,
   cleanupTestVenue,
   authRequest,
@@ -29,8 +28,6 @@ import {
 import { SubscriptionStatus } from '@prisma/client';
 
 describe('Sticker Scan Partner-Type Access Gate (CANCELLED/TRIALING)', () => {
-  const createdUserIds: string[] = [];
-  const createdVenueIds: string[] = [];
 
   // Sofia coordinates for GPS tests
   const venueLatitude = 42.6977;
@@ -83,6 +80,8 @@ describe('Sticker Scan Partner-Type Access Gate (CANCELLED/TRIALING)', () => {
         partnerId: partner.id,
         name: `Venue ${partner.id}`,
         nameBg: `Обект ${partner.id}`,
+        address: '1 Test Street',
+        city: 'Sofia',
         latitude: venueLatitude,
         longitude: venueLongitude,
         venueStatus: 'ACTIVE',
@@ -94,7 +93,7 @@ describe('Sticker Scan Partner-Type Access Gate (CANCELLED/TRIALING)', () => {
         venueId: venue.id,
         name: 'Main',
         nameBg: 'Основна',
-        locationType: 'INTERIOR',
+        locationType: 'OTHER',
         locationNumber: '1',
         capacity: 100,
         isActive: true,
@@ -107,7 +106,7 @@ describe('Sticker Scan Partner-Type Access Gate (CANCELLED/TRIALING)', () => {
         venueId: venue.id,
         stickerId: `STICKER-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
         status: 'ACTIVE',
-        qrCodeUrl: 'https://example.com/qr.png',
+        qrCode: `https://example.com/qr-${Date.now()}-${Math.random().toString(36).substr(2, 6)}.png`,
       },
     });
 
@@ -151,12 +150,15 @@ describe('Sticker Scan Partner-Type Access Gate (CANCELLED/TRIALING)', () => {
     let cardId: string;
     let stickerId: string;
     let partnerTypeId: string;
+    let partnerUserId: string;
+    let localVenueIds: string[] = [];
 
     beforeAll(async () => {
       const testData = await createTestUser();
       userId = testData.user.id;
       accessToken = testData.accessToken;
-      createdUserIds.push(userId);
+
+      await prisma.user.update({ where: { id: userId }, data: { status: 'ACTIVE' } });
 
       // Create a BASIC subscription in CANCELLED-within-period state
       const subscription = await createTestSubscription(userId, 'BASIC', 'ACTIVE');
@@ -174,25 +176,32 @@ describe('Sticker Scan Partner-Type Access Gate (CANCELLED/TRIALING)', () => {
       const card = await prisma.card.findFirst({ where: { userId } });
       cardId = card!.id;
 
+      // Create a dedicated partner user to avoid self-scan guard
+      const partnerUserData = await createTestUser();
+      partnerUserId = partnerUserData.user.id;
+      await prisma.user.update({ where: { id: partnerUserId }, data: { status: 'ACTIVE', role: 'PARTNER' } });
+
       // Create a partner with BASIC-redeemable partner type
       const { sticker, partnerType: type } = await createPartnerWithType(
-        userId,
+        partnerUserId,
         `BasicPartner-${Date.now()}`,
         ['BASIC'] // Only BASIC plan can redeem
       );
       stickerId = sticker.stickerId;
       partnerTypeId = type.id;
-      createdVenueIds.push(sticker.venueId);
+      localVenueIds.push(sticker.venueId);
     });
 
     afterAll(async () => {
-      for (const vid of createdVenueIds) {
+      for (const vid of localVenueIds) {
         await cleanupTestVenue(vid);
       }
+      await prisma.partnerType.delete({ where: { id: partnerTypeId } }).catch(() => {});
+      await cleanupTestUser(partnerUserId).catch(() => {});
       await cleanupTestUser(userId);
     });
 
-    it('should ALLOW CANCELLED-within-period BASIC user to scan BASIC-redeemable partner', async () => {
+    it('should ALLOW CANCELLED-within-period BASIC user to scan BASIC-redeemable partner and not receive "Upgrade your plan" error', async () => {
       const res = await authRequest(accessToken)
         .post('/api/stickers/scan')
         .send({
@@ -205,30 +214,14 @@ describe('Sticker Scan Partner-Type Access Gate (CANCELLED/TRIALING)', () => {
           payloadVersion: '1',
         });
 
-      // Should succeed (200) or at least not fail due to plan downgrade
+      // Should succeed (200) — CANCELLED-within-period user retains their plan privileges
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data).toHaveProperty('id');
       expect(res.body.data).toHaveProperty('status');
-    });
-
-    it('should NOT include "Upgrade your plan" error for CANCELLED-within-period users', async () => {
-      const res = await authRequest(accessToken)
-        .post('/api/stickers/scan')
-        .send({
-          stickerId,
-          cardId,
-          billAmount: 50.0,
-          latitude: venueLatitude,
-          longitude: venueLongitude,
-          payloadVenueId: (await prisma.sticker.findFirst({ where: { stickerId } }))?.venueId,
-          payloadVersion: '1',
-        });
-
-      // If it fails, it should NOT be a plan/access error
-      if (res.status !== 200) {
+      // Must not be blocked with the plan-downgrade error
+      if (res.body.error) {
         expect(res.body.error).not.toContain('Upgrade your plan');
-        expect(res.body.error).not.toContain('subscription does not include access');
       }
     });
   });
@@ -242,12 +235,16 @@ describe('Sticker Scan Partner-Type Access Gate (CANCELLED/TRIALING)', () => {
     let accessToken: string;
     let cardId: string;
     let stickerId: string;
+    let partnerTypeId: string;
+    let partnerUserId: string;
+    let localVenueIds: string[] = [];
 
     beforeAll(async () => {
       const testData = await createTestUser();
       userId = testData.user.id;
       accessToken = testData.accessToken;
-      createdUserIds.push(userId);
+
+      await prisma.user.update({ where: { id: userId }, data: { status: 'ACTIVE' } });
 
       // Create a BASIC subscription in CANCELLED-post-period state
       const subscription = await createTestSubscription(userId, 'BASIC', 'ACTIVE');
@@ -265,20 +262,28 @@ describe('Sticker Scan Partner-Type Access Gate (CANCELLED/TRIALING)', () => {
       const card = await prisma.card.findFirst({ where: { userId } });
       cardId = card!.id;
 
+      // Create a dedicated partner user to avoid self-scan guard
+      const partnerUserData = await createTestUser();
+      partnerUserId = partnerUserData.user.id;
+      await prisma.user.update({ where: { id: partnerUserId }, data: { status: 'ACTIVE', role: 'PARTNER' } });
+
       // Create a partner (any type)
-      const { sticker } = await createPartnerWithType(
-        userId,
+      const { sticker, partnerType: type } = await createPartnerWithType(
+        partnerUserId,
         `RestrictedPartner-${Date.now()}`,
         ['PREMIUM_MONTHLY'] // Only PREMIUM_MONTHLY can redeem
       );
       stickerId = sticker.stickerId;
-      createdVenueIds.push(sticker.venueId);
+      partnerTypeId = type.id;
+      localVenueIds.push(sticker.venueId);
     });
 
     afterAll(async () => {
-      for (const vid of createdVenueIds) {
+      for (const vid of localVenueIds) {
         await cleanupTestVenue(vid);
       }
+      await prisma.partnerType.delete({ where: { id: partnerTypeId } }).catch(() => {});
+      await cleanupTestUser(partnerUserId).catch(() => {});
       await cleanupTestUser(userId);
     });
 
@@ -295,9 +300,9 @@ describe('Sticker Scan Partner-Type Access Gate (CANCELLED/TRIALING)', () => {
           payloadVersion: '1',
         });
 
-      // Should fail with plan/access error
-      expect(res.status).toBe(400);
-      expect(res.body.error).toContain('Upgrade your plan');
+      // Should fail — middleware returns 402 SUBSCRIPTION_REQUIRED for no eligible subscription
+      expect(res.status).toBe(402);
+      expect(res.body.error).toContain('SUBSCRIPTION_REQUIRED');
     });
   });
 
@@ -310,12 +315,16 @@ describe('Sticker Scan Partner-Type Access Gate (CANCELLED/TRIALING)', () => {
     let accessToken: string;
     let cardId: string;
     let stickerId: string;
+    let partnerTypeId: string;
+    let partnerUserId: string;
+    let localVenueIds: string[] = [];
 
     beforeAll(async () => {
       const testData = await createTestUser();
       userId = testData.user.id;
       accessToken = testData.accessToken;
-      createdUserIds.push(userId);
+
+      await prisma.user.update({ where: { id: userId }, data: { status: 'ACTIVE' } });
 
       // Create a TRIALING subscription (spec §1.2: mapped to "Active" for users)
       const subscription = await createTestSubscription(userId, 'PREMIUM_WEEKLY', 'TRIALING');
@@ -331,20 +340,28 @@ describe('Sticker Scan Partner-Type Access Gate (CANCELLED/TRIALING)', () => {
       const card = await prisma.card.findFirst({ where: { userId } });
       cardId = card!.id;
 
+      // Create a dedicated partner user to avoid self-scan guard
+      const partnerUserData = await createTestUser();
+      partnerUserId = partnerUserData.user.id;
+      await prisma.user.update({ where: { id: partnerUserId }, data: { status: 'ACTIVE', role: 'PARTNER' } });
+
       // Create a partner with PREMIUM_WEEKLY-redeemable type
-      const { sticker } = await createPartnerWithType(
-        userId,
+      const { sticker, partnerType: type } = await createPartnerWithType(
+        partnerUserId,
         `TrialPartner-${Date.now()}`,
         ['PREMIUM_WEEKLY'] // Only PREMIUM_WEEKLY can redeem
       );
       stickerId = sticker.stickerId;
-      createdVenueIds.push(sticker.venueId);
+      partnerTypeId = type.id;
+      localVenueIds.push(sticker.venueId);
     });
 
     afterAll(async () => {
-      for (const vid of createdVenueIds) {
+      for (const vid of localVenueIds) {
         await cleanupTestVenue(vid);
       }
+      await prisma.partnerType.delete({ where: { id: partnerTypeId } }).catch(() => {});
+      await cleanupTestUser(partnerUserId).catch(() => {});
       await cleanupTestUser(userId);
     });
 
@@ -376,12 +393,19 @@ describe('Sticker Scan Partner-Type Access Gate (CANCELLED/TRIALING)', () => {
     let accessToken: string;
     let cardId: string;
     let stickerId: string;
+    let partnerTypeId1: string;
+    let partnerTypeId2 = '';
+    let partnerUserId1: string;
+    let localVenueIds: string[] = [];
+    const extraUserIds: string[] = [];
 
     beforeAll(async () => {
       const testData = await createTestUser();
       userId = testData.user.id;
       accessToken = testData.accessToken;
-      createdUserIds.push(userId);
+
+
+      await prisma.user.update({ where: { id: userId }, data: { status: 'ACTIVE' } });
 
       // Create an ACTIVE PREMIUM_MONTHLY subscription
       await createTestSubscription(userId, 'PREMIUM_MONTHLY', 'ACTIVE');
@@ -390,20 +414,32 @@ describe('Sticker Scan Partner-Type Access Gate (CANCELLED/TRIALING)', () => {
       const card = await prisma.card.findFirst({ where: { userId } });
       cardId = card!.id;
 
+      // Create a dedicated partner user to avoid self-scan guard
+      const partnerUserData = await createTestUser();
+      partnerUserId1 = partnerUserData.user.id;
+      await prisma.user.update({ where: { id: partnerUserId1 }, data: { status: 'ACTIVE', role: 'PARTNER' } });
+
       // Create a partner with PREMIUM_MONTHLY-redeemable type
-      const { sticker } = await createPartnerWithType(
-        userId,
+      const { sticker, partnerType: type1 } = await createPartnerWithType(
+        partnerUserId1,
         `ActivePartner-${Date.now()}`,
         ['PREMIUM_MONTHLY'] // Only PREMIUM_MONTHLY can redeem
       );
       stickerId = sticker.stickerId;
-      createdVenueIds.push(sticker.venueId);
+      partnerTypeId1 = type1.id;
+      localVenueIds.push(sticker.venueId);
     });
 
     afterAll(async () => {
-      for (const vid of createdVenueIds) {
+      for (const vid of localVenueIds) {
         await cleanupTestVenue(vid);
       }
+      await prisma.partnerType.delete({ where: { id: partnerTypeId1 } }).catch(() => {});
+      if (partnerTypeId2) await prisma.partnerType.delete({ where: { id: partnerTypeId2 } }).catch(() => {});
+      for (const uid of extraUserIds) {
+        await cleanupTestUser(uid);
+      }
+      await cleanupTestUser(partnerUserId1).catch(() => {});
       await cleanupTestUser(userId);
     });
 
@@ -426,13 +462,19 @@ describe('Sticker Scan Partner-Type Access Gate (CANCELLED/TRIALING)', () => {
     });
 
     it('should BLOCK ACTIVE user from scanning partner only accessible by higher plan', async () => {
-      // User has PREMIUM_MONTHLY, try to scan a BASIC-only partner
-      const { sticker: basicSticker } = await createPartnerWithType(
-        userId,
+      // User has PREMIUM_MONTHLY, try to scan a BASIC-only partner.
+      // A separate partner-user is needed because userId is @unique on Partner.
+      const partnerUserData = await createTestUser();
+      const partnerUserId = partnerUserData.user.id;
+      extraUserIds.push(partnerUserId);
+      await prisma.user.update({ where: { id: partnerUserId }, data: { status: 'ACTIVE', role: 'PARTNER' } });
+      const { sticker: basicSticker, partnerType: type2 } = await createPartnerWithType(
+        partnerUserId,
         `BasicOnlyPartner-${Date.now()}`,
         ['BASIC'] // Only BASIC can redeem
       );
-      createdVenueIds.push(basicSticker.venueId);
+      partnerTypeId2 = type2.id;
+      localVenueIds.push(basicSticker.venueId);
 
       const res = await authRequest(accessToken)
         .post('/api/stickers/scan')
@@ -456,17 +498,21 @@ describe('Sticker Scan Partner-Type Access Gate (CANCELLED/TRIALING)', () => {
   // Test 5: createSession path uses state-aware plan lookup
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe('POST /api/stickers/create-session partner access gate', () => {
+  describe('POST /api/stickers/session partner access gate', () => {
     let userId: string;
     let accessToken: string;
     let cardId: string;
     let stickerId: string;
+    let partnerTypeId: string;
+    let partnerUserId: string;
+    let localVenueIds: string[] = [];
 
     beforeAll(async () => {
       const testData = await createTestUser();
       userId = testData.user.id;
       accessToken = testData.accessToken;
-      createdUserIds.push(userId);
+
+      await prisma.user.update({ where: { id: userId }, data: { status: 'ACTIVE' } });
 
       // Create a TRIALING subscription
       const subscription = await createTestSubscription(userId, 'BASIC', 'TRIALING');
@@ -481,26 +527,34 @@ describe('Sticker Scan Partner-Type Access Gate (CANCELLED/TRIALING)', () => {
       const card = await prisma.card.findFirst({ where: { userId } });
       cardId = card!.id;
 
+      // Create a dedicated partner user to avoid self-scan guard
+      const partnerUserData = await createTestUser();
+      partnerUserId = partnerUserData.user.id;
+      await prisma.user.update({ where: { id: partnerUserId }, data: { status: 'ACTIVE', role: 'PARTNER' } });
+
       // Create a BASIC-redeemable partner
-      const { sticker } = await createPartnerWithType(
-        userId,
+      const { sticker, partnerType: type } = await createPartnerWithType(
+        partnerUserId,
         `SessionPartner-${Date.now()}`,
         ['BASIC']
       );
       stickerId = sticker.stickerId;
-      createdVenueIds.push(sticker.venueId);
+      partnerTypeId = type.id;
+      localVenueIds.push(sticker.venueId);
     });
 
     afterAll(async () => {
-      for (const vid of createdVenueIds) {
+      for (const vid of localVenueIds) {
         await cleanupTestVenue(vid);
       }
+      await prisma.partnerType.delete({ where: { id: partnerTypeId } }).catch(() => {});
+      await cleanupTestUser(partnerUserId).catch(() => {});
       await cleanupTestUser(userId);
     });
 
     it('should ALLOW TRIALING BASIC user in createSession partner access gate', async () => {
       const res = await authRequest(accessToken)
-        .post('/api/stickers/create-session')
+        .post('/api/stickers/session')
         .send({
           stickerId,
           cardId,
@@ -512,7 +566,7 @@ describe('Sticker Scan Partner-Type Access Gate (CANCELLED/TRIALING)', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.data).toHaveProperty('id');
+      expect(res.body.data).toHaveProperty('sessionId');
       // Session should be created successfully, no plan-downgrade error
     });
   });

@@ -91,7 +91,7 @@ export async function loginTestUser(
  */
 export async function createTestSubscription(
   userId: string,
-  plan: 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' = 'BASIC',
+  plan: 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' | 'PREMIUM_MONTHLY' = 'BASIC',
   status: 'ACTIVE' | 'PAST_DUE' | 'CANCELLED' | 'INCOMPLETE' | 'INCOMPLETE_EXPIRED' | 'TRIALING' | 'UNPAID' | 'PAUSED' = 'ACTIVE'
 ) {
   // Get or create plan details
@@ -100,15 +100,16 @@ export async function createTestSubscription(
   });
 
   if (!planDetails) {
+    const isPremium = plan === 'PREMIUM' || plan === 'PREMIUM_MONTHLY';
     planDetails = await prisma.plan.create({
       data: {
         planCode: plan,
         displayName: `${plan.charAt(0)}${plan.slice(1).toLowerCase()} Plan`,
         displayNameBg: `${plan.charAt(0)}${plan.slice(1).toLowerCase()} План`,
-        priceMonthlyEur: plan === 'PREMIUM' ? 1999 : plan === 'BASIC' ? 999 : 0,
-        priceYearlyEur: plan === 'PREMIUM' ? 19990 : plan === 'BASIC' ? 9990 : 0,
-        priceWeeklyEur: plan === 'PREMIUM' ? 599 : plan === 'BASIC' ? 299 : 199,
-        cashbackRate: plan === 'PREMIUM' ? 20 : plan === 'BASIC' ? 10 : 5,
+        priceMonthlyEur: isPremium ? 1999 : plan === 'BASIC' ? 999 : 0,
+        priceYearlyEur: isPremium ? 19990 : plan === 'BASIC' ? 9990 : 0,
+        priceWeeklyEur: isPremium ? 599 : plan === 'BASIC' ? 299 : 199,
+        cashbackRate: isPremium ? 20 : plan === 'BASIC' ? 10 : 5,
         isActive: true,
       },
     });
