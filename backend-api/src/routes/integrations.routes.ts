@@ -777,11 +777,10 @@ router.get('/available', (req: Request, res: Response) => {
     }
 
     res.json(filtered);
-  } catch (error: any) {
+  } catch {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch available integrations',
-      error: error.message,
     });
   }
 });
@@ -804,11 +803,10 @@ router.get('/available/:id', (req: Request, res: Response) => {
     }
 
     res.json(integration);
-  } catch (error: any) {
+  } catch {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch integration',
-      error: error.message,
     });
   }
 });
@@ -822,11 +820,10 @@ router.get('/connected', authenticate, (req: Request, res: Response) => {
     // In a real app, this would fetch from database
     // For now, return empty array
     res.json([]);
-  } catch (error: any) {
+  } catch {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch connected integrations',
-      error: error.message,
     });
   }
 });
@@ -876,11 +873,10 @@ router.post('/connect', authenticate, (req: Request, res: Response) => {
       data: connectedIntegration,
       message: 'Integration connected successfully',
     });
-  } catch (error: any) {
+  } catch {
     res.status(500).json({
       success: false,
       message: 'Failed to connect integration',
-      error: error.message,
     });
   }
 });
@@ -898,11 +894,10 @@ router.delete('/connected/:id', authenticate, (req: Request, res: Response) => {
       success: true,
       message: 'Integration disconnected successfully',
     });
-  } catch (error: any) {
+  } catch {
     res.status(500).json({
       success: false,
       message: 'Failed to disconnect integration',
-      error: error.message,
     });
   }
 });
@@ -927,11 +922,10 @@ router.post('/test/:id', authenticate, (req: Request, res: Response) => {
         timestamp: new Date(),
       },
     });
-  } catch (error: any) {
+  } catch {
     res.status(500).json({
       success: false,
       message: 'Connection test failed',
-      error: error.message,
     });
   }
 });
@@ -958,11 +952,10 @@ router.get('/stats', authenticate, (req: Request, res: Response) => {
         lastSyncAt: new Date(),
       },
     });
-  } catch (error: any) {
+  } catch {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch integration statistics',
-      error: error.message,
     });
   }
 });
@@ -979,11 +972,10 @@ router.get('/categories', (req: Request, res: Response) => {
       success: true,
       data: categories,
     });
-  } catch (error: any) {
+  } catch {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch categories',
-      error: error.message,
     });
   }
 });
