@@ -43,6 +43,9 @@ describe('Sticker Scan Flow (F06)', () => {
     userPassword = testData.password;
     createdUserIds.push(userId);
 
+    // auth.middleware.ts L189 blocks PENDING_VERIFICATION — promote to ACTIVE
+    await prisma.user.update({ where: { id: userId }, data: { status: 'ACTIVE' } });
+
     // Get user's card
     const card = await prisma.card.findFirst({ where: { userId } });
     cardId = card!.id;
@@ -100,9 +103,9 @@ describe('Sticker Scan Flow (F06)', () => {
         });
 
       if (res.status === 200) {
-        // LIGHT card = 5% cashback
-        expect(res.body.data.cashbackPercent).toBe(5);
-        expect(res.body.data.cashbackAmount).toBe(5); // 5% of 100
+        // cashbackPercent is stripped server-side (spec §11.3 / Clash 10.6)
+        expect(res.body.data.cashbackPercent).toBeUndefined();
+        expect(res.body.data.cashbackAmount).toBeGreaterThan(0);
       }
     });
 
@@ -129,7 +132,7 @@ describe('Sticker Scan Flow (F06)', () => {
       expect(res.status).toBe(400);
     });
 
-    it('should reject zero or negative bill amount', async () => {
+    it('should reject zero billAmount via validateAmount with 400 (INV-RDM-013)', async () => {
       const res = await authRequest(accessToken)
         .post('/api/stickers/scan')
         .send({
@@ -141,6 +144,241 @@ describe('Sticker Scan Flow (F06)', () => {
         });
 
       expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).not.toMatch(/missing required field/i);
+    });
+
+    it('should reject negative billAmount via validateAmount with 400 (INV-RDM-013)', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          stickerId,
+          cardId,
+          billAmount: -5,
+          latitude: venueLatitude,
+          longitude: venueLongitude,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).not.toMatch(/missing required field/i);
+    });
+
+    it('should reject scan when neither sessionId nor stickerId is provided (INV-RDM-017)', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          billAmount: 10,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+  });
+
+  // ─── Non-Finite billAmount Validation (INV-RDM-014) ──────────
+  //
+  // Two distinct rejection sub-paths in validateAmount:
+  //   (a) parseFloat → Infinity/-Infinity → !isFinite → "must be a finite number"
+  //   (b) parseFloat → NaN               → isNaN     → "must be a valid number"
+  // Numeric Infinity serializes to JSON null and is caught by the earlier
+  // !billAmount guard ("Missing required field").
+
+  describe('POST /api/stickers/scan – non-finite billAmount rejection (INV-RDM-014)', () => {
+    // Sub-path (a): strings that parseFloat converts to infinite numbers
+    it('INV-RDM-014: should return 400 with "finite" error when billAmount is string "Infinity"', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          stickerId,
+          cardId,
+          billAmount: 'Infinity',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/finite/i);
+    });
+
+    it('INV-RDM-014: should return 400 with "finite" error when billAmount is string "-Infinity"', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          stickerId,
+          cardId,
+          billAmount: '-Infinity',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/finite/i);
+    });
+
+    // Sub-path (b): strings that parseFloat cannot parse (yields NaN)
+    it('INV-RDM-014: should return 400 with "valid number" error when billAmount is string "NaN"', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          stickerId,
+          cardId,
+          billAmount: 'NaN',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/valid number/i);
+    });
+
+    // "infinity" (lowercase): parseFloat returns NaN (not recognized), same sub-path (b)
+    it('INV-RDM-014: should return 400 with "valid number" error when billAmount is string "infinity" (lowercase — not a parseable infinite)', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          stickerId,
+          cardId,
+          billAmount: 'infinity',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/valid number/i);
+    });
+
+    // Numeric Infinity: JSON.stringify converts it to null; caught by the
+    // missing-field guard before validateAmount is reached.
+    it('INV-RDM-014: should return 400 when billAmount is numeric Infinity (JSON-serializes to null)', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          stickerId,
+          cardId,
+          billAmount: Infinity,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/missing required field/i);
+    });
+  });
+
+  // ─── GPS Coordinate Validation (INV-RDM-015) ─────────────────
+
+  describe('POST /api/stickers/scan – GPS coordinate range validation (INV-RDM-015)', () => {
+    it('INV-RDM-015: should return 400 when latitude exceeds +90', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          stickerId,
+          cardId,
+          billAmount: 50,
+          latitude: 91,
+          longitude: 23,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('INV-RDM-015: should return 400 when latitude is below -90', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          stickerId,
+          cardId,
+          billAmount: 50,
+          latitude: -91,
+          longitude: 23,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('INV-RDM-015: should return 400 when longitude exceeds +180', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          stickerId,
+          cardId,
+          billAmount: 50,
+          latitude: 42,
+          longitude: 181,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('INV-RDM-015: should return 400 when longitude is below -180', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          stickerId,
+          cardId,
+          billAmount: 50,
+          latitude: 42,
+          longitude: -181,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('INV-RDM-015: should return 400 when latitude is a non-numeric string', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          stickerId,
+          cardId,
+          billAmount: 50,
+          latitude: 'not-a-number',
+          longitude: 23,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('INV-RDM-015: should return 400 when latitude is Infinity', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          stickerId,
+          cardId,
+          billAmount: 50,
+          latitude: 'Infinity',
+          longitude: 23,
+        });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('INV-RDM-015: should return 400 when only latitude is provided (partial-pair)', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          stickerId,
+          cardId,
+          billAmount: 50,
+          latitude: 42,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('INV-RDM-015: should return 400 when only longitude is provided (partial-pair)', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          stickerId,
+          cardId,
+          billAmount: 50,
+          longitude: 23,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
     });
   });
 
@@ -251,6 +489,59 @@ describe('Sticker Scan Flow (F06)', () => {
 
       // Restore role
       await prisma.user.update({ where: { id: userId }, data: { role: 'USER' } });
+    });
+  });
+
+  // ─── Session Endpoint Validation ─────────────────────────────
+
+  describe('POST /api/stickers/session', () => {
+    beforeEach(async () => {
+      await prisma.user.update({ where: { id: userId }, data: { role: 'USER', status: 'ACTIVE' } });
+    });
+
+    it('should reject request with missing stickerId with 400 (INV-RDM-016)', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/session')
+        .send({
+          // stickerId intentionally omitted
+          cardId,
+          latitude: venueLatitude,
+          longitude: venueLongitude,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/stickerId/i);
+    });
+
+    it('should reject request with null stickerId with 400 (INV-RDM-016)', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/session')
+        .send({
+          stickerId: null,
+          cardId,
+          latitude: venueLatitude,
+          longitude: venueLongitude,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/stickerId/i);
+    });
+
+    it('should reject request with empty string stickerId with 400 (INV-RDM-016)', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/session')
+        .send({
+          stickerId: '',
+          cardId,
+          latitude: venueLatitude,
+          longitude: venueLongitude,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/stickerId/i);
     });
   });
 });

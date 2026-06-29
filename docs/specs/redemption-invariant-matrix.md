@@ -42,8 +42,8 @@
 | INV-RDM-015 | INPUT | MEDIUM | POST /scan validates GPS coordinates (lat -90..90, lon -180..180) with 400 | POST /api/stickers/scan | stickers.routes.ts L162–177 validateGPSCoordinates | [SUITE: INPUT] sticker-scan.test.ts (FAILING — auth issue) |
 | INV-RDM-016 | INPUT | MEDIUM | POST /session rejects missing `stickerId` with 400 | POST /api/stickers/session | stickers.routes.ts L71 | none |
 | INV-RDM-017 | INPUT | MEDIUM | POST /scan requires either `sessionId` or `stickerId` with 400 | POST /api/stickers/scan | stickers.routes.ts L138–143 | none |
-| INV-RDM-018 | INPUT | MEDIUM | POST /api/venues/ rejects missing required fields (partnerId, name, address, city) with 400 | POST /api/venues/ | venues.routes.ts L238–241 | none |
-| INV-RDM-019 | INPUT | MEDIUM | POST /api/venues/ rejects invalid or missing geolocation with 400 | POST /api/venues/ | venues.routes.ts L248–260 | none |
+| INV-RDM-018 | INPUT | MEDIUM | POST /api/venues/ rejects missing required fields (partnerId, name, address, city) with 400 | POST /api/venues/ | venues.routes.ts L252–258 | none |
+| INV-RDM-019 | INPUT | MEDIUM | POST /api/venues/ rejects invalid or missing geolocation with 400 | POST /api/venues/ | venues.routes.ts L260–278 | redemption-input-sweep.test.ts |
 | INV-RDM-020 | INPUT | MEDIUM | POST /api/venues/:id/menu/submit rejects empty/missing URL with 400 | POST /api/venues/:id/menu/submit | venues.routes.ts L483 | none |
 | INV-RDM-021 | INPUT | LOW | POST /api/venues/:id/menu/submit rejects URL >2048 chars with 400 | POST /api/venues/:id/menu/submit | venues.routes.ts L486 | none |
 | INV-RDM-022 | INPUT | MEDIUM | POST /api/venues/:id/menu/submit rejects non-http(s) URL with 400 | POST /api/venues/:id/menu/submit | venues.routes.ts L489–493 | none |

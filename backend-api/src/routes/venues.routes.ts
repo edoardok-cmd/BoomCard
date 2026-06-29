@@ -264,6 +264,10 @@ router.post(
     const lngNum = Number(longitude);
     if (
       latitude == null || longitude == null ||
+      (typeof latitude !== 'number' && typeof latitude !== 'string') ||
+      (typeof longitude !== 'number' && typeof longitude !== 'string') ||
+      (typeof latitude === 'string' && latitude.trim() === '') ||
+      (typeof longitude === 'string' && longitude.trim() === '') ||
       Number.isNaN(latNum) || Number.isNaN(lngNum) ||
       latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180
     ) {
