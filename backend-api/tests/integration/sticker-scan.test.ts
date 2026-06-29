@@ -132,6 +132,20 @@ describe('Sticker Scan Flow (F06)', () => {
       expect(res.status).toBe(400);
     });
 
+    it('[INPUT] INV-RDM-012: POST /scan rejects missing billAmount with 400', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          stickerId,
+          cardId,
+          // billAmount intentionally omitted
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/billAmount/i);
+    });
+
     it('should reject zero billAmount via validateAmount with 400 (INV-RDM-013)', async () => {
       const res = await authRequest(accessToken)
         .post('/api/stickers/scan')
@@ -351,6 +365,22 @@ describe('Sticker Scan Flow (F06)', () => {
         });
 
       expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('INV-RDM-015: should return 400 when latitude is a trailing-garbage string ("91abc")', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          stickerId,
+          cardId,
+          billAmount: 50,
+          latitude: '91abc',
+          longitude: 23,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
     });
 
     it('INV-RDM-015: should return 400 when only latitude is provided (partial-pair)', async () => {
