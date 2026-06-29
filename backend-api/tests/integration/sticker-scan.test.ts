@@ -11,6 +11,7 @@
 import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
+import { StickerStatus } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import {
   createTestUser,
@@ -852,6 +853,112 @@ describe('Sticker Scan Flow (F06)', () => {
         .send({ scanIds: ['00000000-0000-0000-0000-000000000001'] });
       expect(res.status).not.toBe(401);
       expect(res.status).not.toBe(403);
+    });
+  });
+
+  // ─── INV-RDM-043: Sticker Replace Lifecycle ─────────────────────────────────
+
+  describe('[LIFECYCLE] INV-RDM-043: PATCH /replace sticker lifecycle', () => {
+    // Shared stickers for tests 1-3 and 5 (one replace operation covers all)
+    let sharedOldStickerId: string;   // stickerId (string)
+    let sharedOldDbId: string;        // prisma id (uuid)
+    let sharedReplaceRes: any;        // captured HTTP response body
+
+    // Separate sticker for test 4 (double-replace)
+    let doubleReplaceStickerId: string;
+
+    // Use SUPER_ADMIN token to bypass requirePermission('stickers.write') seeding
+    let superAdminToken: string;
+
+    beforeAll(async () => {
+      superAdminToken = generateAdminToken(adminUserId, 'SUPER_ADMIN');
+
+      // Find a location under the shared venueId
+      const loc = await prisma.stickerLocation.findFirst({ where: { venueId } });
+      if (!loc) throw new Error('No stickerLocation found for venueId in INV-RDM-043 setup');
+
+      // Create an ACTIVE sticker for the shared replace tests (1-3, 5)
+      const sharedStickerIdStr = `TEST-RDM043-SHARED-${Date.now()}`;
+      const sharedSticker = await prisma.sticker.create({
+        data: {
+          venueId,
+          locationId: loc.id,
+          stickerId: sharedStickerIdStr,
+          qrCode: JSON.stringify({ test: true, id: sharedStickerIdStr }),
+          locationType: 'TABLE',
+          status: StickerStatus.ACTIVE,
+          activatedAt: new Date(),
+        },
+      });
+      sharedOldStickerId = sharedSticker.stickerId;
+      sharedOldDbId = sharedSticker.id;
+
+      // Create a separate ACTIVE sticker for the double-replace test (4)
+      const doubleStickerIdStr = `TEST-RDM043-DOUBLE-${Date.now() + 1}`;
+      const doubleSticker = await prisma.sticker.create({
+        data: {
+          venueId,
+          locationId: loc.id,
+          stickerId: doubleStickerIdStr,
+          qrCode: JSON.stringify({ test: true, id: doubleStickerIdStr }),
+          locationType: 'TABLE',
+          status: StickerStatus.ACTIVE,
+          activatedAt: new Date(),
+        },
+      });
+      doubleReplaceStickerId = doubleSticker.stickerId;
+
+      // Perform the single replace for tests 1-3 and 5 once in beforeAll
+      sharedReplaceRes = await authRequest(superAdminToken)
+        .patch(`/api/stickers/${sharedOldStickerId}/replace`);
+    });
+
+    afterAll(async () => {
+      await prisma.sticker.deleteMany({
+        where: { stickerId: { startsWith: 'TEST-RDM043-' } },
+      });
+    });
+
+    it('[LIFECYCLE] INV-RDM-043: PATCH /replace marks old sticker REPLACED in DB', async () => {
+      expect(sharedReplaceRes.status).toBe(200);
+      const oldInDb = await prisma.sticker.findUnique({ where: { id: sharedOldDbId } });
+      expect(oldInDb).not.toBeNull();
+      expect(oldInDb!.status).toBe(StickerStatus.REPLACED);
+      expect(oldInDb!.deactivatedAt).not.toBeNull();
+    });
+
+    it('[LIFECYCLE] INV-RDM-043: PATCH /replace creates new PENDING sticker in DB', async () => {
+      expect(sharedReplaceRes.status).toBe(200);
+      const newInDb = await prisma.sticker.findFirst({ where: { replacesId: sharedOldDbId } });
+      expect(newInDb).not.toBeNull();
+      expect(newInDb!.status).toBe(StickerStatus.PENDING);
+      expect(newInDb!.replacesId).toBe(sharedOldDbId);
+    });
+
+    it('[LIFECYCLE] INV-RDM-043: PATCH /replace returns {oldSticker: {status: REPLACED}, newSticker: {status: PENDING}} in response body', async () => {
+      expect(sharedReplaceRes.status).toBe(200);
+      expect(sharedReplaceRes.body.success).toBe(true);
+      expect(sharedReplaceRes.body.data.oldSticker.status).toBe(StickerStatus.REPLACED);
+      expect(sharedReplaceRes.body.data.newSticker.status).toBe(StickerStatus.PENDING);
+    });
+
+    it('[LIFECYCLE] INV-RDM-043: PATCH /replace on already-REPLACED sticker returns 400', async () => {
+      // First replace the double-replace sticker
+      const firstRes = await authRequest(superAdminToken)
+        .patch(`/api/stickers/${doubleReplaceStickerId}/replace`);
+      expect(firstRes.status).toBe(200);
+
+      // Second replace on the now-REPLACED sticker must return 400
+      const secondRes = await authRequest(superAdminToken)
+        .patch(`/api/stickers/${doubleReplaceStickerId}/replace`);
+      expect(secondRes.status).toBe(400);
+      expect(secondRes.body.success).toBe(false);
+    });
+
+    it('[LIFECYCLE] INV-RDM-043: PATCH /replace new sticker ID has versioned suffix', async () => {
+      expect(sharedReplaceRes.status).toBe(200);
+      const newStickerId: string = sharedReplaceRes.body.data.newSticker.stickerId;
+      expect(newStickerId).toMatch(/-V\d+$/);
     });
   });
 });

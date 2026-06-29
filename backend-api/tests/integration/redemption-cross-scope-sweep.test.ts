@@ -700,7 +700,7 @@ describe('Auth gates — unauthenticated callers receive 401', () => {
   });
 });
 
-// ─── INV-RDM-045/046: Stub routes return 501 ─────────────────────────────────
+// ─── INV-RDM-045/046: Stub routes return 501 (not yet implemented) ───────────
 
 describe('Stub routes return 501 (not implemented)', () => {
   it('[LIFECYCLE] INV-RDM-045: GET /api/bookings/ returns 501', async () => {
@@ -712,11 +712,20 @@ describe('Stub routes return 501 (not implemented)', () => {
     const res = await authRequest(userAToken).get('/api/messaging/conversations');
     expect(res.status).toBe(501);
   });
+});
 
-  it('[LIFECYCLE] INV-RDM-047: GET /api/venues/nearby returns 501 when ENABLE_NEARBY_VENUES unset', async () => {
-    // Default env has ENABLE_NEARBY_VENUES unset (falsy)
+// ─── INV-RDM-047: Nearby venues — feature flag lifted ───────────────────────
+
+describe('Nearby venues — feature flag lifted', () => {
+  it('[LIFECYCLE] INV-RDM-047: GET /api/venues/nearby returns 200 — flag removed, endpoint unconditionally active', async () => {
+    // Flag ENABLE_NEARBY_VENUES removed; endpoint unconditionally active and returns 200 with empty list when no venues match.
     const res = await request(app).get('/api/venues/nearby?latitude=42&longitude=23');
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.meta).toMatchObject({
+      coordinates: { latitude: 42, longitude: 23 },
+    });
   });
 });
 

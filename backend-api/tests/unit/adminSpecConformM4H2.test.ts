@@ -133,6 +133,56 @@ describe('H2 — reactivateInactiveSticker', () => {
     expect(stickerUpdate).not.toHaveBeenCalled();
   });
 
+  it('rejects an ACTIVE sticker (already active — no-op reactivation forbidden)', async () => {
+    stickerFindUnique.mockResolvedValue({
+      id: 's1',
+      status: 'ACTIVE',
+      venue: { partner: { status: 'ACTIVE', verifiedAt: new Date() } },
+    });
+    await expect(stickerService.reactivateInactiveSticker('STK-1', 'admin-1')).rejects.toThrow(/cannot be reactivated from ACTIVE/);
+    expect(stickerUpdate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a REPLACED sticker (terminal state — reactivation forbidden)', async () => {
+    stickerFindUnique.mockResolvedValue({
+      id: 's1',
+      status: 'REPLACED',
+      venue: { partner: { status: 'ACTIVE', verifiedAt: new Date() } },
+    });
+    await expect(stickerService.reactivateInactiveSticker('STK-1', 'admin-1')).rejects.toThrow(/cannot be reactivated from REPLACED/);
+    expect(stickerUpdate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a PROCESSING sticker (must go through activate, not reactivate)', async () => {
+    stickerFindUnique.mockResolvedValue({
+      id: 's1',
+      status: 'PROCESSING',
+      venue: { partner: { status: 'ACTIVE', verifiedAt: new Date() } },
+    });
+    await expect(stickerService.reactivateInactiveSticker('STK-1', 'admin-1')).rejects.toThrow(/cannot be reactivated from PROCESSING/);
+    expect(stickerUpdate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a DAMAGED sticker (non-INACTIVE state forbidden)', async () => {
+    stickerFindUnique.mockResolvedValue({
+      id: 's1',
+      status: 'DAMAGED',
+      venue: { partner: { status: 'ACTIVE', verifiedAt: new Date() } },
+    });
+    await expect(stickerService.reactivateInactiveSticker('STK-1', 'admin-1')).rejects.toThrow(/cannot be reactivated from DAMAGED/);
+    expect(stickerUpdate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a RETIRED sticker (non-INACTIVE state forbidden)', async () => {
+    stickerFindUnique.mockResolvedValue({
+      id: 's1',
+      status: 'RETIRED',
+      venue: { partner: { status: 'ACTIVE', verifiedAt: new Date() } },
+    });
+    await expect(stickerService.reactivateInactiveSticker('STK-1', 'admin-1')).rejects.toThrow(/cannot be reactivated from RETIRED/);
+    expect(stickerUpdate).not.toHaveBeenCalled();
+  });
+
   it('rejects when the owning partner is not operationally Active (e.g. still re-onboarding)', async () => {
     stickerFindUnique.mockResolvedValue({
       id: 's1',

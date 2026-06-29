@@ -93,25 +93,10 @@ router.get(
 /**
  * GET /api/venues/nearby
  * Get nearby venues based on GPS coordinates.
- *
- * F-020: Spec §16 marks this feature as deferred. Gated behind the
- * ENABLE_NEARBY_VENUES env var (default: false). Returns 501 when disabled.
- * Set ENABLE_NEARBY_VENUES=true to enable when product confirms the feature.
  */
 router.get(
   '/nearby',
   asyncHandler(async (req, res) => {
-    // F-020: Feature flag gate — spec §16 marks nearby-venues as deferred.
-    // Default is false (disabled) so production stays spec-compliant.
-    // Set env var ENABLE_NEARBY_VENUES=true when the feature is confirmed.
-    const isNearbyVenuesEnabled = (process.env.ENABLE_NEARBY_VENUES ?? 'false').toLowerCase() === 'true';
-    if (!isNearbyVenuesEnabled) {
-      return res.status(501).json({
-        success: false,
-        error: 'Feature not yet available.',
-      });
-    }
-
     const { latitude, longitude, radius } = req.query;
 
     if (!latitude || !longitude) {
