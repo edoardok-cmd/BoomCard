@@ -36,10 +36,10 @@
 | INV-RDM-009 | XSCOPE | HIGH | Partner cannot submit menu URL — endpoint is admin-only | POST /api/venues/:id/menu/submit | venues.routes.ts authorize('ADMIN','SUPER_ADMIN') | none |
 | INV-RDM-010 | XSCOPE | HIGH | Partner cannot withdraw menu submission — endpoint is admin-only | POST /api/venues/:id/menu/withdraw | venues.routes.ts authorize('ADMIN','SUPER_ADMIN') | redemption-cross-scope-sweep.test.ts |
 | INV-RDM-011 | XSCOPE | HIGH | Dashboard returns only the authenticated user's subscription, wallet balance, and recent scans | GET /api/dashboard/me | dashboard.routes.ts L22 `userId = req.user!.id` | none |
-| INV-RDM-012 | INPUT | HIGH | POST /scan rejects missing `billAmount` with 400 | POST /api/stickers/scan | stickers.routes.ts L133 | [SUITE: INPUT] sticker-scan.test.ts (FAILING — auth issue) |
-| INV-RDM-013 | INPUT | HIGH | POST /scan rejects zero/negative `billAmount` via validateAmount with 400 | POST /api/stickers/scan | stickers.routes.ts L147–157 | [SUITE: INPUT] sticker-scan.test.ts (FAILING — auth issue) |
-| INV-RDM-014 | INPUT | HIGH | POST /scan rejects non-finite `billAmount` with 400 | POST /api/stickers/scan | stickers.routes.ts validateAmount | [SUITE: INPUT] sticker-scan.test.ts (FAILING — auth issue) |
-| INV-RDM-015 | INPUT | MEDIUM | POST /scan validates GPS coordinates (lat -90..90, lon -180..180) with 400 | POST /api/stickers/scan | stickers.routes.ts L162–177 validateGPSCoordinates | [SUITE: INPUT] sticker-scan.test.ts (FAILING — auth issue) |
+| INV-RDM-012 | INPUT | HIGH | POST /scan rejects missing `billAmount` with 400 | POST /api/stickers/scan | stickers.routes.ts L132 | [SUITE: INPUT] sticker-scan.test.ts (passing — BC-REDEMPTION-RDM-012-2) |
+| INV-RDM-013 | INPUT | HIGH | POST /scan rejects zero/negative `billAmount` via validateAmount with 400 | POST /api/stickers/scan | stickers.routes.ts L147–157 | [SUITE: INPUT] sticker-scan.test.ts (passing — BC-REDEMPTION-RDM-012-2) |
+| INV-RDM-014 | INPUT | HIGH | POST /scan rejects non-finite `billAmount` with 400 | POST /api/stickers/scan | stickers.routes.ts validateAmount | [SUITE: INPUT] sticker-scan.test.ts (passing — BC-REDEMPTION-RDM-012-2) |
+| INV-RDM-015 | INPUT | MEDIUM | POST /scan validates GPS coordinates (lat -90..90, lon -180..180) with 400 | POST /api/stickers/scan | stickers.routes.ts L162–177 validateGPSCoordinates | [SUITE: INPUT] sticker-scan.test.ts (passing — BC-REDEMPTION-RDM-012-2) |
 | INV-RDM-016 | INPUT | MEDIUM | POST /session rejects missing `stickerId` with 400 | POST /api/stickers/session | stickers.routes.ts L71 | none |
 | INV-RDM-017 | INPUT | MEDIUM | POST /scan requires either `sessionId` or `stickerId` with 400 | POST /api/stickers/scan | stickers.routes.ts L138–143 | none |
 | INV-RDM-018 | INPUT | MEDIUM | POST /api/venues/ rejects missing required fields (partnerId, name, address, city) with 400 | POST /api/venues/ | venues.routes.ts L252–258 | none |
@@ -54,7 +54,7 @@
 | INV-RDM-027 | INPUT | LOW | GET /admin/pending-review: dateFromHours clamped to range 1..720 | GET /api/stickers/admin/pending-review | stickers.routes.ts L854–860 | none |
 | INV-RDM-028 | INPUT | LOW | GET /venue/:venueId/analytics: `days` param clamped 1..365 | GET /api/stickers/venue/:venueId/analytics | stickers.routes.ts L713–714 | none |
 | INV-RDM-029 | INPUT | LOW | GET /my-scans: `limit` clamped 0..100 via parsePagination | GET /api/stickers/my-scans | stickers.routes.ts L346 | none |
-| INV-RDM-030 | AUTH | CRITICAL | POST /scan requires active subscription (requireActiveSubscription middleware) | POST /api/stickers/scan | stickers.routes.ts L125 | [SUITE: INPUT] sticker-scan.test.ts (FAILING — auth issue) |
+| INV-RDM-030 | AUTH | CRITICAL | POST /scan requires active subscription (requireActiveSubscription middleware) | POST /api/stickers/scan | stickers.routes.ts L125 | [SUITE: INPUT] sticker-scan.test.ts (auth issue resolved — BC-REDEMPTION-RDM-012-2; test TBD for RDM-030) |
 | INV-RDM-031 | AUTH | CRITICAL | POST /session requires active subscription (requireActiveSubscription) | POST /api/stickers/session | stickers.routes.ts L66 | none |
 | INV-RDM-032 | AUTH | CRITICAL | POST /scan/:scanId/receipt requires active subscription (requireActiveSubscription) | POST /api/stickers/scan/:scanId/receipt | stickers.routes.ts L233 | none |
 | INV-RDM-033 | AUTH | HIGH | GET /my-scans requires authentication — returns 401 without token | GET /api/stickers/my-scans | stickers.routes.ts L342 authenticate | none |
@@ -98,7 +98,7 @@
 | Class | Total | Suite-covered | Untested |
 |---|---|---|---|
 | XSCOPE | 11 | 1 (partial) | 10 |
-| INPUT | 18 | 4 (FAILING) | 14 |
+| INPUT | 18 | 10 (passing) | 8 |
 | AUTH | 11 | 7 (stickers.write ✓) | 4 |
 | LIFECYCLE | 7 | 0 | 7 |
 | LEAK | 10 | 0 | 10 |
@@ -106,4 +106,4 @@
 | FRAUD | 3 | 0 | 3 |
 | **Total** | **65** | **~8** | **~57** |
 
-Note: Suite-covered invariants for INPUT/XSCOPE are marked as existing but FAILING due to test infrastructure (auth setup) issues.
+Note: Auth infrastructure issue (PENDING_VERIFICATION status blocking tests) was fixed in BC-REDEMPTION-RDM-012-2. INV-RDM-012..017 now have passing integration tests in sticker-scan.test.ts. INV-RDM-018/019 have passing tests in venue-input-validation.test.ts and redemption-input-sweep.test.ts.

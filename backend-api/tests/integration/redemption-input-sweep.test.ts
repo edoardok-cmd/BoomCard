@@ -241,6 +241,22 @@ describe('INV-RDM-019 — POST /api/venues/ rejects invalid or missing geolocati
     expect(res.body.success).toBe(false);
   });
 
+  it('[INPUT] INV-RDM-019: empty-string longitude returns 400', async () => {
+    const res = await authRequest(adminToken)
+      .post('/api/venues/')
+      .send(baseBody({ latitude: 42.6977, longitude: '' }));
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('[INPUT] INV-RDM-019: whitespace-only longitude returns 400', async () => {
+    const res = await authRequest(adminToken)
+      .post('/api/venues/')
+      .send(baseBody({ latitude: 42.6977, longitude: '   ' }));
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
   it('[INPUT] INV-RDM-019: valid coordinates return 201 (positive control)', async () => {
     const res = await authRequest(adminToken)
       .post('/api/venues/')

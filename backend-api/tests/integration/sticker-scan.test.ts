@@ -146,6 +146,26 @@ describe('Sticker Scan Flow (F06)', () => {
       expect(res.body.error).toMatch(/billAmount/i);
     });
 
+    it('[INPUT] INV-RDM-012: POST /scan rejects null billAmount with 400', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({ stickerId, cardId, billAmount: null });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/billAmount/i);
+    });
+
+    it('[INPUT] INV-RDM-012: POST /scan rejects empty-string billAmount with 400', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({ stickerId, cardId, billAmount: '' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/billAmount/i);
+    });
+
     it('should reject zero billAmount via validateAmount with 400 (INV-RDM-013)', async () => {
       const res = await authRequest(accessToken)
         .post('/api/stickers/scan')
@@ -377,6 +397,51 @@ describe('Sticker Scan Flow (F06)', () => {
           billAmount: 50,
           latitude: '91abc',
           longitude: 23,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('INV-RDM-015: should return 400 when longitude is a non-numeric string', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          stickerId,
+          cardId,
+          billAmount: 50,
+          latitude: 42,
+          longitude: 'not-a-number',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('INV-RDM-015: should return 400 when longitude is Infinity string', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          stickerId,
+          cardId,
+          billAmount: 50,
+          latitude: 42,
+          longitude: 'Infinity',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('INV-RDM-015: should return 400 when longitude is a trailing-garbage string ("23abc")', async () => {
+      const res = await authRequest(accessToken)
+        .post('/api/stickers/scan')
+        .send({
+          stickerId,
+          cardId,
+          billAmount: 50,
+          latitude: 42,
+          longitude: '23abc',
         });
 
       expect(res.status).toBe(400);

@@ -410,6 +410,28 @@ router.post(
       return res.status(404).json({ success: false, error: 'Venue not found' });
     }
 
+    // Parse existing images before uploading — guard against malformed stored JSON.
+    let existing: string[] = [];
+    if (venue.menuImages) {
+      try {
+        existing = JSON.parse(venue.menuImages as string);
+        if (!Array.isArray(existing)) existing = [];
+      } catch {
+        existing = [];
+      }
+    }
+
+    // Pre-flight cap check using incoming file count so no CDN objects are
+    // uploaded for a request that will be rejected. 100 images per venue is a
+    // generous ceiling for any real menu (LOW-2 / r2k).
+    const MAX_MENU_IMAGES = 100;
+    if (existing.length + files.length > MAX_MENU_IMAGES) {
+      return res.status(400).json({
+        success: false,
+        error: `Venue already has ${existing.length} menu image(s). Cannot exceed ${MAX_MENU_IMAGES} total images per venue.`,
+      });
+    }
+
     // Upload each image to S3
     const uploadedUrls: string[] = [];
     for (const file of files) {
@@ -429,28 +451,6 @@ router.post(
 
     if (uploadedUrls.length === 0) {
       return res.status(500).json({ success: false, error: 'All image uploads failed' });
-    }
-
-    // Append to existing menuImages (INFO-1: guard against malformed stored JSON)
-    let existing: string[] = [];
-    if (venue.menuImages) {
-      try {
-        existing = JSON.parse(venue.menuImages as string);
-        if (!Array.isArray(existing)) existing = [];
-      } catch {
-        existing = [];
-      }
-    }
-
-    // LOW-2 (r2k): cap total accumulated menu images per venue. Without this a
-    // partner (or admin) could call the endpoint repeatedly to grow the array
-    // indefinitely. 100 total URLs is a generous ceiling for any real menu.
-    const MAX_MENU_IMAGES = 100;
-    if (existing.length + uploadedUrls.length > MAX_MENU_IMAGES) {
-      return res.status(400).json({
-        success: false,
-        error: `Venue already has ${existing.length} menu image(s). Cannot exceed ${MAX_MENU_IMAGES} total images per venue.`,
-      });
     }
 
     const merged = [...existing, ...uploadedUrls];
@@ -508,9 +508,13 @@ router.post(
 
     if (!await assertPartnerOwnsVenue(req, id, res)) return;
 
-    const { url } = req.body as { url?: string };
+    const { url } = req.body as { url?: unknown };
 
-    const trimmed = (url ?? '').trim();
+    if (url !== undefined && url !== null && typeof url !== 'string') {
+      return res.status(400).json({ success: false, error: 'Menu URL must be a string' });
+    }
+
+    const trimmed = ((url as string | undefined | null) ?? '').trim();
     if (!trimmed) {
       return res.status(400).json({ success: false, error: 'Menu URL is required' });
     }

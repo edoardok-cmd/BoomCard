@@ -92,11 +92,23 @@ export function validateGPSCoordinates(
   latitude: any,
   longitude: any
 ): { latitude: number; longitude: number } {
+  // Guard: function must not be called with both coordinates absent
+  if ((latitude === undefined || latitude === null) && (longitude === undefined || longitude === null)) {
+    throw new ValidationError('At least one GPS coordinate must be provided');
+  }
+
+  // Reject partial pairs: both coordinates must be provided together
+  const latPresent = latitude !== undefined && latitude !== null;
+  const lonPresent = longitude !== undefined && longitude !== null;
+  if (latPresent !== lonPresent) {
+    throw new ValidationError('Both latitude and longitude must be provided together');
+  }
+
   // Validate latitude
   let lat: number;
   if (latitude !== undefined && latitude !== null) {
     if (typeof latitude === 'string') {
-      lat = parseFloat(latitude);
+      lat = Number(latitude);
     } else if (typeof latitude === 'number') {
       lat = latitude;
     } else {
@@ -116,7 +128,7 @@ export function validateGPSCoordinates(
   let lon: number;
   if (longitude !== undefined && longitude !== null) {
     if (typeof longitude === 'string') {
-      lon = parseFloat(longitude);
+      lon = Number(longitude);
     } else if (typeof longitude === 'number') {
       lon = longitude;
     } else {
