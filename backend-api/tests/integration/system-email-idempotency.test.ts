@@ -85,6 +85,26 @@ async function seedAdmin(): Promise<string> {
   return user.id;
 }
 
+/** Create a minimal USER so a ticket can be owned by a non-admin account. */
+async function seedUser(): Promise<{ id: string; email: string }> {
+  const email = `user-idem-${uid()}@external.example.com`;
+  const user = await prisma.user.create({
+    data: {
+      email,
+      passwordHash: await bcrypt.hash('TestPass999!', 10),
+      firstName: 'User',
+      lastName: 'Idem',
+      phone: `+35988800${Math.floor(Math.random() * 9000) + 1000}`,
+      role: 'USER',
+      status: 'ACTIVE',
+      emailVerified: true,
+      emailVerifiedAt: new Date(),
+    },
+  });
+  createdUserIds.push(user.id);
+  return { id: user.id, email: user.email };
+}
+
 /** Minimal valid new-ticket payload (no inReplyTo / references). */
 function newTicketPayload(messageId: string): InboundEmailPayload {
   return {
@@ -210,5 +230,129 @@ describe('[INV-SYS-013] ingestInboundEmail — new-ticket idempotency', () => {
     if (result.ticketId) {
       createdTicketIds.push(result.ticketId);
     }
+  });
+});
+
+// ─── Finding 2: spoof-linked path idempotency ─────────────────────────────────
+
+describe('[INV-SYS-013] ingestInboundEmail — spoof-linked path idempotency', () => {
+  let adminId: string;
+  let ticketOwnerId: string;
+  let ownerEmail: string;
+
+  beforeAll(async () => {
+    adminId = await seedAdmin();
+    const owner = await seedUser();
+    ticketOwnerId = owner.id;
+    ownerEmail = owner.email;
+  });
+
+  it('redelivered spoof-blocked email creates exactly one linked ticket', async () => {
+    // Create an existing ticket owned by the USER, with a distinct externalEmail
+    // so that the inbound "spoofEmail" is definitely not in the allowed set.
+    const spoofMessageId = makeMessageId();
+    const spoofFrom = `spoofer-${uid()}@attacker.example.com`;
+
+    // Seed the original ticket (owned by the USER, external sender is the owner email).
+    const originalTicket = await prisma.helpTicket.create({
+      data: {
+        subject: 'Original ticket',
+        body: 'Original body',
+        category: 'OTHER',
+        priority: 'MEDIUM',
+        status: 'OPEN',
+        source: 'EMAIL',
+        userId: ticketOwnerId,
+        externalEmail: ownerEmail,
+      },
+    });
+    createdTicketIds.push(originalTicket.id);
+
+    // First inbound: from an unknown sender targeting the existing ticket via
+    // X-BoomCard-Ticket-ID. The spoof guard fires, creating a linked ticket.
+    const first = await ingestInboundEmail({
+      from: spoofFrom,
+      to: 'support@boomcard.bg',
+      subject: 'Re: Original ticket',
+      text: 'I am definitely the real owner.',
+      messageId: spoofMessageId,
+      xBoomCardTicketId: originalTicket.id,
+    });
+    expect(first.created).toBe(true);
+    expect(first.ticketId).toBeTruthy();
+    createdTicketIds.push(first.ticketId);
+
+    // Second inbound: provider redelivers the exact same email (same messageId).
+    // Must NOT create a second linked ticket — idempotency guard must fire.
+    const second = await ingestInboundEmail({
+      from: spoofFrom,
+      to: 'support@boomcard.bg',
+      subject: 'Re: Original ticket',
+      text: 'I am definitely the real owner.',
+      messageId: spoofMessageId,
+      xBoomCardTicketId: originalTicket.id,
+    });
+    expect(second.created).toBe(false);
+    expect(second.ticketId).toBe(first.ticketId);
+
+    // Exactly one linked ticket must exist for this rootMessageId.
+    const count = await prisma.helpTicket.count({
+      where: { rootMessageId: spoofMessageId },
+    });
+    expect(count).toBe(1);
+  });
+});
+
+// ─── Finding 3: P2002 concurrent-race recovery ────────────────────────────────
+
+describe('[INV-SYS-013] ingestInboundEmail — P2002 concurrent-race recovery', () => {
+  let adminId: string;
+
+  beforeAll(async () => {
+    adminId = await seedAdmin();
+  });
+
+  it('handles P2002 concurrent race: returns existing ticket instead of throwing', async () => {
+    const messageId = makeMessageId();
+    const payload = newTicketPayload(messageId);
+
+    // First call: creates the ticket normally so the row exists in the DB.
+    const first = await ingestInboundEmail(payload);
+    expect(first.created).toBe(true);
+    createdTicketIds.push(first.ticketId);
+
+    // Now simulate the concurrent-race window:
+    //   - Spy on create to throw P2002 (as if a sibling request created the row
+    //     between our findFirst and create).
+    //   - Spy on findFirst to return null on its FIRST call (the pre-check),
+    //     forcing the code into the create path. The SECOND call (inside the
+    //     P2002 catch block) uses the real DB and finds the existing row.
+    const createSpy = jest
+      .spyOn(prisma.helpTicket, 'create')
+      .mockRejectedValueOnce(
+        Object.assign(new Error('Unique constraint failed on the fields: (`rootMessageId`)'), {
+          code: 'P2002',
+          meta: { target: ['rootMessageId'] },
+        })
+      );
+
+    const findFirstSpy = jest
+      .spyOn(prisma.helpTicket, 'findFirst')
+      .mockResolvedValueOnce(null); // pre-check sees nothing → races into create
+
+    const second = await ingestInboundEmail(payload);
+
+    // The P2002 catch block must have recovered and returned the existing ticket.
+    expect(second.created).toBe(false);
+    expect(second.ticketId).toBe(first.ticketId);
+
+    // Exactly one HelpTicket for this messageId — no phantom row created.
+    const count = await prisma.helpTicket.count({
+      where: { rootMessageId: messageId },
+    });
+    expect(count).toBe(1);
+
+    createSpy.mockRestore();
+    findFirstSpy.mockRestore();
   });
 });
