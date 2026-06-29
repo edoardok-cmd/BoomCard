@@ -217,8 +217,6 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV,
   });
 });
 
@@ -234,10 +232,10 @@ app.get('/ready', async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    console.error('[ready] database check error:', error);
     res.status(503).json({
       status: 'not ready',
       database: 'disconnected',
-      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });

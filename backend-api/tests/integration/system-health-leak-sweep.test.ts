@@ -28,12 +28,14 @@ import { app } from '../../src/server';
 import prisma from '../../src/lib/prisma';
 
 describe('System LEAK sweep — health endpoints expose no internals', () => {
-  test('[INV-SYS-014] GET /api/health/metrics does not expose business row-counts to anon', async () => {
+  test('[INV-SYS-014] GET /api/health/metrics does not expose business row-counts or process internals to anon', async () => {
     const res = await request(app).get('/api/health/metrics');
     // Either the endpoint is auth-gated (401/403) OR, if public, it must omit
     // business row counts and process internals entirely.
     if (res.status === 200) {
       expect(res.body.database).toBeUndefined(); // users/venues/stickers/receipts/transactions
+      expect(res.body.uptime).toBeUndefined();
+      expect(res.body.memory).toBeUndefined();
       expect(res.body.process?.nodeVersion).toBeUndefined();
       expect(res.body.process?.pid).toBeUndefined();
       expect(res.body.process?.platform).toBeUndefined();
@@ -42,15 +44,17 @@ describe('System LEAK sweep — health endpoints expose no internals', () => {
     }
   });
 
-  test('[INV-SYS-016] GET /api/health/ does not expose environment to anon', async () => {
+  test('[INV-SYS-016] GET /api/health/ does not expose environment or process internals to anon', async () => {
     const res = await request(app).get('/api/health/');
     expect(res.body.environment).toBeUndefined();
+    expect(res.body.uptime).toBeUndefined();
   });
 
   test('[INV-SYS-016] GET /api/health/detailed does not expose environment/version to anon', async () => {
     const res = await request(app).get('/api/health/detailed');
     expect(res.body.environment).toBeUndefined();
     expect(res.body.version).toBeUndefined();
+    expect(res.body.uptime).toBeUndefined();
   });
 
   test('[INV-SYS-030] GET /api/health/live does not expose process internals (pid/uptime) to anon', async () => {
@@ -92,6 +96,26 @@ describe('System LEAK sweep — health endpoints expose no internals', () => {
       expect([200, 503]).toContain(res.status);
       const body = JSON.stringify(res.body);
       expect(body).not.toMatch(/getaddrinfo|ENOTFOUND|postgres-host/i);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test('[INV-SYS-016] GET /health (bare) does not expose process internals to anon', async () => {
+    const res = await request(app).get('/health');
+    expect(res.body.uptime).toBeUndefined();
+    expect(res.body.environment).toBeUndefined();
+    expect(res.body.pid).toBeUndefined();
+  });
+
+  test('[INV-SYS-015] GET /ready (bare) does not echo raw DB error on dependency failure', async () => {
+    const FAKE_DSN_ERROR = new Error('connect ECONNREFUSED postgres://user:pass@db-host:5432/boomcard');
+    const spy = jest.spyOn(prisma, '$queryRaw').mockRejectedValueOnce(FAKE_DSN_ERROR);
+    try {
+      const res = await request(app).get('/ready');
+      expect(res.status).toBe(503);
+      const body = JSON.stringify(res.body);
+      expect(body).not.toMatch(/ECONNREFUSED|postgres|db-host|5432/i);
     } finally {
       spy.mockRestore();
     }

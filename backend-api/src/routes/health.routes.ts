@@ -64,7 +64,6 @@ router.get('/detailed', async (req: Request, res: Response) => {
   const health = {
     status: 'ok',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
     checks: {
       database: { status: 'unknown', responseTime: 0 } as { status: string; responseTime: number },
       redis: { status: 'unknown', responseTime: 0 } as { status: string; responseTime: number },
@@ -198,9 +197,6 @@ router.get('/live', (req: Request, res: Response) => {
  */
 router.get('/metrics', async (req: Request, res: Response) => {
   try {
-    // System stats
-    const memoryUsage = process.memoryUsage();
-
     // Compute latency percentiles
     const sortedLatencies = [...requestMetrics.latencies].sort((a, b) => a - b);
     const p50 = sortedLatencies[Math.floor(sortedLatencies.length * 0.5)] || 0;
@@ -210,15 +206,6 @@ router.get('/metrics', async (req: Request, res: Response) => {
 
     res.status(200).json({
       timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      memory: {
-        rss: memoryUsage.rss,
-        heapTotal: memoryUsage.heapTotal,
-        heapUsed: memoryUsage.heapUsed,
-        external: memoryUsage.external,
-        rssMB: Math.round(memoryUsage.rss / 1024 / 1024),
-        heapUsedMB: Math.round(memoryUsage.heapUsed / 1024 / 1024),
-      },
       requests: {
         total: requestMetrics.totalRequests,
         errors: requestMetrics.totalErrors,
