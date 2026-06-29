@@ -1045,7 +1045,7 @@ router.get('/admin/stats', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), asyn
  * crediting. Without it, the pre-computed scan values are used as-is.
  * Requires authentication (Admin role)
  */
-router.post('/admin/approve/:scanId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
+router.post('/admin/approve/:scanId', authenticate, requireActiveAdmin, authorize('ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response) => {
   try {
     const { scanId } = req.params;
     const { verifiedAmount } = req.body ?? {};
@@ -1139,7 +1139,7 @@ const BULK_SCAN_LIMIT = 500;
  * Body: { scanIds: string[] }
  * Replaces N parallel single-approve calls from the admin UI.
  */
-router.post('/admin/bulk-approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
+router.post('/admin/bulk-approve', authenticate, requireActiveAdmin, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
     const { scanIds } = req.body as { scanIds?: unknown };
     if (!Array.isArray(scanIds) || scanIds.length === 0 || !scanIds.every((id) => typeof id === 'string')) {
@@ -1160,7 +1160,7 @@ router.post('/admin/bulk-approve', authenticate, authorize('ADMIN', 'SUPER_ADMIN
  * POST /api/stickers/admin/bulk-reject
  * Body: { scanIds: string[], reason: string }
  */
-router.post('/admin/bulk-reject', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
+router.post('/admin/bulk-reject', authenticate, requireActiveAdmin, authorize('ADMIN', 'SUPER_ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
     const { scanIds, reason } = req.body as { scanIds?: unknown; reason?: unknown };
     if (!Array.isArray(scanIds) || scanIds.length === 0 || !scanIds.every((id) => typeof id === 'string')) {
