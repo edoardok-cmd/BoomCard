@@ -54,7 +54,7 @@ A suite-covered row is `verified` by suite while that suite is green. A `review`
 | INV-PUB-INP-003 | `POST /api/contact` never 5xx on malformed body (null byte in field, wrong types, array/string body). Currently 502 on null-byte field (mis-classified client error as server fault). | contact.routes:41-149; error.middleware | suite (INPUT) | open |
 | INV-PUB-INP-004 | `POST /api/mobile/errors` never 5xx on malformed body (null byte in message, wrong types). Currently 500 on null-byte message. | mobileConfig.routes:91; error.middleware | suite (INPUT) | open |
 | INV-PUB-INP-005 | `GET /api/config/mobile/` always 200 (no params, allowlist read). | mobileConfig.routes:36 | suite (INPUT)+probe | review |
-| INV-PUB-INP-006 | `GET /api/sidebar/stats` always 200 (no params). | sidebar.routes:11 | suite (INPUT)+probe | review |
+| INV-PUB-INP-006 | `GET /api/sidebar/stats` returns 401 to anonymous callers (authenticate middleware gates the route; added in BC-PUBLIC-SPEC-REAUDIT-SIDEBAR-MOCK). No params; never 5xx on normal unauthenticated requests. | sidebar.routes:12 | [SUITE: LEAK] auth-gate assertion + runtime probe | review |
 
 ## 4. Abuse / Rate-Limiting (INV-PUB-RL)
 
@@ -75,7 +75,7 @@ A suite-covered row is `verified` by suite while that suite is green. A `review`
 
 | ID | Invariant | Binding | Method | Coverage |
 |---|---|---|---|---|
-| INV-PUB-AUTH-001 | The 7 routes carry no auth middleware AND expose no authenticated-only capability (sidebar/stats is the watch item — see INV-PUB-LEAK-005). | route mounts in server.ts | static read | review |
+| INV-PUB-AUTH-001 | 6 routes carry no auth middleware and expose no authenticated-only capability. `GET /api/sidebar/stats` carries the `authenticate` middleware (added in BC-PUBLIC-SPEC-REAUDIT-SIDEBAR-MOCK) and returns 401 to anonymous callers — this is the intended auth posture (see INV-PUB-LEAK-005). | route mounts in server.ts; sidebar.routes:12 | [SUITE: LEAK] auth-gate assertion + static read | review |
 | INV-PUB-AUTH-002 | The only public write endpoints are `/api/contact` and `/api/mobile/errors`; both are bounded (rate-limited + size-capped) and confer no privilege. | route inventory | static read | review |
 
 ---

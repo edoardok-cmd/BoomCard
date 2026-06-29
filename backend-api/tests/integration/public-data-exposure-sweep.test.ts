@@ -113,4 +113,11 @@ describe('public-data-exposure-sweep: no internal/PII field name in any public G
       ['errorLogUrl', 'features', 'pushEnabled', 'status', 'versions'].sort(),
     );
   });
+
+  it('GET /api/sidebar/stats returns 401 without auth token (INV-PUB-INP-006 / INV-PUB-LEAK-005)', async () => {
+    // sidebar/stats is auth-gated (authenticate middleware added in BC-PUBLIC-SPEC-REAUDIT-SIDEBAR-MOCK).
+    // Anonymous callers must get 401, not 200 with mock data and not 500.
+    const res = await request(app).get('/api/sidebar/stats');
+    expect(res.status).toBe(401);
+  });
 });
