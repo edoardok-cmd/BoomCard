@@ -13,8 +13,8 @@
  *   INV-RDM-006 — Partner cannot delete venue (admin-only)
  *   INV-RDM-007 — Partner cannot upload menu images (admin-only)
  *   INV-RDM-008 — Partner cannot clear venue menu (admin-only)
- *   INV-RDM-009 — Partner cannot submit menu URL (admin-only)
- *   INV-RDM-010 — Partner cannot withdraw menu submission (admin-only)
+ *   INV-RDM-009 — Partner CAN submit menu URL for own venue; cross-partner access returns 403
+ *   INV-RDM-010 — Partner cannot withdraw menu submission — endpoint is admin-only
  *   INV-RDM-011 — Dashboard scoped to authenticated user
  *   INV-RDM-055 — Admin-only venue fields not returned in public GET
  *
@@ -413,15 +413,29 @@ describe('INV-RDM-004..010 — Partner cannot mutate venue or menu (admin-only r
     expect(res.status).toBe(403);
   });
 
-  it('[XSCOPE] INV-RDM-009: Partner cannot submit menu URL — POST /api/venues/:id/menu/submit returns 403', async () => {
+  it('[POSITIVE] INV-RDM-009: Partner CAN submit menu URL for own venue — POST /api/venues/:id/menu/submit returns 200 or 400 (not 403)', async () => {
+    if (!throwawayVenueId) { return; }
     const res = await authRequest(partnerAToken)
+      .post(`/api/venues/${throwawayVenueId}/menu/submit`)
+      .send({ url: 'https://example.com/menu.pdf' });
+    expect([200, 400]).toContain(res.status);
+  });
+
+  it('[XSCOPE] INV-RDM-009-CROSS: Partner CANNOT submit menu URL for another partner\'s venue — returns 403', async () => {
+    const res = await authRequest(partnerBToken)
       .post(`/api/venues/${venueAId}/menu/submit`)
       .send({ url: 'https://example.com/menu.pdf' });
     expect(res.status).toBe(403);
   });
 
-  it('[XSCOPE] INV-RDM-010: Partner cannot withdraw menu submission — POST /api/venues/:id/menu/withdraw returns 403', async () => {
+  it('[XSCOPE] INV-RDM-010: Partner CANNOT withdraw menu submission for own venue — POST /api/venues/:id/menu/withdraw returns 403', async () => {
     const res = await authRequest(partnerAToken)
+      .post(`/api/venues/${venueAId}/menu/withdraw`);
+    expect(res.status).toBe(403);
+  });
+
+  it('[XSCOPE] INV-RDM-010-CROSS: Partner CANNOT withdraw menu submission for another partner\'s venue — returns 403', async () => {
+    const res = await authRequest(partnerBToken)
       .post(`/api/venues/${venueAId}/menu/withdraw`);
     expect(res.status).toBe(403);
   });

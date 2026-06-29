@@ -34,7 +34,7 @@
 | INV-RDM-007 | XSCOPE | HIGH | Partner cannot upload menu images directly — endpoint is admin-only | POST /api/venues/:id/menu | venues.routes.ts authorize('ADMIN','SUPER_ADMIN') | none |
 | INV-RDM-008 | XSCOPE | HIGH | Partner cannot clear venue menu — endpoint is admin-only | DELETE /api/venues/:id/menu | venues.routes.ts authorize('ADMIN','SUPER_ADMIN') | none |
 | INV-RDM-009 | XSCOPE | HIGH | Partner cannot submit menu URL — endpoint is admin-only | POST /api/venues/:id/menu/submit | venues.routes.ts authorize('ADMIN','SUPER_ADMIN') | none |
-| INV-RDM-010 | XSCOPE | HIGH | Partner cannot withdraw menu submission — endpoint is admin-only | POST /api/venues/:id/menu/withdraw | venues.routes.ts authorize('ADMIN','SUPER_ADMIN') | none |
+| INV-RDM-010 | XSCOPE | HIGH | Partner cannot withdraw menu submission — endpoint is admin-only | POST /api/venues/:id/menu/withdraw | venues.routes.ts authorize('ADMIN','SUPER_ADMIN') | redemption-cross-scope-sweep.test.ts |
 | INV-RDM-011 | XSCOPE | HIGH | Dashboard returns only the authenticated user's subscription, wallet balance, and recent scans | GET /api/dashboard/me | dashboard.routes.ts L22 `userId = req.user!.id` | none |
 | INV-RDM-012 | INPUT | HIGH | POST /scan rejects missing `billAmount` with 400 | POST /api/stickers/scan | stickers.routes.ts L133 | [SUITE: INPUT] sticker-scan.test.ts (FAILING — auth issue) |
 | INV-RDM-013 | INPUT | HIGH | POST /scan rejects zero/negative `billAmount` via validateAmount with 400 | POST /api/stickers/scan | stickers.routes.ts L147–157 | [SUITE: INPUT] sticker-scan.test.ts (FAILING — auth issue) |

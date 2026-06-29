@@ -18,10 +18,11 @@
  * keep the ability to submit support tickets per the spec matrix.
  *
  * Audit-pass [3.1]: mounted on partner-writable routers — specifically
- * partners.routes.ts and receipts.enhanced.routes.ts. Venues/stickers
- * write paths are currently restricted to ADMIN/SUPER_ADMIN only (PARTNER
- * role has no write access), so the partner-active gate is intentionally
- * not mounted there. Spec §5.3 "read-only operational режим" scope.
+ * partners.routes.ts, receipts.enhanced.routes.ts, and per-route on
+ * POST /api/venues/:id/menu/submit and POST /api/venues/:id/menu/withdraw
+ * (venues.routes.ts), where PARTNER self-service is explicitly authorised.
+ * Other venue/sticker write paths remain ADMIN/SUPER_ADMIN only.
+ * Spec §5.3 "read-only operational режим" scope.
  *
  * Audit-pass [3.2]: fails CLOSED on DB error rather than fall-through.
  * A transient Prisma exception used to bypass the gate silently; now we

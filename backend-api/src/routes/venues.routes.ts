@@ -7,11 +7,25 @@ import { Router, Response } from 'express';
 import multer from 'multer';
 import { asyncHandler } from '../middleware/error.middleware';
 import { authenticate, authorize, requireActiveAdmin, AuthRequest } from '../middleware/auth.middleware';
+import { requireActivePartnerForWritesAuthed } from '../middleware/partnerStatus.middleware';
 import { prisma } from '../lib/prisma';
 import { venueService } from '../services/venue.service';
 import { imageUploadService } from '../services/imageUpload.service';
 import { logger } from '../utils/logger';
 import { parsePagination } from '../utils/pagination';
+
+async function assertPartnerOwnsVenue(req: AuthRequest, venueId: string, res: Response): Promise<boolean> {
+  if (req.user!.role !== 'PARTNER') return true;
+  const venue = await prisma.venue.findUnique({
+    where: { id: venueId },
+    select: { partner: { select: { userId: true } } },
+  });
+  if (!venue || venue.partner?.userId !== req.user!.id) {
+    res.status(403).json({ success: false, error: 'You do not have access to this venue' });
+    return false;
+  }
+  return true;
+}
 
 // S1: image/jpeg|jpg|png|webp only — application/octet-stream removed because
 // it allows any binary to pass the MIME type filter. The offers image endpoint
@@ -477,19 +491,19 @@ router.delete(
  * POST /api/venues/:id/menu/submit
  * Submit a menu URL for admin review.
  * Sets pendingMenuUrl + status=PENDING. Existing menuUrl (if approved) remains visible to users.
- *
- * MEDIUM-3 / §8a: Partner self-service menu submission is scope-creep per §8a
- * ("Not defined in source specs"). Removed PARTNER from authorize() until a
- * product specification explicitly authorizes this workflow. Only admins can
- * use this endpoint for now.
+ * Partners may submit for their own venue; admins may submit for any venue.
  */
 router.post(
   '/:id/menu/submit',
   authenticate,
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
   requireActiveAdmin,
+  requireActivePartnerForWritesAuthed,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
+
+    if (!await assertPartnerOwnsVenue(req, id, res)) return;
+
     const { url } = req.body as { url?: string };
 
     const trimmed = (url ?? '').trim();
@@ -508,23 +522,26 @@ router.post(
       return res.status(400).json({ success: false, error: 'Menu URL is not a valid URL' });
     }
 
-    const venueRecord = await prisma.venue.findUnique({
-      where: { id },
-      select: { id: true },
-    });
-    if (!venueRecord) {
-      return res.status(404).json({ success: false, error: 'Venue not found' });
+    let updated;
+    try {
+      updated = await prisma.venue.update({
+        where: {
+          id,
+          ...(req.user!.role === 'PARTNER' ? { partner: { userId: req.user!.id } } : {}),
+        },
+        data: {
+          pendingMenuUrl: trimmed,
+          menuStatus: 'PENDING',
+          menuSubmittedAt: new Date(),
+          menuRejectionReason: null,
+        },
+      });
+    } catch (e: any) {
+      if (e.code === 'P2025') {
+        return res.status(404).json({ success: false, error: 'Venue not found' });
+      }
+      throw e;
     }
-
-    const updated = await prisma.venue.update({
-      where: { id },
-      data: {
-        pendingMenuUrl: trimmed,
-        menuStatus: 'PENDING',
-        menuSubmittedAt: new Date(),
-        menuRejectionReason: null,
-      },
-    });
 
     logger.info('[menu-audit] SUBMITTED', {
       venueId: id,
@@ -553,17 +570,18 @@ router.post(
  * Withdraw a PENDING menu submission.
  * - If a previously approved menuUrl exists, keeps it and reverts status to APPROVED.
  * - Otherwise clears menu state back to NONE.
- *
- * MEDIUM-3 / §8a: Same reasoning as /menu/submit — PARTNER removed until a
- * product spec authorizes partner self-service menu management.
+ * Partners may withdraw for their own venue; admins may withdraw for any venue.
  */
 router.post(
   '/:id/menu/withdraw',
   authenticate,
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  authorize('PARTNER', 'ADMIN', 'SUPER_ADMIN'),
   requireActiveAdmin,
+  requireActivePartnerForWritesAuthed,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
+
+    if (!await assertPartnerOwnsVenue(req, id, res)) return;
 
     const venueRecord = await prisma.venue.findUnique({
       where: { id },
@@ -577,15 +595,26 @@ router.post(
     }
 
     const nextStatus = venueRecord.menuUrl ? 'APPROVED' : 'NONE';
-    const updated = await prisma.venue.update({
-      where: { id },
-      data: {
-        pendingMenuUrl: null,
-        menuStatus: nextStatus,
-        menuRejectionReason: null,
-        menuSubmittedAt: venueRecord.menuUrl ? venueRecord.menuSubmittedAt : null,
-      },
-    });
+    let updated;
+    try {
+      updated = await prisma.venue.update({
+        where: {
+          id,
+          ...(req.user!.role === 'PARTNER' ? { partner: { userId: req.user!.id } } : {}),
+        },
+        data: {
+          pendingMenuUrl: null,
+          menuStatus: nextStatus,
+          menuRejectionReason: null,
+          menuSubmittedAt: venueRecord.menuUrl ? venueRecord.menuSubmittedAt : null,
+        },
+      });
+    } catch (e: any) {
+      if (e.code === 'P2025') {
+        return res.status(404).json({ success: false, error: 'Venue not found' });
+      }
+      throw e;
+    }
 
     logger.info('[menu-audit] WITHDRAWN', {
       venueId: id,
