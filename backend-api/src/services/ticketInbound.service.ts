@@ -596,6 +596,29 @@ export async function ingestInboundEmail(
       return { ticketId: '', replyId: undefined, created: false };
     }
 
+    // Idempotency guard: if this messageId has already created a HelpTicket
+    // (rootMessageId stores the inbound message-id of the opening email), a
+    // provider redelivery of the same NEW email (no inReplyTo / references)
+    // must not create a second row. This findFirst is a fast-path pre-check
+    // for the sequential redelivery case; the hard DB-level backstop for
+    // concurrent races is the partial unique index added by migration
+    // 20260629000001_helpticket_rootmessageid_unique (WHERE rootMessageId IS
+    // NOT NULL), which lets NULL rows coexist while still preventing
+    // duplicate non-null rootMessageId rows. The P2002 catch below handles
+    // any remaining race window between findFirst and create.
+    if (payload.messageId) {
+      const existing = await prisma.helpTicket.findFirst({
+        where: { rootMessageId: payload.messageId },
+        select: { id: true },
+      });
+      if (existing) {
+        logger.info(
+          `[ticketInbound] duplicate NEW email suppressed messageId=${payload.messageId} existingTicket=${existing.id}`
+        );
+        return { ticketId: existing.id, created: false };
+      }
+    }
+
     // Drop a leading [#XXXX] prefix from the subject if present — the match
     // ladder already failed, so the marker is just noise.
     const cleanedSubject =
@@ -616,7 +639,33 @@ export async function ingestInboundEmail(
       rootMessageId: payload.messageId || null,
       requestType: inferRequestType(payload),
     };
-    const ticket = await prisma.helpTicket.create({ data: newTicketData });
+    let ticket: Awaited<ReturnType<typeof prisma.helpTicket.create>>;
+    try {
+      ticket = await prisma.helpTicket.create({ data: newTicketData });
+    } catch (err: unknown) {
+      // P2002 = unique constraint violation — the partial unique index on
+      // rootMessageId fired, meaning a concurrent request already created this
+      // ticket. Fetch the winner and return it so the caller gets a stable id.
+      if (
+        err &&
+        typeof err === 'object' &&
+        'code' in err &&
+        (err as { code: string }).code === 'P2002' &&
+        payload.messageId
+      ) {
+        const existing = await prisma.helpTicket.findFirst({
+          where: { rootMessageId: payload.messageId },
+          select: { id: true },
+        });
+        if (existing) {
+          logger.info(
+            `[ticketInbound] P2002 race resolved: returning existing ticket messageId=${payload.messageId} ticketId=${existing.id}`
+          );
+          return { ticketId: existing.id, created: false };
+        }
+      }
+      throw err;
+    }
     // Gap 8: backfill shortRef immediately after creation (computed from the UUID
     // assigned by Postgres). create() doesn't know the id ahead of time.
     // BC-ADMIN-SPEC-REAUDIT6-HELP-INTAKE-502-1: Retry with progressively longer
@@ -751,23 +800,62 @@ export async function ingestInboundEmail(
       );
       return { ticketId: t.id, created: false };
     }
-    const linked = await prisma.helpTicket.create({
-      data: {
-        subject:
-          (payload.subject || '').replace(SUBJECT_REF_RE, '').trim() ||
-          `(re: ${t.subject})`,
-        body: payload.text || '',
-        category: TicketCategory.OTHER,
-        priority: TicketPriority.MEDIUM,
-        status: TicketStatus.OPEN,
-        userId: linkedOwnerId,
-        source: 'EMAIL',
-        externalEmail: fromEmail,
-        rootMessageId: payload.messageId || null,
-        requestType: inferRequestType(payload),
-        linkedTicketId: t.id,
-      },
-    });
+    // Application-level idempotency guard for the spoof-linked path: a provider
+    // redelivery of the same blocked email must not create a second linked ticket.
+    if (payload.messageId) {
+      const existingLinked = await prisma.helpTicket.findFirst({
+        where: { rootMessageId: payload.messageId },
+        select: { id: true },
+      });
+      if (existingLinked) {
+        logger.info(
+          `[ticketInbound] duplicate spoof-linked email suppressed messageId=${payload.messageId} existingTicket=${existingLinked.id}`
+        );
+        return { ticketId: existingLinked.id, created: false };
+      }
+    }
+
+    let linked: Awaited<ReturnType<typeof prisma.helpTicket.create>>;
+    try {
+      linked = await prisma.helpTicket.create({
+        data: {
+          subject:
+            (payload.subject || '').replace(SUBJECT_REF_RE, '').trim() ||
+            `(re: ${t.subject})`,
+          body: payload.text || '',
+          category: TicketCategory.OTHER,
+          priority: TicketPriority.MEDIUM,
+          status: TicketStatus.OPEN,
+          userId: linkedOwnerId,
+          source: 'EMAIL',
+          externalEmail: fromEmail,
+          rootMessageId: payload.messageId || null,
+          requestType: inferRequestType(payload),
+          linkedTicketId: t.id,
+        },
+      });
+    } catch (err: unknown) {
+      // P2002 = partial unique index race on rootMessageId. Fetch the winning row.
+      if (
+        err &&
+        typeof err === 'object' &&
+        'code' in err &&
+        (err as { code: string }).code === 'P2002' &&
+        payload.messageId
+      ) {
+        const existingLinked = await prisma.helpTicket.findFirst({
+          where: { rootMessageId: payload.messageId },
+          select: { id: true },
+        });
+        if (existingLinked) {
+          logger.info(
+            `[ticketInbound] P2002 race resolved (spoof path): returning existing ticket messageId=${payload.messageId} ticketId=${existingLinked.id}`
+          );
+          return { ticketId: existingLinked.id, created: false };
+        }
+      }
+      throw err;
+    }
     // Gap 8: populate shortRef for the spoof-linked ticket.
     // BC-ADMIN-SPEC-REAUDIT6-HELP-INTAKE-502-1: Retry with progressively longer
     // refs on collision, escalate to ops if all attempts fail. The ticket is kept

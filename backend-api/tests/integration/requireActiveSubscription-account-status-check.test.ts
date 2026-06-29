@@ -12,12 +12,11 @@
  * endpoints and that it enforces the account status gate at the middleware level
  * (defense-in-depth, before reaching the service layer).
  *
- * NOTE: PENDING_VERIFICATION and PENDING_PAYMENT users are blocked at the
- * authenticate middleware layer (auth.middleware.ts:183) with 401 status and
- * never reach requireActiveSubscription. Therefore, tests for these statuses
- * belong in the authenticate middleware test suite, not here. This test suite
- * covers only account statuses that allow login but restrict operations:
- * INACTIVE, ARCHIVED, and DELETED (per Spec §2 and §8.1 rule 1).
+ * NOTE: PENDING_VERIFICATION, PENDING_PAYMENT, SUSPENDED, ARCHIVED, and DELETED
+ * users are all blocked at the authenticate middleware layer (auth.middleware.ts:189)
+ * with 401 and never reach requireActiveSubscription. Tests for ARCHIVED and DELETED
+ * here assert 401 (from authenticate), not 403. Only INACTIVE is handled by
+ * requireActiveSubscription itself (per Spec §2 and §8.1 rule 1).
  */
 
 import request from 'supertest';
@@ -118,8 +117,8 @@ describe('BC-ADMIN-SPEC-REAUDIT-SCANGATE-INACTIVE-1: Account Status Check', () =
         longitude: 23.3219,
       });
 
-    expect(res.status).toBe(403);
-    expect(res.body.error).toContain('ACCOUNT_NOT_ACCESSIBLE');
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Account not accessible.');
   });
 
   /**
@@ -150,8 +149,40 @@ describe('BC-ADMIN-SPEC-REAUDIT-SCANGATE-INACTIVE-1: Account Status Check', () =
         longitude: 23.3219,
       });
 
-    expect(res.status).toBe(403);
-    expect(res.body.error).toContain('ACCOUNT_NOT_ACCESSIBLE');
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Account not accessible.');
+  });
+
+  /**
+   * Test: SUSPENDED user is blocked from scanning
+   */
+  it('should block SUSPENDED user with ACTIVE subscription from scanning', async () => {
+    const { user: testUser, accessToken } = await createTestUser();
+    createdUserIds.push(testUser.id);
+
+    await createTestSubscription(testUser.id, 'BASIC', 'ACTIVE');
+
+    const { venue, sticker } = await createTestVenue(testUser.id);
+    createdVenueIds.push(venue.id);
+
+    await prisma.user.update({
+      where: { id: testUser.id },
+      data: { status: 'SUSPENDED' },
+    });
+
+    const res = await request(app)
+      .post('/api/stickers/session')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        stickerId: sticker.stickerId,
+        cardId: 'test-card-id',
+        latitude: 42.6977,
+        longitude: 23.3219,
+      });
+
+    // authenticate blocks SUSPENDED with 401 before requireActiveSubscription runs
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Account not accessible.');
   });
 
   /**
@@ -169,7 +200,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-SCANGATE-INACTIVE-1: Account Status Check', () =
     const { venue, sticker } = await createTestVenue(testUser.id);
     createdVenueIds.push(venue.id);
 
-    // User is already ACTIVE by default from createTestUser()
+    // createTestUser() sets status ACTIVE — user passes authenticate and reaches requireActiveSubscription
     const res = await request(app)
       .post('/api/stickers/session')
       .set('Authorization', `Bearer ${accessToken}`)
@@ -260,9 +291,10 @@ describe('BC-ADMIN-SPEC-REAUDIT-SCANGATE-INACTIVE-1: Account Status Check', () =
  * Middleware-specific unit tests for requireActiveSubscription
  *
  * These tests directly invoke the middleware to verify it:
- * 1. Blocks all non-ACTIVE account statuses (INACTIVE, ARCHIVED, DELETED, etc.)
+ * 1. Blocks INACTIVE account status (the only non-ACTIVE status that can reach
+ *    this middleware — ARCHIVED, DELETED, SUSPENDED, and PENDING_* are all blocked
+ *    earlier by the authenticate middleware with 401)
  * 2. Allows ACTIVE users to proceed to the next middleware
- * 3. Returns distinct error codes for ARCHIVED vs. DELETED accounts
  */
 describe('requireActiveSubscription middleware (unit tests)', () => {
   it('should block INACTIVE user and call next(error) with 402', async () => {
@@ -291,7 +323,7 @@ describe('requireActiveSubscription middleware (unit tests)', () => {
     await cleanupTestUser(testUser.id);
   });
 
-  it('should block ARCHIVED user and return 403 with subCode ARCHIVED', async () => {
+  it('should block ARCHIVED user with 401 (blocked by authenticate, not requireActiveSubscription)', async () => {
     const { user: testUser, accessToken } = await createTestUser();
     await prisma.user.update({
       where: { id: testUser.id },
@@ -307,14 +339,14 @@ describe('requireActiveSubscription middleware (unit tests)', () => {
         longitude: 23.3219,
       });
 
-    expect(res.status).toBe(403);
-    expect(res.body.error).toContain('ACCOUNT_NOT_ACCESSIBLE');
-    expect(res.body.error).toContain('archived');
+    // authenticate middleware rejects ARCHIVED with 401 before requireActiveSubscription runs
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Account not accessible.');
 
     await cleanupTestUser(testUser.id);
   });
 
-  it('should block DELETED user and return 403 with subCode DELETED', async () => {
+  it('should block DELETED user with 401 (blocked by authenticate, not requireActiveSubscription)', async () => {
     const { user: testUser, accessToken } = await createTestUser();
     await prisma.user.update({
       where: { id: testUser.id },
@@ -330,9 +362,80 @@ describe('requireActiveSubscription middleware (unit tests)', () => {
         longitude: 23.3219,
       });
 
-    expect(res.status).toBe(403);
-    expect(res.body.error).toContain('ACCOUNT_NOT_ACCESSIBLE');
-    expect(res.body.error).toContain('deleted');
+    // authenticate middleware rejects DELETED with 401 before requireActiveSubscription runs
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Account not accessible.');
+
+    await cleanupTestUser(testUser.id);
+  });
+
+  it('should block SUSPENDED user with 401 (blocked by authenticate, not requireActiveSubscription)', async () => {
+    const { user: testUser, accessToken } = await createTestUser();
+    await prisma.user.update({
+      where: { id: testUser.id },
+      data: { status: 'SUSPENDED' },
+    });
+
+    const res = await request(app)
+      .post('/api/stickers/session')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        stickerId: 'test-sticker-id',
+        latitude: 42.6977,
+        longitude: 23.3219,
+      });
+
+    // authenticate middleware rejects SUSPENDED with 401 before requireActiveSubscription runs
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Account not accessible.');
+
+    await cleanupTestUser(testUser.id);
+  });
+
+  it('should block PENDING_VERIFICATION user with 401 (blocked by authenticate)', async () => {
+    const { user: testUser, accessToken } = await createTestUser();
+    // Override the ACTIVE status set by createTestUser() — simulate unverified registration
+    await prisma.user.update({
+      where: { id: testUser.id },
+      data: { status: 'PENDING_VERIFICATION' },
+    });
+
+    const res = await request(app)
+      .post('/api/stickers/session')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        stickerId: 'test-sticker-id',
+        latitude: 42.6977,
+        longitude: 23.3219,
+      });
+
+    // authenticate blocks PENDING_VERIFICATION with 401
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Account not accessible.');
+
+    await cleanupTestUser(testUser.id);
+  });
+
+  it('should block PENDING_PAYMENT user with 401 (blocked by authenticate)', async () => {
+    const { user: testUser, accessToken } = await createTestUser();
+    // Override the ACTIVE status set by createTestUser() — simulate awaiting initial payment
+    await prisma.user.update({
+      where: { id: testUser.id },
+      data: { status: 'PENDING_PAYMENT' },
+    });
+
+    const res = await request(app)
+      .post('/api/stickers/session')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        stickerId: 'test-sticker-id',
+        latitude: 42.6977,
+        longitude: 23.3219,
+      });
+
+    // authenticate blocks PENDING_PAYMENT with 401 before requireActiveSubscription runs
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Account not accessible.');
 
     await cleanupTestUser(testUser.id);
   });

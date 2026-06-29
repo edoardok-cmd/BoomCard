@@ -46,7 +46,7 @@ export async function createTestUser(overrides: {
   // the real code; only login is short-circuited.
   await prisma.user.update({
     where: { id: res.body.data.user.id },
-    data: { emailVerified: true, emailVerifiedAt: new Date(), emailVerificationToken: null },
+    data: { emailVerified: true, emailVerifiedAt: new Date(), emailVerificationToken: null, status: 'ACTIVE' },
   });
 
   return {

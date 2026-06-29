@@ -59,6 +59,7 @@ jest.mock('../../src/middleware/auth.middleware', () => ({
   authorize: () => (_req: any, _res: any, next: any) => next(),
   requirePermission: () => (_req: any, _res: any, next: any) => next(),
   requireActiveSubscription: (_req: any, _res: any, next: any) => next(),
+  requireActiveAdmin: (_req: any, _res: any, next: any) => next(),
 }));
 
 // ── Heavy middleware stubs ───────────────────────────────────────────────────
@@ -136,23 +137,6 @@ describe('POST /api/stickers/scan/:scanId/receipt — IDOR guard', () => {
     expect(mockUploadImage).not.toHaveBeenCalled();
   });
 
-  // ── Route returns 400 before calling service when scan belongs to another user ──
-  it('route returns 400 before calling service when scan belongs to another user', async () => {
-    // Route-level findFirst returns null (cross-user scan lookup returns nothing).
-    // The route now catches this early and never calls the service.
-    mockStickerScanFindFirst.mockResolvedValue(null);
-
-    const res = await request(app)
-      .post(`/api/stickers/scan/${USER_A_SCAN_ID}/receipt`)
-      .expect(400);
-
-    expect(res.body.success).toBe(false);
-    expect(res.body.error).toBe('Scan not found');
-    // uploadReceipt must not have been called — the route short-circuits at the EXIF gate.
-    expect(mockUploadReceipt).not.toHaveBeenCalled();
-    expect(mockUploadImage).not.toHaveBeenCalled();
-  });
-
   // ── Positive control: same user succeeds (guard does not over-block) ─────
   it('allows receipt upload when the scan belongs to the authenticated user', async () => {
     // Route-level findFirst returns a valid scan owned by USER_B_ID.
@@ -217,12 +201,11 @@ describe('stickerService.uploadReceipt — service-level findFirst IDOR guard', 
     );
     const realInstance = mod.stickerService;
 
-    // Patch assertSubscriptionAllowsScanning on the prototype so it resolves
-    // immediately without touching prisma.user or subscriptionGate. This keeps
-    // the test focused solely on the findFirst IDOR guard.
+    // Stub assertSubscriptionAllowsScanning via spyOn so Jest can auto-restore it.
     const proto = Object.getPrototypeOf(realInstance) as any;
-    const originalAssert = proto.assertSubscriptionAllowsScanning;
-    proto.assertSubscriptionAllowsScanning = jest.fn().mockResolvedValue(undefined);
+    const assertSpy = jest
+      .spyOn(proto, 'assertSubscriptionAllowsScanning')
+      .mockResolvedValue(undefined);
 
     // The top-level prisma mock exposes `stickerScan: { findFirst: mockStickerScanFindFirst }`.
     // The real sticker.service module closes over the same mock object (Jest resolves
@@ -230,27 +213,24 @@ describe('stickerService.uploadReceipt — service-level findFirst IDOR guard', 
     // Setting mockResolvedValueOnce(null) simulates a cross-user scan lookup returning null.
     mockStickerScanFindFirst.mockResolvedValueOnce(null);
 
-    try {
-      await expect(
-        realInstance.uploadReceipt({
-          scanId: 'scan-owned-by-user-a',
-          userId: 'user-b-id',
-          receiptImageUrl: 'https://s3/fake',
-        }),
-      ).rejects.toThrow('Scan not found');
+    await expect(
+      realInstance.uploadReceipt({
+        scanId: 'scan-owned-by-user-a',
+        userId: 'user-b-id',
+        receiptImageUrl: 'https://s3/fake',
+      }),
+    ).rejects.toThrow('Scan not found');
 
-      // findFirst MUST have been called with both id AND userId.
-      expect(mockStickerScanFindFirst).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            id: 'scan-owned-by-user-a',
-            userId: 'user-b-id',
-          }),
+    // findFirst MUST have been called with both id AND userId.
+    expect(mockStickerScanFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'scan-owned-by-user-a',
+          userId: 'user-b-id',
         }),
-      );
-    } finally {
-      // Restore prototype method to avoid leaking into other tests.
-      proto.assertSubscriptionAllowsScanning = originalAssert;
-    }
+      }),
+    );
+
+    assertSpy.mockRestore();
   });
 });

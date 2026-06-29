@@ -70,6 +70,7 @@ jest.mock('../../src/middleware/auth.middleware', () => ({
     next();
   },
   requireActiveSubscription: (_req: any, _res: any, next: any) => next(),
+  requireActiveAdmin: (_req: any, _res: any, next: any) => next(),
 }));
 
 import express from 'express';

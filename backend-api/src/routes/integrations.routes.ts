@@ -837,7 +837,8 @@ router.get('/connected', authenticate, (req: Request, res: Response) => {
  */
 router.post('/connect', authenticate, (req: Request, res: Response) => {
   try {
-    const { integrationId, credentials, settings } = req.body;
+    const { integrationId, settings } = req.body;
+    // credentials intentionally not destructured — must not appear in response (INV-SYS-018).
 
     if (!integrationId) {
       return res.status(400).json({
@@ -857,13 +858,14 @@ router.post('/connect', authenticate, (req: Request, res: Response) => {
 
     // In a real app, this would save to database
     // For now, return success
+    // NOTE: credentials are intentionally excluded from the response — secrets
+    // must never be echoed back to the caller (INV-SYS-018).
     const connectedIntegration = {
       id: `connected-${Date.now()}`,
       partnerId: (req as any).user?.id || 'partner-1',
       integrationId,
       integration,
       status: 'active',
-      credentials,
       settings,
       connectedAt: new Date(),
       updatedAt: new Date(),
@@ -912,7 +914,7 @@ router.delete('/connected/:id', authenticate, (req: Request, res: Response) => {
 router.post('/test/:id', authenticate, (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { credentials } = req.body;
+    // credentials accepted in body but intentionally not included in the response (INV-SYS-018).
 
     // In a real app, this would test the actual connection
     // For now, simulate success

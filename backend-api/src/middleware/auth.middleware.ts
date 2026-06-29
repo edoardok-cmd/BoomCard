@@ -418,11 +418,12 @@ export const requireActiveSubscription = async (
 
   try {
     // Source 8.1 rule 1: account status gate (defense-in-depth). Check user account
-    // status before subscription status. Inactive/Archived/Deleted accounts cannot
-    // perform scanning operations regardless of subscription status.
-    // NOTE: PENDING_VERIFICATION and PENDING_PAYMENT users are blocked at the
-    // authenticate middleware layer (line 183), so they cannot reach this point.
-    // This middleware only handles account statuses that allow login (ACTIVE/INACTIVE/ARCHIVED/DELETED).
+    // status before subscription status. INACTIVE accounts cannot perform scanning
+    // operations regardless of subscription status.
+    // NOTE: PENDING_VERIFICATION, PENDING_PAYMENT, SUSPENDED, ARCHIVED, and DELETED
+    // users are all blocked at the authenticate middleware layer (line 183/189) with
+    // 401 and never reach this point. Only ACTIVE and INACTIVE users can reach this
+    // middleware.
     // findUnique returns null when the record doesn't exist (post-delete race);
     // it never throws P2025. Real DB errors propagate to the outer catch → 503.
     const freshUser = await prisma.user.findUnique({
@@ -438,24 +439,6 @@ export const requireActiveSubscription = async (
             'ACCOUNT_INACTIVE: Account paused. Contact support to resume.',
             402,
             { code: 'ACCOUNT_INACTIVE' },
-          ),
-        );
-      }
-      if (userStatus === 'ARCHIVED') {
-        return next(
-          new AppError(
-            'ACCOUNT_NOT_ACCESSIBLE: Account archived.',
-            403,
-            { code: 'ACCOUNT_NOT_ACCESSIBLE', subCode: 'ARCHIVED' },
-          ),
-        );
-      }
-      if (userStatus === 'DELETED') {
-        return next(
-          new AppError(
-            'ACCOUNT_NOT_ACCESSIBLE: Account deleted.',
-            403,
-            { code: 'ACCOUNT_NOT_ACCESSIBLE', subCode: 'DELETED' },
           ),
         );
       }

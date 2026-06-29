@@ -1619,6 +1619,9 @@ model HelpTicket {
   externalEmail  String?
   // RFC 5322 Message-ID of the inbound email that created this ticket.
   // Used by parser for In-Reply-To / References fallback matching.
+  // NOTE: enforced via raw SQL migration 20260629000001 — partial unique index
+  //   CREATE UNIQUE INDEX "HelpTicket_rootMessageId_unique" ON "HelpTicket"("rootMessageId") WHERE "rootMessageId" IS NOT NULL
+  // This prevents duplicate ticket creation on provider redeliveries (TOCTOU race).
   rootMessageId  String?
   // Auto re-open watermark (§11.4): when an inbound reply hits a CLOSED ticket
   // we re-open and stamp this for the audit log.
