@@ -12,6 +12,7 @@
  *   INV-SYS-015 — health endpoints must NOT echo raw dependency error.message
  *                 (DB/Redis) — a connection error can carry host/DSN/topology.
  *   INV-SYS-016 — GET /api/health/ & /detailed must NOT expose environment/version to anon.
+ *   INV-SYS-030 — GET /api/health/live must NOT expose process internals (pid/uptime) to anon.
  *
  * ⚠️  INTENTIONALLY RED at R1 bootstrap — this is the executable guard the
  * following fixes must turn GREEN:
@@ -50,6 +51,14 @@ describe('System LEAK sweep — health endpoints expose no internals', () => {
     const res = await request(app).get('/api/health/detailed');
     expect(res.body.environment).toBeUndefined();
     expect(res.body.version).toBeUndefined();
+  });
+
+  test('[INV-SYS-030] GET /api/health/live does not expose process internals (pid/uptime) to anon', async () => {
+    const res = await request(app).get('/api/health/live');
+    // Liveness must be status-only to anon — same bar as /metrics (INV-SYS-014)
+    // and / (INV-SYS-016): no pid, no uptime, no other process internals.
+    expect(res.body.pid).toBeUndefined();
+    expect(res.body.uptime).toBeUndefined();
   });
 
   test('[INV-SYS-015] health responses never carry a raw dependency error string', async () => {

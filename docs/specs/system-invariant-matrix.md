@@ -71,6 +71,7 @@ Rule: a webhook is only processed when its provider signature verifies against t
 | INV-SYS-017 | `GET /integrations/available[/:id]` exposes only credential field **definitions** (names/labels/placeholders), never secret **values**. | integrations.routes.ts L282-301 | runtime (live → credFields = names only) / [SUITE: LEAK] |
 | INV-SYS-018 | **OPEN** — `POST /integrations/connect` echoes the caller-submitted `credentials` object back in the response body (`data.credentials`). | integrations.routes.ts L1090-1106 | code inspection → **finding** BC-SYSTEM-SPEC-REAUDIT-INTEG-CRED-ECHO |
 | INV-SYS-019 | `GET /webhooks/health` and `GET /health/ping` expose no secrets/internals (status string only). | webhooks.routes.ts L20-26 + health.routes.ts L1496-1498 | runtime / [SUITE: LEAK] |
+| INV-SYS-030 | **OPEN** — `GET /health/live` exposes process internals (`pid`, `uptime`) to anonymous callers; like `/metrics` (INV-SYS-014) and `/` (INV-SYS-016) it must be status-only to anon. | health.routes.ts L187-194 | runtime (live :3025 → `pid`/`uptime`) → **finding** BC-SYSTEM-SPEC-REAUDIT-HEALTH-LIVE-PROCLEAK |
 
 ## AUTH — Integration endpoint auth gating
 

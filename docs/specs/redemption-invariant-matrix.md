@@ -90,6 +90,7 @@
 | INV-RDM-063 | FRAUD | HIGH | Duplicate receipt image (SHA-256 match) detection rejects repeat submissions | POST /api/stickers/scan/:scanId/receipt | stickers.routes.ts L260–287, sticker.service.ts findDuplicateReceipt | none |
 | INV-RDM-064 | FRAUD | HIGH | Live-photo EXIF gate rejects receipt images taken before the session start time | POST /api/stickers/scan/:scanId/receipt | stickers.routes.ts L246–255 checkLivePhoto | none |
 | INV-RDM-065 | FRAUD | MEDIUM | OCR `confidence` field is stripped from client-supplied ocrData (server-side is authoritative) | POST /api/stickers/scan/:scanId/receipt | stickers.routes.ts L301–305 | none |
+| INV-RDM-066 | AUTH | HIGH | An INACTIVE (read-only / `aro=true`) admin must NOT perform scan mutations — `approve`, `bulk-approve`, `bulk-reject` must carry the same `requireActiveAdmin` (aro) gate as `reject`, so a coasting INACTIVE admin cannot credit cashback or approve/reject scans (spec §1.5 — Inactive admins are read-only) | POST /api/stickers/admin/approve/:scanId, POST /api/stickers/admin/bulk-approve, POST /api/stickers/admin/bulk-reject (cf. POST /api/stickers/admin/reject/:scanId which has the gate) | stickers.routes.ts:1048,1142,1163 (gate MISSING) vs :1086 (gate present); auth.middleware.ts:155–159 sets aro, :298 requireActiveAdmin enforces | none — OPEN (filed BC-REDEMPTION-SWPFIX-ARO-SCAN-WRITE-GATE) |
 
 ---
 
@@ -99,11 +100,11 @@
 |---|---|---|---|
 | XSCOPE | 11 | 11 (redemption-cross-scope-sweep.test.ts 48/48) | 0 |
 | INPUT | 18 | 18 (all verified — ledger r2/r3) | 0 |
-| AUTH | 12 | 12 (all verified — ledger r2/r3) | 0 |
+| AUTH | 13 | 12 (verified — ledger r2/r3) | 1 (INV-RDM-066 OPEN — r7) |
 | LIFECYCLE | 6 | 6 (all verified — ledger r1/r2) | 0 |
 | LEAK | 10 | 10 (all verified — ledger r2) | 0 |
 | VIS | 5 | 5 (all verified — ledger r2/r6) | 0 |
 | FRAUD | 3 | 3 (all verified — ledger r2/r6) | 0 |
-| **Total** | **65** | **65** | **0** |
+| **Total** | **66** | **65** | **1** |
 
 Note: Auth infrastructure issue (PENDING_VERIFICATION status blocking tests) was fixed in BC-REDEMPTION-RDM-012-2. INV-RDM-012..017 now have passing integration tests in sticker-scan.test.ts. INV-RDM-018/019 have passing tests in venue-input-validation.test.ts and redemption-input-sweep.test.ts.
