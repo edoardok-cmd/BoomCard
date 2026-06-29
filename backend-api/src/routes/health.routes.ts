@@ -85,10 +85,10 @@ router.get('/detailed', async (req: Request, res: Response) => {
     const dbTime = Date.now() - dbStart;
     health.checks.database = { status: 'ok', responseTime: dbTime };
   } catch (error) {
+    console.error('[health/detailed] database check error:', error);
     health.checks.database = {
       status: 'error',
       responseTime: 0,
-      error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
 
@@ -109,10 +109,10 @@ router.get('/detailed', async (req: Request, res: Response) => {
       await Promise.race([redisConn.ping(), pingTimeout]);
       health.checks.redis = { status: 'ok', responseTime: Date.now() - redisStart };
     } catch (error) {
+      console.error('[health/detailed] redis check error:', error);
       health.checks.redis = {
         status: 'error',
         responseTime: Date.now() - redisStart,
-        error: error instanceof Error ? error.message : 'Unknown error',
       };
     } finally {
       if (pingTimeoutHandle) clearTimeout(pingTimeoutHandle);
@@ -172,10 +172,10 @@ router.get('/ready', async (req: Request, res: Response) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    console.error('[health/ready] database check error:', error);
     res.status(503).json({
       status: 'not_ready',
       timestamp: new Date().toISOString(),
-      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -204,13 +204,6 @@ router.get('/live', (req: Request, res: Response) => {
  */
 router.get('/metrics', async (req: Request, res: Response) => {
   try {
-    // Database stats
-    const userCount = await prisma.user.count();
-    const venueCount = await prisma.venue.count();
-    const stickerCount = await prisma.sticker.count();
-    const receiptCount = await prisma.receipt.count();
-    const transactionCount = await prisma.transaction.count();
-
     // System stats
     const memoryUsage = process.memoryUsage();
 
@@ -246,23 +239,11 @@ router.get('/metrics', async (req: Request, res: Response) => {
           samples: sortedLatencies.length,
         },
       },
-      database: {
-        users: userCount,
-        venues: venueCount,
-        stickers: stickerCount,
-        receipts: receiptCount,
-        transactions: transactionCount,
-      },
-      process: {
-        pid: process.pid,
-        platform: process.platform,
-        nodeVersion: process.version,
-      },
     });
   } catch (error) {
+    console.error('[health/metrics] metrics error:', error);
     res.status(500).json({
       status: 'error',
-      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
