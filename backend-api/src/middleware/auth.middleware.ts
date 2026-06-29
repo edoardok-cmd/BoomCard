@@ -420,10 +420,12 @@ export const requireActiveSubscription = async (
     // Source 8.1 rule 1: account status gate (defense-in-depth). Check user account
     // status before subscription status. INACTIVE accounts cannot perform scanning
     // operations regardless of subscription status.
-    // NOTE: PENDING_VERIFICATION, PENDING_PAYMENT, SUSPENDED, ARCHIVED, and DELETED
-    // users are all blocked at the authenticate middleware layer (line 183/189) with
-    // 401 and never reach this point. Only ACTIVE and INACTIVE users can reach this
-    // middleware.
+    // NOTE: PENDING_VERIFICATION, PENDING_PAYMENT, and SUSPENDED users are blocked at
+    // the authenticate middleware layer (line 183/189) with 401 before reaching here.
+    // ARCHIVED and DELETED users are also blocked by authenticate in steady state, but a
+    // status change in the race window between token issuance and this request can slip
+    // through — so they are re-checked below as defense-in-depth per spec §8.1 rule 1.
+    // Only ACTIVE and INACTIVE users normally reach this middleware.
     // findUnique returns null when the record doesn't exist (post-delete race);
     // it never throws P2025. Real DB errors propagate to the outer catch → 503.
     const freshUser = await prisma.user.findUnique({
@@ -433,6 +435,18 @@ export const requireActiveSubscription = async (
 
     if (freshUser) {
       const userStatus = freshUser.status as string | undefined;
+      // Defense-in-depth: authenticate already rejects ARCHIVED/DELETED with 401,
+      // but a status change between token issue and this request can slip through.
+      // Re-check here so the middleware itself is self-contained per spec §8.1 rule 1.
+      if (userStatus === 'ARCHIVED' || userStatus === 'DELETED') {
+        return next(
+          new AppError(
+            'ACCOUNT_NOT_ACCESSIBLE: This account is no longer accessible.',
+            403,
+            { code: 'ACCOUNT_NOT_ACCESSIBLE', subCode: userStatus },
+          ),
+        );
+      }
       if (userStatus === 'INACTIVE') {
         return next(
           new AppError(

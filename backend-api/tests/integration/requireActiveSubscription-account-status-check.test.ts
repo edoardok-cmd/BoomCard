@@ -32,6 +32,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-SCANGATE-INACTIVE-1: Account Status Check', () =
     for (const id of createdVenueIds) {
       // Cleanup venue (if implemented in test-utils, otherwise skip)
       try {
+        await prisma.stickerScan.deleteMany({ where: { sticker: { venueId: id } } });
         await prisma.stickerLocation.deleteMany({ where: { venue: { id } } });
         await prisma.sticker.deleteMany({ where: { venueId: id } });
         await prisma.venueStickerConfig.deleteMany({ where: { venueId: id } });
@@ -206,9 +207,10 @@ describe('BC-ADMIN-SPEC-REAUDIT-SCANGATE-INACTIVE-1: Account Status Check', () =
       .set('Authorization', `Bearer ${accessToken}`)
       .send({
         stickerId: sticker.stickerId,
-        cardId: 'test-card-id',
         latitude: 42.6977,
         longitude: 23.3219,
+        payloadVenueId: venue.id,
+        payloadVersion: '1.0',
       });
 
     // Should succeed (status 200 with sessionId)
@@ -454,6 +456,8 @@ describe('requireActiveSubscription middleware (unit tests)', () => {
         stickerId: sticker.stickerId,
         latitude: 42.6977,
         longitude: 23.3219,
+        payloadVenueId: venue.id,
+        payloadVersion: '1.0',
       });
 
     // Middleware passes, reaches service layer which validates subscription
@@ -461,7 +465,8 @@ describe('requireActiveSubscription middleware (unit tests)', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data?.sessionId).toBeTruthy();
 
-    // Cleanup
+    // Cleanup — delete StickerScan rows first (FK: StickerScan_stickerId_fkey)
+    await prisma.stickerScan.deleteMany({ where: { sticker: { venueId: venue.id } } });
     await prisma.stickerLocation.deleteMany({ where: { venue: { id: venue.id } } });
     await prisma.sticker.deleteMany({ where: { venueId: venue.id } });
     await prisma.venueStickerConfig.deleteMany({ where: { venueId: venue.id } });
@@ -506,6 +511,78 @@ describe('requireActiveSubscription middleware (unit tests)', () => {
     // Middleware on /receipt should also block INACTIVE users (before upload handling)
     expect(res.status).toBe(402);
     expect(res.body.error).toContain('ACCOUNT_INACTIVE');
+
+    await cleanupTestUser(testUser.id);
+  });
+
+  it('authenticate blocks PENDING_VERIFICATION user on POST /api/stickers/scan', async () => {
+    const { user: testUser, accessToken } = await createTestUser();
+    await prisma.user.update({
+      where: { id: testUser.id },
+      data: { status: 'PENDING_VERIFICATION' },
+    });
+
+    const res = await request(app)
+      .post('/api/stickers/scan')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ stickerId: 'test-sticker-id', billAmount: 100 });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Account not accessible.');
+
+    await cleanupTestUser(testUser.id);
+  });
+
+  it('authenticate blocks PENDING_PAYMENT user on POST /api/stickers/scan', async () => {
+    const { user: testUser, accessToken } = await createTestUser();
+    await prisma.user.update({
+      where: { id: testUser.id },
+      data: { status: 'PENDING_PAYMENT' },
+    });
+
+    const res = await request(app)
+      .post('/api/stickers/scan')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ stickerId: 'test-sticker-id', billAmount: 100 });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Account not accessible.');
+
+    await cleanupTestUser(testUser.id);
+  });
+
+  it('authenticate blocks PENDING_VERIFICATION user on POST /api/stickers/scan/:scanId/receipt', async () => {
+    const { user: testUser, accessToken } = await createTestUser();
+    await prisma.user.update({
+      where: { id: testUser.id },
+      data: { status: 'PENDING_VERIFICATION' },
+    });
+
+    const res = await request(app)
+      .post('/api/stickers/scan/test-scan-id/receipt')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({});
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Account not accessible.');
+
+    await cleanupTestUser(testUser.id);
+  });
+
+  it('authenticate blocks PENDING_PAYMENT user on POST /api/stickers/scan/:scanId/receipt', async () => {
+    const { user: testUser, accessToken } = await createTestUser();
+    await prisma.user.update({
+      where: { id: testUser.id },
+      data: { status: 'PENDING_PAYMENT' },
+    });
+
+    const res = await request(app)
+      .post('/api/stickers/scan/test-scan-id/receipt')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({});
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Account not accessible.');
 
     await cleanupTestUser(testUser.id);
   });
