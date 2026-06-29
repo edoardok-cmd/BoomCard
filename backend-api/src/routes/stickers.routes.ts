@@ -129,7 +129,7 @@ router.post('/scan', authenticate, requireActiveSubscription, async (req: Reques
 
     // When using the two-step flow, sessionId + billAmount is sufficient.
     // Legacy one-step flow still requires stickerId + billAmount.
-    if (!billAmount) {
+    if (billAmount === undefined || billAmount === null || billAmount === '') {
       return res.status(400).json({
         success: false,
         error: 'Missing required field: billAmount',
