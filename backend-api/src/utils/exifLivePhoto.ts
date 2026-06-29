@@ -39,7 +39,7 @@ function resolveExifLocalToUtc(rawDateTime: string, rawOffset?: string): Date | 
     });
     const tzPart = fmt.formatToParts(new Date(asUtcMs)).find((p) => p.type === 'timeZoneName')?.value ?? 'GMT+02:00';
     const om = /GMT([+-])(\d{2}):?(\d{2})?/.exec(tzPart);
-    offsetMin = om ? (om[1] === '+' ? 1 : -1) * (parseInt(om[2], 10) * 60 + parseInt(om[3] ?? '0', 10)) : 120;
+    offsetMin = om ? (om[1] === '+' ? 1 : -1) * (parseInt(om[2], 10) * 60 + parseInt(om[3] ?? '0', 10)) : NaN;
   }
 
   const utcMs = asUtcMs - offsetMin * 60_000;

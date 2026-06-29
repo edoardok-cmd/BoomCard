@@ -108,7 +108,15 @@ router.get(
 
     const lat = parseFloat(latitude as string);
     const lon = parseFloat(longitude as string);
-    const rad = radius ? parseFloat(radius as string) : 5;
+    const rad = radius !== undefined ? parseFloat(radius as string) : 5;
+
+    if (isNaN(lat) || isNaN(lon) || isNaN(rad)) {
+      return res.status(400).json({
+        success: false,
+        error: 'latitude, longitude, and radius must be valid numbers',
+      });
+    }
+
     // Clamp untrusted limit before it reaches the service → Prisma. Default 20, cap 100.
     const { take: lim } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 

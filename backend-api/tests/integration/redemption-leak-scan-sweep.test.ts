@@ -10,6 +10,22 @@
  * accidentally re-introduce the leak.
  */
 
+// Mock the OCR service to prevent Tesseract.js from attempting to decode the
+// fake JPEG buffer in tests.  The WASM Tesseract engine calls abort() on an
+// undecodeable image, which surfaces in Jest as an uncaught RuntimeError that
+// fails the test even though the HTTP response has already been sent.
+jest.mock('../../src/services/ocr.service', () => ({
+  recognizeReceiptImage: jest.fn().mockResolvedValue({
+    merchantName: 'Test Venue',
+    totalAmount: 30.0,
+    receiptDate: null,
+    items: [],
+    rawText: '',
+    confidence: 85,
+    currency: 'BGN',
+  }),
+}));
+
 // Mock the imageUpload service BEFORE any module that imports it is loaded.
 // The receipt endpoint calls imageUploadService.uploadImage(), which talks to
 // Cloudflare R2.  In the test environment the R2 credentials are set to 'test'

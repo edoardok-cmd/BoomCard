@@ -126,7 +126,6 @@ export interface UploadReceiptData {
     items?: string[];
     total?: number;
     currency?: string;
-    confidence?: number;
   };
   /**
    * Raw receipt bytes. When supplied, the service runs server-side OCR and compares
@@ -1408,6 +1407,10 @@ class StickerService {
         where: {
           imageHash: receiptImageHash,
           status: { in: ['APPROVED', 'PENDING', 'MANUAL_REVIEW'] as any[] },
+          // excludeScanId is intentionally NOT applied here: the Receipt model has no
+          // scanId FK column (it is a separate flow). A Receipt row with a matching
+          // imageHash always represents a cross-flow duplicate regardless of which
+          // StickerScan originated the current request.
         },
         select: { id: true, userId: true, status: true },
       }),
@@ -1557,7 +1560,7 @@ class StickerService {
     // path (spec §3.4: score 0–20 → auto-approve) unreachable, violating the spec.
     // The client-supplied confidence field is dropped at the route layer to prevent
     // spoofing; absent confidence therefore means "no data" not "failed OCR".
-    const ocrConfidence: number = (ocrData as any)?.confidence ?? 60;
+    const ocrConfidence: number = 60; // client-supplied confidence is stripped at the route layer; default 60 until server-side OCR is wired in
     const locationMismatch = Array.isArray(scan.fraudReasons)
       && (scan.fraudReasons as string[]).some((r) => r === 'GPS_FAR_FROM_VENUE' || r === 'GPS_OUTSIDE_RANGE');
     const partnerId = scan.venue?.partner?.id ?? undefined;

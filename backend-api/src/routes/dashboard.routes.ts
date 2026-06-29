@@ -15,9 +15,9 @@ const router = Router();
  * the Receipt model. Direct Receipt submission is RETIRED (receipts.routes.ts returns
  * 410) — the live cashback pipeline creates StickerScan rows, so the Receipt table is
  * no longer populated and the old query rendered stale/empty. We map each scan to the
- * shape the dashboard previously returned. The user-facing cashback figure comes from
- * the linked CASHBACK_CREDIT wallet transaction (StickerScan.cashbackAmount is an
- * @internal formula component per spec §11.3 and must not be serialized to users).
+ * shape the dashboard previously returned. The user-facing cashback figure is read
+ * directly from StickerScan.cashbackAmount (INV-RDM-057), which is the authoritative
+ * formula result and is non-zero even before a wallet credit is issued.
  */
 router.get('/me', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
@@ -35,14 +35,8 @@ router.get('/me', authenticate, asyncHandler(async (req: AuthRequest, res: Respo
         verifiedAmount: true,
         status: true,
         createdAt: true,
-        venue: { select: { name: true, nameBg: true } },
-        // User-facing cashback amount via the linked wallet credit (omits the
-        // @internal StickerScan.cashbackAmount / cashbackPercent fields).
-        walletTransactions: {
-          where: { type: 'CASHBACK_CREDIT' },
-          select: { amount: true },
-          take: 1,
-        },
+        venue: { select: { name: true } },
+        cashbackAmount: true,
       },
     }),
   ]);
@@ -70,7 +64,7 @@ router.get('/me', authenticate, asyncHandler(async (req: AuthRequest, res: Respo
     id: s.id,
     merchantName: s.venue?.name ?? null,
     totalAmount: s.verifiedAmount ?? s.billAmount,
-    cashbackAmount: s.walletTransactions[0]?.amount ?? 0,
+    cashbackAmount: s.cashbackAmount ?? 0, // INV-RDM-057: authoritative source is StickerScan.cashbackAmount
     status: SCAN_TO_RECEIPT_STATUS[s.status] ?? 'PENDING',
     createdAt: s.createdAt,
   }));
@@ -80,16 +74,6 @@ router.get('/me', authenticate, asyncHandler(async (req: AuthRequest, res: Respo
     : null;
 
   // Show upgrade-to-Premium-Monthly prompt for BASIC or Premium Weekly subscribers only (per spec §6.1)
-  const subMetadata = resolvedSubscription ? (() => {
-    try { return (resolvedSubscription as any).metadata ? JSON.parse((resolvedSubscription as any).metadata) : {}; }
-    catch { return {}; }
-  })() : {};
-  const billingPeriod = ((subMetadata.billingPeriod ?? '') as string).toLowerCase();
-  // F-007 fix: was incorrectly checking for 'PREMIUM_MONTHLY' — should check 'PREMIUM_WEEKLY'.
-  // The second clause (PREMIUM_MONTHLY && billingPeriod.includes('week')) was removed:
-  // a PREMIUM_MONTHLY row having a weekly billingPeriod is contradictory and should
-  // not occur in normal operation. If a legacy migration scenario requires it, a
-  // targeted data migration should normalise the plan column rather than branching here.
   const isPremiumWeekly = resolvedSubscription?.plan === 'PREMIUM_WEEKLY';
 
   res.json({

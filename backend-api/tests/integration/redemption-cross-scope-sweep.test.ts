@@ -725,7 +725,27 @@ describe('Nearby venues — feature flag lifted', () => {
     expect(Array.isArray(res.body.data)).toBe(true);
     expect(res.body.meta).toMatchObject({
       coordinates: { latitude: 42, longitude: 23 },
+      radius: expect.any(Number),
+      count: expect.any(Number),
     });
+  });
+
+  it('[LIFECYCLE] INV-RDM-047: GET /api/venues/nearby returns 400 for non-numeric radius', async () => {
+    const res = await request(app).get('/api/venues/nearby?latitude=42&longitude=23&radius=abc');
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('[LIFECYCLE] INV-RDM-047: GET /api/venues/nearby returns 400 when latitude is missing', async () => {
+    const res = await request(app).get('/api/venues/nearby?longitude=23');
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('[LIFECYCLE] INV-RDM-047: GET /api/venues/nearby returns 400 for non-numeric latitude', async () => {
+    const res = await request(app).get('/api/venues/nearby?latitude=abc&longitude=23');
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
   });
 });
 

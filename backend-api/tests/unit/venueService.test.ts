@@ -28,7 +28,7 @@ jest.mock('../../src/lib/prisma', () => ({
 }));
 
 jest.mock('../../src/services/publicPartnerFilter', () => ({
-  publicPartnerJoinFilter: { status: 'ACTIVE', isVisible: true },
+  publicPartnerJoinFilter: { status: 'ACTIVE', verifiedAt: { not: null }, isVisible: true },
 }));
 
 import { venueService } from '../../src/services/venue.service';
@@ -175,5 +175,137 @@ describe('venueService.updateVenue — array serialization', () => {
     const updateCall = mockPrisma.venue.update.mock.calls[0][0];
     expect(updateCall.data.name).toBe('New Name');
     expect(updateCall.data.city).toBe('Plovdiv');
+  });
+});
+
+// ─── getVenueById — public visibility gate (INV-RDM-059) ─────────────────────
+
+describe('venueService.getVenueById — public visibility gate', () => {
+  function makeVenueRow(extra: any = {}) {
+    return {
+      id: 'v-1', name: 'Venue 1', nameBg: null, address: 'Str 1', city: 'Sofia',
+      region: null, latitude: 42.6977, longitude: 23.3219, phone: null, email: null,
+      description: null, descriptionBg: null, capacity: null,
+      images: null, openingHours: null, features: null,
+      menuUrl: null, pendingMenuUrl: null, menuStatus: 'NONE',
+      menuRejectionReason: null, menuReviewedBy: null, menuReviewedAt: null,
+      menuImages: null, menuSubmittedAt: null, venueStatusNote: null, venueStatusAt: null,
+      isActive: true, partnerId: 'p-1', createdAt: new Date(), updatedAt: new Date(),
+      venueStatus: 'ACTIVE',
+      partner: {
+        id: 'p-1', businessName: 'Partner', logo: null,
+        email: 'partner@example.com', phone: null,
+        status: 'ACTIVE', verifiedAt: new Date('2025-01-01'), isVisible: true,
+      },
+      ...extra,
+    };
+  }
+
+  it('returns venue when all public visibility conditions are met', async () => {
+    mockPrisma.venue.findUnique.mockResolvedValueOnce(makeVenueRow());
+    const result = await venueService.getVenueById('v-1');
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe('v-1');
+  });
+
+  it('returns null when venue does not exist', async () => {
+    mockPrisma.venue.findUnique.mockResolvedValueOnce(null);
+    const result = await venueService.getVenueById('nonexistent');
+    expect(result).toBeNull();
+  });
+
+  it('returns null for INACTIVE venueStatus', async () => {
+    mockPrisma.venue.findUnique.mockResolvedValueOnce(makeVenueRow({ venueStatus: 'INACTIVE' }));
+    const result = await venueService.getVenueById('v-1');
+    expect(result).toBeNull();
+  });
+
+  it('returns null for SUSPENDED venueStatus', async () => {
+    mockPrisma.venue.findUnique.mockResolvedValueOnce(makeVenueRow({ venueStatus: 'SUSPENDED' }));
+    const result = await venueService.getVenueById('v-1');
+    expect(result).toBeNull();
+  });
+
+  it('returns null for REPLACED venueStatus', async () => {
+    mockPrisma.venue.findUnique.mockResolvedValueOnce(makeVenueRow({ venueStatus: 'REPLACED' }));
+    const result = await venueService.getVenueById('v-1');
+    expect(result).toBeNull();
+  });
+
+  it('returns null when partner is null', async () => {
+    mockPrisma.venue.findUnique.mockResolvedValueOnce(makeVenueRow({ partner: null }));
+    const result = await venueService.getVenueById('v-1');
+    expect(result).toBeNull();
+  });
+
+  it('returns null when partner status is not ACTIVE', async () => {
+    mockPrisma.venue.findUnique.mockResolvedValueOnce(makeVenueRow({
+      partner: { id: 'p-1', businessName: 'Partner', logo: null, email: null, phone: null,
+        status: 'PENDING', verifiedAt: new Date('2025-01-01'), isVisible: true },
+    }));
+    const result = await venueService.getVenueById('v-1');
+    expect(result).toBeNull();
+  });
+
+  it('returns null when partner verifiedAt is null (unverified)', async () => {
+    mockPrisma.venue.findUnique.mockResolvedValueOnce(makeVenueRow({
+      partner: { id: 'p-1', businessName: 'Partner', logo: null, email: null, phone: null,
+        status: 'ACTIVE', verifiedAt: null, isVisible: true },
+    }));
+    const result = await venueService.getVenueById('v-1');
+    expect(result).toBeNull();
+  });
+
+  it('returns null when partner isVisible is false (hidden)', async () => {
+    mockPrisma.venue.findUnique.mockResolvedValueOnce(makeVenueRow({
+      partner: { id: 'p-1', businessName: 'Partner', logo: null, email: null, phone: null,
+        status: 'ACTIVE', verifiedAt: new Date('2025-01-01'), isVisible: false },
+    }));
+    const result = await venueService.getVenueById('v-1');
+    expect(result).toBeNull();
+  });
+
+  it('bypasses visibility gate when includeHidden=true for suspended venue', async () => {
+    mockPrisma.venue.findUnique.mockResolvedValueOnce(makeVenueRow({ venueStatus: 'SUSPENDED' }));
+    const result = await venueService.getVenueById('v-1', { includeHidden: true });
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe('v-1');
+  });
+
+  it('bypasses visibility gate when includeHidden=true for hidden partner', async () => {
+    mockPrisma.venue.findUnique.mockResolvedValueOnce(makeVenueRow({
+      partner: { id: 'p-1', businessName: 'Partner', logo: null, email: null, phone: null,
+        status: 'ACTIVE', verifiedAt: null, isVisible: false },
+    }));
+    const result = await venueService.getVenueById('v-1', { includeHidden: true });
+    expect(result).not.toBeNull();
+  });
+
+  it('strips all six admin-only fields from public response', async () => {
+    mockPrisma.venue.findUnique.mockResolvedValueOnce(makeVenueRow({
+      pendingMenuUrl: 'https://menu.example.com/pending',
+      menuRejectionReason: 'Not appropriate',
+      menuReviewedBy: 'admin@boomcard.bg',
+      menuReviewedAt: new Date('2025-06-01'),
+      venueStatusNote: 'Internal note',
+      venueStatusAt: new Date('2025-06-01'),
+    }));
+    const result = await venueService.getVenueById('v-1') as any;
+    expect(result).not.toBeNull();
+    expect(result.pendingMenuUrl).toBeUndefined();
+    expect(result.menuRejectionReason).toBeUndefined();
+    expect(result.menuReviewedBy).toBeUndefined();
+    expect(result.menuReviewedAt).toBeUndefined();
+    expect(result.venueStatusNote).toBeUndefined();
+    expect(result.venueStatusAt).toBeUndefined();
+  });
+
+  it('strips partner.status/verifiedAt/isVisible from public response', async () => {
+    mockPrisma.venue.findUnique.mockResolvedValueOnce(makeVenueRow());
+    const result = await venueService.getVenueById('v-1') as any;
+    expect(result).not.toBeNull();
+    expect(result.partner.status).toBeUndefined();
+    expect(result.partner.verifiedAt).toBeUndefined();
+    expect(result.partner.isVisible).toBeUndefined();
   });
 });
