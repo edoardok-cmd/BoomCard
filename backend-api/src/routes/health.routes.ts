@@ -51,7 +51,6 @@ router.get('/', async (req: Request, res: Response) => {
     status: 'ok',
     message: 'BoomCard API is running',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
   });
 });
 
@@ -188,8 +187,6 @@ router.get('/live', (req: Request, res: Response) => {
   res.status(200).json({
     status: 'alive',
     timestamp: new Date().toISOString(),
-    pid: process.pid,
-    uptime: process.uptime(),
   });
 });
 
