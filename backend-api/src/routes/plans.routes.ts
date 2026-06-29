@@ -9,6 +9,17 @@
 import { Router, Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import { prisma } from '../lib/prisma';
+import { isCurrencyTransitionWindowOpen } from '../utils/currencyDisplay';
+import { EUR_TO_BGN_RATE } from '../constants/receipt.constants';
+
+function r2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+function eurToBgn(eurAmount: number | null, windowOpen: boolean): number | null {
+  if (!windowOpen || eurAmount === null) return null;
+  return r2(eurAmount * EUR_TO_BGN_RATE);
+}
 
 const router = Router();
 
@@ -17,42 +28,52 @@ const router = Router();
  * Get all active plans with pricing (PUBLIC - no auth required)
  */
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
-  const plans = await prisma.plan.findMany({
-    where: { isActive: true },
-    orderBy: { displayOrder: 'asc' },
-    select: {
-      id: true,
-      planCode: true,
-      displayName: true,
-      displayNameBg: true,
-      priceWeeklyEur: true,
-      priceMonthlyEur: true,
-      priceYearlyEur: true,
-      cashbackRate: true,
-      stickerBonus: true,
-      features: true,
-      featuresBg: true,
-      cardType: true,
-      isFeatured: true,
-      badgeText: true,
-      badgeTextBg: true,
-      hasWeeklyOption: true,
-      hasMonthlyOption: true,
-      hasYearlyOption: true,
-      yearlyDiscountPct: true,
-    },
-  });
+  const [plans, windowOpen] = await Promise.all([
+    prisma.plan.findMany({
+      where: { isActive: true },
+      orderBy: { displayOrder: 'asc' },
+      select: {
+        id: true,
+        planCode: true,
+        displayName: true,
+        displayNameBg: true,
+        priceWeeklyEur: true,
+        priceMonthlyEur: true,
+        priceYearlyEur: true,
+        cashbackRate: true,
+        stickerBonus: true,
+        features: true,
+        featuresBg: true,
+        cardType: true,
+        isFeatured: true,
+        badgeText: true,
+        badgeTextBg: true,
+        hasWeeklyOption: true,
+        hasMonthlyOption: true,
+        hasYearlyOption: true,
+        yearlyDiscountPct: true,
+      },
+    }),
+    isCurrencyTransitionWindowOpen(),
+  ]);
 
-  // Convert cents to currency units for API response
+  const weeklyEur = (plan: { priceWeeklyEur: number | null }) =>
+    plan.priceWeeklyEur ? plan.priceWeeklyEur / 100 : null;
+  const monthlyEur = (plan: { priceMonthlyEur: number | null }) =>
+    plan.priceMonthlyEur ? plan.priceMonthlyEur / 100 : null;
+
   const formattedPlans = plans.map(plan => ({
     id: plan.id,
     planCode: plan.planCode,
     displayName: plan.displayName,
     displayNameBg: plan.displayNameBg,
     pricing: {
-      weekly: plan.priceWeeklyEur ? plan.priceWeeklyEur / 100 : null,
-      monthly: plan.priceMonthlyEur ? plan.priceMonthlyEur / 100 : null,
+      weekly: weeklyEur(plan),
+      weeklyBgn: eurToBgn(weeklyEur(plan), windowOpen),
+      monthly: monthlyEur(plan),
+      monthlyBgn: eurToBgn(monthlyEur(plan), windowOpen),
       yearly: plan.priceYearlyEur / 100,
+      yearlyBgn: eurToBgn(plan.priceYearlyEur / 100, windowOpen),
       currency: 'EUR',
       yearlyDiscountPct: plan.yearlyDiscountPct,
     },
@@ -85,13 +106,19 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
  */
 router.get('/code/:planCode', asyncHandler(async (req: Request, res: Response) => {
   const { planCode } = req.params;
+  if (planCode.includes('\x00')) {
+    return res.status(400).json({ success: false, message: 'Invalid plan code' });
+  }
 
-  const plan = await prisma.plan.findFirst({
-    where: {
-      planCode: planCode.toUpperCase(),
-      isActive: true,
-    },
-  });
+  const [plan, windowOpen] = await Promise.all([
+    prisma.plan.findFirst({
+      where: {
+        planCode: planCode.toUpperCase(),
+        isActive: true,
+      },
+    }),
+    isCurrencyTransitionWindowOpen(),
+  ]);
 
   if (!plan) {
     return res.status(404).json({
@@ -99,6 +126,10 @@ router.get('/code/:planCode', asyncHandler(async (req: Request, res: Response) =
       message: 'Plan not found',
     });
   }
+
+  const weeklyEur = plan.priceWeeklyEur ? plan.priceWeeklyEur / 100 : null;
+  const monthlyEur = plan.priceMonthlyEur ? plan.priceMonthlyEur / 100 : null;
+  const yearlyEur = plan.priceYearlyEur / 100;
 
   res.json({
     success: true,
@@ -108,9 +139,12 @@ router.get('/code/:planCode', asyncHandler(async (req: Request, res: Response) =
       displayName: plan.displayName,
       displayNameBg: plan.displayNameBg,
       pricing: {
-        weekly: plan.priceWeeklyEur ? plan.priceWeeklyEur / 100 : null,
-        monthly: plan.priceMonthlyEur ? plan.priceMonthlyEur / 100 : null,
-        yearly: plan.priceYearlyEur / 100,
+        weekly: weeklyEur,
+        weeklyBgn: eurToBgn(weeklyEur, windowOpen),
+        monthly: monthlyEur,
+        monthlyBgn: eurToBgn(monthlyEur, windowOpen),
+        yearly: yearlyEur,
+        yearlyBgn: eurToBgn(yearlyEur, windowOpen),
         currency: 'EUR',
         yearlyDiscountPct: plan.yearlyDiscountPct,
       },
@@ -139,13 +173,19 @@ router.get('/code/:planCode', asyncHandler(async (req: Request, res: Response) =
  */
 router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  if (id.includes('\x00')) {
+    return res.status(400).json({ success: false, message: 'Invalid plan id' });
+  }
 
-  const plan = await prisma.plan.findFirst({
-    where: {
-      id: id,
-      isActive: true,
-    },
-  });
+  const [plan, windowOpen] = await Promise.all([
+    prisma.plan.findFirst({
+      where: {
+        id: id,
+        isActive: true,
+      },
+    }),
+    isCurrencyTransitionWindowOpen(),
+  ]);
 
   if (!plan) {
     return res.status(404).json({
@@ -153,6 +193,10 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
       message: 'Plan not found',
     });
   }
+
+  const weeklyEur = plan.priceWeeklyEur ? plan.priceWeeklyEur / 100 : null;
+  const monthlyEur = plan.priceMonthlyEur ? plan.priceMonthlyEur / 100 : null;
+  const yearlyEur = plan.priceYearlyEur / 100;
 
   res.json({
     success: true,
@@ -162,9 +206,12 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
       displayName: plan.displayName,
       displayNameBg: plan.displayNameBg,
       pricing: {
-        weekly: plan.priceWeeklyEur ? plan.priceWeeklyEur / 100 : null,
-        monthly: plan.priceMonthlyEur ? plan.priceMonthlyEur / 100 : null,
-        yearly: plan.priceYearlyEur / 100,
+        weekly: weeklyEur,
+        weeklyBgn: eurToBgn(weeklyEur, windowOpen),
+        monthly: monthlyEur,
+        monthlyBgn: eurToBgn(monthlyEur, windowOpen),
+        yearly: yearlyEur,
+        yearlyBgn: eurToBgn(yearlyEur, windowOpen),
         currency: 'EUR',
         yearlyDiscountPct: plan.yearlyDiscountPct,
       },

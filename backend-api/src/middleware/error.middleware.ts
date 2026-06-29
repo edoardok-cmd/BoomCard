@@ -99,6 +99,26 @@ export const errorHandler = (
     statusCode = 400;
     message = 'Validation Error: Invalid JSON in request body';
     isOperational = true;
+  } else if (err instanceof URIError) {
+    // Express URL-decodes path params before reaching the route handler.
+    // Invalid percent-encoding (e.g. %ff — lone continuation byte) throws a
+    // URIError from decodeURIComponent. This is a client mistake → 400.
+    statusCode = 400;
+    message = 'Invalid request path encoding';
+    isOperational = true;
+  } else if (
+    err?.constructor?.name === 'DriverAdapterError' ||
+    (typeof (err as any)?.message === 'string' &&
+      /invalid byte sequence for encoding/i.test((err as any).message))
+  ) {
+    // Prisma's pg adapter throws DriverAdapterError when a string parameter
+    // contains a byte sequence invalid for the server's encoding (UTF-8). The
+    // most common case is a null byte (%00) in a URL param or request body
+    // field that bypasses earlier string-length validation. This is a client
+    // mistake (malformed input), not a server fault → 400.
+    statusCode = 400;
+    message = 'Invalid characters in request';
+    isOperational = true;
   }
 
   // Log error

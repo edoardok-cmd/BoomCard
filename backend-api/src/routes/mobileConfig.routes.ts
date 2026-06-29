@@ -109,6 +109,10 @@ errorsRouter.post(
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return res.status(400).json({ success: false, error: 'message is required' });
     }
+    // Null bytes cause pg 22021 DriverAdapterError — reject early as 400.
+    if (message.includes('\x00')) {
+      return res.status(400).json({ success: false, error: 'Invalid characters in message' });
+    }
     const resolvedType = errorType && VALID_ERROR_TYPES.has(errorType) ? errorType : 'unknown';
 
     await prisma.mobileErrorLog.create({

@@ -47,6 +47,11 @@ router.post('/', contactRateLimiter, asyncHandler(async (req: Request, res: Resp
   if (!name || !email || !message) {
     return res.status(400).json({ success: false, error: 'Missing required fields' });
   }
+  // Null bytes in string fields cause a pg 22021 DriverAdapterError (invalid
+  // byte sequence for encoding "UTF8": 0x00) — client mistake, must be 400.
+  if ([name, email, message].some(s => s.includes('\x00'))) {
+    return res.status(400).json({ success: false, error: 'Invalid characters in input' });
+  }
   if (name.length > MAX_NAME || email.length > MAX_EMAIL || message.length > MAX_MESSAGE) {
     return res.status(400).json({ success: false, error: 'Field exceeds maximum length' });
   }
