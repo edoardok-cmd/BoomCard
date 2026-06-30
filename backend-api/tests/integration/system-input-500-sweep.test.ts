@@ -12,6 +12,9 @@
  *   INV-SYS-029 — POST /api/email/inbound, authed (dev bypass) invalid payload → 400 + required[]
  *   INV-SYS-032 — POST /api/webhooks/stripe & /api/email/inbound, oversized body (> body-parser limit)
  *                 → clean 413, never a 500 + stack/absolute-path leak (PayloadTooLargeError class)
+ *   INV-SYS-033 — POST /api/email/inbound, authed (or dev-bypass) NON-EMPTY malformed JSON body that
+ *                 reaches the route-level JSON.parse → clean 400, never a 500 + route-path/stack leak
+ *                 (post-auth sibling of INV-SYS-028; same leak class as INV-SYS-032)
  *
  * The core invariant is "never 500". Exact positive codes are asserted only on
  * the fixture-free, no-auth rows.
@@ -208,5 +211,45 @@ describe('[INV-SYS-032] oversized request body → clean 413, no stack / path le
       .set('stripe-signature', 't=1,v1=deadbeef')
       .send(oversizedJson);
     assertCleanTooLarge(res);
+  });
+});
+
+// INV-SYS-033: /api/email/inbound is mounted with express.raw({type:'application/json'})
+// (server.ts), so a valid signature/secret (or the dev ALLOW_UNSIGNED_WEBHOOK bypass set
+// in this file's beforeAll) reaches the route's own `JSON.parse(req.body)` at
+// emailWebhook.routes.ts. A NON-EMPTY malformed body throws a PLAIN SyntaxError there —
+// NOT a body-parser SyntaxError (no `body`/`type:'entity.parse.failed'`) — which the
+// shared errorHandler's body-parser-only branch does not catch, so without the route
+// guard it 500s + leaks the dev `stack`/absolute path. The guard must turn it into a
+// clean 400. This is the POST-auth sibling of INV-SYS-028 (which is pre-auth) and the
+// same leak class as INV-SYS-032. Sending a Buffer with Content-Type application/json
+// (mirroring the working INV-SYS-029 case) guarantees the bytes reach the route parse.
+describe('[INV-SYS-033] authed malformed JSON body (route-level parse) → 400, never 500/leak', () => {
+  test('POST /api/email/inbound non-empty malformed JSON → 400, no stack/path leak', async () => {
+    const res = await request(app)
+      .post('/api/email/inbound')
+      .set('Content-Type', 'application/json')
+      // truncated (missing closing brace) — valid-looking prefix so it is non-empty
+      // and reaches JSON.parse, then throws.
+      .send(Buffer.from('{"from":"a@b.c","to":"x@y.z","subject":"t","text":"b","messageId":"m"'));
+    expect(res.status).toBe(400);
+    expect(res.status).not.toBe(500);
+    expect(res.body).not.toHaveProperty('stack');
+    const blob = JSON.stringify(res.body ?? {}) + String(res.text ?? '');
+    expect(blob).not.toMatch(/SyntaxError/);
+    expect(blob).not.toMatch(/\/Users\//);
+    expect(blob).not.toMatch(/emailWebhook\.routes/);
+    expect(blob).not.toMatch(/node_modules/);
+  });
+
+  test('POST /api/email/inbound garbage bytes → 400, no leak', async () => {
+    const res = await request(app)
+      .post('/api/email/inbound')
+      .set('Content-Type', 'application/json')
+      .send(Buffer.from('not json at all <<< }{'));
+    expect(res.status).toBe(400);
+    expect(res.status).not.toBe(500);
+    const blob = JSON.stringify(res.body ?? {}) + String(res.text ?? '');
+    expect(blob).not.toMatch(/\/Users\/|node_modules|SyntaxError/);
   });
 });

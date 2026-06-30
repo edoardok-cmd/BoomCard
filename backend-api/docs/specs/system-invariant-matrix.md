@@ -93,6 +93,7 @@
 | INV-SYS-028 | Malformed body on the pre-auth stripe / email webhook routes → 400/401, never 500 | `system-input-500-sweep` |
 | INV-SYS-029 | `POST /api/email/inbound` with an invalid payload → 400 + a `required[]` list | `system-input-500-sweep` |
 | INV-SYS-032 | An oversized request body (exceeding the `express.json`/`express.raw` `limit`, raising body-parser's `PayloadTooLargeError` / `type === 'entity.too.large'` before any route/auth code) on ANY system route — incl. the unauthenticated `POST /api/webhooks/stripe` and `POST /api/email/inbound` — → clean **413** with an opaque body and **no `stack` / no absolute path**, never a default 500 + dev stack | `system-input-500-sweep` |
+| INV-SYS-033 | `POST /api/email/inbound` is mounted with `express.raw({type:'application/json'})`, so a signed/secret (or dev-bypass) request reaches the route's own `JSON.parse(req.body)`. A NON-EMPTY malformed body there throws a PLAIN `SyntaxError` (no `body`/`entity.parse.failed` marker) the shared body-parser-only branch does not catch → it must be guarded at the route to a clean **400**, never a default 500 + dev `stack`/route-path leak (post-auth sibling of INV-SYS-028; same leak class as INV-SYS-032) | `system-input-500-sweep` |
 
 ---
 

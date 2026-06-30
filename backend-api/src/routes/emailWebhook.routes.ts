@@ -130,9 +130,27 @@ router.post(
     // express.raw() delivers req.body as a Buffer — parse it for the service.
     // express.json() (ad-hoc tooling / shared-secret-only callers) delivers an
     // object directly; both paths are supported.
-    const body = Buffer.isBuffer(req.body)
-      ? JSON.parse(req.body.toString('utf8'))
-      : req.body;
+    //
+    // INV-SYS-033: a malformed Buffer body throws a PLAIN SyntaxError here (no
+    // `body`/`type:'entity.parse.failed'` marker), which the shared errorHandler's
+    // body-parser-only SyntaxError branch does NOT catch → it would fall through to
+    // a 500 (+ dev `stack` leaking the absolute route path). A trusted provider can
+    // send a truncated/garbled delivery and this path is post-auth, so guard it and
+    // return the same clean 400 contract as an invalid payload (Class E: bad input
+    // → 4xx, never 500).
+    let body: any;
+    if (Buffer.isBuffer(req.body)) {
+      try {
+        body = JSON.parse(req.body.toString('utf8'));
+      } catch {
+        return res.status(400).json({
+          error: 'invalid_payload',
+          required: ['from', 'to', 'subject', 'text', 'messageId'],
+        });
+      }
+    } else {
+      body = req.body;
+    }
 
     if (!isValidPayload(body)) {
       return res.status(400).json({
