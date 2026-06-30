@@ -152,6 +152,7 @@ beforeAll(async () => {
       descriptionBg: 'Тест',
       pointsCost: 100,
       cashValue: 5.00,
+      category: 'General',
       isActive: true,
       validFrom: new Date('2020-01-01'),
     },
