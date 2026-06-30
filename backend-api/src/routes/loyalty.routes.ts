@@ -6,6 +6,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../middleware/error.middleware';
 import prisma from '../lib/prisma';
 import { LOYALTY_TIER_CASHBACK } from '../constants/tiers';
+import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 const router = Router();
 router.use(authenticate);
@@ -52,10 +53,13 @@ router.get('/accounts/me', asyncHandler(async (req: AuthRequest, res: Response) 
     },
   });
 
+  const windowOpen = await isCurrencyTransitionWindowOpen();
+
   res.json({
     success: true,
     data: {
       ...account,
+      cashbackBalance: toDualCurrency(account.cashbackBalance, windowOpen),
       cashbackRate: LOYALTY_TIER_CASHBACK[account.tier],
     },
   });
@@ -119,7 +123,14 @@ router.get('/rewards', asyncHandler(async (req: AuthRequest, res: Response) => {
     orderBy: { pointsCost: 'asc' },
   });
 
-  res.json({ success: true, data: rewards });
+  const windowOpen = await isCurrencyTransitionWindowOpen();
+  res.json({
+    success: true,
+    data: rewards.map(r => ({
+      ...r,
+      cashValue: r.cashValue != null ? toDualCurrency(r.cashValue, windowOpen) : null,
+    })),
+  });
 }));
 
 /**
@@ -165,7 +176,20 @@ router.get('/rewards/redemptions', asyncHandler(async (req: AuthRequest, res: Re
     prisma.rewardRedemption.count({ where: { accountId: account.id } }),
   ]);
 
-  res.json({ success: true, data, total, page, limit });
+  const windowOpen = await isCurrencyTransitionWindowOpen();
+  res.json({
+    success: true,
+    data: data.map(d => ({
+      ...d,
+      reward: d.reward ? {
+        ...d.reward,
+        cashValue: d.reward.cashValue != null ? toDualCurrency(d.reward.cashValue, windowOpen) : null,
+      } : d.reward,
+    })),
+    total,
+    page,
+    limit,
+  });
 }));
 
 /**

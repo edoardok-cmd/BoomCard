@@ -120,10 +120,64 @@ beforeAll(async () => {
       metadata: JSON.stringify({ orderId: 'seed-sub-order-001' }),
     },
   });
+
+  // Seed a non-zero cashbackBalance so the bulk closed-window sweep (MONEY_ENDPOINTS loop)
+  // can detect a raw-number regression on /api/loyalty/accounts/me (INV-USER-CUR-003).
+  // findRawBgnLeak skips v===0 to avoid false positives on empty scalars; without this seed,
+  // a zero-balance account would silently pass the bulk check even when ungated.
+  // The dedicated open-window test (lines 213-221) also relies on this 99.99 value.
+  const loyaltyAccount = await prisma.loyaltyAccount.upsert({
+    where: { userId },
+    create: {
+      userId,
+      tier: 'BRONZE',
+      points: 0,
+      lifetimePoints: 0,
+      tierProgress: 0,
+      cashbackBalance: 99.99,
+      nextTierPoints: 0,
+    },
+    update: { cashbackBalance: 99.99 },
+  });
+
+  // Seed a reward with non-null cashValue so findRawBgnLeak's v!==0 guard catches a raw scalar
+  // on /api/loyalty/rewards and /api/loyalty/rewards/redemptions.
+  await prisma.reward.upsert({
+    where: { id: 'sweep-test-reward-cashvalue' },
+    create: {
+      id: 'sweep-test-reward-cashvalue',
+      title: 'Sweep Test Reward',
+      titleBg: 'Тест',
+      description: 'Sweep seed reward',
+      descriptionBg: 'Тест',
+      pointsCost: 100,
+      cashValue: 5.00,
+      isActive: true,
+      validFrom: new Date('2020-01-01'),
+    },
+    update: { cashValue: 5.00 },
+  });
+
+  // Seed a RewardRedemption so /api/loyalty/rewards/redemptions returns a row with a
+  // non-null cashValue and the toDualCurrency formatter path is actually exercised by the sweep.
+  await prisma.rewardRedemption.upsert({
+    where: { id: 'sweep-test-redemption-cashvalue' },
+    create: {
+      id: 'sweep-test-redemption-cashvalue',
+      accountId: loyaltyAccount.id,
+      rewardId: 'sweep-test-reward-cashvalue',
+      status: 'PENDING',
+      pointsSpent: 100,
+    },
+    update: {},
+  });
 }, 60_000);
 
 afterAll(async () => {
   await setCurrencyWindowOpen(false).catch(() => {});
+  // Delete redemption before reward (FK constraint) and before user cleanup (account FK).
+  await prisma.rewardRedemption.delete({ where: { id: 'sweep-test-redemption-cashvalue' } }).catch(() => {});
+  await prisma.reward.delete({ where: { id: 'sweep-test-reward-cashvalue' } }).catch(() => {});
   if (userId) { try { await cleanupTestUser(userId); } catch {} }
 }, 30_000);
 
@@ -134,6 +188,9 @@ const MONEY_ENDPOINTS = [
   '/api/wallet/statistics',
   '/api/payments/history',
   '/api/subscriptions/history',
+  '/api/loyalty/accounts/me',
+  '/api/loyalty/rewards',
+  '/api/loyalty/rewards/redemptions',
 ];
 
 // Detect a raw BGN scalar: a `currency:"BGN"` paired with a raw numeric amount,
@@ -142,7 +199,7 @@ function findRawBgnLeak(node: any, path = '$'): string[] {
   const leaks: string[] = [];
   // Genuine money fields only. Bare `total`/`count`/`page` are pagination
   // scalars, not currency — excluded to avoid false positives.
-  const MONEY_KEYS = /^(amount|balance|balanceBefore|balanceAfter|currentBalance|availableBalance|pendingBalance|expiringBalance|totalCashback|totalTopups|totalSpent|totalAmount|verifiedAmount|payoutAmount|cashbackAmount)$/i;
+  const MONEY_KEYS = /^(amount|balance|balanceBefore|balanceAfter|currentBalance|availableBalance|pendingBalance|expiringBalance|totalCashback|totalTopups|totalSpent|totalAmount|verifiedAmount|payoutAmount|cashbackAmount|cashbackBalance|cashValue)$/i;
   function walk(n: any, p: string) {
     if (n == null) return;
     if (Array.isArray(n)) { n.forEach((v, i) => walk(v, `${p}[${i}]`)); return; }
@@ -190,6 +247,16 @@ describe('INV-USER-CUR — user money endpoints respect the currency transition 
     const s = JSON.stringify(res.body);
     // Open window must surface EUR alongside BGN (dual display present).
     expect(/eur/i.test(s)).toBe(true);
+  });
+
+  it('[CUR] window OPEN → /api/loyalty/accounts/me cashbackBalance exposes bgn > 0', async () => {
+    await setCurrencyWindowOpen(true);
+    const res = await authRequest(token).get('/api/loyalty/accounts/me');
+    expect(res.status).toBe(200);
+    expect(res.body.data.cashbackBalance).toEqual(
+      expect.objectContaining({ bgn: 99.99, eur: expect.any(Number), windowOpen: true }),
+    );
+    expect(res.body.data.cashbackBalance.bgn).toBeGreaterThan(0);
   });
 });
 
