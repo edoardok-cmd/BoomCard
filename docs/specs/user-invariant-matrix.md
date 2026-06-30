@@ -71,6 +71,7 @@ Four sweep tests mechanically cover entire invariant classes for the user surfac
 | INV-USER-SUB-008 | Cancel/auto-renewal/change-card/update-plan operate only on the caller's own subscription | XSCOPE | [SUITE: XSCOPE] |
 | INV-USER-SUB-009 | Upgrade plan available only for Basic/Premium-Weekly Active subscriptions | STATE | static |
 | INV-USER-SUB-010 | `GET /subscriptions/current` returns caller-scoped subscription only | XSCOPE | [SUITE: XSCOPE] |
+| INV-USER-SUB-011 | `GET /subscriptions/current` must not expose internal billing-system identifiers (`stripeSubscriptionId`/`stripePriceId`/`stripeCustomerId`/`payseraOrderId`), raw `metadata`, or dunning internals (`retryAttempt`/`failedPaymentAt`/`failedPaymentClearedAt`/`renewalRemindersSent`/`lastRenewalReminderSentAt`) — must serialize via an explicit user-facing allowlist | ACL | [SUITE: ACL-MATRIX] |
 
 ## CB — Cashback Lifecycle State Machine (§4)
 
