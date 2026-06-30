@@ -29,6 +29,40 @@ const contactRateLimiter = rateLimit({
   skip: () => process.env.NODE_ENV === 'development',
 });
 
+// Per-target-email auto-reply cap: supplements the per-IP contactRateLimiter.
+// Prevents IP rotation from triggering auto-replies to arbitrary target addresses.
+// In-memory Map is acceptable for this low-volume endpoint; resets on restart.
+// Limit is generous (3/24h) so legitimate users on shared IPs are not blocked.
+// Design decision: content is a fixed BoomCard-branded template (not user-controlled),
+// so the risk class is deliverability/reputation rather than phishing or injection.
+const emailAutoReplyCache = new Map<string, { count: number; resetAt: number }>();
+const EMAIL_AUTOREPLY_MAX = 3;
+const EMAIL_AUTOREPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+// Hourly sweep removes expired entries to bound Map memory to the active-window
+// population rather than the server's entire lifetime of unique submitters.
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of emailAutoReplyCache) {
+    if (now >= entry.resetAt) emailAutoReplyCache.delete(key);
+  }
+}, 60 * 60 * 1000).unref();
+
+function checkEmailAutoReplyLimit(email: string): boolean {
+  const now = Date.now();
+  const lower = email.toLowerCase();
+  const entry = emailAutoReplyCache.get(lower);
+  if (!entry || now >= entry.resetAt) {
+    emailAutoReplyCache.set(lower, { count: 1, resetAt: now + EMAIL_AUTOREPLY_WINDOW_MS });
+    return true;
+  }
+  if (entry.count >= EMAIL_AUTOREPLY_MAX) {
+    return false;
+  }
+  entry.count++;
+  return true;
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -60,6 +94,11 @@ router.post('/', contactRateLimiter, asyncHandler(async (req: Request, res: Resp
   }
 
   try {
+    // Check per-target-email auto-reply rate limit (second layer on top of per-IP limit).
+    // Suppresses the auto-reply silently when exceeded — ticket is still created.
+    // No 4xx is returned; silent suppression gives no confirmation to an attacker.
+    const autoReply = checkEmailAutoReplyLimit(email);
+
     // Create a Help Ticket (Spec §3.8 / §1.7)
     const { ticketId } = await createHelpTicketFromInbound({
       name,
@@ -70,6 +109,7 @@ router.post('/', contactRateLimiter, asyncHandler(async (req: Request, res: Resp
       body: message,
       source: 'WEB',
       language,
+      sendAutoReply: autoReply,
     });
 
     const safeName = escapeHtml(name);

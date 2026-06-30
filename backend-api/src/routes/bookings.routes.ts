@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { randomInt } from 'crypto';
 import { z } from 'zod';
-import { authenticate, AuthRequest, requireActiveSubscription } from '../middleware/auth.middleware';
+import { authenticate, AuthRequest, requireActiveSubscription, requireActiveAdmin } from '../middleware/auth.middleware';
 import { asyncHandler } from '../utils/asyncHandler';
 import prisma from '../lib/prisma';
 
@@ -61,6 +61,15 @@ async function generateConfirmationCode(): Promise<string> {
 router.get('/', asyncHandler(async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
   const role = req.user!.role;
+
+  // §1.5 aro gate: INACTIVE admins (aro=true) must not enumerate all bookings
+  if ((role === 'ADMIN' || role === 'SUPER_ADMIN') && req.user!.aro === true) {
+    return res.status(403).json({
+      success: false,
+      error: 'Your admin account is inactive. Operational rights are limited to read-only access. Contact a Super Admin to restore full access.',
+    });
+  }
+
   const { status, page, limit } = listQuerySchema.parse(req.query);
   const skip = (page - 1) * limit;
 
@@ -303,7 +312,7 @@ router.patch('/partner/:id/status', asyncHandler(async (req: AuthRequest, res: R
   res.json({ success: true, data: updated });
 }));
 
-router.patch('/:id', asyncHandler(async (req: AuthRequest, res: Response) => {
+router.patch('/:id', requireActiveAdmin, asyncHandler(async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
   const role = req.user!.role;
   const { id } = req.params;
@@ -359,7 +368,7 @@ router.patch('/:id', asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: updated });
 }));
 
-router.delete('/:id', asyncHandler(async (req: AuthRequest, res: Response) => {
+router.delete('/:id', requireActiveAdmin, asyncHandler(async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
   const role = req.user!.role;
   const { id } = req.params;

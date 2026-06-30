@@ -1,23 +1,27 @@
 /**
  * System Surface — INV-SYS-031 LEAK sweep (BC-SYSTEM-SPEC-REAUDIT-INTEG-LEAK-SWEEP)
  *
- * Standing guard: integration route catch blocks MUST NOT bind or echo error.message.
+ * Standing guard: integration route catch blocks MUST NOT echo error details in responses.
  * The companion `system-health-leak-sweep.test.ts` covers health endpoints;
  * this file covers /api/integrations/*.
  *
- * INV-SYS-031: All 8 catch blocks in integrations.routes.ts are bare `catch {}`
- *              with zero error-variable binding.  A thrown upstream error must
- *              never surface in the response body.
+ * INV-SYS-031: All 8 catch blocks in integrations.routes.ts bind `err` for logger calls
+ *              but must never echo it in the HTTP response.  The `err` object is passed
+ *              to `logger.error()` only; all response messages are static strings.
  *
- * Two-pronged assertion:
- *  A) Static source scan (exhaustive) — no catch block binds an error variable
- *     and no `.message` reference appears inside any catch block body.
+ * Three-pronged assertion:
+ *  A) Static source scan (exhaustive) — count guard confirms exactly 8 bound catch blocks
+ *     (BC-DEMOCK-010 pattern); no `.message` reference on err/error anywhere in the
+ *     file; and err does not appear on any res.json / res.status / res.send line.
  *  B) Runtime injection (belt-and-suspenders) — force a throw carrying a sentinel
  *     string on routes that perform array operations (filter / find / map on the
  *     `availableIntegrations` array) and assert the sentinel is absent from the
  *     response body.  Discriminating spy fires only when called on the integration
  *     array (first element id === 'stripe') to avoid interfering with Express
  *     middleware chains that also use Array.prototype methods.
+ *  C) Response shape contract — exercise the normal (non-injected) paths and assert
+ *     that no raw connection string (Postgres DSN, Redis URL, Prisma error code, etc.)
+ *     appears in any response body, and that static 404 messages are correct.
  */
 
 import fs from 'fs';
@@ -42,21 +46,23 @@ describe('[INV-SYS-031] Static: integrations.routes.ts catch blocks', () => {
     src = fs.readFileSync(INTEG_ROUTES_PATH, 'utf-8');
   });
 
-  test('no catch block binds an error variable (bare catch {} only)', () => {
-    // Matches catch blocks that bind a variable: catch (err), catch (error),
-    // catch (e), catch (ex), catch (thrown), etc.
-    expect(src).not.toMatch(/\bcatch\s*\(\s*\w+\s*\)/);
+  test('all 8 catch blocks bind err for logger calls (BC-DEMOCK-010 pattern)', () => {
+    // After BC-DEMOCK-010, bare catch {} was replaced with catch (err) + logger.
+    const boundCatches = src.match(/\}\s*catch\s*\(\s*\w+\s*\)\s*\{/g) || [];
+    expect(boundCatches.length).toBe(8);
   });
 
   test('no reference to err.message or error.message anywhere in the file', () => {
     expect(src).not.toMatch(/\berr(or)?\s*\.\s*message\b/);
   });
 
-  test('all 8 expected bare catch {} blocks are present (count regression guard)', () => {
-    // If a future refactor removes a try/catch entirely, this test will fail and
-    // prompt the developer to verify the invariant is still enforced another way.
-    const bareCatches = src.match(/\}\s*catch\s*\{/g) || [];
-    expect(bareCatches.length).toBeGreaterThanOrEqual(8);
+  test('err variable does not appear on any res.json / res.status / res.send line', () => {
+    // err is used only in logger.error() calls; it must never flow into a response call.
+    const lines = src.split('\n');
+    const offending = lines.filter(
+      (l) => /\bres\s*\.\s*(json|status|send)\b/.test(l) && /\b(err|error)\b/.test(l),
+    );
+    expect(offending).toHaveLength(0);
   });
 });
 
@@ -69,19 +75,24 @@ describe('[INV-SYS-031] Static: integrations.routes.ts catch blocks', () => {
  * the SENTINEL error ONLY when called on the `availableIntegrations` array
  * (identified by its first element having id === 'stripe').  All other calls
  * fall through to the real implementation.
+ *
+ * Uses a `fired` flag for one-shot behaviour instead of calling mockRestore()
+ * from within the implementation — calling mockRestore() inside the executing
+ * mock body is undefined behaviour in Jest and can leave the prototype slot
+ * partially torn down.  Cleanup is deferred entirely to afterEach.
  */
 function spyOnIntegrationsArray(method: 'filter' | 'find' | 'map') {
   const real = Array.prototype[method] as Function;
-  const spy = jest.spyOn(Array.prototype, method as any).mockImplementation(
+  let fired = false;
+  jest.spyOn(Array.prototype, method as any).mockImplementation(
     function (this: any[], ...args: any[]) {
-      if (Array.isArray(this) && this.length > 0 && (this as any)[0]?.id === 'stripe') {
-        spy.mockRestore();
+      if (!fired && Array.isArray(this) && this.length > 0 && (this as any)[0]?.id === 'stripe') {
+        fired = true;
         throw new Error(SENTINEL);
       }
       return real.apply(this, args);
     },
   );
-  return spy;
 }
 
 describe('[INV-SYS-031] Runtime: thrown error content never reaches integration response', () => {
@@ -128,7 +139,7 @@ describe('[INV-SYS-031] Contract: integration 500 responses carry only static co
   // but documents the expected message strings so a change in INV-SYS-031
   // expected messages is immediately visible.
 
-  const LEAK = /(postgres(ql)?:\/\/|redis:\/\/|ECONNREFUSED|getaddrinfo|P10\d{2}|prisma|@.*:\d{4,5}\b)/i;
+  const LEAK = /(postgres(ql)?:\/\/|redis:\/\/|ECONNREFUSED|getaddrinfo|P[1-4]\d{3}|prisma|@.*:\d{4,5}\b)/i;
 
   test('GET /api/integrations/available response never carries a raw connection string', async () => {
     const res = await request(app).get('/api/integrations/available');

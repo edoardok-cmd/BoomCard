@@ -36,6 +36,12 @@ export interface HelpTicketIntakeArgs {
   source?: string;
   /** Form submission language (determines auto-reply template language) */
   language?: 'bg' | 'en';
+  /**
+   * Whether to send the auto-reply email to the submitter.
+   * Defaults to true. Pass false to suppress the auto-reply (e.g. when the
+   * per-target-email rate limit has been reached in the calling route).
+   */
+  sendAutoReply?: boolean;
 }
 
 /**
@@ -95,8 +101,6 @@ export async function persistShortRefWithCollisionRetry(ticketId: string): Promi
           err,
         );
         try {
-          // Sanitize error message to avoid leaking database internals
-          const sanitizedMsg = isUniqueViolation ? 'Unique constraint violation' : 'Database error';
           detach(notificationService
             .notifyAdminOps({
               opsType: `ticket_shortref_collision_${ticketId}`,
@@ -318,16 +322,20 @@ export async function createHelpTicketFromInbound(
   // Fire async auto-reply (don't block on this)
   // BC-ADMIN-SPEC-REAUDIT5-SHORTREF-RETRY-1: Pass the persisted shortRef to the auto-reply
   // so the subject uses the actual ref (may be longer than 8 chars on collision resolution).
-  detach(
-    sendWebFormAutoReply({
-      ticketId: ticket.id,
-      to: normalizedEmail,
-      originalSubject: args.subject || '(no subject)',
-      language: args.language,
-      shortRef: persistedShortRef ?? undefined,
-    }),
-    (err) => logger.error(`[helpTicketIntake] failed to send auto-reply for ${ticket.id}:`, err)
-  );
+  // sendAutoReply defaults to true; callers may pass false to suppress when the per-target-email
+  // rate limit has been reached (contact.routes.ts checkEmailAutoReplyLimit).
+  if (args.sendAutoReply !== false) {
+    detach(
+      sendWebFormAutoReply({
+        ticketId: ticket.id,
+        to: normalizedEmail,
+        originalSubject: args.subject || '(no subject)',
+        language: args.language,
+        shortRef: persistedShortRef ?? undefined,
+      }),
+      (err) => logger.error(`[helpTicketIntake] failed to send auto-reply for ${ticket.id}:`, err)
+    );
+  }
 
   logger.info(`[helpTicketIntake] created ticket ${ticket.id} from web form (${normalizedEmail})`);
 

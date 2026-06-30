@@ -86,16 +86,23 @@ jest.mock('../../src/utils/logger', () => ({
 import express from 'express';
 import request from 'supertest';
 import stickersRouter from '../../src/routes/stickers.routes';
+import bookingsRouter from '../../src/routes/bookings.routes';
 import { errorHandler } from '../../src/middleware/error.middleware';
 
-// ── Test app ─────────────────────────────────────────────────────────────────
+// ── Test app (stickers) ───────────────────────────────────────────────────────
 const app = express();
 app.use(express.json());
 app.use('/api/stickers', stickersRouter);
 app.use(errorHandler);
 
+// ── Test app (bookings) ───────────────────────────────────────────────────────
+const bookingsApp = express();
+bookingsApp.use(express.json());
+bookingsApp.use('/api/bookings', bookingsRouter);
+bookingsApp.use(errorHandler);
+
 // ── Suite ─────────────────────────────────────────────────────────────────────
-type RouteCase = { label: string; method: 'post' | 'patch' | 'put'; path: string };
+type RouteCase = { label: string; method: 'post' | 'patch' | 'put' | 'delete'; path: string };
 
 const MUTATION_ROUTES: RouteCase[] = [
   { label: 'approve',      method: 'post', path: '/api/stickers/admin/approve/scan-1'  },
@@ -137,4 +144,27 @@ describe('BC-REDEMPTION-SWPFIX-ARO-CLASS-SWEEP — requirePermission gates QR-ma
       expect(res.body.error).toMatch(/inactive/i);
     },
   );
+});
+
+// ── INV-RDM-068 block ────────────────────────────────────────────────────────
+const BOOKINGS_WRITE_ROUTES: RouteCase[] = [
+  { label: 'PATCH /:id',  method: 'patch',  path: '/api/bookings/00000000-0000-0000-0000-000000000001' },
+  { label: 'DELETE /:id', method: 'delete', path: '/api/bookings/00000000-0000-0000-0000-000000000001' },
+];
+
+describe('BC-REDEMPTION-SWPFIX-ARO-CLASS-SWEEP — requireActiveAdmin gates bookings admin-bypass paths (INV-RDM-068)', () => {
+  test.each(BOOKINGS_WRITE_ROUTES)(
+    '$method $path ($label) → 403 for aro=true (inactive) admin',
+    async ({ method, path }) => {
+      const res = await request(bookingsApp)[method](path).send({});
+      expect(res.status).toBe(403);
+      expect(res.body.error).toMatch(/inactive/i);
+    },
+  );
+
+  it('GET /api/bookings/ → 403 for aro=true (inactive) admin (admin-list-all blocked by inline aro gate)', async () => {
+    const res = await request(bookingsApp).get('/api/bookings/');
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/inactive/i);
+  });
 });

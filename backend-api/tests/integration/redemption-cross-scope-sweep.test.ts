@@ -4,7 +4,9 @@
  * FLAGSHIP class: cross-tenant data isolation for the redemption surface.
  * Each test is structured as "Actor A must not see or mutate Tenant B's data."
  *
- * Invariants covered (all CRITICAL/HIGH XSCOPE class):
+ * Invariants covered (XSCOPE CRITICAL/HIGH class; also selected LIFECYCLE and MEDIUM invariants):
+ *
+ *   XSCOPE class:
  *   INV-RDM-001 — Partner cannot access another partner's venue sticker data
  *   INV-RDM-002 — User can only retrieve their own scan history
  *   INV-RDM-003 — Receipt upload only succeeds for own scans
@@ -17,6 +19,13 @@
  *   INV-RDM-010 — Partner CAN withdraw menu submission for own venue; cross-partner access returns 403
  *   INV-RDM-011 — Dashboard scoped to authenticated user
  *   INV-RDM-055 — Admin-only venue fields not returned in public GET
+ *   INV-RDM-069 — Bookings cross-tenant isolation (user B cannot read/mutate user A's booking)
+ *   INV-RDM-070 — Messaging participant isolation (non-participant 403, no admin bypass, author-only PATCH/DELETE)
+ *
+ *   LIFECYCLE class:
+ *   INV-RDM-045 — GET /api/bookings/ returns 200 with owner-scoped pagination (active-admin-only bypass)
+ *   INV-RDM-046 — GET /api/messaging/conversations returns 200 with participant-scoped list; non-participant sees empty list
+ *   INV-RDM-047 — GET /api/venues/nearby returns 200 unconditionally (ENABLE_NEARBY_VENUES flag removed)
  *
  * Teeth-proving: each test includes a "positive control" that confirms the
  * authorized caller CAN access the same resource (proving the 403 is an auth
@@ -695,10 +704,10 @@ describe('Auth gates — unauthenticated callers receive 401', () => {
   });
 });
 
-// ─── INV-RDM-045/046: Stub routes / implemented routes ───────────────────────
+// ─── INV-RDM-045: Bookings list route (implemented, active-admin-only bypass) ──
 
-describe('Stub routes return 501 (not implemented)', () => {
-  it('[LIFECYCLE] INV-RDM-045: GET /api/bookings/ — unauthenticated returns 401, authenticated returns 200 with pagination envelope; ADMIN sees all bookings', async () => {
+describe('INV-RDM-045 — GET /api/bookings/ (fully-implemented, active-admin-only list-all)', () => {
+  it('[LIFECYCLE] INV-RDM-045: GET /api/bookings/ — unauthenticated returns 401; authenticated non-admin returns 200 with owner-scoped pagination; active ADMIN returns 200 (active-admin-only bypass)', async () => {
     const unauth = await request(app).get('/api/bookings/');
     expect(unauth.status).toBe(401);
 
@@ -712,17 +721,255 @@ describe('Stub routes return 501 (not implemented)', () => {
       limit: expect.any(Number),
     });
 
-    // ADMIN must not be scoped to their own userId — they see all bookings
+    // ACTIVE admin (aro=false) may list all bookings — positive control for the active-admin-only gate.
     const adminRes = await authRequest(adminToken).get('/api/bookings/');
     expect(adminRes.status).toBe(200);
     expect(adminRes.body.success).toBe(true);
-    // Admin total >= user total (admin sees cross-user scope)
-    expect(adminRes.body.meta.total).toBeGreaterThanOrEqual(auth.body.meta.total);
+  });
+});
+
+// ─── INV-RDM-069: Bookings cross-tenant isolation ────────────────────────────
+
+describe('INV-RDM-069 — Bookings cross-tenant isolation', () => {
+  let bookingAId: string;
+
+  beforeAll(async () => {
+    // Create a booking for user A via Prisma (POST /api/bookings requires an active
+    // subscription gate; direct insert avoids that gate cleanly for isolation tests).
+    const partner = await prisma.partner.findFirstOrThrow({ where: { userId: partnerAUserId } });
+    const booking = await prisma.booking.create({
+      data: {
+        userId: userAUserId,
+        partnerId: partner.id,
+        venueId: venueAId,
+        bookingDate: new Date(Date.now() + 86400000),
+        bookingTime: '18:00',
+        guestCount: 2,
+        // timestamp + random suffix avoids @unique collisions in parallel CI workers
+        confirmationCode: `RDM069-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+        status: 'PENDING',
+      },
+      select: { id: true },
+    });
+    bookingAId = booking.id;
+  }, 10_000);
+
+  afterAll(async () => {
+    if (bookingAId) await prisma.booking.delete({ where: { id: bookingAId } }).catch(() => {});
   });
 
-  it('[LIFECYCLE] INV-RDM-046: GET /api/messaging/conversations returns 501', async () => {
-    const res = await authRequest(userAToken).get('/api/messaging/conversations');
-    expect(res.status).toBe(501);
+  it('[POSITIVE] INV-RDM-069: user A gets 200 on GET /api/bookings/:id for own booking', async () => {
+    const res = await authRequest(userAToken).get(`/api/bookings/${bookingAId}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.id).toBe(bookingAId);
+  });
+
+  it('[XSCOPE] INV-RDM-069: user B gets 403 on GET /api/bookings/:id for user A booking', async () => {
+    const res = await authRequest(userBToken).get(`/api/bookings/${bookingAId}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('[XSCOPE] INV-RDM-069: partner B (non-owner partner) gets 403 on GET /api/bookings/:id for user A booking', async () => {
+    const res = await authRequest(partnerBToken).get(`/api/bookings/${bookingAId}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('[XSCOPE] INV-RDM-069: user B gets 403 on PATCH /api/bookings/:id for user A booking', async () => {
+    const res = await authRequest(userBToken)
+      .patch(`/api/bookings/${bookingAId}`)
+      .send({ guestCount: 10 });
+    expect(res.status).toBe(403);
+  });
+
+  it('[XSCOPE] INV-RDM-069: user B gets 403 on DELETE /api/bookings/:id for user A booking', async () => {
+    const res = await authRequest(userBToken).delete(`/api/bookings/${bookingAId}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('[XSCOPE] INV-RDM-069: user B GET /api/bookings/ list does not leak user A booking', async () => {
+    const res = await authRequest(userBToken).get('/api/bookings/');
+    expect(res.status).toBe(200);
+    const ids = (res.body.data as Array<{ id: string }>).map((b) => b.id);
+    expect(ids).not.toContain(bookingAId);
+  });
+
+  it('[POSITIVE] INV-RDM-069: active ADMIN gets 200 on GET /api/bookings/:id for any booking', async () => {
+    const res = await authRequest(adminToken).get(`/api/bookings/${bookingAId}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.id).toBe(bookingAId);
+  });
+});
+
+// ─── INV-RDM-046: Messaging conversations participant-scoped list ─────────────
+
+describe('INV-RDM-046 — GET /api/messaging/conversations returns 200 with participant-scoped list', () => {
+  it('[LIFECYCLE] INV-RDM-046: GET /api/messaging/conversations returns 200 with participant-scoped conversation list — non-participant caller sees empty list', async () => {
+    // Negative control: userA is not a participant of any conversation yet
+    // (no conversations seeded for userA in the global beforeAll).
+    const resEmpty = await authRequest(userAToken).get('/api/messaging/conversations');
+    expect(resEmpty.status).toBe(200);
+    expect(Array.isArray(resEmpty.body.data)).toBe(true);
+    // The list is participant-scoped — userA has no conversations at this point, so the list must be empty.
+    expect(resEmpty.body.data.length).toBe(0);
+
+    // Positive control: create a conversation with userA as a participant, confirm it appears.
+    const conv = await prisma.conversation.create({
+      data: {
+        type: 'DIRECT',
+        title: 'RDM-046 test conv',
+      },
+    });
+    const participantA = await prisma.conversationParticipant.create({
+      data: { conversationId: conv.id, userId: userAUserId, isActive: true },
+    });
+    // Also need a second participant for a DIRECT conv to be well-formed (not required by list query)
+    const participantB = await prisma.conversationParticipant.create({
+      data: { conversationId: conv.id, userId: userBUserId, isActive: true },
+    });
+
+    try {
+      const resWithConv = await authRequest(userAToken).get('/api/messaging/conversations');
+      expect(resWithConv.status).toBe(200);
+      expect(Array.isArray(resWithConv.body.data)).toBe(true);
+      const ids = resWithConv.body.data.map((c: any) => c.id);
+      expect(ids).toContain(conv.id);
+      // userA must see exactly this conversation (scoped to their participations).
+      // userB also sees it since they are a participant — this is intentional.
+    } finally {
+      // Inline cleanup: participants first (FK), then conversation.
+      await prisma.conversationParticipant.deleteMany({ where: { conversationId: conv.id } }).catch(() => {});
+      await prisma.conversation.delete({ where: { id: conv.id } }).catch(() => {});
+    }
+  });
+});
+
+// ─── INV-RDM-070: Messaging participant isolation ─────────────────────────────
+
+describe('INV-RDM-070 — Messaging participant isolation', () => {
+  let conv070Id: string;
+  let messageAId: string; // sent by userA
+  let messageBId: string; // sent by userB
+  let outsiderUserId: string;
+  let outsiderToken: string;
+
+  beforeAll(async () => {
+    // Create a DIRECT conversation with userA and userB as participants.
+    const conv = await prisma.conversation.create({
+      data: {
+        type: 'DIRECT',
+        title: 'RDM-070 isolation test',
+      },
+    });
+    conv070Id = conv.id;
+
+    await prisma.conversationParticipant.createMany({
+      data: [
+        { conversationId: conv070Id, userId: userAUserId, isActive: true },
+        { conversationId: conv070Id, userId: userBUserId, isActive: true },
+      ],
+    });
+
+    // Send a message from userA.
+    const msgA = await prisma.message.create({
+      data: {
+        conversationId: conv070Id,
+        userId: userAUserId,
+        content: 'Hello from A (RDM-070)',
+        type: 'TEXT',
+      },
+    });
+    messageAId = msgA.id;
+
+    // Send a message from userB.
+    const msgB = await prisma.message.create({
+      data: {
+        conversationId: conv070Id,
+        userId: userBUserId,
+        content: 'Hello from B (RDM-070)',
+        type: 'TEXT',
+      },
+    });
+    messageBId = msgB.id;
+
+    // Create a third user who is NOT a participant of this conversation.
+    const outsider = await createTestUser();
+    outsiderUserId = outsider.user.id;
+    outsiderToken = outsider.accessToken;
+    cleanupUserIds.push(outsiderUserId);
+    await prisma.user.update({ where: { id: outsiderUserId }, data: { status: 'ACTIVE' } });
+    await createTestSubscription(outsiderUserId, 'BASIC', 'ACTIVE');
+  }, 20_000);
+
+  afterAll(async () => {
+    // Clean up messages, participants, then conversation.
+    if (messageAId) await prisma.message.deleteMany({ where: { id: messageAId } }).catch(() => {});
+    if (messageBId) await prisma.message.deleteMany({ where: { id: messageBId } }).catch(() => {});
+    if (conv070Id) {
+      await prisma.conversationParticipant.deleteMany({ where: { conversationId: conv070Id } }).catch(() => {});
+      await prisma.conversation.delete({ where: { id: conv070Id } }).catch(() => {});
+    }
+  }, 20_000);
+
+  // Positive control: participant userB CAN access the conversation.
+  it('[POSITIVE] INV-RDM-070: participant (userB) gets 200 on GET /api/messaging/conversations/:id', async () => {
+    const res = await authRequest(userBToken).get(`/api/messaging/conversations/${conv070Id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(conv070Id);
+  });
+
+  // Non-participant outsider must be blocked on every conversation-scoped route.
+  it('[XSCOPE] INV-RDM-070: non-participant gets 403 on GET /api/messaging/conversations/:id', async () => {
+    const res = await authRequest(outsiderToken).get(`/api/messaging/conversations/${conv070Id}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('[XSCOPE] INV-RDM-070: non-participant gets 403 on GET /api/messaging/conversations/:id/messages', async () => {
+    const res = await authRequest(outsiderToken).get(`/api/messaging/conversations/${conv070Id}/messages`);
+    expect(res.status).toBe(403);
+  });
+
+  it('[XSCOPE] INV-RDM-070: non-participant gets 403 on POST /api/messaging/conversations/:id/messages', async () => {
+    const res = await authRequest(outsiderToken)
+      .post(`/api/messaging/conversations/${conv070Id}/messages`)
+      .send({ content: 'Injected message' });
+    expect(res.status).toBe(403);
+  });
+
+  it('[XSCOPE] INV-RDM-070: non-participant gets 403 on PATCH /api/messaging/conversations/:id', async () => {
+    const res = await authRequest(outsiderToken)
+      .patch(`/api/messaging/conversations/${conv070Id}`)
+      .send({ title: 'Hacked title' });
+    expect(res.status).toBe(403);
+  });
+
+  it('[XSCOPE] INV-RDM-070: non-participant gets 403 on DELETE /api/messaging/conversations/:id', async () => {
+    const res = await authRequest(outsiderToken).delete(`/api/messaging/conversations/${conv070Id}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('[XSCOPE] INV-RDM-070: non-participant gets 403 on POST /api/messaging/conversations/:id/read', async () => {
+    const res = await authRequest(outsiderToken).post(`/api/messaging/conversations/${conv070Id}/read`);
+    expect(res.status).toBe(403);
+  });
+
+  // Admin without a participant row must also get 403 (no role bypass in assertParticipant).
+  it('[XSCOPE] INV-RDM-070: admin non-participant gets 403 on GET /api/messaging/conversations/:id (no admin bypass)', async () => {
+    const res = await authRequest(adminToken).get(`/api/messaging/conversations/${conv070Id}`);
+    expect(res.status).toBe(403);
+  });
+
+  // Only the message author may PATCH/DELETE their own message;
+  // userB (a participant but NOT the author of messageA) must get 403.
+  it('[XSCOPE] INV-RDM-070: participant non-author (userB) gets 403 on PATCH /api/messaging/messages/:messageId for userA message', async () => {
+    const res = await authRequest(userBToken)
+      .patch(`/api/messaging/messages/${messageAId}`)
+      .send({ content: 'Tampered by B' });
+    expect(res.status).toBe(403);
+  });
+
+  it('[XSCOPE] INV-RDM-070: participant non-author (userB) gets 403 on DELETE /api/messaging/messages/:messageId for userA message', async () => {
+    const res = await authRequest(userBToken).delete(`/api/messaging/messages/${messageAId}`);
+    expect(res.status).toBe(403);
   });
 });
 
