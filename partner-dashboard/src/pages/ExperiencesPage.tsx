@@ -14,228 +14,6 @@ import BookingModal from '../components/common/BookingModal/BookingModal';
 import ClientCTA from '../components/common/ClientCTA/ClientCTA';
 import type { Entity, CardEntity } from '../types/entity.types';
 
-// ── Mock experience entities (used until backend returns experience-specific data) ──
-
-const mockExperienceEntities: Entity[] = [
-  {
-    id: 'exp-1',
-    kind: 'experience',
-    name: { en: 'Culinary Master Class', bg: 'Кулинарен майсторски клас' },
-    description: {
-      en: 'Learn to cook like a pro with our expert chefs. Includes a 3-course meal and wine pairing.',
-      bg: 'Научете се да готвите като професионалист с нашите експертни готвачи. Включва 3-степенно меню и дегустация на вина.',
-    },
-    categoryId: 'gastronomic',
-    category: { en: 'Gastronomic', bg: 'Гастрономически' },
-    tags: [
-      { en: 'Cooking', bg: 'Готвене' },
-      { en: 'Wine', bg: 'Вино' },
-    ],
-    location: { display: 'Sofia, Downtown', displayBg: 'София, Център', city: 'sofia' },
-    images: { hero: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=800' },
-    discount: { percent: 15, originalPrice: 89, discountedPrice: 76 },
-    rating: 4.8,
-    reviewCount: 124,
-    path: '/experiences/exp-1',
-    isFeatured: true,
-    experience: {
-      duration: 'half-day',
-      durationDisplay: { en: '4 hours', bg: '4 часа' },
-      type: 'group',
-      languages: ['bg', 'en'],
-      availability: 'this-week',
-      minGroupSize: 4,
-      maxGroupSize: 12,
-      season: 'year-round',
-      format: 'walking',
-      price: 89,
-      currency: 'EUR',
-      venueId: 'venue-kitchen-1',
-      partnerId: 'partner-1',
-    },
-  },
-  {
-    id: 'exp-2',
-    kind: 'experience',
-    name: { en: 'Spa & Wellness Retreat', bg: 'СПА & Уелнес Ритрийт' },
-    description: {
-      en: 'Full day spa experience with massage, facial, and access to thermal pools.',
-      bg: 'Целодневно СПА преживяване с масаж, процедура за лице и достъп до термални басейни.',
-    },
-    categoryId: 'relax-wellness',
-    category: { en: 'Relax & Wellness', bg: 'Релакс & Уелнес' },
-    tags: [
-      { en: 'Spa', bg: 'СПА' },
-      { en: 'Massage', bg: 'Масаж' },
-    ],
-    location: { display: 'Bansko, Mountain Resort', displayBg: 'Банско, Планински курорт', city: 'bansko' },
-    images: { hero: 'https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=800' },
-    discount: { percent: 20, originalPrice: 149, discountedPrice: 119 },
-    rating: 4.9,
-    reviewCount: 256,
-    path: '/experiences/exp-2',
-    isFeatured: true,
-    experience: {
-      duration: 'full-day',
-      durationDisplay: { en: 'Full day', bg: 'Цял ден' },
-      type: 'private',
-      languages: ['bg', 'en'],
-      availability: 'today',
-      minGroupSize: 1,
-      maxGroupSize: 4,
-      season: 'year-round',
-      price: 149,
-      currency: 'EUR',
-      venueId: 'venue-spa-1',
-      partnerId: 'partner-2',
-    },
-  },
-  {
-    id: 'exp-3',
-    kind: 'experience',
-    name: { en: 'Wine Tasting Tour', bg: 'Тур за дегустация на вино' },
-    description: {
-      en: 'Visit 3 local wineries with guided tastings and gourmet lunch included.',
-      bg: 'Посетете 3 местни винарни с водени дегустации и гурме обяд.',
-    },
-    categoryId: 'gastronomic',
-    category: { en: 'Gastronomic', bg: 'Гастрономически' },
-    tags: [
-      { en: 'Wine', bg: 'Вино' },
-      { en: 'Tour', bg: 'Тур' },
-    ],
-    location: { display: 'Plovdiv, Wine Region', displayBg: 'Пловдив, Винен регион', city: 'plovdiv' },
-    images: { hero: 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=800' },
-    discount: { percent: 12, originalPrice: 129, discountedPrice: 114 },
-    rating: 4.7,
-    reviewCount: 89,
-    path: '/experiences/exp-3',
-    experience: {
-      duration: 'full-day',
-      durationDisplay: { en: 'Full day', bg: 'Цял ден' },
-      type: 'group',
-      languages: ['bg', 'en'],
-      availability: 'this-week',
-      minGroupSize: 6,
-      maxGroupSize: 20,
-      season: 'year-round',
-      format: 'car',
-      price: 129,
-      currency: 'EUR',
-      venueId: 'venue-wine-1',
-      partnerId: 'partner-3',
-    },
-  },
-  {
-    id: 'exp-4',
-    kind: 'experience',
-    name: { en: 'Adventure Park Day Pass', bg: 'Дневен пропуск за Приключенски парк' },
-    description: {
-      en: 'Unlimited access to zip lines, rock climbing, and obstacle courses.',
-      bg: 'Неограничен достъп до въжени пътеки, скално катерене и препятствия.',
-    },
-    categoryId: 'active-adventure',
-    category: { en: 'Active & Adventure', bg: 'Активни & Приключения' },
-    tags: [
-      { en: 'Outdoor', bg: 'На открито' },
-      { en: 'Adrenaline', bg: 'Адреналин' },
-    ],
-    location: { display: 'Sofia, Vitosha', displayBg: 'София, Витоша', city: 'sofia' },
-    images: { hero: 'https://images.unsplash.com/photo-1533167649158-6d508895b680?w=800' },
-    discount: { percent: 18, originalPrice: 59, discountedPrice: 48 },
-    rating: 4.6,
-    reviewCount: 312,
-    path: '/experiences/exp-4',
-    experience: {
-      duration: 'half-day',
-      durationDisplay: { en: '3-4 hours', bg: '3-4 часа' },
-      type: 'group',
-      languages: ['bg'],
-      availability: 'today',
-      minGroupSize: 1,
-      maxGroupSize: 30,
-      season: 'summer',
-      price: 59,
-      currency: 'EUR',
-      venueId: 'venue-park-1',
-      partnerId: 'partner-4',
-    },
-  },
-  {
-    id: 'exp-5',
-    kind: 'experience',
-    name: { en: 'Art Gallery VIP Night Tour', bg: 'VIP нощен тур в арт галерия' },
-    description: {
-      en: 'Exclusive evening tour of contemporary art galleries with champagne reception.',
-      bg: 'Ексклузивна вечерна обиколка на галерии за съвременно изкуство с шампанско.',
-    },
-    categoryId: 'historical-cultural',
-    category: { en: 'Historical & Cultural', bg: 'Исторически & Културни' },
-    tags: [
-      { en: 'Art', bg: 'Изкуство' },
-      { en: 'Exclusive', bg: 'Ексклузивно' },
-    ],
-    location: { display: 'Sofia, Arts District', displayBg: 'София, Артистичен квартал', city: 'sofia' },
-    images: { hero: 'https://images.unsplash.com/photo-1577083552431-6e5fd01988ec?w=800' },
-    discount: { percent: 10, originalPrice: 45, discountedPrice: 40 },
-    rating: 4.5,
-    reviewCount: 67,
-    path: '/experiences/exp-5',
-    experience: {
-      duration: 'up-to-2h',
-      durationDisplay: { en: '2 hours', bg: '2 часа' },
-      type: 'vip',
-      languages: ['bg', 'en'],
-      availability: 'this-week',
-      minGroupSize: 2,
-      maxGroupSize: 8,
-      season: 'year-round',
-      format: 'walking',
-      price: 45,
-      currency: 'EUR',
-      venueId: 'venue-gallery-1',
-      partnerId: 'partner-5',
-    },
-  },
-  {
-    id: 'exp-6',
-    kind: 'experience',
-    name: { en: 'Sunset Yacht Cruise', bg: 'Залезен круиз с яхта' },
-    description: {
-      en: 'Private yacht cruise with dinner, drinks, and live music as you watch the sunset.',
-      bg: 'Частен яхтен круиз с вечеря, напитки и жива музика при залез.',
-    },
-    categoryId: 'relax-wellness',
-    category: { en: 'Relax & Wellness', bg: 'Релакс & Уелнес' },
-    tags: [
-      { en: 'Yacht', bg: 'Яхта' },
-      { en: 'Dinner', bg: 'Вечеря' },
-    ],
-    location: { display: 'Varna, Marina Bay', displayBg: 'Варна, Марина Бей', city: 'varna' },
-    images: { hero: 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800' },
-    discount: { percent: 15, originalPrice: 199, discountedPrice: 169 },
-    rating: 4.9,
-    reviewCount: 198,
-    path: '/experiences/exp-6',
-    isFeatured: true,
-    experience: {
-      duration: '2-4h',
-      durationDisplay: { en: '3 hours', bg: '3 часа' },
-      type: 'private',
-      languages: ['bg', 'en'],
-      availability: 'this-week',
-      minGroupSize: 2,
-      maxGroupSize: 10,
-      season: 'summer',
-      format: 'boat',
-      price: 199,
-      currency: 'EUR',
-      venueId: 'venue-yacht-1',
-      partnerId: 'partner-6',
-    },
-  },
-];
-
 // ── Styled Components ──────────────────────────────────────
 
 const PageContainer = styled.div`
@@ -486,24 +264,24 @@ function applyFilters(entities: Entity[], filters: ExperiencesFiltersState, sear
     );
   }
 
-  // Durations
+  // Durations — entities without experience data pass through
   if (filters.durations.length > 0) {
     result = result.filter(e =>
-      e.experience && filters.durations.includes(e.experience.duration)
+      !e.experience || filters.durations.includes(e.experience.duration)
     );
   }
 
-  // Types (group/private/vip)
+  // Types (group/private/vip) — entities without experience data pass through
   if (filters.types.length > 0) {
     result = result.filter(e =>
-      e.experience && filters.types.includes(e.experience.type)
+      !e.experience || filters.types.includes(e.experience.type)
     );
   }
 
-  // Availability
+  // Availability — entities without experience data pass through
   if (filters.availability.length > 0) {
     result = result.filter(e => {
-      if (!e.experience?.availability) return false;
+      if (!e.experience?.availability) return true;
       const avail = e.experience.availability;
       if (typeof avail === 'string') {
         return filters.availability.includes(avail) || avail === 'always';
@@ -512,24 +290,24 @@ function applyFilters(entities: Entity[], filters: ExperiencesFiltersState, sear
     });
   }
 
-  // Formats
+  // Formats — entities without experience data pass through
   if (filters.formats.length > 0) {
     result = result.filter(e =>
-      e.experience?.format && filters.formats.includes(e.experience.format)
+      !e.experience?.format || filters.formats.includes(e.experience.format)
     );
   }
 
-  // Seasons
+  // Seasons — entities without experience data pass through
   if (filters.seasons.length > 0) {
     result = result.filter(e =>
-      e.experience?.season && filters.seasons.includes(e.experience.season)
+      !e.experience?.season || filters.seasons.includes(e.experience.season)
     );
   }
 
-  // Participations (mapped to experience type)
+  // Participations (mapped to experience type) — entities without experience data pass through
   if (filters.participations.length > 0) {
     result = result.filter(e => {
-      if (!e.experience) return false;
+      if (!e.experience) return true;
       if (filters.participations.includes('group') && e.experience.type === 'group') return true;
       if (filters.participations.includes('individual-private') &&
         (e.experience.type === 'private' || e.experience.type === 'vip')) return true;
@@ -608,14 +386,10 @@ const ExperiencesPage: React.FC = () => {
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
   const [isBookingOpen, setIsBookingOpen] = useState(false);
 
-  // Fetch from API — falls back to mock data if API returns empty
-  const { data: apiData } = useEntities({ limit: 100 });
-  const apiEntities = apiData?.data ?? [];
+  // Fetch from API
+  const { data: apiData, isLoading, isError, refetch } = useEntities({ limit: 100 });
 
-  // Use API data if available, otherwise mock data
-  const sourceEntities = apiEntities.length > 0
-    ? apiEntities.filter(e => e.kind === 'experience' || e.experience)
-    : mockExperienceEntities;
+  const sourceEntities = useMemo(() => apiData?.data ?? [], [apiData]);
 
   // Apply client-side filters
   const filteredEntities = useMemo(
@@ -680,7 +454,11 @@ const ExperiencesPage: React.FC = () => {
       <ContentSection>
         <Container>
           {/* Mobile filter toggle */}
-          <MobileFilterToggle onClick={() => setShowMobileFilters(v => !v)}>
+          <MobileFilterToggle
+            onClick={() => setShowMobileFilters(v => !v)}
+            aria-expanded={showMobileFilters}
+            aria-controls="experiences-filter-sidebar"
+          >
             <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
             </svg>
@@ -689,45 +467,85 @@ const ExperiencesPage: React.FC = () => {
 
           <LayoutGrid>
             {/* Sidebar Filters */}
-            <FilterSidebar $showMobile={showMobileFilters}>
+            <FilterSidebar id="experiences-filter-sidebar" $showMobile={showMobileFilters}>
               <ExperiencesFilters filters={filters} onChange={setFilters} sidebar />
             </FilterSidebar>
 
             {/* Results */}
             <MainContent>
-              <ResultsHeader>
-                <ResultCount>{t.results(filteredEntities.length)}</ResultCount>
-              </ResultsHeader>
+              {isLoading && (
+                <div style={{ textAlign: 'center', padding: '4rem' }}>
+                  {language === 'bg' ? 'Зареждане...' : 'Loading...'}
+                </div>
+              )}
 
-              {filteredEntities.length > 0 ? (
-                <ExperiencesGrid>
-                  {filteredEntities.map((entity, index) => (
-                    <motion.div
-                      key={entity.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.4, delay: index * 0.08 }}
-                    >
-                      <OfferCard
-                        entity={entity}
-                        onBookClick={handleBookClick}
-                      />
-                    </motion.div>
-                  ))}
-                </ExperiencesGrid>
-              ) : (
+              {!isLoading && isError && (
                 <EmptyState>
-                  <EmptyIcon>🔍</EmptyIcon>
-                  <EmptyTitle>{t.emptyTitle}</EmptyTitle>
-                  <EmptyText>{t.emptyText}</EmptyText>
-                  <Button
-                    variant="ghost"
-                    size="small"
-                    onClick={() => setFilters(defaultExperiencesFilters)}
-                  >
-                    {t.clearFilters}
+                  <EmptyIcon>⚠️</EmptyIcon>
+                  <EmptyTitle>
+                    {language === 'bg' ? 'Грешка при зареждане' : 'Failed to load experiences'}
+                  </EmptyTitle>
+                  <EmptyText>
+                    {language === 'bg' ? 'Моля, опитайте отново.' : 'Please try again.'}
+                  </EmptyText>
+                  <Button variant="ghost" size="small" onClick={() => refetch()}>
+                    {language === 'bg' ? 'Опитай отново' : 'Try again'}
                   </Button>
                 </EmptyState>
+              )}
+
+              {!isLoading && !isError && sourceEntities.length === 0 && (
+                <EmptyState>
+                  <EmptyIcon>🌟</EmptyIcon>
+                  <EmptyTitle>
+                    {language === 'bg' ? 'Няма налични изживявания' : 'No experiences available'}
+                  </EmptyTitle>
+                  <EmptyText>
+                    {language === 'bg' ? 'Разгледайте нашите оферти и локации.' : 'Browse our offers and locations.'}
+                  </EmptyText>
+                  <Button variant="ghost" size="small" onClick={() => navigate('/offers')}>
+                    {language === 'bg' ? 'Разгледай оферти' : 'Browse offers'}
+                  </Button>
+                </EmptyState>
+              )}
+
+              {!isLoading && !isError && sourceEntities.length > 0 && (
+                <>
+                  <ResultsHeader>
+                    <ResultCount>{t.results(filteredEntities.length)}</ResultCount>
+                  </ResultsHeader>
+
+                  {filteredEntities.length > 0 ? (
+                    <ExperiencesGrid>
+                      {filteredEntities.map((entity, index) => (
+                        <motion.div
+                          key={entity.id}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.4, delay: index * 0.08 }}
+                        >
+                          <OfferCard
+                            entity={entity}
+                            onBookClick={handleBookClick}
+                          />
+                        </motion.div>
+                      ))}
+                    </ExperiencesGrid>
+                  ) : (
+                    <EmptyState>
+                      <EmptyIcon>🔍</EmptyIcon>
+                      <EmptyTitle>{t.emptyTitle}</EmptyTitle>
+                      <EmptyText>{t.emptyText}</EmptyText>
+                      <Button
+                        variant="ghost"
+                        size="small"
+                        onClick={() => setFilters(defaultExperiencesFilters)}
+                      >
+                        {t.clearFilters}
+                      </Button>
+                    </EmptyState>
+                  )}
+                </>
               )}
             </MainContent>
           </LayoutGrid>
