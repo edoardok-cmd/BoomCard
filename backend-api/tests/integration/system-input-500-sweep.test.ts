@@ -10,6 +10,8 @@
  *   INV-SYS-027 — GET  /api/integrations/available/:id, unknown id → 404 (never 500)
  *   INV-SYS-028 — POST /api/webhooks/stripe & /api/email/inbound, malformed body → 4xx (auth rejects first)
  *   INV-SYS-029 — POST /api/email/inbound, authed (dev bypass) invalid payload → 400 + required[]
+ *   INV-SYS-032 — POST /api/webhooks/stripe & /api/email/inbound, oversized body (> body-parser limit)
+ *                 → clean 413, never a 500 + stack/absolute-path leak (PayloadTooLargeError class)
  *
  * The core invariant is "never 500". Exact positive codes are asserted only on
  * the fixture-free, no-auth rows.
@@ -162,5 +164,49 @@ describe('System INPUT sweep — malformed input never 500s', () => {
       .set('Content-Type', 'application/json')
       .send(Buffer.from('{ broken json'));
     expect(res.status).toBeLessThan(500);
+  });
+});
+
+// INV-SYS-032: an oversized request body (exceeding the express.json / express.raw
+// limit) is thrown by body-parser (raw-body → PayloadTooLargeError, type
+// 'entity.too.large') BEFORE any route/auth/signature code runs. It must map to a
+// clean 413, never fall through to the default 500 + dev `stack` that discloses
+// absolute server paths. Reachable UNAUTHENTICATED on both public system POST
+// routes. Regression guard for the R10 finding (was 500 + /Users/...raw-body stack).
+describe('[INV-SYS-032] oversized request body → clean 413, no stack / path leak', () => {
+  // > 10mb (server.ts mounts express.json({ limit: '10mb' })). Build the raw bytes
+  // directly so supertest sends them verbatim without re-serializing a giant object.
+  const oversizedJson = `{"x":"${'A'.repeat(11 * 1024 * 1024)}"}`;
+
+  const assertCleanTooLarge = (res: request.Response) => {
+    // (a) wrong-status: a client size error must be 413, never a 5xx server fault
+    //     (environment-independent — true in prod too).
+    expect(res.status).toBe(413);
+    expect(res.status).not.toBe(500);
+    // (b) info-leak: no stack field, no absolute path / module path / source-file
+    //     disclosure anywhere in the body (dev-gated, but must never leak).
+    expect(res.body).not.toHaveProperty('stack');
+    const blob = JSON.stringify(res.body ?? {}) + String(res.text ?? '');
+    expect(blob).not.toMatch(/PayloadTooLargeError/);
+    expect(blob).not.toMatch(/\/Users\//);
+    expect(blob).not.toMatch(/node_modules/);
+    expect(blob).not.toMatch(/\.(t|j)s:\d+/); // e.g. raw-body/index.js:163
+  };
+
+  test('POST /api/email/inbound oversized JSON body → 413, no leak', async () => {
+    const res = await request(app)
+      .post('/api/email/inbound')
+      .set('Content-Type', 'application/json')
+      .send(oversizedJson);
+    assertCleanTooLarge(res);
+  });
+
+  test('POST /api/webhooks/stripe oversized JSON body → 413, no leak', async () => {
+    const res = await request(app)
+      .post('/api/webhooks/stripe')
+      .set('Content-Type', 'application/json')
+      .set('stripe-signature', 't=1,v1=deadbeef')
+      .send(oversizedJson);
+    assertCleanTooLarge(res);
   });
 });

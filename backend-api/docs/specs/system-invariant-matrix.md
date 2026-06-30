@@ -92,6 +92,7 @@
 | INV-SYS-027 | `GET /api/integrations/available/:id` with an unknown id → 404 | `system-input-500-sweep` |
 | INV-SYS-028 | Malformed body on the pre-auth stripe / email webhook routes → 400/401, never 500 | `system-input-500-sweep` |
 | INV-SYS-029 | `POST /api/email/inbound` with an invalid payload → 400 + a `required[]` list | `system-input-500-sweep` |
+| INV-SYS-032 | An oversized request body (exceeding the `express.json`/`express.raw` `limit`, raising body-parser's `PayloadTooLargeError` / `type === 'entity.too.large'` before any route/auth code) on ANY system route — incl. the unauthenticated `POST /api/webhooks/stripe` and `POST /api/email/inbound` — → clean **413** with an opaque body and **no `stack` / no absolute path**, never a default 500 + dev stack | `system-input-500-sweep` |
 
 ---
 
