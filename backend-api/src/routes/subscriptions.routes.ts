@@ -8,6 +8,7 @@ import { prisma } from '../lib/prisma';
 import { payseraService } from '../services/paysera.service';
 import crypto from 'crypto';
 import { logger } from '../utils/logger';
+import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 const router = Router();
 
@@ -146,7 +147,18 @@ router.get('/current', authenticate, asyncHandler(async (req: AuthRequest, res: 
   }
 
   res.json({
-    ...subscription,
+    id: subscription.id,
+    plan: subscription.plan,
+    status: subscription.status,
+    currentPeriodStart: subscription.currentPeriodStart,
+    currentPeriodEnd: subscription.currentPeriodEnd,
+    cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+    cancelAt: subscription.cancelAt,
+    trialStart: subscription.trialStart,
+    trialEnd: subscription.trialEnd,
+    autoRenewal: subscription.autoRenewal,
+    pauseEndsAt: subscription.pauseEndsAt,
+    createdAt: subscription.createdAt,
     paymentMethod,
     benefits: await subscriptionService.getPlanBenefits(subscription.plan),
   });
@@ -183,13 +195,15 @@ router.get('/history', authenticate, asyncHandler(async (req: AuthRequest, res: 
       },
     });
 
+    const showDualCurrency = await isCurrencyTransitionWindowOpen();
+
     const history = transactions.map(t => {
       const meta = t.metadata ? JSON.parse(t.metadata as string) : {};
       return {
         id: t.id,
         date: t.createdAt.toISOString(),
-        amount: t.amount,
-        currency: t.currency,
+        amount: toDualCurrency(t.amount, showDualCurrency),
+        currency: showDualCurrency ? t.currency : 'EUR',
         status: t.status.toLowerCase(),
         description: t.description,
         orderId: meta.orderId,
@@ -213,10 +227,16 @@ router.get('/history', authenticate, asyncHandler(async (req: AuthRequest, res: 
           if (billingPeriod.includes('year')) return plan.priceYearlyEur ?? plan.priceMonthlyEur ?? 0;
           return plan.priceMonthlyEur ?? 0;
         })();
+        // T9 synthetic entry: plan prices are stored in EUR (not BGN), so we
+        // build the display object directly rather than routing through
+        // toDualCurrency (which assumes BGN input and would mis-convert).
+        // windowOpen is forced false: no BGN source exists for this EUR-native
+        // price, so there is nothing to show even when the transition window is open.
+        const eurAmount = priceInCents / 100;
         history.push({
           id: subscription.payseraOrderId,
           date: subscription.currentPeriodStart.toISOString(),
-          amount: priceInCents / 100,
+          amount: { bgn: null, eur: eurAmount, windowOpen: false },
           currency: 'EUR',
           status: 'completed',
           description: `Subscription: ${plan.displayName}`,

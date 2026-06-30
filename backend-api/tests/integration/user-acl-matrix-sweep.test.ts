@@ -171,3 +171,56 @@ describe('INV-USER-ACL-002 — permissions-by-subscription-status matrix', () =>
     });
   });
 });
+
+describe('INV-USER-SUB-011 — GET /subscriptions/current must not expose internal billing/dunning fields', () => {
+  let userId: string;
+  let token: string;
+
+  const INTERNAL_FIELDS = [
+    'stripeSubscriptionId',
+    'stripePriceId',
+    'stripeCustomerId',
+    'payseraOrderId',
+    'metadata',
+    'retryAttempt',
+    'failedPaymentAt',
+    'failedPaymentClearedAt',
+    'renewalRemindersSent',
+    'lastRenewalReminderSentAt',
+    'trialRefundEligibleUntil',
+    'trialRefundUsed',
+    'canceledAt',
+    'planId',
+    'userId',
+    'updatedAt',
+  ];
+
+  beforeAll(async () => {
+    const u = await createTestUser();
+    userId = u.user.id;
+    token = u.accessToken;
+    await createTestSubscription(userId, 'BASIC', 'ACTIVE');
+  });
+
+  afterAll(async () => {
+    await cleanupTestUser(userId);
+  });
+
+  it('[SUB-011] GET /subscriptions/current returns 200 with a subscription', async () => {
+    const res = await authRequest(token).get('/api/subscriptions/current');
+    expect(res.status).toBe(200);
+    // Either hasSubscription is not false, or id is present
+    const body = res.body;
+    const hasSubscription = body.hasSubscription !== false && (body.id !== undefined || body.hasSubscription === true);
+    expect(hasSubscription).toBe(true);
+  });
+
+  it('[SUB-011] GET /subscriptions/current must not expose internal billing/dunning fields', async () => {
+    const res = await authRequest(token).get('/api/subscriptions/current');
+    expect(res.status).toBe(200);
+    const body = res.body;
+    for (const field of INTERNAL_FIELDS) {
+      expect(body).not.toHaveProperty(field);
+    }
+  });
+});
