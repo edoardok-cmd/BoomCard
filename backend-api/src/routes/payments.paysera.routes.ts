@@ -18,6 +18,7 @@ import crypto from 'crypto';
 import { z } from 'zod';
 import { paymentRateLimiter } from '../middleware/security.middleware';
 import { parsePagination } from '../utils/pagination';
+import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 import { detach } from '../utils/detach';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production'
@@ -598,6 +599,7 @@ router.get(
     const { take: limitVal, skip: offsetVal } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     try {
+      const showDualCurrency = await isCurrencyTransitionWindowOpen();
       const transactions = await prisma.transaction.findMany({
         where: {
           userId: user.id,
@@ -622,8 +624,8 @@ router.get(
         data: transactions.map(t => ({
           id: t.id,
           orderId: t.metadata ? (JSON.parse(t.metadata as string) as any)?.orderId : undefined,
-          amount: t.amount,
-          currency: t.currency,
+          amount: toDualCurrency(t.amount, showDualCurrency),
+          currency: showDualCurrency ? t.currency : 'EUR',
           status: t.status.toLowerCase(),
           description: t.description,
           createdAt: t.createdAt,

@@ -69,6 +69,7 @@ beforeAll(async () => {
         balanceBefore: 0,
         balanceAfter: 1234,
         currency: 'BGN',
+        status: 'COMPLETED' as any,
         cashbackStatus: 'CLEARED' as any,
         description: 'seed-cleared',
       },
@@ -89,6 +90,20 @@ beforeAll(async () => {
     ],
     skipDuplicates: true,
   });
+
+  // Seed a WALLET_TOPUP Transaction so /api/payments/history returns non-zero amount
+  await prisma.transaction.create({
+    data: {
+      userId,
+      type: 'WALLET_TOPUP' as any,
+      amount: 55.55,
+      currency: 'BGN',
+      status: 'COMPLETED' as any,
+      paymentMethod: 'BANK_TRANSFER' as any,
+      description: 'seed-topup',
+      metadata: JSON.stringify({ orderId: 'seed-order-001' }),
+    },
+  });
 }, 60_000);
 
 afterAll(async () => {
@@ -97,13 +112,11 @@ afterAll(async () => {
 }, 30_000);
 
 // Endpoints that route money fields through the dual-currency formatter.
-// Only include endpoints that are actually gated — ungated endpoints return
-// zero-valued balances in the test fixture and give a false-green pass.
-// /api/wallet/statistics and /api/payments/history return raw BGN scalars
-// (pre-existing gap, separate tasks pending); they are excluded here.
 const MONEY_ENDPOINTS = [
   '/api/wallet/balance',
   '/api/wallet/transactions',
+  '/api/wallet/statistics',
+  '/api/payments/history',
 ];
 
 // Detect a raw BGN scalar: a `currency:"BGN"` paired with a raw numeric amount,
@@ -112,7 +125,7 @@ function findRawBgnLeak(node: any, path = '$'): string[] {
   const leaks: string[] = [];
   // Genuine money fields only. Bare `total`/`count`/`page` are pagination
   // scalars, not currency — excluded to avoid false positives.
-  const MONEY_KEYS = /^(amount|balance|balanceBefore|balanceAfter|availableBalance|pendingBalance|expiringBalance|totalAmount|verifiedAmount|payoutAmount|cashbackAmount)$/i;
+  const MONEY_KEYS = /^(amount|balance|balanceBefore|balanceAfter|currentBalance|availableBalance|pendingBalance|expiringBalance|totalCashback|totalTopups|totalSpent|totalAmount|verifiedAmount|payoutAmount|cashbackAmount)$/i;
   function walk(n: any, p: string) {
     if (n == null) return;
     if (Array.isArray(n)) { n.forEach((v, i) => walk(v, `${p}[${i}]`)); return; }

@@ -7,6 +7,8 @@ import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { WalletTransactionStatus, WalletTransactionType } from '@prisma/client';
 import { parsePagination } from '../utils/pagination';
+import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
@@ -142,41 +144,58 @@ router.put('/payout-account', asyncHandler(async (req: AuthRequest, res: Respons
  */
 router.get('/statistics', asyncHandler(async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
-  const wallet = await walletService.getOrCreateWallet(userId);
 
-  const stats = await prisma.walletTransaction.groupBy({
-    by: ['type'],
-    where: {
-      walletId: wallet.id,
-      status: WalletTransactionStatus.COMPLETED,
-    },
-    _sum: {
-      amount: true,
-    },
-    _count: true,
-  });
+  try {
+    const wallet = await walletService.getOrCreateWallet(userId);
 
-  const totalCashback = stats
-    .filter(s => s.type === WalletTransactionType.CASHBACK_CREDIT)
-    .reduce((sum, s) => sum + (s._sum.amount || 0), 0);
+    const stats = await prisma.walletTransaction.groupBy({
+      by: ['type'],
+      where: {
+        walletId: wallet.id,
+        status: WalletTransactionStatus.COMPLETED,
+      },
+      _sum: {
+        amount: true,
+      },
+      _count: true,
+    });
 
-  const totalTopups = stats
-    .filter(s => s.type === WalletTransactionType.TOP_UP)
-    .reduce((sum, s) => sum + (s._sum.amount || 0), 0);
+    const totalCashback = stats
+      .filter(s => s.type === WalletTransactionType.CASHBACK_CREDIT)
+      .reduce((sum, s) => sum + (s._sum.amount || 0), 0);
 
-  const totalSpent = stats
-    .filter(s => s.type === WalletTransactionType.PURCHASE)
-    .reduce((sum, s) => sum + Math.abs(s._sum.amount || 0), 0);
+    const totalTopups = stats
+      .filter(s => s.type === WalletTransactionType.TOP_UP)
+      .reduce((sum, s) => sum + (s._sum.amount || 0), 0);
 
-  res.json({
-    totalCashback,
-    totalTopups,
-    totalSpent,
-    currentBalance: wallet.balance,
-    availableBalance: wallet.availableBalance,
-    pendingBalance: wallet.pendingBalance,
-    transactionsByType: stats,
-  });
+    const totalSpent = stats
+      .filter(s => s.type === WalletTransactionType.PURCHASE)
+      .reduce((sum, s) => sum + Math.abs(s._sum.amount || 0), 0);
+
+    const showDualCurrency = await isCurrencyTransitionWindowOpen();
+
+    res.json({
+      totalCashback: toDualCurrency(totalCashback, showDualCurrency),
+      totalTopups: toDualCurrency(totalTopups, showDualCurrency),
+      totalSpent: toDualCurrency(totalSpent, showDualCurrency),
+      currentBalance: toDualCurrency(wallet.balance, showDualCurrency),
+      availableBalance: toDualCurrency(wallet.availableBalance, showDualCurrency),
+      pendingBalance: toDualCurrency(wallet.pendingBalance, showDualCurrency),
+      transactionsByType: stats.map(s => ({
+        ...s,
+        _sum: {
+          amount: s._sum.amount != null ? toDualCurrency(s._sum.amount, showDualCurrency) : null,
+        },
+      })),
+      currency: showDualCurrency ? 'BGN' : 'EUR',
+    });
+  } catch (error: any) {
+    logger.error('Error fetching wallet statistics:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch wallet statistics',
+    });
+  }
 }));
 
 export default router;
