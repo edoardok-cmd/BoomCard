@@ -57,7 +57,10 @@ jest.mock('../../src/middleware/auth.middleware', () => ({
   // ARO scan-write gate added requireActiveAdmin to admin/approve|reject|bulk-* routes;
   // pass-through keeps the route stack intact (this suite tests routing logic, not admin-active gating).
   requireActiveAdmin: (_req: any, _res: any, next: any) => next(),
-  AuthRequest: {},
+  // stickers.routes does not use optionalAuthenticate today, but the export must
+  // be present so the keyset guard below catches future module drift before it
+  // silently drops tests (the same trap that zeroed §5 QR-auth coverage).
+  optionalAuthenticate: (_req: any, _res: any, next: any) => next(),
 }));
 
 jest.mock('../../src/middleware/partnerStatus.middleware', () => ({
@@ -574,5 +577,23 @@ describe('§5.5 — fraudDetectionService.updateVenueConfig weight/threshold val
     await expect(
       fraudDetectionService.updateVenueConfig('v1', { templateFraudPoints: 0 })
     ).resolves.toBeDefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KEYSET GUARD — ensures mock exports match the real module so future additions
+// to auth.middleware surface as an explicit failure rather than a silent test-
+// load crash (the pattern that zeroed §5 QR-auth coverage across audit history).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('auth.middleware mock keyset guard', () => {
+  it('mock export keys match the real module runtime exports', () => {
+    const real = jest.requireActual('../../src/middleware/auth.middleware') as Record<string, unknown>;
+    const mock = jest.requireMock('../../src/middleware/auth.middleware') as Record<string, unknown>;
+    // TypeScript interfaces (e.g. AuthRequest) are erased at runtime and must not
+    // appear in either set; we compare only the runtime (function/value) exports.
+    const realKeys = Object.keys(real).sort();
+    const mockKeys = Object.keys(mock).sort();
+    expect(mockKeys).toEqual(realKeys);
   });
 });
