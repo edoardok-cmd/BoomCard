@@ -16,6 +16,16 @@ function r2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+function safeParseJsonArray(raw: string | null | undefined): unknown[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function eurToBgn(eurAmount: number | null, windowOpen: boolean): number | null {
   if (!windowOpen || eurAmount === null) return null;
   return r2(eurAmount * EUR_TO_BGN_RATE);
@@ -84,8 +94,8 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     },
     cashbackRate: plan.cashbackRate,
     stickerBonus: plan.stickerBonus,
-    features: plan.features ? JSON.parse(plan.features) : [],
-    featuresBg: plan.featuresBg ? JSON.parse(plan.featuresBg) : [],
+    features: safeParseJsonArray(plan.features),
+    featuresBg: safeParseJsonArray(plan.featuresBg),
     cardType: plan.cardType,
     isFeatured: plan.isFeatured,
     badge: plan.badgeText ? {
@@ -155,8 +165,8 @@ router.get('/code/:planCode', asyncHandler(async (req: Request, res: Response) =
       },
       cashbackRate: plan.cashbackRate,
       stickerBonus: plan.stickerBonus,
-      features: plan.features ? JSON.parse(plan.features) : [],
-      featuresBg: plan.featuresBg ? JSON.parse(plan.featuresBg) : [],
+      features: safeParseJsonArray(plan.features),
+      featuresBg: safeParseJsonArray(plan.featuresBg),
       cardType: plan.cardType,
       isFeatured: plan.isFeatured,
       badge: plan.badgeText ? {
@@ -222,8 +232,8 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
       },
       cashbackRate: plan.cashbackRate,
       stickerBonus: plan.stickerBonus,
-      features: plan.features ? JSON.parse(plan.features) : [],
-      featuresBg: plan.featuresBg ? JSON.parse(plan.featuresBg) : [],
+      features: safeParseJsonArray(plan.features),
+      featuresBg: safeParseJsonArray(plan.featuresBg),
       cardType: plan.cardType,
       isFeatured: plan.isFeatured,
       badge: plan.badgeText ? {
