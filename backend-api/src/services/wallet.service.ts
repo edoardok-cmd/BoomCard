@@ -1519,10 +1519,38 @@ export class WalletService {
           balanceBefore,
           balanceAfter,
           currency,
+          description,
+          metadata,
           ...rest
         } = masked;
+        // INV-USER-PAY-007 / INV-USER-ACL-003 / INV-USER-NOTIF-005:
+        // Two distinct suppression rationales apply to WITHDRAWAL rows:
+        //
+        // 1. description — suppressed ONLY for escalated WITHDRAWAL rows
+        //    (escalatedSecondFailure === true in metadata, spec §3.7).
+        //    Non-escalation WITHDRAWAL rows (e.g. noIbanHold instruction
+        //    string, first-failure FAILED rows) surface description unchanged
+        //    because those are intentional user-facing messages.
+        //
+        // 2. metadata — suppressed for ALL WITHDRAWAL rows regardless of
+        //    escalation status, because PENDING WITHDRAWAL metadata may
+        //    contain callbackSecret / beneficiaryIban (§3.7 + ACL-003 leak
+        //    prevention). This blanket null must remain even when description
+        //    is passed through.
+        const isWithdrawal = masked.type === WalletTransactionType.WITHDRAWAL;
+        let parsedMeta: Record<string, unknown> | null = null;
+        if (isWithdrawal && metadata != null) {
+          try {
+            parsedMeta = typeof metadata === 'string' ? JSON.parse(metadata) : (metadata as Record<string, unknown>);
+          } catch {
+            parsedMeta = null;
+          }
+        }
+        const isEscalated = parsedMeta?.escalatedSecondFailure === true;
         return {
           ...rest,
+          description: isWithdrawal && isEscalated ? null : description,
+          metadata: isWithdrawal ? null : metadata,
           amount: toDualCurrency(amount, showDualCurrency),
           balanceBefore: toDualCurrency(balanceBefore, showDualCurrency),
           balanceAfter: toDualCurrency(balanceAfter, showDualCurrency),

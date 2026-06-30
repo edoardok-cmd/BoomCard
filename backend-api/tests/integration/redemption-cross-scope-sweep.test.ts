@@ -22,9 +22,11 @@
  *   INV-RDM-069 — Bookings cross-tenant isolation (user B cannot read/mutate user A's booking)
  *   INV-RDM-070 — Messaging participant isolation (non-participant 403, no admin bypass, author-only PATCH/DELETE)
  *   INV-RDM-071 — Bookings partner-status cross-tenant isolation (GET /api/bookings/partner scoped to own partner; PATCH /api/bookings/partner/:id/status cross-tenant 403)
+ *   INV-RDM-074 — GET /api/messaging/unread-count self-scope (401 unauth; own unread only; own sent excluded; foreign conv does not leak)
  *
  *   AUTH class (MEDIUM):
  *   INV-RDM-072 — POST /api/bookings/ requires active subscription + validates input/partner/venue ownership; userId server-derived
+ *   INV-RDM-073 — POST /api/messaging/conversations validates type-enum/title/participants/DIRECT-cardinality; creator server-derived (no IDOR); TOCTOU-dedup idempotent
  *
  *   LIFECYCLE class:
  *   INV-RDM-045 — GET /api/bookings/ returns 200 with owner-scoped pagination (active-admin-only bypass)
@@ -1295,5 +1297,213 @@ describe('requireActiveAdmin — inactive admin (aro=true) cannot mutate venues'
   it('[POSITIVE] Inactive admin can still read venues — GET /api/venues/:id returns 200 or 404', async () => {
     const res = await authRequest(inactiveAdminToken).get(`/api/venues/${venueAId}`);
     expect([200, 404]).toContain(res.status);
+  });
+});
+
+// ─── INV-RDM-073: POST /api/messaging/conversations input gates + server-derived creator ─────────
+
+describe('INV-RDM-073 — POST /api/messaging/conversations validates type-enum/title/participants/cardinality; creator server-derived', () => {
+  // Fresh user for the positive-creation test — guarantees no pre-existing conversation
+  // with userA (avoids the INV-RDM-070 setup creating a userA-userB conv first).
+  let conv073UserId: string;
+  let createdConv073Id: string | undefined;
+
+  beforeAll(async () => {
+    const { user } = await createTestUser();
+    conv073UserId = user.id;
+    cleanupUserIds.push(conv073UserId);
+    await prisma.user.update({ where: { id: conv073UserId }, data: { status: 'ACTIVE' } });
+  }, 15_000);
+
+  afterAll(async () => {
+    if (createdConv073Id) {
+      await prisma.conversationParticipant.deleteMany({ where: { conversationId: createdConv073Id } }).catch(() => {});
+      await prisma.conversation.delete({ where: { id: createdConv073Id } }).catch(() => {});
+    }
+  }, 20_000);
+
+  it('[AUTH] INV-RDM-073: unauthenticated caller gets 401 on POST /api/messaging/conversations', async () => {
+    const res = await request(app)
+      .post('/api/messaging/conversations')
+      .send({ participantIds: [userBUserId] });
+    expect(res.status).toBe(401);
+  });
+
+  it('[VALIDATION] INV-RDM-073: invalid type value returns 400', async () => {
+    const res = await authRequest(userAToken)
+      .post('/api/messaging/conversations')
+      .send({ type: 'INVALID_TYPE', participantIds: [userBUserId] });
+    expect(res.status).toBe(400);
+  });
+
+  it('[VALIDATION] INV-RDM-073: title exceeding 200 chars returns 400', async () => {
+    const res = await authRequest(userAToken)
+      .post('/api/messaging/conversations')
+      .send({ type: 'GROUP', title: 'x'.repeat(201), participantIds: [userBUserId] });
+    expect(res.status).toBe(400);
+  });
+
+  it('[VALIDATION] INV-RDM-073: missing participantIds field returns 400', async () => {
+    const res = await authRequest(userAToken)
+      .post('/api/messaging/conversations')
+      .send({ type: 'DIRECT' });
+    expect(res.status).toBe(400);
+  });
+
+  it('[VALIDATION] INV-RDM-073: empty participantIds array returns 400', async () => {
+    const res = await authRequest(userAToken)
+      .post('/api/messaging/conversations')
+      .send({ type: 'DIRECT', participantIds: [] });
+    expect(res.status).toBe(400);
+  });
+
+  it('[VALIDATION] INV-RDM-073: non-DIRECT conversation with >50 participantIds returns 400', async () => {
+    // NOTE: The user-existence check (messaging.routes.ts:262) fires before the ≤50-cap check (L279).
+    // Sending 51 fake-but-valid UUIDs returns 400 from the existence guard (not the cap guard).
+    // This verifies the input-gate sequence rejects oversized GROUP requests; the ≤50-cap guard
+    // itself (L279) requires 50 real user fixtures to test in isolation.
+    const fakeIds = Array.from({ length: 51 }, (_, i) => `00000000-0000-0000-0000-${String(i + 1).padStart(12, '0')}`);
+    const res = await authRequest(userAToken)
+      .post('/api/messaging/conversations')
+      .send({ type: 'GROUP', participantIds: fakeIds });
+    expect(res.status).toBe(400);
+  });
+
+  it('[VALIDATION] INV-RDM-073: non-existent participantId returns 400', async () => {
+    const res = await authRequest(userAToken)
+      .post('/api/messaging/conversations')
+      .send({ participantIds: ['00000000-0000-0000-0000-000000000099'] });
+    expect(res.status).toBe(400);
+  });
+
+  it('[VALIDATION] INV-RDM-073: DIRECT conversation with != 2 participants returns 400', async () => {
+    // userA (creator) + userB + partnerAUser = 3 participants for a DIRECT conv.
+    const res = await authRequest(userAToken)
+      .post('/api/messaging/conversations')
+      .send({ type: 'DIRECT', participantIds: [userBUserId, partnerAUserId] });
+    expect(res.status).toBe(400);
+  });
+
+  it('[POSITIVE] INV-RDM-073: authenticated user creates DIRECT conversation — exactly 201 with server-derived creator as participant', async () => {
+    // Uses conv073UserId (fresh, never paired with userA) so this is guaranteed to be a new
+    // conversation, not an idempotent dedup. Asserts exactly 201 to exercise the create path
+    // (messaging.routes.ts:314–383), not the dedup path.
+    const res = await authRequest(userAToken)
+      .post('/api/messaging/conversations')
+      .send({ type: 'DIRECT', participantIds: [conv073UserId] });
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty('id');
+    expect(res.body).toHaveProperty('participants');
+    // Creator (userA) must be in the participant list even though only conv073UserId was sent.
+    const participantIds = (res.body.participants as Array<{ userId: string }>).map((p) => p.userId);
+    expect(participantIds).toContain(userAUserId);
+    createdConv073Id = res.body.id;
+  });
+
+  it('[POSITIVE] INV-RDM-073: duplicate DIRECT conv request returns 200 idempotent with alreadyExisted:true (TOCTOU dedup)', async () => {
+    // After the positive test above, the userA–conv073User conversation exists.
+    // A second POST for the same pair must return the existing conversation (200 + alreadyExisted:true),
+    // not 201 (which would mean the Serializable dedup regressed and created a duplicate).
+    const res = await authRequest(userAToken)
+      .post('/api/messaging/conversations')
+      .send({ type: 'DIRECT', participantIds: [conv073UserId] });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('id');
+    // messaging.routes.ts:363 — dedup path exclusively sets alreadyExisted:true.
+    // If this is missing or false, the Serializable guard has regressed.
+    expect(res.body.alreadyExisted).toBe(true);
+  });
+});
+
+// ─── INV-RDM-074: GET /api/messaging/unread-count self-scope ─────────────────
+
+describe('INV-RDM-074 — GET /api/messaging/unread-count self-scope', () => {
+  let conv074Id: string;
+  let user074AId: string;
+  let user074AToken: string;
+  let user074BId: string;
+  let user074BToken: string;
+
+  beforeAll(async () => {
+    // Fresh dedicated users to enable tight count assertions — avoids shared-fixture
+    // noise from other describe blocks that also use userA/userB.
+    const a = await createTestUser();
+    user074AId = a.user.id;
+    cleanupUserIds.push(user074AId);
+    user074AToken = a.accessToken;
+
+    const b = await createTestUser();
+    user074BId = b.user.id;
+    cleanupUserIds.push(user074BId);
+    user074BToken = b.accessToken;
+
+    // One conversation, one message from A → B.
+    const conv = await prisma.conversation.create({
+      data: { type: 'DIRECT', title: 'RDM-074 unread-count test' },
+    });
+    conv074Id = conv.id;
+
+    await prisma.conversationParticipant.createMany({
+      data: [
+        { conversationId: conv074Id, userId: user074AId, isActive: true },
+        { conversationId: conv074Id, userId: user074BId, isActive: true },
+      ],
+    });
+
+    await prisma.message.create({
+      data: {
+        conversationId: conv074Id,
+        userId: user074AId,
+        content: 'Hello from A (RDM-074)',
+        type: 'TEXT',
+      },
+    });
+  }, 20_000);
+
+  afterAll(async () => {
+    if (conv074Id) {
+      await prisma.message.deleteMany({ where: { conversationId: conv074Id } }).catch(() => {});
+      await prisma.conversationParticipant.deleteMany({ where: { conversationId: conv074Id } }).catch(() => {});
+      await prisma.conversation.delete({ where: { id: conv074Id } }).catch(() => {});
+    }
+  }, 20_000);
+
+  it('[AUTH] INV-RDM-074: unauthenticated call gets 401', async () => {
+    const res = await request(app).get('/api/messaging/unread-count');
+    expect(res.status).toBe(401);
+  });
+
+  it('[XSCOPE] INV-RDM-074: fresh userB count is exactly 1 (only userA message; no foreign leakage)', async () => {
+    const res = await authRequest(user074BToken).get('/api/messaging/unread-count');
+    expect(res.status).toBe(200);
+    expect(res.body.unreadCount).toBe(1);
+  });
+
+  it('[XSCOPE] INV-RDM-074: outsider with no conversations gets unreadCount=0 (no foreign data leaks)', async () => {
+    // Create a fresh user with no conversations to verify foreign conv data does not leak.
+    const { user: outsider, accessToken: outsiderToken } = await createTestUser();
+    cleanupUserIds.push(outsider.id);
+
+    const res = await authRequest(outsiderToken).get('/api/messaging/unread-count');
+    expect(res.status).toBe(200);
+    expect(res.body.unreadCount).toBe(0);
+  });
+
+  it('[XSCOPE] INV-RDM-074: after marking conversation read (lastReadAt after message), count is 0', async () => {
+    // Simulate "read" by setting lastReadAt to now (after the message was created in beforeAll).
+    await prisma.conversationParticipant.updateMany({
+      where: { conversationId: conv074Id, userId: user074BId },
+      data: { lastReadAt: new Date() },
+    });
+
+    const res = await authRequest(user074BToken).get('/api/messaging/unread-count');
+    expect(res.status).toBe(200);
+    expect(res.body.unreadCount).toBe(0);
+
+    // Reset so the tight-count test is not affected if run after this one.
+    await prisma.conversationParticipant.updateMany({
+      where: { conversationId: conv074Id, userId: user074BId },
+      data: { lastReadAt: null },
+    });
   });
 });

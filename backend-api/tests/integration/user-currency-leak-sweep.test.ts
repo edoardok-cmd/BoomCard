@@ -183,3 +183,103 @@ describe('INV-USER-ACL-003 — GET /api/wallet/transactions must not leak admin 
     expect(invalid).toEqual([]);
   });
 });
+
+describe('INV-USER-PAY-007 / INV-USER-ACL-003 / INV-USER-NOTIF-005 — WITHDRAWAL escalation fields must not reach user', () => {
+  /**
+   * Seeds a WITHDRAWAL in RISK_HOLD status with the exact description and metadata
+   * that executePayoutTransfer writes on a second-failure escalation (spec §3.7).
+   * The row is cleaned up after the block — wallet/user cleanup in afterAll handles
+   * any residual rows if the explicit delete fails.
+   */
+  let escalatedTxId: string | null = null;
+
+  beforeAll(async () => {
+    const wallet = await prisma.wallet.upsert({
+      where: { userId },
+      create: { userId, balance: 5000, availableBalance: 5000, currency: 'BGN' },
+      update: {},
+    });
+    const tx = await prisma.walletTransaction.create({
+      data: {
+        walletId: wallet.id,
+        type: 'WITHDRAWAL' as any,
+        status: 'RISK_HOLD' as any,
+        amount: 5000,
+        balanceBefore: 10000,
+        balanceAfter: 5000,
+        currency: 'BGN',
+        description: 'Ескалирано за ръчен преглед след повторен неуспех: test-gateway-error',
+        metadata: JSON.stringify({
+          escalatedSecondFailure: true,
+          escalatedAt: new Date().toISOString(),
+          internalNote: 'admin note should not be visible',
+        }),
+      },
+    });
+    escalatedTxId = tx.id;
+  }, 30_000);
+
+  afterAll(async () => {
+    if (escalatedTxId) {
+      await prisma.walletTransaction.delete({ where: { id: escalatedTxId } }).catch(() => {});
+      escalatedTxId = null;
+    }
+  }, 30_000);
+
+  it('[PAY-007] WITHDRAWAL rows must not expose description containing escalation text, and escalated row status must be masked to PROCESSING', async () => {
+    const res = await authRequest(token).get('/api/wallet/transactions');
+    expect(res.status).toBe(200);
+    const txns: any[] = res.body?.transactions ?? [];
+    const withdrawals = txns.filter((tx: any) => tx.type === 'WITHDRAWAL');
+    // The seeded escalated row must appear (sanity — confirms the seed landed)
+    expect(withdrawals.length).toBeGreaterThan(0);
+    const leaking = withdrawals.filter(
+      (tx: any) =>
+        tx.description != null &&
+        typeof tx.description === 'string' &&
+        tx.description.includes('Ескалирано'),
+    );
+    expect(
+      leaking.length === 0
+        ? 'no leaks'
+        : `${leaking.length} WITHDRAWAL row(s) expose escalation description: ` +
+            leaking.map((tx: any) => JSON.stringify(tx.description)).join(', '),
+    ).toBe('no leaks');
+    // Verify that maskUserFacingPayoutStatus correctly masks the RISK_HOLD
+    // status of the seeded escalated row to PROCESSING (spec §3.7).
+    // A regression in maskUserFacingPayoutStatus would leave the raw RISK_HOLD
+    // status visible to the user, which this assertion catches.
+    const escalatedTx = withdrawals.find((tx: any) => tx.id === escalatedTxId);
+    expect(escalatedTx).toBeDefined();
+    expect(escalatedTx?.status).toBe('PROCESSING');
+  });
+
+  it('[ACL-003/NOTIF-005] WITHDRAWAL rows must not expose metadata with escalation keys', async () => {
+    const res = await authRequest(token).get('/api/wallet/transactions');
+    expect(res.status).toBe(200);
+    const txns: any[] = res.body?.transactions ?? [];
+    const withdrawals = txns.filter((tx: any) => tx.type === 'WITHDRAWAL');
+    expect(withdrawals.length).toBeGreaterThan(0);
+    const leaking = withdrawals.filter((tx: any) => {
+      if (tx.metadata == null) return false;
+      let parsed: any;
+      try {
+        parsed = typeof tx.metadata === 'string' ? JSON.parse(tx.metadata) : tx.metadata;
+      } catch {
+        // raw string metadata that isn't JSON also leaks if present
+        return true;
+      }
+      return (
+        parsed.escalatedSecondFailure !== undefined ||
+        parsed.escalatedAt !== undefined ||
+        parsed.internalNote !== undefined
+      );
+    });
+    expect(
+      leaking.length === 0
+        ? 'no leaks'
+        : `${leaking.length} WITHDRAWAL row(s) expose escalation metadata keys: ` +
+            leaking.map((tx: any) => JSON.stringify(tx.metadata)).join(', '),
+    ).toBe('no leaks');
+  });
+});
