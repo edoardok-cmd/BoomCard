@@ -23,10 +23,16 @@
  *   INV-RDM-070 — Messaging participant isolation (non-participant 403, no admin bypass, author-only PATCH/DELETE)
  *   INV-RDM-071 — Bookings partner-status cross-tenant isolation (GET /api/bookings/partner scoped to own partner; PATCH /api/bookings/partner/:id/status cross-tenant 403)
  *   INV-RDM-074 — GET /api/messaging/unread-count self-scope (401 unauth; own unread only; own sent excluded; foreign conv does not leak)
+ *   INV-RDM-077 — GET /api/messaging/conversations/:id/messages `before` cursor cross-conversation IDOR guard (cursor from conv B rejected 400 when fetching conv A)
  *
  *   AUTH class (MEDIUM):
  *   INV-RDM-072 — POST /api/bookings/ requires active subscription + validates input/partner/venue ownership; userId server-derived
  *   INV-RDM-073 — POST /api/messaging/conversations validates type-enum/title/participants/DIRECT-cardinality; creator server-derived (no IDOR); TOCTOU-dedup idempotent
+ *
+ *   INPUT class (MEDIUM/LOW):
+ *   INV-RDM-075 — POST /api/messaging/conversations/:id/messages content gate (required/non-empty/≤10000/type-enum)
+ *   INV-RDM-076 — PATCH /api/messaging/messages/:messageId edit gate (content required/≤10000; rejects deleted/non-TEXT messages)
+ *   INV-RDM-078 — PATCH /api/messaging/conversations/:id title gate (missing/blank/>200 → 400)
  *
  *   LIFECYCLE class:
  *   INV-RDM-045 — GET /api/bookings/ returns 200 with owner-scoped pagination (active-admin-only bypass)
@@ -1514,5 +1520,626 @@ describe('INV-RDM-074 — GET /api/messaging/unread-count self-scope', () => {
     const res = await authRequest(user074AToken).get('/api/messaging/unread-count');
     expect(res.status).toBe(200);
     expect(res.body.unreadCount).toBe(0);
+  });
+});
+
+// ─── INV-RDM-077: GET /api/messaging/conversations/:id/messages `before` cursor IDOR guard ──
+
+describe('INV-RDM-077 — GET /api/messaging/conversations/:id/messages before-cursor cross-conversation IDOR guard', () => {
+  // conv077A: conversation where userA is a participant; used as the target of all fetches.
+  // conv077B: second conversation where userA is also a participant; used only to obtain
+  //           a messageId that belongs to a DIFFERENT conversation (the cross-scope cursor).
+  let conv077AId: string;
+  let conv077BId: string;
+  let msg077AId: string; // message in conv A — valid cursor for case 5
+  let msg077BId: string; // message in conv B — cross-conversation cursor for case 2
+
+  beforeAll(async () => {
+    // ── conv077A ──────────────────────────────────────────────────────────────
+    const convA = await prisma.conversation.create({
+      data: { type: 'DIRECT', title: 'RDM-077 conv A' },
+    });
+    conv077AId = convA.id;
+
+    await prisma.conversationParticipant.createMany({
+      data: [
+        { conversationId: conv077AId, userId: userAUserId, isActive: true },
+        { conversationId: conv077AId, userId: userBUserId, isActive: true },
+      ],
+    });
+
+    // Seed a message in conv A (needed for case 5 — valid cursor).
+    const msgA = await prisma.message.create({
+      data: {
+        conversationId: conv077AId,
+        userId: userAUserId,
+        content: 'Seed message in conv A (RDM-077)',
+        type: 'TEXT',
+      },
+    });
+    msg077AId = msgA.id;
+
+    // ── conv077B ──────────────────────────────────────────────────────────────
+    const convB = await prisma.conversation.create({
+      data: { type: 'DIRECT', title: 'RDM-077 conv B' },
+    });
+    conv077BId = convB.id;
+
+    await prisma.conversationParticipant.createMany({
+      data: [
+        { conversationId: conv077BId, userId: userAUserId, isActive: true },
+        { conversationId: conv077BId, userId: userBUserId, isActive: true },
+      ],
+    });
+
+    // Seed a message in conv B — this ID will be supplied as the `before` cursor
+    // when fetching conv A (the cross-conversation IDOR attempt).
+    const msgB = await prisma.message.create({
+      data: {
+        conversationId: conv077BId,
+        userId: userAUserId,
+        content: 'Seed message in conv B (RDM-077)',
+        type: 'TEXT',
+      },
+    });
+    msg077BId = msgB.id;
+  }, 20_000);
+
+  afterAll(async () => {
+    // Clean up messages first (FK), then participants, then conversations.
+    if (conv077AId) {
+      await prisma.message.deleteMany({ where: { conversationId: conv077AId } }).catch(() => {});
+      await prisma.conversationParticipant.deleteMany({ where: { conversationId: conv077AId } }).catch(() => {});
+      await prisma.conversation.delete({ where: { id: conv077AId } }).catch(() => {});
+    }
+    if (conv077BId) {
+      await prisma.message.deleteMany({ where: { conversationId: conv077BId } }).catch(() => {});
+      await prisma.conversationParticipant.deleteMany({ where: { conversationId: conv077BId } }).catch(() => {});
+      await prisma.conversation.delete({ where: { id: conv077BId } }).catch(() => {});
+    }
+  }, 20_000);
+
+  it('[AUTH] INV-RDM-077: unauthenticated call gets 401', async () => {
+    // No token — authenticate middleware must reject before the cursor guard is reached.
+    const res = await request(app).get(`/api/messaging/conversations/${conv077AId}/messages`);
+    expect(res.status).toBe(401);
+  });
+
+  it('[XSCOPE] INV-RDM-077: participant supplies before cursor from a different conversation — 400', async () => {
+    // userA IS a participant in conv077A so assertParticipant passes (→ no 403).
+    // The cursor (msg077BId) belongs to conv077B, not conv077A.
+    // messaging.routes.ts:528–535: findFirst({ where: { id: before, conversationId: id } })
+    // returns null → AppError 400 "Cursor message not found".
+    const res = await authRequest(userAToken)
+      .get(`/api/messaging/conversations/${conv077AId}/messages`)
+      .query({ before: msg077BId });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/cursor message not found/i);
+  });
+
+  it('[VALIDATION] INV-RDM-077: participant supplies a random UUID before cursor (no such message) — 400', async () => {
+    // A cursor that does not exist anywhere must also be rejected with 400.
+    const nonExistentId = '00000000-0000-4000-a000-000000000099';
+    const res = await authRequest(userAToken)
+      .get(`/api/messaging/conversations/${conv077AId}/messages`)
+      .query({ before: nonExistentId });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/cursor message not found/i);
+  });
+
+  it('[POSITIVE] INV-RDM-077: participant fetches with no cursor — 200 with data array and hasMore boolean', async () => {
+    // No `before` param — baseline fetch proving the route itself works for this user.
+    const res = await authRequest(userAToken).get(`/api/messaging/conversations/${conv077AId}/messages`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(typeof res.body.hasMore).toBe('boolean');
+  });
+
+  it('[POSITIVE] INV-RDM-077: participant fetches with valid before cursor from THIS conversation — 200 empty page', async () => {
+    // msg077AId is the only message in conv077A. cursor + skip:1 must return an empty page.
+    // The guard passes (same-conv cursor) and hasMore must be false.
+    const res = await authRequest(userAToken)
+      .get(`/api/messaging/conversations/${conv077AId}/messages`)
+      .query({ before: msg077AId });
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBe(0);
+    expect(res.body.hasMore).toBe(false);
+  });
+});
+
+// ─── INV-RDM-079: Partner-status terminal-state guard (409) ──────────────────
+
+describe('INV-RDM-079 — PATCH /api/bookings/partner/:id/status rejects transitions from terminal states', () => {
+  let partnerA079PartnerId: string;
+  let booking079CancelledId: string;
+  let booking079CompletedId: string;
+  let booking079NoShowId: string;
+  let booking079PendingId: string;
+
+  beforeAll(async () => {
+    const partnerA = await prisma.partner.findFirstOrThrow({ where: { userId: partnerAUserId } });
+    partnerA079PartnerId = partnerA.id;
+
+    const makeBooking = (status: string) => prisma.booking.create({
+      data: {
+        userId: userAUserId,
+        partnerId: partnerA079PartnerId,
+        venueId: venueAId,
+        bookingDate: new Date(Date.now() + 86400000),
+        bookingTime: '18:00',
+        guestCount: 2,
+        confirmationCode: `RDM079-${status}-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+        status,
+      },
+      select: { id: true },
+    });
+
+    booking079CancelledId = (await makeBooking('CANCELLED')).id;
+    booking079CompletedId = (await makeBooking('COMPLETED')).id;
+    booking079NoShowId = (await makeBooking('NO_SHOW')).id;
+    booking079PendingId = (await makeBooking('PENDING')).id;
+  }, 15_000);
+
+  afterAll(async () => {
+    for (const id of [booking079CancelledId, booking079CompletedId, booking079NoShowId, booking079PendingId]) {
+      if (id) await prisma.booking.delete({ where: { id } }).catch(() => {});
+    }
+  });
+
+  it('[LIFECYCLE] INV-RDM-079: PATCH partner/:id/status on CANCELLED booking returns 409', async () => {
+    const res = await authRequest(partnerAToken)
+      .patch(`/api/bookings/partner/${booking079CancelledId}/status`)
+      .send({ status: 'CONFIRMED' });
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('[LIFECYCLE] INV-RDM-079: PATCH partner/:id/status on COMPLETED booking returns 409', async () => {
+    const res = await authRequest(partnerAToken)
+      .patch(`/api/bookings/partner/${booking079CompletedId}/status`)
+      .send({ status: 'CONFIRMED' });
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('[LIFECYCLE] INV-RDM-079: PATCH partner/:id/status on NO_SHOW booking returns 409', async () => {
+    const res = await authRequest(partnerAToken)
+      .patch(`/api/bookings/partner/${booking079NoShowId}/status`)
+      .send({ status: 'CONFIRMED' });
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('[POSITIVE] INV-RDM-079: PATCH partner/:id/status on PENDING booking succeeds (200)', async () => {
+    const res = await authRequest(partnerAToken)
+      .patch(`/api/bookings/partner/${booking079PendingId}/status`)
+      .send({ status: 'CONFIRMED' });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.status).toBe('CONFIRMED');
+  });
+});
+
+// ─── INV-RDM-080: Owner booking mutation restricted to non-terminal state ─────
+
+describe('INV-RDM-080 — PATCH/DELETE /api/bookings/:id restricted to non-terminal state', () => {
+  let partnerA080PartnerId: string;
+  let booking080PendingPatchId: string;
+  let booking080ConfirmedId: string;
+  let booking080CancelledId: string;
+  let booking080CompletedId: string;
+  let booking080NoShowId: string;
+  let booking080PendingDeleteId: string;
+
+  beforeAll(async () => {
+    const partnerA = await prisma.partner.findFirstOrThrow({ where: { userId: partnerAUserId } });
+    partnerA080PartnerId = partnerA.id;
+
+    const makeBooking = (status: string, tag: string) => prisma.booking.create({
+      data: {
+        userId: userAUserId,
+        partnerId: partnerA080PartnerId,
+        venueId: venueAId,
+        bookingDate: new Date(Date.now() + 86400000),
+        bookingTime: '20:00',
+        guestCount: 2,
+        confirmationCode: `RDM080-${tag}-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+        status,
+      },
+      select: { id: true },
+    });
+
+    booking080PendingPatchId = (await makeBooking('PENDING', 'PPATCH')).id;
+    booking080ConfirmedId = (await makeBooking('CONFIRMED', 'CONF')).id;
+    booking080CancelledId = (await makeBooking('CANCELLED', 'CANC')).id;
+    booking080CompletedId = (await makeBooking('COMPLETED', 'COMP')).id;
+    booking080NoShowId = (await makeBooking('NO_SHOW', 'NOSH')).id;
+    booking080PendingDeleteId = (await makeBooking('PENDING', 'PDEL')).id;
+  }, 15_000);
+
+  afterAll(async () => {
+    for (const id of [booking080PendingPatchId, booking080ConfirmedId, booking080CancelledId, booking080CompletedId, booking080NoShowId, booking080PendingDeleteId]) {
+      if (id) await prisma.booking.delete({ where: { id } }).catch(() => {});
+    }
+  });
+
+  it('[LIFECYCLE] INV-RDM-080: PATCH /api/bookings/:id on CONFIRMED booking returns 409 (PENDING-only guard)', async () => {
+    const res = await authRequest(userAToken)
+      .patch(`/api/bookings/${booking080ConfirmedId}`)
+      .send({ guestCount: 5 });
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('[LIFECYCLE] INV-RDM-080: PATCH /api/bookings/:id on CANCELLED booking returns 409 (PENDING-only guard)', async () => {
+    const res = await authRequest(userAToken)
+      .patch(`/api/bookings/${booking080CancelledId}`)
+      .send({ guestCount: 5 });
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('[LIFECYCLE] INV-RDM-080: PATCH /api/bookings/:id on COMPLETED booking returns 409 (PENDING-only guard)', async () => {
+    const res = await authRequest(userAToken)
+      .patch(`/api/bookings/${booking080CompletedId}`)
+      .send({ guestCount: 5 });
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('[LIFECYCLE] INV-RDM-080: PATCH /api/bookings/:id on NO_SHOW booking returns 409 (PENDING-only guard)', async () => {
+    const res = await authRequest(userAToken)
+      .patch(`/api/bookings/${booking080NoShowId}`)
+      .send({ guestCount: 5 });
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('[POSITIVE] INV-RDM-080: PATCH /api/bookings/:id on PENDING booking succeeds (200)', async () => {
+    const res = await authRequest(userAToken)
+      .patch(`/api/bookings/${booking080PendingPatchId}`)
+      .send({ guestCount: 4 });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.guestCount).toBe(4);
+  });
+
+  it('[LIFECYCLE] INV-RDM-080: DELETE /api/bookings/:id on CANCELLED booking returns 409', async () => {
+    const res = await authRequest(userAToken).delete(`/api/bookings/${booking080CancelledId}`);
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('[LIFECYCLE] INV-RDM-080: DELETE /api/bookings/:id on COMPLETED booking returns 409', async () => {
+    const res = await authRequest(userAToken).delete(`/api/bookings/${booking080CompletedId}`);
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('[LIFECYCLE] INV-RDM-080: DELETE /api/bookings/:id on NO_SHOW booking returns 409', async () => {
+    const res = await authRequest(userAToken).delete(`/api/bookings/${booking080NoShowId}`);
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('[POSITIVE] INV-RDM-080: DELETE /api/bookings/:id on PENDING booking succeeds (200, status set to CANCELLED)', async () => {
+    const res = await authRequest(userAToken).delete(`/api/bookings/${booking080PendingDeleteId}`);
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.status).toBe('CANCELLED');
+  });
+});
+
+// ─── INV-RDM-075: POST /api/messaging/conversations/:id/messages input gates ──
+
+describe('INV-RDM-075 — POST /api/messaging/conversations/:id/messages validates content gate (required/non-empty/≤10000/type-enum)', () => {
+  // Dedicated conversation so positive-control cases create real messages without
+  // polluting the shared fixtures used by INV-RDM-070/074/077.
+  let conv075Id: string;
+  const createdMsg075Ids: string[] = [];
+
+  beforeAll(async () => {
+    const conv = await prisma.conversation.create({
+      data: { type: 'DIRECT', title: 'RDM-075 message-send input gate test' },
+    });
+    conv075Id = conv.id;
+
+    await prisma.conversationParticipant.createMany({
+      data: [
+        { conversationId: conv075Id, userId: userAUserId, isActive: true },
+        { conversationId: conv075Id, userId: userBUserId, isActive: true },
+      ],
+    });
+  }, 15_000);
+
+  afterAll(async () => {
+    if (conv075Id) {
+      if (createdMsg075Ids.length > 0) {
+        await prisma.message.deleteMany({ where: { id: { in: createdMsg075Ids } } }).catch(() => {});
+      }
+      await prisma.conversationParticipant.deleteMany({ where: { conversationId: conv075Id } }).catch(() => {});
+      await prisma.conversation.delete({ where: { id: conv075Id } }).catch(() => {});
+    }
+  }, 20_000);
+
+  it('[AUTH] INV-RDM-075: unauthenticated caller gets 401', async () => {
+    const fakeConvId = '00000000-0000-4000-a000-000000000075';
+    const res = await request(app)
+      .post(`/api/messaging/conversations/${fakeConvId}/messages`)
+      .send({ content: 'hello' });
+    expect(res.status).toBe(401);
+  });
+
+  it('[VALIDATION] INV-RDM-075: missing content field returns 400', async () => {
+    // Content gate fires before assertParticipant — any authenticated caller triggers it.
+    const res = await authRequest(userAToken)
+      .post(`/api/messaging/conversations/${conv075Id}/messages`)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('[VALIDATION] INV-RDM-075: empty string content returns 400', async () => {
+    const res = await authRequest(userAToken)
+      .post(`/api/messaging/conversations/${conv075Id}/messages`)
+      .send({ content: '' });
+    expect(res.status).toBe(400);
+  });
+
+  it('[VALIDATION] INV-RDM-075: whitespace-only content returns 400', async () => {
+    // messaging.routes.ts:578 — content.trim() === '' guard catches whitespace-only strings.
+    const res = await authRequest(userAToken)
+      .post(`/api/messaging/conversations/${conv075Id}/messages`)
+      .send({ content: '   ' });
+    expect(res.status).toBe(400);
+  });
+
+  it('[VALIDATION] INV-RDM-075: content exceeding 10000 chars returns 400', async () => {
+    const res = await authRequest(userAToken)
+      .post(`/api/messaging/conversations/${conv075Id}/messages`)
+      .send({ content: 'x'.repeat(10001) });
+    expect(res.status).toBe(400);
+  });
+
+  it('[POSITIVE] INV-RDM-075: content at exactly 10000 chars is accepted — 201 (boundary)', async () => {
+    // messaging.routes.ts:579 — guard is `> 10000`, so exactly 10000 must succeed.
+    const res = await authRequest(userAToken)
+      .post(`/api/messaging/conversations/${conv075Id}/messages`)
+      .send({ content: 'x'.repeat(10000) });
+    expect(res.status).toBe(201);
+    if (res.body.id) createdMsg075Ids.push(res.body.id);
+  });
+
+  it('[VALIDATION] INV-RDM-075: invalid type enum value returns 400', async () => {
+    // messaging.routes.ts:584 — type must be in MESSAGE_TYPES (TEXT/IMAGE/FILE/SYSTEM).
+    const res = await authRequest(userAToken)
+      .post(`/api/messaging/conversations/${conv075Id}/messages`)
+      .send({ content: 'valid content', type: 'INVALID_TYPE' });
+    expect(res.status).toBe(400);
+  });
+
+  it('[POSITIVE] INV-RDM-075: participant sends valid content without type — 201 with server-set type TEXT', async () => {
+    const res = await authRequest(userAToken)
+      .post(`/api/messaging/conversations/${conv075Id}/messages`)
+      .send({ content: 'Valid message for RDM-075 (default type)' });
+    expect(res.status).toBe(201);
+    expect(res.body.type).toBe('TEXT');
+    expect(res.body.content).toBe('Valid message for RDM-075 (default type)');
+    if (res.body.id) createdMsg075Ids.push(res.body.id);
+  });
+
+  it('[POSITIVE] INV-RDM-075: participant sends valid content with explicit type IMAGE — 201', async () => {
+    // Confirms that non-TEXT valid enum values are accepted (the guard only rejects unknowns).
+    const res = await authRequest(userAToken)
+      .post(`/api/messaging/conversations/${conv075Id}/messages`)
+      .send({ content: 'https://example.com/image.jpg', type: 'IMAGE' });
+    expect(res.status).toBe(201);
+    expect(res.body.type).toBe('IMAGE');
+    if (res.body.id) createdMsg075Ids.push(res.body.id);
+  });
+});
+
+// ─── INV-RDM-076: PATCH /api/messaging/messages/:messageId input + lifecycle gates ──
+
+describe('INV-RDM-076 — PATCH /api/messaging/messages/:messageId validates edit payload and rejects deleted/non-TEXT messages', () => {
+  let conv076Id: string;
+  let msg076TextId: string;    // editable TEXT message by userA (positive case + content validation)
+  let msg076DeletedId: string; // soft-deleted TEXT message by userA (delete-reject case)
+  let msg076ImageId: string;   // IMAGE message by userA (non-TEXT reject case)
+
+  beforeAll(async () => {
+    const conv = await prisma.conversation.create({
+      data: { type: 'DIRECT', title: 'RDM-076 message-edit gate test' },
+    });
+    conv076Id = conv.id;
+
+    await prisma.conversationParticipant.createMany({
+      data: [
+        { conversationId: conv076Id, userId: userAUserId, isActive: true },
+        { conversationId: conv076Id, userId: userBUserId, isActive: true },
+      ],
+    });
+
+    // Three messages owned by userA covering all lifecycle states needed.
+    const textMsg = await prisma.message.create({
+      data: { conversationId: conv076Id, userId: userAUserId, content: 'Editable TEXT (RDM-076)', type: 'TEXT' },
+    });
+    msg076TextId = textMsg.id;
+
+    const deletedMsg = await prisma.message.create({
+      data: {
+        conversationId: conv076Id,
+        userId: userAUserId,
+        content: 'Soft-deleted TEXT (RDM-076)',
+        type: 'TEXT',
+        deletedAt: new Date(),
+      },
+    });
+    msg076DeletedId = deletedMsg.id;
+
+    const imageMsg = await prisma.message.create({
+      data: { conversationId: conv076Id, userId: userAUserId, content: 'IMAGE type (RDM-076)', type: 'IMAGE' },
+    });
+    msg076ImageId = imageMsg.id;
+  }, 20_000);
+
+  afterAll(async () => {
+    if (conv076Id) {
+      await prisma.message.deleteMany({ where: { conversationId: conv076Id } }).catch(() => {});
+      await prisma.conversationParticipant.deleteMany({ where: { conversationId: conv076Id } }).catch(() => {});
+      await prisma.conversation.delete({ where: { id: conv076Id } }).catch(() => {});
+    }
+  }, 20_000);
+
+  it('[AUTH] INV-RDM-076: unauthenticated caller gets 401', async () => {
+    const fakeMsgId = '00000000-0000-4000-a000-000000000076';
+    const res = await request(app)
+      .patch(`/api/messaging/messages/${fakeMsgId}`)
+      .send({ content: 'updated' });
+    expect(res.status).toBe(401);
+  });
+
+  it('[VALIDATION] INV-RDM-076: missing content field returns 400 (fires before message lookup)', async () => {
+    // messaging.routes.ts:620 — content gate fires before prisma.message.findUnique,
+    // so a non-existent message ID is safe to use here.
+    const fakeMsgId = '00000000-0000-4000-a000-000000000076';
+    const res = await authRequest(userAToken)
+      .patch(`/api/messaging/messages/${fakeMsgId}`)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('[VALIDATION] INV-RDM-076: empty content returns 400', async () => {
+    const res = await authRequest(userAToken)
+      .patch(`/api/messaging/messages/${msg076TextId}`)
+      .send({ content: '' });
+    expect(res.status).toBe(400);
+  });
+
+  it('[VALIDATION] INV-RDM-076: whitespace-only content returns 400', async () => {
+    // messaging.routes.ts:620 — `content.trim() === ''` is a distinct branch from `!content`.
+    // INV-RDM-075 already tests this; must also be covered for the edit path.
+    const res = await authRequest(userAToken)
+      .patch(`/api/messaging/messages/${msg076TextId}`)
+      .send({ content: '   ' });
+    expect(res.status).toBe(400);
+  });
+
+  it('[VALIDATION] INV-RDM-076: content exceeding 10000 chars returns 400', async () => {
+    const res = await authRequest(userAToken)
+      .patch(`/api/messaging/messages/${msg076TextId}`)
+      .send({ content: 'z'.repeat(10001) });
+    expect(res.status).toBe(400);
+  });
+
+  it('[POSITIVE] INV-RDM-076: content at exactly 10000 chars is accepted — 200 (boundary)', async () => {
+    // messaging.routes.ts:623 — guard is `> 10000`, so exactly 10000 must succeed.
+    const res = await authRequest(userAToken)
+      .patch(`/api/messaging/messages/${msg076TextId}`)
+      .send({ content: 'y'.repeat(10000) });
+    expect(res.status).toBe(200);
+    expect(res.body.content).toBe('y'.repeat(10000));
+  });
+
+  it('[VALIDATION] INV-RDM-076: editing a soft-deleted message returns 400', async () => {
+    // messaging.routes.ts:640 — deletedAt !== null gate.
+    const res = await authRequest(userAToken)
+      .patch(`/api/messaging/messages/${msg076DeletedId}`)
+      .send({ content: 'trying to revive a deleted message' });
+    expect(res.status).toBe(400);
+  });
+
+  it('[VALIDATION] INV-RDM-076: editing a non-TEXT (IMAGE) message returns 400', async () => {
+    // messaging.routes.ts:643 — type !== TEXT gate; only TEXT messages are editable.
+    const res = await authRequest(userAToken)
+      .patch(`/api/messaging/messages/${msg076ImageId}`)
+      .send({ content: 'trying to edit an image message' });
+    expect(res.status).toBe(400);
+  });
+
+  it('[POSITIVE] INV-RDM-076: author edits own TEXT message with valid content — 200 with updated content and isEdited:true', async () => {
+    const res = await authRequest(userAToken)
+      .patch(`/api/messaging/messages/${msg076TextId}`)
+      .send({ content: 'Edited content (RDM-076 positive)' });
+    expect(res.status).toBe(200);
+    expect(res.body.content).toBe('Edited content (RDM-076 positive)');
+    expect(res.body.isEdited).toBe(true);
+  });
+});
+
+// ─── INV-RDM-078: PATCH /api/messaging/conversations/:id title gate ──────────
+
+describe('INV-RDM-078 — PATCH /api/messaging/conversations/:id validates title field (missing/blank/>200 → 400)', () => {
+  let conv078Id: string;
+
+  beforeAll(async () => {
+    const conv = await prisma.conversation.create({
+      data: { type: 'DIRECT', title: 'RDM-078 title-update gate test' },
+    });
+    conv078Id = conv.id;
+
+    await prisma.conversationParticipant.createMany({
+      data: [
+        { conversationId: conv078Id, userId: userAUserId, isActive: true },
+        { conversationId: conv078Id, userId: userBUserId, isActive: true },
+      ],
+    });
+  }, 15_000);
+
+  afterAll(async () => {
+    if (conv078Id) {
+      await prisma.conversationParticipant.deleteMany({ where: { conversationId: conv078Id } }).catch(() => {});
+      await prisma.conversation.delete({ where: { id: conv078Id } }).catch(() => {});
+    }
+  }, 20_000);
+
+  it('[AUTH] INV-RDM-078: unauthenticated caller gets 401', async () => {
+    const fakeConvId = '00000000-0000-4000-a000-000000000078';
+    const res = await request(app)
+      .patch(`/api/messaging/conversations/${fakeConvId}`)
+      .send({ title: 'new title' });
+    expect(res.status).toBe(401);
+  });
+
+  it('[VALIDATION] INV-RDM-078: missing title field returns 400 ("at least one field must be provided")', async () => {
+    // messaging.routes.ts:435 — title === undefined guard fires after assertParticipant.
+    const res = await authRequest(userAToken)
+      .patch(`/api/messaging/conversations/${conv078Id}`)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('[VALIDATION] INV-RDM-078: blank (whitespace-only) title returns 400', async () => {
+    // messaging.routes.ts:439 — title.trim().length === 0 guard.
+    const res = await authRequest(userAToken)
+      .patch(`/api/messaging/conversations/${conv078Id}`)
+      .send({ title: '   ' });
+    expect(res.status).toBe(400);
+  });
+
+  it('[VALIDATION] INV-RDM-078: title exceeding 200 chars returns 400', async () => {
+    // messaging.routes.ts:444 — title.length > 200 guard.
+    const res = await authRequest(userAToken)
+      .patch(`/api/messaging/conversations/${conv078Id}`)
+      .send({ title: 'T'.repeat(201) });
+    expect(res.status).toBe(400);
+  });
+
+  it('[POSITIVE] INV-RDM-078: title at exactly 200 chars is accepted — 200 (boundary)', async () => {
+    // messaging.routes.ts:444 — guard is `> 200`, so exactly 200 must succeed.
+    const exactTitle = 'T'.repeat(200);
+    const res = await authRequest(userAToken)
+      .patch(`/api/messaging/conversations/${conv078Id}`)
+      .send({ title: exactTitle });
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe(exactTitle);
+  });
+
+  it('[POSITIVE] INV-RDM-078: participant updates title with valid value — 200 with updated title', async () => {
+    const newTitle = 'Updated title (RDM-078 positive)';
+    const res = await authRequest(userAToken)
+      .patch(`/api/messaging/conversations/${conv078Id}`)
+      .send({ title: newTitle });
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe(newTitle);
   });
 });
