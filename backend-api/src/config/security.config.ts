@@ -13,7 +13,6 @@ import {
   apiRateLimiter,
   uploadRateLimiter,
   paymentRateLimiter,
-  sanitizeInput,
   securityHeaders,
   configureTrustProxy,
   requestId,
@@ -63,13 +62,10 @@ export function applySecurityMiddleware(app: Application) {
   // 7. Prevent parameter pollution
   app.use(preventParameterPollution);
 
-  // 8. Input sanitization (after body parsing)
-  app.use(sanitizeInput);
-
-  // 9. Security audit logging
+  // 8. Security audit logging
   app.use(securityAuditLog);
 
-  // 10. JWT format validation (for protected routes)
+  // 9. JWT format validation (for protected routes)
   app.use('/api/', validateJWTFormat);
 
   logger.info('✅ Security middleware applied successfully');

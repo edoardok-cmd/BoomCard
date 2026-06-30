@@ -283,66 +283,6 @@ export const paymentRateLimiter = rateLimit({
 });
 
 /**
- * Request Sanitization Middleware
- * Sanitizes user input to prevent XSS and injection attacks
- */
-export const sanitizeInput = (req: Request, res: Response, next: NextFunction) => {
-  // Sanitize query parameters
-  if (req.query) {
-    Object.keys(req.query).forEach((key) => {
-      if (typeof req.query[key] === 'string') {
-        req.query[key] = sanitizeString(req.query[key] as string);
-      }
-    });
-  }
-
-  // Sanitize body parameters
-  if (req.body && typeof req.body === 'object') {
-    req.body = sanitizeObject(req.body);
-  }
-
-  next();
-};
-
-/**
- * Sanitize string to prevent XSS
- */
-function sanitizeString(str: string): string {
-  return str
-    .replace(/[<>]/g, '') // Remove angle brackets
-    .replace(/javascript:/gi, '') // Remove javascript: protocol
-    .replace(/on\w+\s*=/gi, '') // Remove inline event handlers
-    .trim();
-}
-
-/**
- * Recursively sanitize object
- */
-function sanitizeObject(obj: any): any {
-  if (typeof obj !== 'object' || obj === null) {
-    return obj;
-  }
-
-  if (Array.isArray(obj)) {
-    return obj.map(item => sanitizeObject(item));
-  }
-
-  const sanitized: any = {};
-  for (const key in obj) {
-    if (obj.hasOwnProperty(key)) {
-      if (typeof obj[key] === 'string') {
-        sanitized[key] = sanitizeString(obj[key]);
-      } else if (typeof obj[key] === 'object') {
-        sanitized[key] = sanitizeObject(obj[key]);
-      } else {
-        sanitized[key] = obj[key];
-      }
-    }
-  }
-  return sanitized;
-}
-
-/**
  * Security Headers Middleware
  * Adds additional custom security headers
  */
