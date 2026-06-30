@@ -256,8 +256,8 @@ router.get('/history', authenticate, asyncHandler(async (req: AuthRequest, res: 
   const history = stripeInvoices.data.map(inv => ({
     id: inv.id,
     date: new Date(inv.created * 1000).toISOString(),
-    amount: (inv.amount_paid ?? inv.amount_due ?? 0) / 100,
-    currency: (inv.currency ?? 'eur').toUpperCase(),
+    amount: { bgn: null, eur: (inv.amount_paid ?? inv.amount_due ?? 0) / 100, windowOpen: false },
+    currency: 'EUR',
     status: inv.status ?? 'unknown',
     pdfUrl: inv.invoice_pdf,
   }));

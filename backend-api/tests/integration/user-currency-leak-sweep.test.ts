@@ -29,6 +29,7 @@ import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { invalidateCurrencyDisplayCache } from '../../src/utils/currencyDisplay';
 import { VOID_REASON_CATEGORIES } from '../../src/services/cashbackLifecycle.service';
+import { stripeService } from '../../src/services/stripe.service';
 import {
   createTestUser,
   createTestSubscription,
@@ -104,6 +105,21 @@ beforeAll(async () => {
       metadata: JSON.stringify({ orderId: 'seed-order-001' }),
     },
   });
+
+  // Seed a SUBSCRIPTION Transaction so /api/subscriptions/history Paysera branch
+  // returns a row with a non-zero amount — ensures findRawBgnLeak has data to check.
+  await prisma.transaction.create({
+    data: {
+      userId,
+      type: 'SUBSCRIPTION' as any,
+      amount: 999,
+      currency: 'BGN',
+      status: 'COMPLETED' as any,
+      paymentMethod: 'BANK_TRANSFER' as any,
+      description: 'seed-subscription',
+      metadata: JSON.stringify({ orderId: 'seed-sub-order-001' }),
+    },
+  });
 }, 60_000);
 
 afterAll(async () => {
@@ -117,6 +133,7 @@ const MONEY_ENDPOINTS = [
   '/api/wallet/transactions',
   '/api/wallet/statistics',
   '/api/payments/history',
+  '/api/subscriptions/history',
 ];
 
 // Detect a raw BGN scalar: a `currency:"BGN"` paired with a raw numeric amount,
@@ -134,6 +151,9 @@ function findRawBgnLeak(node: any, path = '$'): string[] {
       // it as a leak (bgn:null is the closed-window shape).
       if ('eur' in n && 'bgn' in n) return;
       for (const [k, v] of Object.entries(n)) {
+        // Zero excluded intentionally: `amount: 0` is structurally unambiguous
+        // (no monetary value), never currency-sensitive. Seeds must use non-zero
+        // amounts so this guard stays meaningful.
         if (MONEY_KEYS.test(k) && typeof v === 'number' && v !== 0) {
           leaks.push(`${p}.${k} = ${v} (raw numeric money scalar, not display:{bgn,eur})`);
         }
@@ -294,5 +314,87 @@ describe('INV-USER-PAY-007 / INV-USER-ACL-003 / INV-USER-NOTIF-005 — WITHDRAWA
         : `${leaking.length} WITHDRAWAL row(s) expose escalation metadata keys: ` +
             leaking.map((tx: any) => JSON.stringify(tx.metadata)).join(', '),
     ).toBe('no leaks');
+  });
+});
+
+describe('INV-USER-CUR-T9 — GET /api/subscriptions/history T9 synthetic entry is EUR-native regardless of window state', () => {
+  let t9UserId: string;
+  let t9Token: string;
+
+  beforeAll(async () => {
+    const u = await createTestUser();
+    t9UserId = u.user.id;
+    t9Token = u.accessToken;
+    // Deliberately NO Transaction rows — triggers the T9 synthetic fallback.
+    await createTestSubscription(t9UserId, 'BASIC', 'ACTIVE');
+  }, 60_000);
+
+  afterAll(async () => {
+    if (t9UserId) { try { await cleanupTestUser(t9UserId); } catch {} }
+  }, 30_000);
+
+  it('[CUR-T9] zero Transaction rows → synthetic entry has EUR-native display object (bgn:null, windowOpen:false) regardless of global window flag', async () => {
+    await setCurrencyWindowOpen(true);
+    const res = await authRequest(t9Token).get('/api/subscriptions/history');
+    expect(res.status).toBe(200);
+    const history: any[] = res.body?.history ?? [];
+    expect(history.length).toBe(1);
+    const amt = history[0].amount;
+    expect(amt).toEqual(expect.objectContaining({ bgn: null, windowOpen: false }));
+    expect(typeof amt.eur).toBe('number');
+    expect(amt.eur).toBeGreaterThan(0);
+  });
+});
+
+describe('INV-USER-CUR-STRIPE — GET /api/subscriptions/history Stripe branch returns EUR-native DualCurrencyAmount', () => {
+  let stripeUserId: string;
+  let stripeToken: string;
+
+  beforeAll(async () => {
+    const u = await createTestUser();
+    stripeUserId = u.user.id;
+    stripeToken = u.accessToken;
+    const plan = await prisma.plan.findFirst({ where: { planCode: 'BASIC' } });
+    await prisma.subscription.create({
+      data: {
+        userId: stripeUserId,
+        plan: 'BASIC',
+        planId: plan!.id,
+        status: 'ACTIVE',
+        stripeSubscriptionId: 'sub_test_stripe',
+        stripeCustomerId: 'cus_test',
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        cancelAtPeriodEnd: false,
+      },
+    });
+  }, 60_000);
+
+  afterAll(async () => {
+    if (stripeUserId) { try { await cleanupTestUser(stripeUserId); } catch {} }
+  }, 30_000);
+
+  it('[CUR-STRIPE] Stripe invoice amount is returned as {bgn:null, eur:N, windowOpen:false} — not a raw number', async () => {
+    const spy = jest.spyOn(stripeService.stripe.invoices, 'list').mockResolvedValueOnce({
+      data: [{
+        id: 'in_test',
+        created: 1700000000,
+        amount_paid: 999,
+        amount_due: 999,
+        currency: 'eur',
+        status: 'paid',
+        invoice_pdf: null,
+      }],
+    } as any);
+
+    try {
+      const res = await authRequest(stripeToken).get('/api/subscriptions/history');
+      expect(res.status).toBe(200);
+      const history: any[] = res.body?.history ?? [];
+      expect(history.length).toBe(1);
+      expect(history[0].amount).toEqual({ bgn: null, eur: 9.99, windowOpen: false });
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
