@@ -87,6 +87,8 @@ if (process.env.NODE_ENV === 'production') {
     // Cloudflare R2 storage
     'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY',
     'R2_BUCKET_NAME', 'R2_PUBLIC_URL',
+    // AES-256-GCM key for partner integration credentials at rest
+    'INTEGRATION_CREDENTIALS_KEY',
   ];
   const missing = required.filter(k => !process.env[k]);
   if (missing.length) {
@@ -94,6 +96,12 @@ if (process.env.NODE_ENV === 'production') {
   }
   if ((process.env.JWT_SECRET?.length ?? 0) < 32) {
     throw new Error('JWT_SECRET must be at least 32 characters');
+  }
+  // INTEGRATION_CREDENTIALS_KEY must be exactly 64 hex characters (32 bytes for AES-256-GCM).
+  // A wrong-length key passes the presence check above but blows up at the first POST /connect.
+  const _credKey = process.env.INTEGRATION_CREDENTIALS_KEY;
+  if (Buffer.from(_credKey!, 'hex').length !== 32) {
+    throw new Error('INTEGRATION_CREDENTIALS_KEY must be exactly 64 hex characters (32 bytes)');
   }
   // If price IDs ARE set, still catch placeholder defaults — prevents silent 400s at charge time.
   for (const k of ['STRIPE_BASIC_PRICE_ID', 'STRIPE_PREMIUM_PRICE_ID']) {

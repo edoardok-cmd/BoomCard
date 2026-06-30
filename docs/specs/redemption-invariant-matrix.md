@@ -81,7 +81,7 @@
 | INV-RDM-054 | LEAK | HIGH | fraudScore/fraudReasons/ipAddress/userAgent/deviceFingerprint/ocrData stripped from venue scans | GET /api/stickers/venue/:venueId/scans | stickers.routes.ts L676 | [SUITE: LEAK] redemption-leak-054.test.ts |
 | INV-RDM-055 | LEAK | HIGH | pendingMenuUrl/menuRejectionReason/menuReviewedBy/venueStatusNote not returned in public venue GET responses | GET /api/venues/, GET /api/venues/:id, GET /api/venues/search, GET /api/venues/cities | venue.service.ts stripAdminVenueFields L64 | none |
 | INV-RDM-056 | LEAK | MEDIUM | partner.status/verifiedAt/isVisible not included in public GET /api/venues/:id response | GET /api/venues/:id | venue.service.ts L267 | venueService.test.ts (strips partner.status/verifiedAt/isVisible from public response) |
-| INV-RDM-057 | LEAK | MEDIUM | Dashboard cashbackAmount uses wallet CASHBACK_CREDIT transaction, not @internal StickerScan.cashbackAmount | GET /api/dashboard/me | dashboard.routes.ts L41–45 | none |
+| INV-RDM-057 | LEAK | MEDIUM | Dashboard cashbackAmount reads directly from StickerScan.cashbackAmount (owner-filtered by userId at L28–41) — wallet CASHBACK_CREDIT transactions are not the source; StickerScan.cashbackAmount is the authoritative formula result for the authenticated user's own scans | GET /api/dashboard/me | dashboard.routes.ts L67 (`s.cashbackAmount ?? 0` — comment: authoritative source is StickerScan.cashbackAmount; BC-REDEMPTION-RDM-057-5 complete) | code annotation dashboard.routes.ts L67 + ledger r2 verified |
 | INV-RDM-058 | VIS | HIGH | GET /api/venues/ only returns ACTIVE venues with ACTIVE+verified+visible partners by default | GET /api/venues/ | venue.service.ts L118–121 publicPartnerJoinFilter | none |
 | INV-RDM-059 | VIS | HIGH | GET /api/venues/:id returns 404 for non-ACTIVE venueStatus or hidden/unverified partner | GET /api/venues/:id | venue.service.ts L249–255 | venueService.test.ts (getVenueById visibility gate, 13 cases) |
 | INV-RDM-060 | VIS | MEDIUM | GET /api/venues/search only returns publicly visible venues | GET /api/venues/search | venue.service.ts searchVenues | none |
@@ -91,6 +91,7 @@
 | INV-RDM-064 | FRAUD | HIGH | Live-photo EXIF gate rejects receipt images taken before the session start time | POST /api/stickers/scan/:scanId/receipt | stickers.routes.ts L246–255 checkLivePhoto | none |
 | INV-RDM-065 | FRAUD | MEDIUM | OCR `confidence` field is stripped from client-supplied ocrData (server-side is authoritative) | POST /api/stickers/scan/:scanId/receipt | stickers.routes.ts L301–305 | none |
 | INV-RDM-066 | AUTH | HIGH | An INACTIVE (read-only / `aro=true`) admin must NOT perform scan mutations — `approve`, `bulk-approve`, `bulk-reject` must carry the same `requireActiveAdmin` (aro) gate as `reject`, so a coasting INACTIVE admin cannot credit cashback or approve/reject scans (spec §1.5 — Inactive admins are read-only) | POST /api/stickers/admin/approve/:scanId, POST /api/stickers/admin/bulk-approve, POST /api/stickers/admin/bulk-reject (cf. POST /api/stickers/admin/reject/:scanId which has the gate) | stickers.routes.ts:1048,1086,1142,1163 (all 4 carry authenticate→requireActiveAdmin→authorize); auth.middleware.ts:155–159 sets aro, :298 requireActiveAdmin enforces | bc-redemption-swpfix-aro-class-sweep.test.ts PASS 4/4 (aro=true→403 on all 4); runtime confirmed (r9) |
+| INV-RDM-067 | AUTH | HIGH | An INACTIVE (`aro=true`) admin must NOT perform sticker QR-management write operations — the 9 write routes (POST /locations, POST /locations/bulk, POST /generate/bulk, POST /generate/:locationId, POST /activate/:stickerId, POST /:stickerId/reactivate, PATCH /:stickerId/processing, PATCH /:stickerId/replace, PUT /venue/:venueId/config) must block an aro=true admin with 403 (spec §1.5 — Inactive admins are read-only); gate is enforced emergently via requirePermission('stickers.write')'s write-classifier | all 9 routes listed above | stickers.routes.ts:407,447,481,513,537,563,589,617,801 — requirePermission('stickers.write'); auth.middleware.ts:340–348 write-classifier aro block | bc-redemption-swpfix-aro-class-sweep.test.ts — INV-RDM-067 describe block (9 routes, aro=true→403) |
 
 ---
 
@@ -100,11 +101,11 @@
 |---|---|---|---|
 | XSCOPE | 11 | 11 (redemption-cross-scope-sweep.test.ts 48/48) | 0 |
 | INPUT | 18 | 18 (all verified — ledger r2/r3) | 0 |
-| AUTH | 13 | 13 (all verified — ledger r2/r3/r9) | 0 |
+| AUTH | 14 | 14 (all verified — ledger r2/r3/r10) | 0 |
 | LIFECYCLE | 6 | 6 (all verified — ledger r1/r2) | 0 |
 | LEAK | 10 | 10 (all verified — ledger r2) | 0 |
 | VIS | 5 | 5 (all verified — ledger r2/r6) | 0 |
 | FRAUD | 3 | 3 (all verified — ledger r2/r6) | 0 |
-| **Total** | **66** | **66** | **0** |
+| **Total** | **67** | **67** | **0** |
 
 Note: Auth infrastructure issue (PENDING_VERIFICATION status blocking tests) was fixed in BC-REDEMPTION-RDM-012-2. INV-RDM-012..017 now have passing integration tests in sticker-scan.test.ts. INV-RDM-018/019 have passing tests in venue-input-validation.test.ts and redemption-input-sweep.test.ts.

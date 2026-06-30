@@ -42,8 +42,11 @@ export interface OfferFilters {
   category?: string;
   city?: string;
   minDiscount?: number;
+  minRating?: number;
   partnerId?: string;
   search?: string;
+  sortBy?: 'discount' | 'price' | 'rating' | 'newest' | 'redemptions' | 'createdAt';
+  sortOrder?: 'asc' | 'desc';
   status?: OfferStatus;
   isFeatured?: boolean;
   tags?: string[];
@@ -214,8 +217,11 @@ class OffersService {
       category,
       city,
       minDiscount,
+      minRating,
       partnerId,
       search,
+      sortBy,
+      sortOrder = 'desc',
       status = OfferStatus.ACTIVE,
       isFeatured,
       tags,
@@ -273,7 +279,8 @@ class OffersService {
         partnerFilter.category = category;
       }
     }
-    if (city) partnerFilter.city = city;
+    if (city) partnerFilter.city = { equals: city, mode: 'insensitive' };
+    if (minRating !== undefined) partnerFilter.rating = { gte: minRating };
 
     // Apply canView filter unless admin or no plan constraint
     if (!isAdmin) {
@@ -289,16 +296,28 @@ class OffersService {
 
     const skip = (page - 1) * limit;
 
+    const orderBy: Prisma.OfferOrderByWithRelationInput[] = (() => {
+      switch (sortBy) {
+        case 'price':
+        case 'discount': return [{ discountPercent: sortOrder }];
+        case 'rating': return [{ partner: { rating: sortOrder } }, { createdAt: 'desc' }];
+        case 'newest':
+        case 'createdAt': return [{ createdAt: sortOrder }];
+        case 'redemptions': return [{ usageCount: sortOrder }];
+        default: return [
+          { isFeatured: 'desc' as const },
+          { featuredOrder: 'asc' as const },
+          { discountPercent: 'desc' as const },
+          { createdAt: 'desc' as const },
+        ];
+      }
+    })();
+
     const [offers, total] = await Promise.all([
       prisma.offer.findMany({
         where,
         include: { partner: { select: PARTNER_SELECT } },
-        orderBy: [
-          { isFeatured: 'desc' },
-          { featuredOrder: 'asc' },
-          { discountPercent: 'desc' },
-          { createdAt: 'desc' },
-        ],
+        orderBy,
         skip,
         take: limit,
       }),

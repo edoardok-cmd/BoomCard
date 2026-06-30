@@ -1521,15 +1521,33 @@ class StickerService {
         .notifyQRSessionOpened(userId, scanId), (err) => logger.error(`[uploadReceipt] notifyQRSessionOpened failed for scan ${scanId}:`, err));
     }
 
-    // Server-side OCR merchant verification is run asynchronously after the response
-    // returns: Tesseract takes 10–30s per receipt, and blocking the upload response
-    // that long would time out the mobile client. The scan is already in MANUAL_REVIEW,
-    // so enriching fraudReasons after the fact is always safe — an admin reviewing a
-    // flagged scan a minute later will see MERCHANT_MISMATCH. Client-supplied ocrData
-    // is still ignored — merchant verification must be independent of the client.
-    //
-    // Preferred path: enqueue a BullMQ job. Survives server restart, retries on failure.
-    // Fallback (Redis unconfigured): detached promise — the legacy behavior, no durability.
+    // Signal 2 (Spec §3.4 / Clash 5.1): run server-side OCR synchronously to obtain
+    // the authoritative confidence value. Client-supplied confidence is dropped at the
+    // route layer to prevent spoofing; we obtain the real value here from Tesseract.
+    // Running OCR before the async merchant-verification path gives this call first claim
+    // on the OCR concurrency slot, avoiding queuing behind the detached-promise fallback.
+    // Falls back to 60 (the spec §3.4 "no data" boundary) when no buffer is available
+    // or OCR fails/times out — this keeps the auto-approve path reachable.
+    let ocrConfidence = 60;
+    if (imageBuffer) {
+      const parsedOcrTimeout = parseInt(process.env.OCR_SIGNAL2_TIMEOUT_MS ?? '15000', 10);
+      const ocr2Timeout = Number.isFinite(parsedOcrTimeout) ? parsedOcrTimeout : 15000;
+      try {
+        const ocrResult = await recognizeReceiptImage(imageBuffer, ocr2Timeout);
+        ocrConfidence = ocrResult.confidence;
+      } catch (ocrErr: any) {
+        logger.warn(
+          `[uploadReceipt] OCR Signal 2 failed for scan ${scanId}: ${ocrErr?.message ?? ocrErr}. ` +
+          `Defaulting confidence to 60.`,
+        );
+      }
+    }
+
+    // Merchant-name verification runs asynchronously so it does not block the response.
+    // The scan is already in MANUAL_REVIEW, so appending MERCHANT_MISMATCH after the
+    // fact is safe — an admin reviewing a flagged scan a minute later will see it.
+    // Preferred path: BullMQ job (durable, retries on restart).
+    // Fallback (Redis unconfigured): in-process detached promise (no durability).
     const candidateNames = [
       scan.venue?.name,
       scan.venue?.nameBg,
@@ -1550,17 +1568,9 @@ class StickerService {
     //
     // Signal inputs derived from the scan and OCR data at upload time:
     //   ibanChangedRecently: check if user's IBAN was changed within the last 24h.
-    //   ocrConfidence:       OCR confidence from ocrData (0–100); below 60% → +30.
+    //   ocrConfidence:       server-side Tesseract confidence (0–100); below 60 → +30.
     //   locationMismatch:    GPS distance from the scanSticker phase is stored in
     //                        fraudReasons as 'GPS_FAR_FROM_VENUE'; detect it there.
-    // Spec §3.4 / Clash 5.1 — Signal 2 fires when OCR confidence < 60.
-    // When the client provides no OCR data we have no evidence of OCR failure,
-    // so we default to the threshold boundary (60) rather than 0. Defaulting to 0
-    // would permanently add +30 to every scan and make the Low-risk auto-approve
-    // path (spec §3.4: score 0–20 → auto-approve) unreachable, violating the spec.
-    // The client-supplied confidence field is dropped at the route layer to prevent
-    // spoofing; absent confidence therefore means "no data" not "failed OCR".
-    const ocrConfidence: number = 60; // client-supplied confidence is stripped at the route layer; default 60 until server-side OCR is wired in
     const locationMismatch = Array.isArray(scan.fraudReasons)
       && (scan.fraudReasons as string[]).some((r) => r === 'GPS_FAR_FROM_VENUE' || r === 'GPS_OUTSIDE_RANGE');
     const partnerId = scan.venue?.partner?.id ?? undefined;

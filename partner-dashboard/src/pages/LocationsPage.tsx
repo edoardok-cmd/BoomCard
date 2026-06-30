@@ -5,6 +5,7 @@ import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
 import Button from '../components/common/Button/Button';
 import Badge from '../components/common/Badge/Badge';
+import { useVenues } from '../hooks/useVenues';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -254,86 +255,6 @@ const CityChip = styled.button<{ $active: boolean }>`
   }
 `;
 
-interface Location {
-  id: string;
-  name: string;
-  city: string;
-  address: string;
-  description: string;
-  imageUrl: string;
-  offers: number;
-  rating: number;
-  openNow?: boolean;
-}
-
-const mockLocations: Location[] = [
-  {
-    id: '1',
-    name: 'Downtown Restaurant & Bar',
-    city: 'Sofia',
-    address: 'Vitosha Blvd 123, Sofia 1000',
-    description: 'Premium dining experience with rooftop terrace and city views. Specializing in Mediterranean cuisine.',
-    imageUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800',
-    offers: 8,
-    rating: 4.8,
-    openNow: true,
-  },
-  {
-    id: '2',
-    name: 'Wellness Spa & Fitness Center',
-    city: 'Sofia',
-    address: 'Bulgaria Blvd 88, Sofia 1404',
-    description: 'Full-service spa with modern fitness facilities, yoga studios, and relaxation areas.',
-    imageUrl: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=800',
-    offers: 5,
-    rating: 4.9,
-    openNow: true,
-  },
-  {
-    id: '3',
-    name: 'Seaside Beach Club',
-    city: 'Varna',
-    address: 'Sea Garden, Varna 9000',
-    description: 'Exclusive beach club with water sports, pool bar, and sunset lounge area.',
-    imageUrl: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=800',
-    offers: 12,
-    rating: 4.7,
-    openNow: false,
-  },
-  {
-    id: '4',
-    name: 'Mountain Resort & Ski Lodge',
-    city: 'Bansko',
-    address: 'Pirin Mountain, Bansko 2770',
-    description: 'Alpine resort with ski slopes, cozy lodge, and après-ski entertainment.',
-    imageUrl: 'https://images.unsplash.com/photo-1605870445919-838d190e8e1b?w=800',
-    offers: 15,
-    rating: 4.6,
-  },
-  {
-    id: '5',
-    name: 'Art Gallery & Café',
-    city: 'Plovdiv',
-    address: 'Old Town, Plovdiv 4000',
-    description: 'Contemporary art space with specialty coffee and local artisan exhibitions.',
-    imageUrl: 'https://images.unsplash.com/photo-1554907984-15263bfd63bd?w=800',
-    offers: 6,
-    rating: 4.8,
-    openNow: true,
-  },
-  {
-    id: '6',
-    name: 'Shopping Mall & Entertainment',
-    city: 'Sofia',
-    address: 'Tsarigradsko Shose 115, Sofia 1784',
-    description: 'Modern shopping center with cinema, bowling, and diverse dining options.',
-    imageUrl: 'https://images.unsplash.com/photo-1519567241046-7f570eee3ce6?w=800',
-    offers: 25,
-    rating: 4.5,
-    openNow: true,
-  },
-];
-
 const LocationsPage: React.FC = () => {
   const { language } = useLanguage();
   const [selectedCity, setSelectedCity] = useState<string>('all');
@@ -347,10 +268,12 @@ const LocationsPage: React.FC = () => {
       varna: 'Varna',
       plovdiv: 'Plovdiv',
       bansko: 'Bansko',
-      offers: 'offers',
       openNow: 'Open Now',
       viewOffers: 'View Offers',
-      getDirections: 'Get Directions',
+      loading: 'Loading…',
+      error: 'Failed to load locations.',
+      retry: 'Retry',
+      empty: 'No locations found.',
     },
     bg: {
       title: 'Партньорски Локации',
@@ -360,10 +283,12 @@ const LocationsPage: React.FC = () => {
       varna: 'Варна',
       plovdiv: 'Пловдив',
       bansko: 'Банско',
-      offers: 'оферти',
       openNow: 'Отворено Сега',
       viewOffers: 'Виж Оферти',
-      getDirections: 'Маршрут',
+      loading: 'Зареждане…',
+      error: 'Неуспешно зареждане на локации.',
+      retry: 'Опитай отново',
+      empty: 'Няма намерени локации.',
     },
   };
 
@@ -377,9 +302,18 @@ const LocationsPage: React.FC = () => {
     { id: 'Bansko', label: content.bansko },
   ];
 
-  const filteredLocations = selectedCity === 'all'
-    ? mockLocations
-    : mockLocations.filter(loc => loc.city === selectedCity);
+  const CITY_ALIASES: Record<string, string[]> = {
+    Sofia: ['Sofia', 'София'],
+    Varna: ['Varna', 'Варна'],
+    Plovdiv: ['Plovdiv', 'Пловдив'],
+    Bansko: ['Bansko', 'Банско'],
+  };
+
+  const { data, isLoading, isError, refetch } = useVenues(undefined);
+  const allLocations = data?.data ?? [];
+  const locations = selectedCity === 'all'
+    ? allLocations
+    : allLocations.filter(v => (CITY_ALIASES[selectedCity] ?? [selectedCity]).includes(v.city));
 
   return (
     <PageContainer>
@@ -412,46 +346,64 @@ const LocationsPage: React.FC = () => {
             ))}
           </CityFilter>
 
-          <LocationsGrid>
-            {filteredLocations.map((location, index) => (
-              <LocationCard
-                key={location.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: index * 0.1 }}
-              >
-                <LocationImage $bgImage={location.imageUrl}>
-                  {location.openNow && (
-                    <LocationBadge variant="success">
-                      {content.openNow}
-                    </LocationBadge>
-                  )}
-                </LocationImage>
+          {isLoading && (
+            <div style={{ textAlign: 'center', padding: '4rem' }}>{content.loading}</div>
+          )}
 
-                <LocationContent>
-                  <LocationName>{location.name}</LocationName>
-                  <LocationAddress>
-                    📍 {location.address}
-                  </LocationAddress>
-                  <LocationDescription>
-                    {location.description}
-                  </LocationDescription>
+          {isError && (
+            <div style={{ textAlign: 'center', padding: '4rem' }}>
+              <div>{content.error}</div>
+              <div style={{ marginTop: '1rem' }}><Button variant="secondary" size="small" onClick={() => refetch()}>{content.retry}</Button></div>
+            </div>
+          )}
 
-                  <LocationFooter>
-                    <LocationStats>
-                      <Stat>⭐ {location.rating}</Stat>
-                      <Stat>🎁 {location.offers} {content.offers}</Stat>
-                    </LocationStats>
-                    <Link to={`/offers/${location.id}`}>
-                      <Button variant="primary" size="small">
-                        {content.viewOffers}
-                      </Button>
-                    </Link>
-                  </LocationFooter>
-                </LocationContent>
-              </LocationCard>
-            ))}
-          </LocationsGrid>
+          {!isLoading && !isError && locations.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '4rem' }}>{content.empty}</div>
+          )}
+
+          {!isLoading && !isError && locations.length > 0 && (
+            <LocationsGrid>
+              {locations.map((location, index) => (
+                <LocationCard
+                  key={location.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, delay: index * 0.1 }}
+                >
+                  <LocationImage $bgImage={location.images?.[0] ?? location.imageUrl ?? 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800'}>
+                    {location.isOpen && (
+                      <LocationBadge variant="success">
+                        {content.openNow}
+                      </LocationBadge>
+                    )}
+                  </LocationImage>
+
+                  <LocationContent>
+                    <LocationName>{location.name}</LocationName>
+                    <LocationAddress>
+                      📍 {location.address}
+                    </LocationAddress>
+                    <LocationDescription>
+                      {location.description}
+                    </LocationDescription>
+
+                    <LocationFooter>
+                      <LocationStats>
+                        {location.rating != null && (
+                          <Stat>⭐ {location.rating}</Stat>
+                        )}
+                      </LocationStats>
+                      <Link to={`/offers/${location.id}`}>
+                        <Button variant="primary" size="small">
+                          {content.viewOffers}
+                        </Button>
+                      </Link>
+                    </LocationFooter>
+                  </LocationContent>
+                </LocationCard>
+              ))}
+            </LocationsGrid>
+          )}
         </Container>
       </ContentSection>
     </PageContainer>

@@ -208,7 +208,11 @@ jest.mock('../../src/services/fraudDetection.service', () => ({
 }));
 
 jest.mock('../../src/services/ocr.service', () => ({
-  recognizeReceiptImage: jest.fn(async () => ({ merchantName: '', confidence: 0 })),
+  // Default confidence=100 (above the 60-threshold) so existing uploadReceipt
+  // tests that omit imageBuffer are unaffected; the OCR block is skipped anyway
+  // since no buffer is provided, but this avoids a latent trap if a future test
+  // accidentally adds imageBuffer without overriding the mock.
+  recognizeReceiptImage: jest.fn(async () => ({ merchantName: '', confidence: 100 })),
 }));
 
 jest.mock('../../src/services/imageUpload.service', () => ({
@@ -251,6 +255,7 @@ jest.mock('../../src/services/partnerType.service', () => ({
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { stickerService } from '../../src/services/sticker.service';
 import { cashbackLifecycleService } from '../../src/services/cashbackLifecycle.service';
+import { fraudDetectionService } from '../../src/services/fraudDetection.service';
 import { recognizeReceiptImage } from '../../src/services/ocr.service';
 import prisma from '../../src/lib/prisma';
 
@@ -315,7 +320,7 @@ beforeEach(() => {
   prismaMock.subscription.findFirst.mockResolvedValue({
     status: 'ACTIVE', plan: 'BASIC', currentPeriodEnd: new Date(Date.now() + 1e9),
   });
-  ocrMock.mockResolvedValue({ merchantName: '', confidence: 0 } as any);
+  ocrMock.mockResolvedValue({ merchantName: '', confidence: 100 } as any);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -804,7 +809,7 @@ describe('§7.1 approveScan — notes passed to promotePendingToCleared', () => 
     prismaMock.subscription.findFirst.mockResolvedValue({
       status: 'ACTIVE', plan: 'BASIC', currentPeriodEnd: new Date(Date.now() + 1e9),
     });
-    ocrMock.mockResolvedValue({ merchantName: '', confidence: 0 } as any);
+    ocrMock.mockResolvedValue({ merchantName: '', confidence: 100 } as any);
   });
 
   it('passes opts.notes as reason when notes is provided', async () => {
@@ -838,6 +843,105 @@ describe('§7.1 approveScan — notes passed to promotePendingToCleared', () => 
         reason: 'Admin approved sticker scan after risk review',
         actorUserId: 'admin-2',
       }),
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §7.1 — Signal 2: OCR confidence wired through uploadReceipt → computeSpecRiskLevel
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('§7.1 uploadReceipt — Signal 2 OCR confidence forwarded to computeSpecRiskLevel', () => {
+  // Access the mocked computeSpecRiskLevel from the jest.mock above so we can
+  // assert what ocrConfidence value was forwarded to the fraud scorer.
+  const computeSpecRiskLevelMock = (fraudDetectionService as any).computeSpecRiskLevel as jest.MockedFunction<any>;
+
+  it('forwards real OCR confidence when imageBuffer is provided', async () => {
+    scanRow = makeScan(0, 5, 30);
+    ocrMock.mockResolvedValueOnce({ merchantName: 'Lidl', confidence: 40, items: [], rawText: '', currency: 'BGN' });
+
+    jest.spyOn(stickerService, 'approveScan').mockResolvedValue({ ...scanRow, status: 'APPROVED' } as any);
+
+    await stickerService.uploadReceipt({
+      scanId: 'scan-1',
+      userId: 'u-1',
+      receiptImageUrl: 'https://s3.example.com/receipt.jpg',
+      imageBuffer: Buffer.from('fake-receipt'),
+    });
+
+    expect(computeSpecRiskLevelMock).toHaveBeenCalledWith(
+      expect.objectContaining({ ocrConfidence: 40 }),
+    );
+  });
+
+  it('forwards fallback confidence=60 when imageBuffer is absent', async () => {
+    scanRow = makeScan(0, 5, 30);
+    jest.spyOn(stickerService, 'approveScan').mockResolvedValue({ ...scanRow, status: 'APPROVED' } as any);
+
+    await stickerService.uploadReceipt({
+      scanId: 'scan-1',
+      userId: 'u-1',
+      receiptImageUrl: 'https://s3.example.com/receipt.jpg',
+      // no imageBuffer
+    });
+
+    expect(computeSpecRiskLevelMock).toHaveBeenCalledWith(
+      expect.objectContaining({ ocrConfidence: 60 }),
+    );
+  });
+
+  it('forwards fallback confidence=60 when OCR throws (e.g. timeout)', async () => {
+    scanRow = makeScan(0, 5, 30);
+    ocrMock.mockRejectedValueOnce(new Error('OCR execution timeout'));
+    jest.spyOn(stickerService, 'approveScan').mockResolvedValue({ ...scanRow, status: 'APPROVED' } as any);
+
+    await stickerService.uploadReceipt({
+      scanId: 'scan-1',
+      userId: 'u-1',
+      receiptImageUrl: 'https://s3.example.com/receipt.jpg',
+      imageBuffer: Buffer.from('fake-receipt'),
+    });
+
+    expect(computeSpecRiskLevelMock).toHaveBeenCalledWith(
+      expect.objectContaining({ ocrConfidence: 60 }),
+    );
+  });
+
+  it('boundary: confidence=60 (at threshold) forwarded as-is — Signal 2 does not fire', async () => {
+    // computeSpecRiskLevel fires Signal 2 only when confidence < 60 (strict less-than).
+    // confidence=60 must be forwarded unchanged so the boundary is correctly observed.
+    scanRow = makeScan(0, 5, 30);
+    ocrMock.mockResolvedValueOnce({ merchantName: '', confidence: 60, items: [], rawText: '', currency: 'BGN' });
+    jest.spyOn(stickerService, 'approveScan').mockResolvedValue({ ...scanRow, status: 'APPROVED' } as any);
+
+    await stickerService.uploadReceipt({
+      scanId: 'scan-1',
+      userId: 'u-1',
+      receiptImageUrl: 'https://s3.example.com/receipt.jpg',
+      imageBuffer: Buffer.from('fake-receipt'),
+    });
+
+    expect(computeSpecRiskLevelMock).toHaveBeenCalledWith(
+      expect.objectContaining({ ocrConfidence: 60 }),
+    );
+  });
+
+  it('boundary: confidence=59 (below threshold) forwarded as-is — Signal 2 fires', async () => {
+    // confidence=59 is one below the threshold; it must be forwarded without clamping
+    // so computeSpecRiskLevel applies the +30 penalty.
+    scanRow = makeScan(0, 5, 30);
+    ocrMock.mockResolvedValueOnce({ merchantName: '', confidence: 59, items: [], rawText: '', currency: 'BGN' });
+    jest.spyOn(stickerService, 'approveScan').mockResolvedValue({ ...scanRow, status: 'APPROVED' } as any);
+
+    await stickerService.uploadReceipt({
+      scanId: 'scan-1',
+      userId: 'u-1',
+      receiptImageUrl: 'https://s3.example.com/receipt.jpg',
+      imageBuffer: Buffer.from('fake-receipt'),
+    });
+
+    expect(computeSpecRiskLevelMock).toHaveBeenCalledWith(
+      expect.objectContaining({ ocrConfidence: 59 }),
     );
   });
 });

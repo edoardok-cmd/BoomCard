@@ -1,9 +1,12 @@
 import { Router, Request, Response } from 'express';
-import { authenticate } from '../middleware/auth.middleware';
+import { authenticate, authorize, AuthRequest } from '../middleware/auth.middleware';
+import prisma from '../lib/prisma';
+import { integrationsService } from '../services/integrations.service';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
-// Mock integrations data - in production this would come from a database
+// Hardcoded catalog — kept in-memory intentionally (no DB table for the catalog).
 const availableIntegrations = [
   {
     id: 'stripe',
@@ -761,6 +764,36 @@ const availableIntegrations = [
 ];
 
 /**
+ * Validate that all required credential fields are present for an integration.
+ * Returns an error message string if validation fails, or null if all required fields are present.
+ */
+function validateCredentials(
+  integration: typeof availableIntegrations[0],
+  credentials: Record<string, unknown> | undefined | null,
+): string | null {
+  if (!integration.requiresCredentials) return null;
+  const required = integration.credentialsFields.filter((f) => f.required).map((f) => f.name);
+  if (!credentials || typeof credentials !== 'object') {
+    return `Missing required credentials: ${required.join(', ')}`;
+  }
+  const missing = required.filter((name) => credentials[name] === undefined || credentials[name] === null || credentials[name] === '');
+  return missing.length > 0 ? `Missing required credential fields: ${missing.join(', ')}` : null;
+}
+
+/**
+ * Resolve the Partner record for the authenticated user.
+ * Returns the Partner id string, or null if no Partner row exists for this user.
+ * The JWT carries user.id (User PK), not a partnerId directly.
+ */
+async function resolvePartnerId(userId: string): Promise<string | null> {
+  const partner = await prisma.partner.findUnique({
+    where: { userId },
+    select: { id: true },
+  });
+  return partner?.id ?? null;
+}
+
+/**
  * GET /api/integrations/available
  * Get all available integrations (optionally filtered by category)
  */
@@ -777,7 +810,8 @@ router.get('/available', (req: Request, res: Response) => {
     }
 
     res.json(filtered);
-  } catch {
+  } catch (err) {
+    logger.error('Failed to fetch available integrations', { error: err });
     res.status(500).json({
       success: false,
       message: 'Failed to fetch available integrations',
@@ -803,7 +837,8 @@ router.get('/available/:id', (req: Request, res: Response) => {
     }
 
     res.json(integration);
-  } catch {
+  } catch (err) {
+    logger.error('Failed to fetch integration', { error: err });
     res.status(500).json({
       success: false,
       message: 'Failed to fetch integration',
@@ -813,166 +848,201 @@ router.get('/available/:id', (req: Request, res: Response) => {
 
 /**
  * GET /api/integrations/connected
- * Get partner's connected integrations
+ * Get partner's connected integrations from DB.
+ * credentials are intentionally never returned (INV-SYS-018).
  */
-router.get('/connected', authenticate, (req: Request, res: Response) => {
+router.get('/connected', authenticate, authorize('PARTNER'), async (req: AuthRequest, res: Response) => {
   try {
-    // In a real app, this would fetch from database
-    // For now, return empty array
-    res.json([]);
-  } catch {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch connected integrations',
-    });
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(403).json({ success: false, message: 'Partner context required' });
+    }
+    const partnerId = await resolvePartnerId(userId);
+    if (!partnerId) {
+      return res.status(403).json({ success: false, message: 'Partner context required' });
+    }
+    const connected = await integrationsService.getConnected(partnerId);
+    res.json(connected);
+  } catch (err) {
+    logger.error('Failed to fetch connected integrations', { error: err });
+    res.status(500).json({ success: false, message: 'Failed to fetch connected integrations' });
   }
 });
 
 /**
  * POST /api/integrations/connect
- * Connect a new integration
+ * Connect (or reconnect) an integration — persisted to DB.
+ * credentials are stored but never returned in the response (INV-SYS-018).
  */
-router.post('/connect', authenticate, (req: Request, res: Response) => {
+router.post('/connect', authenticate, authorize('PARTNER'), async (req: AuthRequest, res: Response) => {
   try {
-    const { integrationId, settings } = req.body;
-    // credentials intentionally not destructured — must not appear in response (INV-SYS-018).
-
-    if (!integrationId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Integration ID is required',
-      });
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(403).json({ success: false, message: 'Partner context required' });
+    }
+    const partnerId = await resolvePartnerId(userId);
+    if (!partnerId) {
+      return res.status(403).json({ success: false, message: 'Partner context required' });
     }
 
-    const integration = availableIntegrations.find((int) => int.id === integrationId);
-
-    if (!integration) {
-      return res.status(404).json({
-        success: false,
-        message: 'Integration not found',
-      });
-    }
-
-    // In a real app, this would save to database
-    // For now, return success
-    // NOTE: credentials are intentionally excluded from the response — secrets
-    // must never be echoed back to the caller (INV-SYS-018).
-    const connectedIntegration = {
-      id: `connected-${Date.now()}`,
-      partnerId: (req as any).user?.id || 'partner-1',
-      integrationId,
-      integration,
-      status: 'active',
-      settings,
-      connectedAt: new Date(),
-      updatedAt: new Date(),
+    const { integrationId, credentials, settings } = req.body as {
+      integrationId?: string;
+      credentials?: unknown;
+      settings?: unknown;
     };
 
-    res.json({
-      success: true,
-      data: connectedIntegration,
-      message: 'Integration connected successfully',
-    });
-  } catch {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to connect integration',
-    });
+    if (!integrationId) {
+      return res.status(400).json({ success: false, message: 'Integration ID is required' });
+    }
+
+    const integration = availableIntegrations.find((i) => i.id === integrationId);
+    if (!integration) {
+      return res.status(404).json({ success: false, message: 'Integration not found' });
+    }
+
+    const validationError = validateCredentials(
+      integration,
+      credentials as Record<string, unknown> | undefined | null,
+    );
+    if (validationError) {
+      return res.status(400).json({ success: false, message: validationError });
+    }
+
+    // Guard against oversized credentials blobs being stored in the JSONB column.
+    if (credentials !== undefined && credentials !== null) {
+      const credSize = Buffer.byteLength(JSON.stringify(credentials), 'utf8');
+      if (credSize > 65536) { // 64 KB cap
+        return res.status(400).json({ success: false, message: 'Credentials payload too large (max 64 KB)' });
+      }
+    }
+
+    // Guard against oversized settings blobs being stored in the JSONB column.
+    if (settings !== undefined && settings !== null) {
+      const settingsSize = Buffer.byteLength(JSON.stringify(settings), 'utf8');
+      if (settingsSize > 65536) { // 64 KB cap
+        return res.status(400).json({ success: false, message: 'Settings payload too large (max 64 KB)' });
+      }
+    }
+
+    // credentials stored encrypted in DB but intentionally excluded from response (INV-SYS-018).
+    const record = await integrationsService.connect(partnerId, integrationId, credentials, settings);
+    res.json({ success: true, data: record, message: 'Integration connected successfully' });
+  } catch (err) {
+    logger.error('Failed to connect integration', { error: err });
+    res.status(500).json({ success: false, message: 'Failed to connect integration' });
   }
 });
 
 /**
  * DELETE /api/integrations/connected/:id
- * Disconnect an integration
+ * Disconnect a connected integration — deletes from DB.
  */
-router.delete('/connected/:id', authenticate, (req: Request, res: Response) => {
+router.delete('/connected/:id', authenticate, authorize('PARTNER'), async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(403).json({ success: false, message: 'Partner context required' });
+    }
+    const partnerId = await resolvePartnerId(userId);
+    if (!partnerId) {
+      return res.status(403).json({ success: false, message: 'Partner context required' });
+    }
 
-    // In a real app, this would delete from database
-    res.json({
-      success: true,
-      message: 'Integration disconnected successfully',
-    });
-  } catch {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to disconnect integration',
-    });
+    const deleted = await integrationsService.disconnect(partnerId, req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: 'Connected integration not found' });
+    }
+
+    res.json({ success: true, message: 'Integration disconnected successfully' });
+  } catch (err) {
+    logger.error('Failed to disconnect integration', { error: err });
+    res.status(500).json({ success: false, message: 'Failed to disconnect integration' });
   }
 });
 
 /**
  * POST /api/integrations/test/:id
- * Test an integration connection
+ * Test a connected integration — verifies the connection exists in DB.
+ * No Math.random() latency simulation; deterministic response.
  */
-router.post('/test/:id', authenticate, (req: Request, res: Response) => {
+router.post('/test/:id', authenticate, authorize('PARTNER'), async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
-    // credentials accepted in body but intentionally not included in the response (INV-SYS-018).
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(403).json({ success: false, message: 'Partner context required' });
+    }
+    const partnerId = await resolvePartnerId(userId);
+    if (!partnerId) {
+      return res.status(403).json({ success: false, message: 'Partner context required' });
+    }
 
-    // In a real app, this would test the actual connection
-    // For now, simulate success
+    const connection = await integrationsService.findConnection(partnerId, req.params.id);
+    if (!connection) {
+      return res.status(404).json({ success: false, message: 'Connected integration not found' });
+    }
+
     res.json({
       success: true,
       message: 'Connection test successful',
-      data: {
-        status: 'success',
-        latency: Math.floor(Math.random() * 500) + 100,
-        timestamp: new Date(),
-      },
+      data: { status: 'success', timestamp: new Date() },
     });
-  } catch {
-    res.status(500).json({
-      success: false,
-      message: 'Connection test failed',
-    });
+  } catch (err) {
+    logger.error('Connection test failed', { error: err });
+    res.status(500).json({ success: false, message: 'Connection test failed' });
   }
 });
 
 /**
  * GET /api/integrations/stats
- * Get integration statistics
- * Requires authentication
+ * Integration statistics — active count sourced from DB, catalog counts from in-memory list.
  */
-router.get('/stats', authenticate, (req: Request, res: Response) => {
+router.get('/stats', authenticate, authorize('PARTNER'), async (req: AuthRequest, res: Response) => {
   try {
-    // In a real app, this would fetch actual stats from database
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(403).json({ success: false, message: 'Partner context required' });
+    }
+    const partnerId = await resolvePartnerId(userId);
+    if (!partnerId) {
+      return res.status(403).json({ success: false, message: 'Partner context required' });
+    }
+
+    const { activeIntegrations } = await integrationsService.getStats(partnerId);
     res.json({
       success: true,
       data: {
         totalIntegrations: availableIntegrations.length,
-        activeIntegrations: 0, // Would count from user's connected integrations
+        activeIntegrations,
         categoryCounts: {
-          'POS Systems': availableIntegrations.filter(i => i.category === 'POS Systems').length,
-          'Payment Gateways': availableIntegrations.filter(i => i.category === 'Payment Gateways').length,
-          'Analytics': availableIntegrations.filter(i => i.category === 'Analytics').length,
-          'Accounting': availableIntegrations.filter(i => i.category === 'Accounting').length,
+          'POS Systems': availableIntegrations.filter((i) => i.category === 'POS Systems').length,
+          'Payment Gateways': availableIntegrations.filter((i) => i.category === 'Payment Gateways').length,
+          'Analytics': availableIntegrations.filter((i) => i.category === 'Analytics').length,
+          'Accounting': availableIntegrations.filter((i) => i.category === 'Accounting').length,
+          'Payment Terminals': availableIntegrations.filter((i) => i.category === 'Payment Terminals').length,
         },
         lastSyncAt: new Date(),
       },
     });
-  } catch {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch integration statistics',
-    });
+  } catch (err) {
+    logger.error('Failed to fetch integration statistics', { error: err });
+    res.status(500).json({ success: false, message: 'Failed to fetch integration statistics' });
   }
 });
 
 /**
  * GET /api/integrations/categories
- * Get integration categories
- * Public endpoint - no authentication required
+ * Get integration categories.
+ * Public endpoint — no authentication required.
  */
 router.get('/categories', (req: Request, res: Response) => {
   try {
-    const categories = Array.from(new Set(availableIntegrations.map(i => i.category)));
+    const categories = Array.from(new Set(availableIntegrations.map((i) => i.category)));
     res.json({
       success: true,
       data: categories,
     });
-  } catch {
+  } catch (err) {
+    logger.error('Failed to fetch integration categories', { error: err });
     res.status(500).json({
       success: false,
       message: 'Failed to fetch categories',

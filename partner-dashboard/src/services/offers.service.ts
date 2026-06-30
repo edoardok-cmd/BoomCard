@@ -187,7 +187,13 @@ class OffersService {
       // Resolve canonical category IDs to human-readable names for display
       partnerCategoryId: offer.partner?.category || '',
       category: offer.category || getCategoryName(offer.partner?.category || '', 'en'),
-      categoryBg: offer.categoryBg || getCategoryName(offer.partner?.category || '', 'bg'),
+      categoryBg: (() => {
+        if (offer.categoryBg) return offer.categoryBg;
+        const rawId = offer.partner?.category || '';
+        if (!rawId) return '';
+        const bg = getCategoryName(rawId, 'bg');
+        return bg !== rawId ? bg : '';
+      })(),
       location: offer.location || offer.partner?.city || 'Bulgaria',
       partnerName: offer.partnerName || offer.partner?.businessName || offer.partner?.businessNameBg || '',
       path: offer.path || `/offers/${offer.id}`,

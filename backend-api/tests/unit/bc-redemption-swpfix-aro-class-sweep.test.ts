@@ -95,7 +95,7 @@ app.use('/api/stickers', stickersRouter);
 app.use(errorHandler);
 
 // ── Suite ─────────────────────────────────────────────────────────────────────
-type RouteCase = { label: string; method: 'post'; path: string };
+type RouteCase = { label: string; method: 'post' | 'patch' | 'put'; path: string };
 
 const MUTATION_ROUTES: RouteCase[] = [
   { label: 'approve',      method: 'post', path: '/api/stickers/admin/approve/scan-1'  },
@@ -107,6 +107,30 @@ const MUTATION_ROUTES: RouteCase[] = [
 describe('BC-REDEMPTION-SWPFIX-ARO-CLASS-SWEEP — requireActiveAdmin gates scan mutation routes', () => {
   test.each(MUTATION_ROUTES)(
     'POST $path ($label) → 403 for aro=true (inactive) admin',
+    async ({ method, path }) => {
+      const res = await request(app)[method](path).send({});
+      expect(res.status).toBe(403);
+      expect(res.body.error).toMatch(/inactive/i);
+    },
+  );
+});
+
+// ── INV-RDM-067 block ────────────────────────────────────────────────────────
+const QR_WRITE_ROUTES: RouteCase[] = [
+  { label: 'POST /locations',                  method: 'post',  path: '/api/stickers/locations'                   },
+  { label: 'POST /locations/bulk',             method: 'post',  path: '/api/stickers/locations/bulk'              },
+  { label: 'POST /generate/bulk',              method: 'post',  path: '/api/stickers/generate/bulk'               },
+  { label: 'POST /generate/:locationId',       method: 'post',  path: '/api/stickers/generate/loc-1'              },
+  { label: 'POST /activate/:stickerId',        method: 'post',  path: '/api/stickers/activate/stk-1'              },
+  { label: 'POST /:stickerId/reactivate',      method: 'post',  path: '/api/stickers/stk-1/reactivate'            },
+  { label: 'PATCH /:stickerId/processing',     method: 'patch', path: '/api/stickers/stk-1/processing'            },
+  { label: 'PATCH /:stickerId/replace',        method: 'patch', path: '/api/stickers/stk-1/replace'               },
+  { label: 'PUT /venue/:venueId/config',       method: 'put',   path: '/api/stickers/venue/venue-1/config'        },
+];
+
+describe('BC-REDEMPTION-SWPFIX-ARO-CLASS-SWEEP — requirePermission gates QR-management write routes (INV-RDM-067)', () => {
+  test.each(QR_WRITE_ROUTES)(
+    '$method $path ($label) → 403 for aro=true (inactive) admin',
     async ({ method, path }) => {
       const res = await request(app)[method](path).send({});
       expect(res.status).toBe(403);

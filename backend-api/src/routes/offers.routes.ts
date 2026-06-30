@@ -211,11 +211,22 @@ router.get('/category/:category', optionalAuthenticate, async (req: AuthRequest,
     const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
     const userPlan = await resolveUserPlan(req);
     const { page, limit } = parsePagination(req.query, { defaultLimit: 10, maxLimit: 100 });
+    const VALID_SORT_BY = new Set(['discount', 'price', 'rating', 'newest', 'redemptions', 'createdAt']);
+    const rawSortBy = req.query.sortBy as string | undefined;
+    const rawSortOrder = req.query.sortOrder as string | undefined;
+    const parsedRating = req.query.minRating ? parseFloat(req.query.minRating as string) : NaN;
+    const sortOrder: 'asc' | 'desc' | undefined =
+      rawSortOrder === 'asc' || rawSortOrder === 'desc' ? rawSortOrder : undefined;
     const filters = {
       page,
       limit,
       userPlan,
       isAdmin,
+      city: req.query.city as string | undefined,
+      search: req.query.search as string | undefined,
+      sortBy: rawSortBy && VALID_SORT_BY.has(rawSortBy) ? rawSortBy as 'discount' | 'price' | 'rating' | 'newest' | 'redemptions' | 'createdAt' : undefined,
+      sortOrder,
+      minRating: !isNaN(parsedRating) ? parsedRating : undefined,
     };
 
     const result = await offersService.getOffersByCategory(req.params.category, filters);

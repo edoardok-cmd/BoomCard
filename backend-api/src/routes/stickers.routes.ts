@@ -300,7 +300,8 @@ router.post('/scan/:scanId/receipt', authenticate, requireActiveSubscription, up
 
     // Parse OCR data if provided. Strip confidence — it feeds Signal 2 of the fraud risk
     // score, so it must not be client-controlled. Server-side OCR is the authoritative
-    // source; for now we default to 0 (conservative) until async OCR is synchronised.
+    // source; the real confidence is obtained synchronously in stickerService.uploadReceipt
+    // via Tesseract so the fraud signal is real.
     const ocrData = req.body.ocrData ? (() => {
       const { confidence: _dropped, ...rest } = JSON.parse(req.body.ocrData);
       return rest;

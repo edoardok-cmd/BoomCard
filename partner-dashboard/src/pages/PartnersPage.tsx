@@ -6,6 +6,8 @@ import styled from 'styled-components';
 import { useLanguage } from '../contexts/LanguageContext';
 import Button from '../components/common/Button/Button';
 import Card from '../components/common/Card/Card';
+import { useEntities } from '../hooks/useOffers';
+import { Entity } from '../types/entity.types';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -431,154 +433,6 @@ const LocationsSection = styled.div`
   }
 `;
 
-// ─── Partner Tiers ─────────────────────────────────────────────────────────────
-
-const TiersSection = styled.section`
-  padding: 5rem 0;
-  background: white;
-
-  [data-theme="dark"] & {
-    background: #111827;
-  }
-`;
-
-const TiersGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 2rem;
-  margin-top: 3rem;
-
-  @media (max-width: 900px) {
-    grid-template-columns: 1fr;
-    max-width: 480px;
-    margin: 3rem auto 0;
-  }
-`;
-
-const TierCard = styled.div<{ $accent: string; $featured?: boolean }>`
-  background: var(--color-background, #fff);
-  border: 2px solid ${p => p.$featured ? p.$accent : '#e5e7eb'};
-  border-radius: 1.25rem;
-  padding: 2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-  position: relative;
-  transition: box-shadow 0.2s, transform 0.2s;
-  box-shadow: ${p => p.$featured ? `0 8px 32px ${p.$accent}33` : '0 2px 8px rgba(0,0,0,0.06)'};
-
-  &:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 16px 48px ${p => p.$accent}44;
-  }
-
-  [data-theme="dark"] & {
-    background: #1f2937;
-    border-color: ${p => p.$featured ? p.$accent : '#374151'};
-  }
-`;
-
-const TierTopBadge = styled.div<{ $accent: string }>`
-  position: absolute;
-  top: -0.9rem;
-  left: 50%;
-  transform: translateX(-50%);
-  background: ${p => p.$accent};
-  color: #fff;
-  padding: 0.3rem 1rem;
-  border-radius: 9999px;
-  font-size: 0.6875rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-`;
-
-const TierLabel = styled.div<{ $accent: string }>`
-  display: inline-flex;
-  align-items: center;
-  background: ${p => p.$accent}22;
-  color: ${p => p.$accent};
-  border: 1px solid ${p => p.$accent}55;
-  border-radius: 9999px;
-  padding: 0.3rem 0.9rem;
-  font-size: 0.8125rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  width: fit-content;
-`;
-
-const TierDiscountDisplay = styled.div<{ $accent: string }>`
-  font-size: 3rem;
-  font-weight: 900;
-  color: ${p => p.$accent};
-  line-height: 1;
-
-  span {
-    font-size: 1.125rem;
-    font-weight: 600;
-    opacity: 0.85;
-  }
-`;
-
-const TierCardTitle = styled.h3`
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: #111827;
-  margin: 0;
-
-  [data-theme="dark"] & {
-    color: #f9fafb;
-  }
-`;
-
-const TierCardDesc = styled.p`
-  font-size: 0.9375rem;
-  color: #6b7280;
-  line-height: 1.6;
-  margin: 0;
-
-  [data-theme="dark"] & {
-    color: #9ca3af;
-  }
-`;
-
-const TierFeatureList = styled.ul`
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.625rem;
-`;
-
-const TierFeature = styled.li<{ $accent: string }>`
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  font-size: 0.9375rem;
-  color: #4b5563;
-
-  &::before {
-    content: '✓';
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: ${p => p.$accent}22;
-    color: ${p => p.$accent};
-    font-size: 0.7rem;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  [data-theme="dark"] & {
-    color: #d1d5db;
-  }
-`;
 
 const LocationsGrid = styled.div`
   display: grid;
@@ -614,9 +468,9 @@ const LocationCard = styled(motion.div)`
   }
 `;
 
-const LocationImage = styled.div<{ $bgImage: string }>`
+const LocationImage = styled.div<{ $bgImage?: string }>`
   height: 200px;
-  background-image: url(${props => props.$bgImage});
+  background-image: ${p => p.$bgImage ? `url(${p.$bgImage})` : 'none'};
   background-size: cover;
   background-position: center;
   position: relative;
@@ -723,85 +577,6 @@ const ContactQuestion = styled.p`
   margin-bottom: 1rem;
 `;
 
-interface Location {
-  id: string;
-  name: string;
-  city: string;
-  address: string;
-  description: string;
-  imageUrl: string;
-  offers: number;
-  rating: number;
-  openNow?: boolean;
-}
-
-const mockLocations: Location[] = [
-  {
-    id: '1',
-    name: 'Downtown Restaurant & Bar',
-    city: 'Sofia',
-    address: 'Vitosha Blvd 123, Sofia 1000',
-    description: 'Premium dining experience with rooftop terrace and city views. Specializing in Mediterranean cuisine.',
-    imageUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800',
-    offers: 8,
-    rating: 4.8,
-    openNow: true,
-  },
-  {
-    id: '2',
-    name: 'Wellness Spa & Fitness Center',
-    city: 'Sofia',
-    address: 'Bulgaria Blvd 88, Sofia 1404',
-    description: 'Full-service spa with modern fitness facilities, yoga studios, and relaxation areas.',
-    imageUrl: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=800',
-    offers: 5,
-    rating: 4.9,
-    openNow: true,
-  },
-  {
-    id: '3',
-    name: 'Seaside Beach Club',
-    city: 'Varna',
-    address: 'Sea Garden, Varna 9000',
-    description: 'Exclusive beach club with water sports, pool bar, and sunset lounge area.',
-    imageUrl: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=800',
-    offers: 12,
-    rating: 4.7,
-    openNow: false,
-  },
-  {
-    id: '4',
-    name: 'Mountain Resort & Ski Lodge',
-    city: 'Bansko',
-    address: 'Pirin Mountain, Bansko 2770',
-    description: 'Alpine resort with ski slopes, cozy lodge, and après-ski entertainment.',
-    imageUrl: 'https://images.unsplash.com/photo-1605870445919-838d190e8e1b?w=800',
-    offers: 15,
-    rating: 4.6,
-  },
-  {
-    id: '5',
-    name: 'Art Gallery & Café',
-    city: 'Plovdiv',
-    address: 'Old Town, Plovdiv 4000',
-    description: 'Contemporary art space with specialty coffee and local artisan exhibitions.',
-    imageUrl: 'https://images.unsplash.com/photo-1554907984-15263bfd63bd?w=800',
-    offers: 6,
-    rating: 4.8,
-    openNow: true,
-  },
-  {
-    id: '6',
-    name: 'Shopping Mall & Entertainment',
-    city: 'Sofia',
-    address: 'Tsarigradsko Shose 115, Sofia 1784',
-    description: 'Modern shopping center with cinema, bowling, and diverse dining options.',
-    imageUrl: 'https://images.unsplash.com/photo-1519567241046-7f570eee3ce6?w=800',
-    offers: 25,
-    rating: 4.5,
-    openNow: true,
-  },
-];
 
 const PartnersPage: React.FC = () => {
   const navigate = useNavigate();
@@ -894,21 +669,8 @@ const PartnersPage: React.FC = () => {
 
   // Cities filter removed - locations now shown as showcase
 
-  const getCategoryBg = (loc: Location) => {
-    const map: Record<string, string> = {
-      '1': 'Ресторант', '2': 'СПА и фитнес', '3': 'Плажен клуб',
-      '4': 'Ски курорт', '5': 'Галерия и кафе', '6': 'Мол и развлечения',
-    };
-    return map[loc.id] || 'Бизнес';
-  };
-
-  const getCategoryEn = (loc: Location) => {
-    const map: Record<string, string> = {
-      '1': 'Restaurant', '2': 'Spa & Fitness', '3': 'Beach Club',
-      '4': 'Ski Resort', '5': 'Gallery & Cafe', '6': 'Mall & Entertainment',
-    };
-    return map[loc.id] || 'Business';
-  };
+  const { data: venuesData, isLoading: venuesLoading, isError: venuesError } = useEntities({ limit: 6 });
+  const venues: Entity[] = venuesData?.data ?? [];
 
   return (
     <PageContainer>
@@ -1038,23 +800,42 @@ const PartnersPage: React.FC = () => {
           </SectionSubtitle>
 
           <LocationsGrid>
-            {mockLocations.map((loc, index) => (
-              <LocationCard
-                key={loc.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: index * 0.1 }}
-              >
-                <LocationImage $bgImage={loc.imageUrl} />
+            {venuesLoading ? (
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                {language === 'bg' ? 'Зареждане...' : 'Loading...'}
+              </div>
+            ) : venuesError ? (
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                {language === 'bg' ? 'Неуспешно зареждане на локации. Моля, опитайте отново.' : 'Could not load locations. Please try again.'}
+              </div>
+            ) : venues.length === 0 ? (
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                {language === 'bg' ? 'Няма налични локации' : 'No locations available'}
+              </div>
+            ) : (
+              venues.map((entity, index) => (
+                <Link key={entity.id} to={entity.path} style={{ textDecoration: 'none', display: 'block' }}>
+                  <LocationCard
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: index * 0.1 }}
+                  >
+                    <LocationImage
+                      $bgImage={entity.images.hero}
+                      role="img"
+                      aria-label={(language === 'bg' ? entity.name.bg : entity.name.en) || entity.name.en}
+                    />
 
-                <LocationContent>
-                  <LocationName>{loc.name}</LocationName>
-                  <LocationAddress>
-                    {loc.city} &middot; {language === 'bg' ? getCategoryBg(loc) : getCategoryEn(loc)}
-                  </LocationAddress>
-                </LocationContent>
-              </LocationCard>
-            ))}
+                    <LocationContent>
+                      <LocationName>{(language === 'bg' ? entity.name.bg : entity.name.en) || entity.name.en}</LocationName>
+                      <LocationAddress>
+                        {entity.location.city ?? entity.location.display} &middot; {(language === 'bg' ? entity.category.bg : entity.category.en) || entity.category.en}
+                      </LocationAddress>
+                    </LocationContent>
+                  </LocationCard>
+                </Link>
+              ))
+            )}
           </LocationsGrid>
 
           <div style={{ textAlign: 'center', marginTop: '1rem' }}>
@@ -1066,116 +847,6 @@ const PartnersPage: React.FC = () => {
           </div>
         </Container>
       </LocationsSection>
-
-      {false && <TiersSection id="tiers">
-        <Container>
-          <SectionTitle>
-            {language === 'bg' ? 'Партньорски нива' : 'Partner Tiers'}
-          </SectionTitle>
-          <SectionSubtitle>
-            {language === 'bg'
-              ? 'Изберете с каква отстъпка искате да привлечете клиентите си — вие я предлагате от менюто, ние я доставяме до тях.'
-              : 'Choose the discount you want to offer your customers — you give it from your menu, we deliver it to them.'}
-          </SectionSubtitle>
-
-          <TiersGrid>
-            {/* BASIC */}
-            <TierCard $accent="#6b7280">
-              <TierLabel $accent="#6b7280">Basic</TierLabel>
-              <TierDiscountDisplay $accent="#6b7280">
-                5%<span> {language === 'bg' ? 'за клиентите' : 'to customers'}</span>
-              </TierDiscountDisplay>
-              <TierCardTitle>{language === 'bg' ? 'Основен' : 'Basic'}</TierCardTitle>
-              <TierCardDesc>
-                {language === 'bg'
-                  ? 'Идеален старт — предлагате 5% отстъпка на клиентите от цялото меню и привличате нова аудитория.'
-                  : 'A great starting point — offer customers 5% off your entire menu and attract a new audience.'}
-              </TierCardDesc>
-              <TierFeatureList>
-                <TierFeature $accent="#6b7280">
-                  {language === 'bg' ? 'Давате 5% отстъпка на клиентите от менюто' : 'Give customers 5% off all menu items'}
-                </TierFeature>
-                <TierFeature $accent="#6b7280">
-                  {language === 'bg' ? 'Стандартно присъствие в приложението' : 'Standard listing in the app'}
-                </TierFeature>
-                <TierFeature $accent="#6b7280">
-                  {language === 'bg' ? 'Базова статистика' : 'Basic analytics'}
-                </TierFeature>
-              </TierFeatureList>
-            </TierCard>
-
-            {/* LITE */}
-            <TierCard $accent="#3b82f6" $featured>
-              <TierTopBadge $accent="#3b82f6">
-                {language === 'bg' ? 'Популярен избор' : 'Popular choice'}
-              </TierTopBadge>
-              <TierLabel $accent="#3b82f6">Lite</TierLabel>
-              <TierDiscountDisplay $accent="#3b82f6">
-                10%<span> {language === 'bg' ? 'за клиентите' : 'to customers'}</span>
-              </TierDiscountDisplay>
-              <TierCardTitle>{language === 'bg' ? 'Лайт' : 'Lite'}</TierCardTitle>
-              <TierCardDesc>
-                {language === 'bg'
-                  ? 'Предлагате 10% отстъпка на клиентите — по-голяма видимост и по-атрактивна полза за лоялната аудитория.'
-                  : 'Offer customers 10% off — greater visibility and a more attractive benefit for your loyal audience.'}
-              </TierCardDesc>
-              <TierFeatureList>
-                <TierFeature $accent="#3b82f6">
-                  {language === 'bg' ? 'Давате 10% отстъпка на клиентите от менюто' : 'Give customers 10% off all menu items'}
-                </TierFeature>
-                <TierFeature $accent="#3b82f6">
-                  {language === 'bg' ? 'Подобрено присъствие в приложението' : 'Enhanced listing in the app'}
-                </TierFeature>
-                <TierFeature $accent="#3b82f6">
-                  {language === 'bg' ? 'Разширена статистика' : 'Enhanced analytics'}
-                </TierFeature>
-                <TierFeature $accent="#3b82f6">
-                  {language === 'bg' ? 'Качване на снимки на менюто' : 'Menu image upload'}
-                </TierFeature>
-              </TierFeatureList>
-            </TierCard>
-
-            {/* PREMIUM */}
-            <TierCard $accent="#c9a237" $featured>
-              <TierTopBadge $accent="#c9a237">
-                {language === 'bg' ? 'Максимален ефект' : 'Maximum impact'}
-              </TierTopBadge>
-              <TierLabel $accent="#c9a237">Premium</TierLabel>
-              <TierDiscountDisplay $accent="#c9a237">
-                20%<span> {language === 'bg' ? 'за клиентите' : 'to customers'}</span>
-              </TierDiscountDisplay>
-              <TierCardTitle>{language === 'bg' ? 'Премиум' : 'Premium'}</TierCardTitle>
-              <TierCardDesc>
-                {language === 'bg'
-                  ? 'Предлагате 20% отстъпка от менюто и добавяте персонализирани оферти — пълен контрол над ползите за клиентите.'
-                  : 'Offer customers 20% off your menu and add custom deals — full control over the benefits you provide.'}
-              </TierCardDesc>
-              <TierFeatureList>
-                <TierFeature $accent="#c9a237">
-                  {language === 'bg' ? 'Давате 20% отстъпка на клиентите от менюто' : 'Give customers 20% off the menu'}
-                </TierFeature>
-                <TierFeature $accent="#c9a237">
-                  {language === 'bg'
-                    ? 'Добавяте множество персонализирани оферти (извън менюто)'
-                    : 'Add multiple custom offers (beyond the menu)'}
-                </TierFeature>
-                <TierFeature $accent="#c9a237">
-                  {language === 'bg' ? 'Приоритетно класиране в приложението' : 'Priority ranking in the app'}
-                </TierFeature>
-                <TierFeature $accent="#c9a237">
-                  {language === 'bg' ? 'Пълна статистика и отчети' : 'Full analytics & reporting'}
-                </TierFeature>
-                <TierFeature $accent="#c9a237">
-                  {language === 'bg' ? 'Качване на снимки на менюто' : 'Menu image upload'}
-                </TierFeature>
-                <TierFeature $accent="#c9a237">
-                  {language === 'bg' ? 'Персонален мениджър на акаунта' : 'Dedicated account manager'}
-                </TierFeature>
-              </TierFeatureList>
-            </TierCard>
-          </TiersGrid>
-        </Container>
-      </TiersSection>}
 
       <CTASection id="application">
         <Container>

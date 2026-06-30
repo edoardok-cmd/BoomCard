@@ -695,12 +695,29 @@ describe('Auth gates — unauthenticated callers receive 401', () => {
   });
 });
 
-// ─── INV-RDM-045/046: Stub routes return 501 (not yet implemented) ───────────
+// ─── INV-RDM-045/046: Stub routes / implemented routes ───────────────────────
 
 describe('Stub routes return 501 (not implemented)', () => {
-  it('[LIFECYCLE] INV-RDM-045: GET /api/bookings/ returns 501', async () => {
-    const res = await authRequest(userAToken).get('/api/bookings/');
-    expect(res.status).toBe(501);
+  it('[LIFECYCLE] INV-RDM-045: GET /api/bookings/ — unauthenticated returns 401, authenticated returns 200 with pagination envelope; ADMIN sees all bookings', async () => {
+    const unauth = await request(app).get('/api/bookings/');
+    expect(unauth.status).toBe(401);
+
+    const auth = await authRequest(userAToken).get('/api/bookings/');
+    expect(auth.status).toBe(200);
+    expect(auth.body.success).toBe(true);
+    expect(Array.isArray(auth.body.data)).toBe(true);
+    expect(auth.body.meta).toMatchObject({
+      total: expect.any(Number),
+      page: expect.any(Number),
+      limit: expect.any(Number),
+    });
+
+    // ADMIN must not be scoped to their own userId — they see all bookings
+    const adminRes = await authRequest(adminToken).get('/api/bookings/');
+    expect(adminRes.status).toBe(200);
+    expect(adminRes.body.success).toBe(true);
+    // Admin total >= user total (admin sees cross-user scope)
+    expect(adminRes.body.meta.total).toBeGreaterThanOrEqual(auth.body.meta.total);
   });
 
   it('[LIFECYCLE] INV-RDM-046: GET /api/messaging/conversations returns 501', async () => {

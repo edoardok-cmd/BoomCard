@@ -143,10 +143,16 @@ async function withOcrSlot<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /**
- * Run Tesseract OCR on an image buffer.
- * Supports Bulgarian + English (common for BG receipts).
+ * Run Tesseract OCR on an image buffer. Supports Bulgarian + English (common for BG receipts).
+ *
+ * @param timeoutMs When set, races the Tesseract recognition step against a timer.
+ *   The timer starts INSIDE the concurrency slot so it only measures actual OCR
+ *   execution time, not time spent waiting for a free slot. Rejects with an Error
+ *   whose message starts with "OCR execution timeout" when the limit is reached.
+ *   Callers that need slot-wait + execution bounded together should set their own
+ *   outer deadline around the entire call.
  */
-export async function recognizeReceiptImage(imageBuffer: Buffer): Promise<OCRResult> {
+export async function recognizeReceiptImage(imageBuffer: Buffer, timeoutMs?: number): Promise<OCRResult> {
   return withOcrSlot(async () => {
     const processed = await preprocessImage(imageBuffer);
 
@@ -157,7 +163,21 @@ export async function recognizeReceiptImage(imageBuffer: Buffer): Promise<OCRRes
     const worker = await createWorker('bul+eng', 1, workerOpts);
 
     try {
-      const { data } = await worker.recognize(processed);
+      const recognizePromise = worker.recognize(processed);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      // .finally() ensures clearTimeout runs whether the race resolves OR rejects,
+      // covering: (a) recognition completes first → cancel pending timer handle;
+      // (b) a non-timeout error from recognizePromise → cancel still-pending timer.
+      const racePromise = (timeoutMs !== undefined
+        ? Promise.race([
+            recognizePromise,
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(() => reject(new Error('OCR execution timeout')), timeoutMs);
+            }),
+          ])
+        : recognizePromise
+      ).finally(() => { if (timer !== undefined) clearTimeout(timer); });
+      const { data } = await racePromise;
       return parseReceiptText(data.text, data.confidence);
     } finally {
       await worker.terminate();

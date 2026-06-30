@@ -1,33 +1,34 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import GenericPage from '../components/templates/GenericPage';
-import { offerToEntity, type Offer } from '../types/entity.types';
+import { useEntitiesByCategory } from '../hooks/useOffers';
+import { type OfferFilters } from '../services/offers.service';
 import ExperiencesFilters, { defaultExperiencesFilters, type ExperiencesFiltersState } from '../components/common/ExperiencesFilters';
 
-const mockOffers: Offer[] = [
-  {
-    id: '1',
-    title: 'Street Food Tour Sofia',
-    titleBg: 'Тур на Улична Храна София',
-    description: 'Discover authentic street food across Sofia with local guides',
-    descriptionBg: 'Открийте автентична улична храна в София с местни екскурзоводи',
-    discount: 30,
-    originalPrice: 70,
-    discountedPrice: 49,
-    category: 'Food Tours',
-    categoryBg: 'Кулинарни Турове',
-    location: 'Sofia',
-    imageUrl: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800',
-    partnerName: 'Sofia Food Tours',
-    path: '/offers/1',
-    rating: 4.8,
-    reviewCount: 142,
-  },
-];
-
-const mockEntities = mockOffers.map(offerToEntity);
+function toApiFilters(f: ExperiencesFiltersState): OfferFilters {
+  const result: OfferFilters = {};
+  if (f.search) result.search = f.search;
+  // API accepts a single city; when multiple are selected, use the first.
+  if (f.locations.length > 0) result.city = f.locations[0];
+  if (f.sortBy === 'price-asc') { result.sortBy = 'price'; result.sortOrder = 'asc'; }
+  else if (f.sortBy === 'price-desc') { result.sortBy = 'price'; result.sortOrder = 'desc'; }
+  else if (f.sortBy === 'rating') { result.sortBy = 'rating'; result.sortOrder = 'desc'; }
+  // 'duration' has no backend equivalent; proxy to 'newest' so the sort is not a no-op.
+  else if (f.sortBy === 'duration') { result.sortBy = 'newest'; result.sortOrder = 'desc'; }
+  // 'featured' intentionally emits no sortBy — the backend applies its default ordering.
+  if (f.ratingRanges.length > 0) {
+    const min = Math.min(...f.ratingRanges.map(r => parseFloat(r.split('-')[0])).filter(n => !isNaN(n)));
+    if (isFinite(min)) result.minRating = min;
+  }
+  // Note: durations, formats, seasons, participations, priceLevels, types, availability
+  // have no backend OfferFilters equivalents and are not forwarded to the API.
+  return result;
+}
 
 const ExperiencesGastronomyPage: React.FC = () => {
   const [filters, setFilters] = useState<ExperiencesFiltersState>(defaultExperiencesFilters);
+  const apiFilters = useMemo(() => toApiFilters(filters), [filters]);
+  const { data, isLoading, isError } = useEntitiesByCategory('gastronomic', apiFilters);
+  const entities = data?.data || [];
 
   return (
     <GenericPage
@@ -35,8 +36,17 @@ const ExperiencesGastronomyPage: React.FC = () => {
       titleBg="Гастрономични Изживявания"
       subtitleEn="Culinary adventures including street food tours, wine & dine experiences, cooking classes, and farm-to-table dining"
       subtitleBg="Кулинарни приключения включващи турове на улична храна, вино и храна, готварски класове и farm-to-table хранене"
-      entities={mockEntities}
-      filters={<ExperiencesFilters filters={filters} onChange={setFilters} />}
+      entities={isError ? [] : entities}
+      isLoading={isLoading}
+      showEmptyState={isError}
+      {...(isError && {
+        emptyIcon: '⚠️',
+        emptyTitleEn: 'Unable to load experiences',
+        emptyTitleBg: 'Грешка при зареждане',
+        emptyTextEn: 'Failed to load gastronomy experiences. Please try again later.',
+        emptyTextBg: 'Неуспешно зареждане на гастрономични изживявания. Моля, опитайте отново.',
+      })}
+      filters={isError ? undefined : <ExperiencesFilters filters={filters} onChange={setFilters} />}
     />
   );
 };

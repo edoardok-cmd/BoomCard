@@ -20,7 +20,7 @@
 import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
-import { createTestUser, cleanupTestUser } from '../helpers/test-utils';
+import { createTestUser, loginTestUser, cleanupTestUser } from '../helpers/test-utils';
 
 // INV-SYS-029 needs the email auth bypass ON (dev opt-in) so the request reaches
 // payload validation; setup.ts already sets ALLOW_UNSIGNED_WEBHOOK=1, but make it
@@ -45,22 +45,46 @@ afterAll(() => {
 });
 
 // INV-SYS-018: credentials must not appear in the POST /connect response.
-// Requires a real authenticated user, so we manage a test-user lifecycle here.
+// Requires a real PARTNER-role user with a linked Partner record so the
+// authorize('PARTNER') middleware and partnerId resolution both pass.
 describe('[INV-SYS-018] POST /api/integrations/connect — credentials not echoed in response', () => {
   let accessToken: string;
   let userId: string;
+  let partnerId: string;
 
   beforeAll(async () => {
-    const { user, accessToken: token } = await createTestUser();
-    accessToken = token;
+    // 1. Register a base user.
+    const { user, email, password } = await createTestUser();
     userId = user.id;
-    // Newly-registered users have status=PENDING_VERIFICATION which the
-    // authenticate middleware rejects. Flip to ACTIVE (mirrors the pattern
-    // used by sticker-partner-access-gate.test.ts and other integration tests).
-    await prisma.user.update({ where: { id: userId }, data: { status: 'ACTIVE' } });
+
+    // 2. Flip the user to PARTNER role so the JWT issued on login carries role=PARTNER.
+    //    Also create a linked Partner row so resolvePartnerId() succeeds.
+    await prisma.user.update({
+      where: { id: userId },
+      data: { role: 'PARTNER', status: 'ACTIVE' },
+    });
+    const partner = await prisma.partner.create({
+      data: {
+        userId,
+        businessName: `Test Partner ${Date.now()}`,
+        category: 'Restaurant',
+        status: 'ACTIVE',
+        verifiedAt: new Date(),
+        discountRate: 5,
+      },
+    });
+    partnerId = partner.id;
+
+    // 3. Log in fresh so the JWT contains role=PARTNER (registration token had role=USER).
+    const { accessToken: freshToken } = await loginTestUser(email, password);
+    accessToken = freshToken;
   });
 
   afterAll(async () => {
+    if (partnerId) {
+      await prisma.connectedIntegration.deleteMany({ where: { partnerId } }).catch(() => null);
+      await prisma.partner.delete({ where: { id: partnerId } }).catch(() => null);
+    }
     if (userId) await cleanupTestUser(userId);
   });
 
@@ -71,7 +95,7 @@ describe('[INV-SYS-018] POST /api/integrations/connect — credentials not echoe
       .set('Content-Type', 'application/json')
       .send({
         integrationId: 'stripe',
-        credentials: { apiKey: 'secret-test-key' },
+        credentials: { publishableKey: 'pk_test_key', secretKey: 'sk_test_key' },
         settings: { mode: 'sandbox' },
       });
 
@@ -81,6 +105,8 @@ describe('[INV-SYS-018] POST /api/integrations/connect — credentials not echoe
 
     // credentials must NOT appear anywhere in the response data (including nested)
     expect(JSON.stringify(res.body.data)).not.toContain('"credentials"');
+    expect(JSON.stringify(res.body.data)).not.toContain('sk_test_key');
+    expect(JSON.stringify(res.body.data)).not.toContain('pk_test_key');
   });
 });
 
