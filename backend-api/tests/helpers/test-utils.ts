@@ -92,7 +92,7 @@ export async function loginTestUser(
 export async function createTestSubscription(
   userId: string,
   plan: 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' | 'PREMIUM_MONTHLY' = 'BASIC',
-  status: 'ACTIVE' | 'PAST_DUE' | 'CANCELLED' | 'INCOMPLETE' | 'INCOMPLETE_EXPIRED' | 'TRIALING' | 'UNPAID' | 'PAUSED' = 'ACTIVE'
+  status: 'ACTIVE' | 'PAST_DUE' | 'CANCELLED' | 'INCOMPLETE' | 'INCOMPLETE_EXPIRED' | 'TRIALING' | 'UNPAID' | 'PAUSED' | 'EXPIRED' | 'FAILED_PAYMENT' = 'ACTIVE'
 ) {
   // Get or create plan details
   let planDetails = await prisma.plan.findFirst({

@@ -21,6 +21,7 @@
  *   INV-RDM-055 — Admin-only venue fields not returned in public GET
  *   INV-RDM-069 — Bookings cross-tenant isolation (user B cannot read/mutate user A's booking)
  *   INV-RDM-070 — Messaging participant isolation (non-participant 403, no admin bypass, author-only PATCH/DELETE)
+ *   INV-RDM-071 — Bookings partner-status cross-tenant isolation (GET /api/bookings/partner scoped to own partner; PATCH /api/bookings/partner/:id/status cross-tenant 403)
  *
  *   LIFECYCLE class:
  *   INV-RDM-045 — GET /api/bookings/ returns 200 with owner-scoped pagination (active-admin-only bypass)
@@ -1005,6 +1006,120 @@ describe('Nearby venues — feature flag lifted', () => {
     const res = await request(app).get('/api/venues/nearby?latitude=abc&longitude=23');
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
+  });
+});
+
+// ─── INV-RDM-071: Bookings partner-status cross-tenant isolation ─────────────
+
+describe('INV-RDM-071 — Bookings partner-status cross-tenant isolation', () => {
+  let bookingForPartnerAId: string;
+  let bookingForPartnerBId: string;
+  let partnerAPartnerId: string;
+  let partnerBPartnerId: string;
+
+  beforeAll(async () => {
+    // Resolve partner record IDs from the global user fixtures.
+    const partnerA = await prisma.partner.findFirstOrThrow({ where: { userId: partnerAUserId } });
+    partnerAPartnerId = partnerA.id;
+    const partnerB = await prisma.partner.findFirstOrThrow({ where: { userId: partnerBUserId } });
+    partnerBPartnerId = partnerB.id;
+
+    // Booking owned by Partner A's partner record (booked by userA for Partner A's venue).
+    const bA = await prisma.booking.create({
+      data: {
+        userId: userAUserId,
+        partnerId: partnerAPartnerId,
+        venueId: venueAId,
+        bookingDate: new Date(Date.now() + 86400000),
+        bookingTime: '18:00',
+        guestCount: 2,
+        confirmationCode: `RDM071A-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+        status: 'PENDING',
+      },
+      select: { id: true },
+    });
+    bookingForPartnerAId = bA.id;
+
+    // Booking owned by Partner B's partner record (booked by userB for Partner B's venue).
+    const bB = await prisma.booking.create({
+      data: {
+        userId: userBUserId,
+        partnerId: partnerBPartnerId,
+        venueId: venueBId,
+        bookingDate: new Date(Date.now() + 86400000),
+        bookingTime: '19:00',
+        guestCount: 3,
+        confirmationCode: `RDM071B-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+        status: 'PENDING',
+      },
+      select: { id: true },
+    });
+    bookingForPartnerBId = bB.id;
+  }, 15_000);
+
+  afterAll(async () => {
+    if (bookingForPartnerAId) await prisma.booking.delete({ where: { id: bookingForPartnerAId } }).catch(() => {});
+    if (bookingForPartnerBId) await prisma.booking.delete({ where: { id: bookingForPartnerBId } }).catch(() => {});
+  });
+
+  // ── GET /api/bookings/partner ─────────────────────────────────────────────
+
+  it('[POSITIVE] INV-RDM-071: partner A gets 200 on GET /api/bookings/partner and sees own booking', async () => {
+    const res = await authRequest(partnerAToken).get('/api/bookings/partner');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    const ids = (res.body.data as Array<{ id: string }>).map((b) => b.id);
+    expect(ids).toContain(bookingForPartnerAId);
+  });
+
+  it('[XSCOPE] INV-RDM-071: partner A GET /api/bookings/partner does not leak partner B booking', async () => {
+    const res = await authRequest(partnerAToken).get('/api/bookings/partner');
+    expect(res.status).toBe(200);
+    const ids = (res.body.data as Array<{ id: string }>).map((b) => b.id);
+    expect(ids).not.toContain(bookingForPartnerBId);
+  });
+
+  it('[XSCOPE] INV-RDM-071: non-partner user gets 403 on GET /api/bookings/partner', async () => {
+    const res = await authRequest(userAToken).get('/api/bookings/partner');
+    expect(res.status).toBe(403);
+  });
+
+  it('[XSCOPE] INV-RDM-071: unauthenticated caller gets 401 on GET /api/bookings/partner', async () => {
+    const res = await request(app).get('/api/bookings/partner');
+    expect(res.status).toBe(401);
+  });
+
+  // ── PATCH /api/bookings/partner/:id/status ───────────────────────────────
+
+  it('[POSITIVE] INV-RDM-071: partner A can PATCH /api/bookings/partner/:id/status for own booking', async () => {
+    // CONFIRMED is deliberately non-terminal so subsequent XSCOPE tests exercise the 403 gate, not the 409 gate.
+    const res = await authRequest(partnerAToken)
+      .patch(`/api/bookings/partner/${bookingForPartnerAId}/status`)
+      .send({ status: 'CONFIRMED' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('CONFIRMED');
+  });
+
+  it('[XSCOPE] INV-RDM-071: partner B gets 403 on PATCH /api/bookings/partner/:id/status for partner A booking', async () => {
+    const res = await authRequest(partnerBToken)
+      .patch(`/api/bookings/partner/${bookingForPartnerAId}/status`)
+      .send({ status: 'CONFIRMED' });
+    expect(res.status).toBe(403);
+  });
+
+  it('[XSCOPE] INV-RDM-071: non-partner user gets 403 on PATCH /api/bookings/partner/:id/status', async () => {
+    const res = await authRequest(userAToken)
+      .patch(`/api/bookings/partner/${bookingForPartnerAId}/status`)
+      .send({ status: 'CONFIRMED' });
+    expect(res.status).toBe(403);
+  });
+
+  it('[XSCOPE] INV-RDM-071: unauthenticated caller gets 401 on PATCH /api/bookings/partner/:id/status', async () => {
+    // authenticate middleware fires before route logic; booking id need not exist for a 401
+    const res = await request(app)
+      .patch(`/api/bookings/partner/${bookingForPartnerAId}/status`)
+      .send({ status: 'CONFIRMED' });
+    expect(res.status).toBe(401);
   });
 });
 

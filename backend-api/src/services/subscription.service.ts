@@ -317,6 +317,13 @@ export class SubscriptionService {
       throw new AppError(`Subscription is already on the ${newPlan} plan`, 400);
     }
 
+    if (subscription.status !== 'ACTIVE' && subscription.status !== 'TRIALING') {
+      throw new AppError('Plan upgrade is only available for active subscriptions', 422);
+    }
+    if (subscription.plan !== 'BASIC' && subscription.plan !== 'PREMIUM_WEEKLY') {
+      throw new AppError('Plan upgrade is only available for Basic or Premium-Weekly subscribers', 422);
+    }
+
     // Calculate and credit any applicable upgrade credit to the user's wallet
     await this.applyUpgradeCredit(subscription, newPlan);
 
