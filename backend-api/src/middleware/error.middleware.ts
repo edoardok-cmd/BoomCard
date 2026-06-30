@@ -99,6 +99,21 @@ export const errorHandler = (
     statusCode = 400;
     message = 'Validation Error: Invalid JSON in request body';
     isOperational = true;
+  } else if (
+    (err as any).type === 'entity.too.large' ||
+    err?.constructor?.name === 'PayloadTooLargeError'
+  ) {
+    // Oversized request body — body-parser (raw-body) throws PayloadTooLargeError
+    // with `type === 'entity.too.large'` BEFORE any route code runs, once the body
+    // exceeds the `express.json({ limit: '10mb' })` cap in src/server.ts. This is a
+    // client mistake at the body-parser layer, not a server fault — without this
+    // branch it falls through to the default 500 (+ stack in dev, which leaks
+    // absolute server paths and the internal middleware chain on an unauthenticated
+    // surface). Map the class to a clean 413; the stack is 5xx-only below, so a 413
+    // carries no stack.
+    statusCode = 413;
+    message = 'Request entity too large';
+    isOperational = true;
   } else if (err instanceof URIError) {
     // Express URL-decodes path params before reaching the route handler.
     // Invalid percent-encoding (e.g. %ff — lone continuation byte) throws a

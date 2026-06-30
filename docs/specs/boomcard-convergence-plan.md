@@ -33,6 +33,10 @@ The convergence machinery makes the audit terminate instead of sampling the same
    - Every ledger row = `verified` (zero `open`, zero `untested`)
    - **Sweep suite green** (exit criterion 2): All sweep test files are committed to the BoomCard repository. A sweep file's existence is what this criterion checks. Teeth-prove tests (`.teeth.test.ts` co-located with each sweep) are a separate quality bar — amber badges in the convergence monitor indicate files are committed but not yet teeth-proved. Teeth-prove is strongly recommended before treating sweep results as mechanically guaranteed, but is not gated by exit criterion 2.
    - Two consecutive independent passes add ZERO new invariants to the matrix
+6. **No mock / stub data** (non-negotiable, common to every prompt). BoomCard shipped 10 real mocks behind a "100% real API" claim (`BC-DEMOCK-001..010` — 501-"not implemented" stubs, hardcoded arrays, log-only SMS, `conf=0` OCR). Therefore:
+   - An invariant backed by a mock, stub, hardcoded array/fixture, 501-stub, log-only side effect, or always-pass placeholder is **not `verified` — it is `open`**. File a task; never mark it verified.
+   - Probes and sweeps must exercise the **real** backend on `:3025` against the real DB. Never mock the data layer, HTTP client, or service responses to make a row pass — a green sweep over mocked data is a false verification and is rejected.
+   - Do not introduce or leave any mock/stub/seeded-fake data while auditing. Existing mock data masquerading as a real implementation is itself a finding (BC-DEMOCK class) — file it.
 
 ## §3 Sweep files (BoomCard repo paths)
 
@@ -63,7 +67,7 @@ The coverage ledgers live in the Agent X harness workspace at `.claude/reviews/<
 
 ## §6 Re-audit prompts
 
-Copy-paste-ready prompts for each scope. These prompts are also rendered live in the BoomCard Convergence Monitor UI at `http://localhost:5124/boomcard-convergence`.
+Copy-paste-ready prompts for each scope. These prompts are also rendered live in the BoomCard Convergence Monitor UI at `http://localhost:5124/boomcard-convergence`. The UI appends the §2.6 **No mock / stub data** directive to every prompt (Round 1 and Round N, all branches) — it is not repeated in each subsection below.
 
 ---
 

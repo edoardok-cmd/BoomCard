@@ -26,6 +26,7 @@
 
 import request from 'supertest';
 import { createTestApp } from '../setup';
+import { prisma } from '../../src/lib/prisma';
 
 // ─── Route introspection (same mechanism as admin-currency-leak-sweep) ───────
 interface EnumeratedRoute {
@@ -165,6 +166,107 @@ describe('public-input-500-sweep: no public route 5xx on malformed client input'
       // eslint-disable-next-line no-console
       console.log('[public-input-500-sweep] GET 5xx FAILURES:');
       for (const f of fails) console.log(`  - ${f.route}  [${f.case}] -> ${f.status}`);
+    }
+    expect({ count: fails.length, fails }).toEqual({ count: 0, fails: [] });
+  });
+
+  it('POST routes return 413 (not 5xx, no stack leak) when body exceeds the 10mb express.json limit (INV-PUB-INP-008)', async () => {
+    // An oversized JSON body trips body-parser's PayloadTooLargeError BEFORE any
+    // route code runs. Pre-fix it fell through error.middleware to a 500 and (in
+    // dev) leaked an absolute-path stack. It must now be a clean 413 with no stack.
+    // Deterministic body: a single string field just over the 10mb cap.
+    const oversized = JSON.stringify({ x: 'a'.repeat(11 * 1024 * 1024) });
+    const targets = ['/api/contact', '/api/mobile/errors'];
+    const fails: { route: string; status: number; hasStack: boolean }[] = [];
+    for (const path of targets) {
+      let res: request.Response;
+      try {
+        res = await request(app)
+          .post(path)
+          .set('Content-Type', 'application/json')
+          .send(oversized);
+      } catch {
+        continue; // a thrown request isn't a server 5xx response
+      }
+      const hasStack = res.body != null && Object.prototype.hasOwnProperty.call(res.body, 'stack');
+      if (res.status !== 413 || hasStack) {
+        fails.push({ route: `POST ${path}`, status: res.status, hasStack });
+      }
+    }
+    if (fails.length) {
+      // eslint-disable-next-line no-console
+      console.log('[public-input-500-sweep] oversized-body FAILURES:');
+      for (const f of fails) console.log(`  - ${f.route} -> ${f.status} (stack=${f.hasStack})`);
+    }
+    expect({ count: fails.length, fails }).toEqual({ count: 0, fails: [] });
+  });
+
+  // INV-PUB-RL-003: every stored field on an unauthenticated public write is
+  // size-capped. The siblings on /api/mobile/errors are already bounded
+  // (message → 2000, stack → 10_000); appVersion must likewise be capped (64
+  // chars — generous for any real version string like "1.2.3-rc.4+build.567").
+  // Teeth test: send an oversized appVersion, assert the request succeeds (201)
+  // AND the persisted row's appVersion is <= 64 chars. Removing the
+  // `.slice(0, 64)` in mobileConfig.routes.ts makes this go RED.
+  it('POST /api/mobile/errors caps stored appVersion at 64 chars (INV-PUB-RL-003)', async () => {
+    const marker = `cap-probe-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const oversizedVersion = 'v'.repeat(5000);
+
+    const res = await request(app)
+      .post('/api/mobile/errors')
+      .set('Content-Type', 'application/json')
+      .send({ platform: 'ios', message: marker, appVersion: oversizedVersion });
+
+    expect(res.status).toBe(201);
+
+    // Read the persisted row back and assert the cap was applied at write time.
+    const row = await prisma.mobileErrorLog.findFirst({
+      where: { message: marker },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(row).not.toBeNull();
+    expect(row!.appVersion).not.toBeNull();
+    expect((row!.appVersion as string).length).toBeLessThanOrEqual(64);
+
+    // Cleanup the probe row so the test is idempotent across runs.
+    await prisma.mobileErrorLog.deleteMany({ where: { message: marker } });
+  });
+
+  // INV-PUB-INP-009: the optional `appVersion`/`stack` fields on
+  // /api/mobile/errors are stringified at write time (`.trim().slice(...)`).
+  // The platform/message/errorType fields are already type-guarded, but a
+  // PRESENT non-string appVersion/stack (e.g. the number 12345) used to slip
+  // past the guards and throw `TypeError: ...trim is not a function`, which
+  // fell through error.middleware to a 500 + (in dev) a leaked stack trace.
+  // The route must type-guard these BEFORE the string ops → 400, never 5xx,
+  // never a stack-leak. Body uses a VALID platform+message so the request
+  // actually reaches the appVersion/stack lines (the wrong-types case in
+  // BAD_BODIES has an invalid platform and is rejected earlier — it never
+  // exercises these lines). Removing the two guards makes this go RED (500).
+  it('POST /api/mobile/errors rejects non-string appVersion/stack with 400, no stack leak (INV-PUB-INP-009)', async () => {
+    const fails: { case: string; status: number; hasStack: boolean }[] = [];
+
+    const cases: { label: string; body: any }[] = [
+      { label: 'non-string-appVersion', body: { platform: 'ios', message: 'x', appVersion: 12345 } },
+      { label: 'non-string-stack', body: { platform: 'ios', message: 'x', stack: 999 } },
+    ];
+
+    for (const c of cases) {
+      const res = await request(app)
+        .post('/api/mobile/errors')
+        .set('Content-Type', 'application/json')
+        .send(c.body);
+      const hasStack = res.body != null && Object.prototype.hasOwnProperty.call(res.body, 'stack');
+      // Must be a clean 400 (client error) — never a 5xx, never a stack leak.
+      if (res.status !== 400 || hasStack) {
+        fails.push({ case: c.label, status: res.status, hasStack });
+      }
+    }
+
+    if (fails.length) {
+      // eslint-disable-next-line no-console
+      console.log('[public-input-500-sweep] non-string-field FAILURES:');
+      for (const f of fails) console.log(`  - ${f.case} -> ${f.status} (stack=${f.hasStack})`);
     }
     expect({ count: fails.length, fails }).toEqual({ count: 0, fails: [] });
   });

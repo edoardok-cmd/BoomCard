@@ -113,12 +113,21 @@ errorsRouter.post(
     if (message.includes('\x00')) {
       return res.status(400).json({ success: false, error: 'Invalid characters in message' });
     }
+    // Optional fields are stringified below (.trim()/.slice); a truthy non-string
+    // would throw TypeError → unmapped 500 + stack leak. Reject as 400 (malformed
+    // client input → 4xx, never 5xx). undefined/null stays allowed (optional).
+    if (appVersion !== undefined && appVersion !== null && typeof appVersion !== 'string') {
+      return res.status(400).json({ success: false, error: 'appVersion must be a string' });
+    }
+    if (stack !== undefined && stack !== null && typeof stack !== 'string') {
+      return res.status(400).json({ success: false, error: 'stack must be a string' });
+    }
     const resolvedType = errorType && VALID_ERROR_TYPES.has(errorType) ? errorType : 'unknown';
 
     await prisma.mobileErrorLog.create({
       data: {
         platform,
-        appVersion: appVersion?.trim() || null,
+        appVersion: appVersion?.trim().slice(0, 64) || null,
         errorType: resolvedType,
         message: message.trim().slice(0, 2000),
         stack: stack ? stack.trim().slice(0, 10_000) : null,
