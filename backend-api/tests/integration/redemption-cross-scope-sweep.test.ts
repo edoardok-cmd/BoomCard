@@ -23,6 +23,9 @@
  *   INV-RDM-070 — Messaging participant isolation (non-participant 403, no admin bypass, author-only PATCH/DELETE)
  *   INV-RDM-071 — Bookings partner-status cross-tenant isolation (GET /api/bookings/partner scoped to own partner; PATCH /api/bookings/partner/:id/status cross-tenant 403)
  *
+ *   AUTH class (MEDIUM):
+ *   INV-RDM-072 — POST /api/bookings/ requires active subscription + validates input/partner/venue ownership; userId server-derived
+ *
  *   LIFECYCLE class:
  *   INV-RDM-045 — GET /api/bookings/ returns 200 with owner-scoped pagination (active-admin-only bypass)
  *   INV-RDM-046 — GET /api/messaging/conversations returns 200 with participant-scoped list; non-participant sees empty list
@@ -1120,6 +1123,100 @@ describe('INV-RDM-071 — Bookings partner-status cross-tenant isolation', () =>
       .patch(`/api/bookings/partner/${bookingForPartnerAId}/status`)
       .send({ status: 'CONFIRMED' });
     expect(res.status).toBe(401);
+  });
+});
+
+// ─── INV-RDM-072: POST /api/bookings/ subscription gate + input/ownership validation ─────────
+
+describe('INV-RDM-072 — POST /api/bookings/ requires active subscription + validates input/partner/venue ownership; userId server-derived', () => {
+  let partnerAPartnerId: string;
+  let noSubUserId: string;
+  let noSubToken: string;
+  let createdBookingId: string | undefined;
+
+  beforeAll(async () => {
+    const partnerA = await prisma.partner.findFirstOrThrow({ where: { userId: partnerAUserId } });
+    partnerAPartnerId = partnerA.id;
+
+    // USER-role + ACTIVE status but NO subscription — triggers 402 from requireActiveSubscription.
+    // createTestUser() sets status=ACTIVE internally; explicit update here makes the fixture
+    // self-documenting and robust against future changes to the helper's default.
+    const noSub = await createTestUser();
+    noSubUserId = noSub.user.id;
+    cleanupUserIds.push(noSubUserId);
+    await prisma.user.update({ where: { id: noSubUserId }, data: { status: 'ACTIVE' } });
+    noSubToken = noSub.accessToken;
+  }, 15_000);
+
+  afterAll(async () => {
+    if (createdBookingId) {
+      await prisma.booking.delete({ where: { id: createdBookingId } }).catch(() => {});
+    }
+  });
+
+  it('[AUTH] unauthenticated caller gets 401 on POST /api/bookings/', async () => {
+    const futureDate = new Date(Date.now() + 86400000).toISOString();
+    const res = await request(app)
+      .post('/api/bookings/')
+      .send({ partnerId: partnerAPartnerId, bookingDate: futureDate, bookingTime: '18:00', guestCount: 2 });
+    expect(res.status).toBe(401);
+  });
+
+  it('[AUTH] non-subscribed user gets 402 on POST /api/bookings/', async () => {
+    const futureDate = new Date(Date.now() + 86400000).toISOString();
+    const res = await authRequest(noSubToken)
+      .post('/api/bookings/')
+      .send({ partnerId: partnerAPartnerId, bookingDate: futureDate, bookingTime: '18:00', guestCount: 2 });
+    expect(res.status).toBe(402);
+  });
+
+  it('[VALIDATION] missing required field (partnerId) returns 400', async () => {
+    const futureDate = new Date(Date.now() + 86400000).toISOString();
+    const res = await authRequest(userAToken)
+      .post('/api/bookings/')
+      .send({ bookingDate: futureDate, bookingTime: '18:00', guestCount: 2 });
+    expect(res.status).toBe(400);
+  });
+
+  it('[VALIDATION] invalid bookingTime format returns 400', async () => {
+    const futureDate = new Date(Date.now() + 86400000).toISOString();
+    const res = await authRequest(userAToken)
+      .post('/api/bookings/')
+      .send({ partnerId: partnerAPartnerId, bookingDate: futureDate, bookingTime: '25:99', guestCount: 2 });
+    expect(res.status).toBe(400);
+  });
+
+  it('[OWNERSHIP] non-existent partnerId returns 404', async () => {
+    const futureDate = new Date(Date.now() + 86400000).toISOString();
+    const res = await authRequest(userAToken)
+      .post('/api/bookings/')
+      .send({ partnerId: '00000000-0000-0000-0000-000000000000', bookingDate: futureDate, bookingTime: '18:00', guestCount: 2 });
+    expect(res.status).toBe(404);
+  });
+
+  it('[OWNERSHIP] venueId belonging to a different partner returns 400', async () => {
+    // venueBId belongs to Partner B, not Partner A — should be rejected
+    const futureDate = new Date(Date.now() + 86400000).toISOString();
+    const res = await authRequest(userAToken)
+      .post('/api/bookings/')
+      .send({ partnerId: partnerAPartnerId, venueId: venueBId, bookingDate: futureDate, bookingTime: '18:00', guestCount: 2 });
+    expect(res.status).toBe(400);
+  });
+
+  it('[POSITIVE] subscribed user creates booking with server-derived userId — 201', async () => {
+    const futureDate = new Date(Date.now() + 86400000).toISOString();
+    const res = await authRequest(userAToken)
+      .post('/api/bookings/')
+      .send({ partnerId: partnerAPartnerId, venueId: venueAId, bookingDate: futureDate, bookingTime: '18:00', guestCount: 2 });
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.id).toBeDefined();
+    createdBookingId = res.body.data.id;
+
+    // Fetch back to confirm userId is server-derived from the JWT (not client-supplied).
+    const getRes = await authRequest(userAToken).get(`/api/bookings/${createdBookingId}`);
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.data.userId).toBe(userAUserId);
   });
 });
 
