@@ -26,6 +26,9 @@ jest.mock('../../src/lib/prisma', () => {
     venueStickerConfig: { findFirst: (...a: any[]) => mockVenueStickerConfigFindFirst(...a) },
     venueReceiptTemplate: { findMany: (...a: any[]) => mockVenueReceiptTemplateFindMany(...a) },
     venueFraudConfig: { upsert: (...a: any[]) => mockVenueFraudConfigUpsert(...a) },
+    // Required by isCurrencyTransitionWindowOpen → getSystemSettingStr (called in scans/analytics/config routes).
+    // Returns null → fallback 'true' → window open.
+    systemSetting: { findUnique: jest.fn().mockResolvedValue(null) },
   };
   return { __esModule: true, default: client, prisma: client };
 });
@@ -51,6 +54,9 @@ jest.mock('../../src/middleware/auth.middleware', () => ({
   // out entirely (it tests routing/handler logic, not subscription gating), so a
   // pass-through keeps the route stack intact.
   requireActiveSubscription: (_req: any, _res: any, next: any) => next(),
+  // ARO scan-write gate added requireActiveAdmin to admin/approve|reject|bulk-* routes;
+  // pass-through keeps the route stack intact (this suite tests routing logic, not admin-active gating).
+  requireActiveAdmin: (_req: any, _res: any, next: any) => next(),
   AuthRequest: {},
 }));
 
@@ -67,7 +73,7 @@ jest.mock('../../src/services/sticker.service', () => ({
     activateSticker: jest.fn(async () => ({ id: 'sticker-1' })),
     getStickersByVenue: jest.fn(async () => []),
     getScansByVenue: jest.fn(async () => []),
-    getVenueAnalytics: jest.fn(async () => ({})),
+    getVenueAnalytics: jest.fn(async () => ({ revenue: { total: 0, average: 0 }, cashback: { total: 0, average: 0 } })),
     getOrCreateVenueConfig: jest.fn(async () => ({})),
     updateVenueConfig: jest.fn(async () => ({})),
   },
