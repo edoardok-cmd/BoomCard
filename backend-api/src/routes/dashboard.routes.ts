@@ -69,8 +69,29 @@ router.get('/me', authenticate, asyncHandler(async (req: AuthRequest, res: Respo
     createdAt: s.createdAt,
   }));
 
+  // INV-RDM-081: strip payment-provider ids and internal metadata before sending.
+  // getActiveSubscription returns the full Prisma row (other callers in
+  // subscriptions.routes.ts need stripeSubscriptionId/payseraOrderId to perform
+  // Stripe/Paysera operations). Here we allow only the client-visible fields.
   const resolvedSubscription = subscription
-    ? { ...subscription, benefits: await subscriptionService.getPlanBenefits(subscription.plan) }
+    ? {
+        id: subscription.id,
+        userId: subscription.userId,
+        plan: subscription.plan,
+        status: subscription.status,
+        currentPeriodStart: subscription.currentPeriodStart,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        cancelAt: subscription.cancelAt,
+        canceledAt: subscription.canceledAt,
+        trialStart: subscription.trialStart,
+        trialEnd: subscription.trialEnd,
+        autoRenewal: subscription.autoRenewal,
+        pauseEndsAt: subscription.pauseEndsAt,
+        createdAt: subscription.createdAt,
+        updatedAt: subscription.updatedAt,
+        benefits: await subscriptionService.getPlanBenefits(subscription.plan),
+      }
     : null;
 
   // Show upgrade-to-Premium-Monthly prompt for BASIC or Premium Weekly subscribers only (per spec §6.1)

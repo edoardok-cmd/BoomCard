@@ -164,3 +164,65 @@ describe('[LEAK sweep] INV-RDM-049: scan responses do not expose fraudScore', ()
     });
   });
 });
+
+// ─── INV-RDM-081: dashboard subscription must not expose payment-provider ids ─
+
+describe('[LEAK sweep] INV-RDM-081: GET /api/dashboard/me does not expose payment-provider ids', () => {
+  const createdUserIds: string[] = [];
+  let tokenWithSub: string;
+  let tokenNoSub: string;
+
+  beforeAll(async () => {
+    // User A: has an active subscription (payseraOrderId + metadata populated by createTestSubscription)
+    const dataA = await createTestUser();
+    tokenWithSub = dataA.accessToken;
+    createdUserIds.push(dataA.user.id);
+    await prisma.user.update({ where: { id: dataA.user.id }, data: { status: 'ACTIVE' } });
+    await createTestSubscription(dataA.user.id, 'BASIC');
+
+    // User B: no subscription at all
+    const dataB = await createTestUser();
+    tokenNoSub = dataB.accessToken;
+    createdUserIds.push(dataB.user.id);
+    await prisma.user.update({ where: { id: dataB.user.id }, data: { status: 'ACTIVE' } });
+  });
+
+  afterAll(async () => {
+    for (const id of createdUserIds) {
+      await cleanupTestUser(id);
+    }
+  });
+
+  it('[LEAK] INV-RDM-081: unauthenticated request returns 401', async () => {
+    const res = await authRequest('').get('/api/dashboard/me');
+    expect(res.status).toBe(401);
+  });
+
+  it('[LEAK] INV-RDM-081: subscription is null when user has no active subscription', async () => {
+    const res = await authRequest(tokenNoSub).get('/api/dashboard/me');
+    expect(res.status).toBe(200);
+    expect(res.body.subscription).toBeNull();
+  });
+
+  it('[LEAK] INV-RDM-081: subscription object omits stripeSubscriptionId, stripePriceId, stripeCustomerId, payseraOrderId, metadata (dashboard.routes.ts allowlist)', async () => {
+    const res = await authRequest(tokenWithSub).get('/api/dashboard/me');
+    expect(res.status).toBe(200);
+    const sub = res.body.subscription;
+    expect(sub).not.toBeNull();
+    // Payment-provider ids must not reach the client (INV-RDM-081)
+    expect(sub).not.toHaveProperty('stripeSubscriptionId');
+    expect(sub).not.toHaveProperty('stripePriceId');
+    expect(sub).not.toHaveProperty('stripeCustomerId');
+    expect(sub).not.toHaveProperty('payseraOrderId');
+    expect(sub).not.toHaveProperty('metadata');
+    // Internal-only columns that also must not be exposed
+    expect(sub).not.toHaveProperty('planId');
+    expect(sub).not.toHaveProperty('retryAttempt');
+    expect(sub).not.toHaveProperty('renewalRemindersSent');
+    // Confirm allowed public fields are present
+    expect(sub).toHaveProperty('id');
+    expect(sub).toHaveProperty('plan');
+    expect(sub).toHaveProperty('status');
+    expect(sub).toHaveProperty('currentPeriodEnd');
+  });
+});
