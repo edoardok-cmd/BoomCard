@@ -8,8 +8,8 @@ import { payseraService } from './paysera.service';
 import { notificationService } from './notification.service';
 import { fireAutomation } from '../lib/automationDispatcher';
 import { getSystemSettingInt } from '../utils/systemSettings';
-import { isCurrencyTransitionWindowOpen } from '../utils/currencyDisplay';
-import { cashbackLifecycleService, SYSTEM_ACTOR_ID, TRIAL_VOID_REASON } from './cashbackLifecycle.service';
+import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
+import { cashbackLifecycleService, SYSTEM_ACTOR_ID, TRIAL_VOID_REASON, VOID_REASON_CATEGORIES } from './cashbackLifecycle.service';
 import { AppError } from '../middleware/error.middleware';
 import { detach } from '../utils/detach';
 import { reasonIndicatesIbanProblem } from '../utils/payoutFailureReason';
@@ -1505,8 +1505,35 @@ export class WalletService {
       }
     }
 
+    const showDualCurrency = await isCurrencyTransitionWindowOpen();
+
     return {
-      transactions: transactions.map((tx) => maskUserFacingPayoutStatus(tx, reversedWithdrawalIds)),
+      transactions: transactions.map((tx) => {
+        const masked = maskUserFacingPayoutStatus(tx, reversedWithdrawalIds);
+        // INV-USER-ACL-003: strip admin identity; expose only the category prefix of voidedReason
+        // INV-USER-CUR-001/002/003: wrap money fields in dual-currency display object
+        const {
+          voidedByUserId: _drop,
+          voidedReason,
+          amount,
+          balanceBefore,
+          balanceAfter,
+          currency,
+          ...rest
+        } = masked;
+        return {
+          ...rest,
+          amount: toDualCurrency(amount, showDualCurrency),
+          balanceBefore: toDualCurrency(balanceBefore, showDualCurrency),
+          balanceAfter: toDualCurrency(balanceAfter, showDualCurrency),
+          currency: showDualCurrency ? currency : 'EUR',
+          voidedReason: (() => {
+            if (!voidedReason) return null;
+            const cat = voidedReason.split(':')[0].trim().toUpperCase();
+            return (VOID_REASON_CATEGORIES as readonly string[]).includes(cat) ? cat : 'OTHER';
+          })(),
+        };
+      }),
       total,
       limit: params?.limit || 50,
       offset: params?.offset || 0,
