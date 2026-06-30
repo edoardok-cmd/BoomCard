@@ -223,15 +223,22 @@ describe('[INV-SYS-032] oversized request body → clean 413, no stack / path le
 // guard it 500s + leaks the dev `stack`/absolute path. The guard must turn it into a
 // clean 400. This is the POST-auth sibling of INV-SYS-028 (which is pre-auth) and the
 // same leak class as INV-SYS-032. Sending a Buffer with Content-Type application/json
-// (mirroring the working INV-SYS-029 case) guarantees the bytes reach the route parse.
+// reaches the route parse. NOTE: the payload MUST be sent as a raw STRING, not a
+// Buffer — supertest/superagent double-encodes a Buffer passed to .send() under a
+// JSON content-type into `{"type":"Buffer","data":[...]}` (valid JSON), which would
+// parse cleanly and never exercise the malformed-parse path (those tests pass even
+// with the guard removed = zero teeth). A raw string is sent verbatim, so express.raw
+// delivers the original malformed bytes and the route JSON.parse throws → without the
+// guard it 500s, with the guard it returns 400. These assertions FAIL if the guard is
+// reverted.
 describe('[INV-SYS-033] authed malformed JSON body (route-level parse) → 400, never 500/leak', () => {
-  test('POST /api/email/inbound non-empty malformed JSON → 400, no stack/path leak', async () => {
+  test('POST /api/email/inbound truncated JSON (raw string) → 400, no stack/path leak', async () => {
     const res = await request(app)
       .post('/api/email/inbound')
       .set('Content-Type', 'application/json')
-      // truncated (missing closing brace) — valid-looking prefix so it is non-empty
-      // and reaches JSON.parse, then throws.
-      .send(Buffer.from('{"from":"a@b.c","to":"x@y.z","subject":"t","text":"b","messageId":"m"'));
+      // truncated — missing closing brace; sent as a raw string so the malformed
+      // bytes reach the route's JSON.parse and throw.
+      .send('{"from":"a@b.c","to":"x@y.z","subject":"t","text":"b","messageId":"m"');
     expect(res.status).toBe(400);
     expect(res.status).not.toBe(500);
     expect(res.body).not.toHaveProperty('stack');
@@ -242,11 +249,11 @@ describe('[INV-SYS-033] authed malformed JSON body (route-level parse) → 400, 
     expect(blob).not.toMatch(/node_modules/);
   });
 
-  test('POST /api/email/inbound garbage bytes → 400, no leak', async () => {
+  test('POST /api/email/inbound garbage bytes (raw string) → 400, no leak', async () => {
     const res = await request(app)
       .post('/api/email/inbound')
       .set('Content-Type', 'application/json')
-      .send(Buffer.from('not json at all <<< }{'));
+      .send('not json at all <<< }{');
     expect(res.status).toBe(400);
     expect(res.status).not.toBe(500);
     const blob = JSON.stringify(res.body ?? {}) + String(res.text ?? '');
