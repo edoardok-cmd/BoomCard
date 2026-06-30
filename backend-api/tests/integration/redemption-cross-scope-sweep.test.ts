@@ -1506,4 +1506,13 @@ describe('INV-RDM-074 — GET /api/messaging/unread-count self-scope', () => {
       data: { lastReadAt: null },
     });
   });
+
+  it('[XSCOPE] INV-RDM-074: sender (userA) own sent messages excluded — unreadCount is 0', async () => {
+    // userA sent the only message in this conversation; userId:{not:userId} in the route
+    // must exclude it from A's own unread count. If this predicate were removed, A would
+    // see unreadCount=1 (their own sent message) — a regression this case would catch.
+    const res = await authRequest(user074AToken).get('/api/messaging/unread-count');
+    expect(res.status).toBe(200);
+    expect(res.body.unreadCount).toBe(0);
+  });
 });
