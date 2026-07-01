@@ -210,7 +210,7 @@ export class CardService {
       return null;
     }
 
-    const card = await prisma.card.findFirst({ where: { userId } });
+    const card = await prisma.card.findFirst({ where: { userId }, select: CARD_USER_FIELDS });
     if (!card) {
       logger.warn(`syncCardTypeWithSubscription: no card found for user ${userId}`);
       return null;
@@ -236,6 +236,7 @@ export class CardService {
     const updatedCard = await prisma.card.update({
       where: { id: card.id },
       data: { type: targetType, qrCode: qrCodeUrl },
+      select: CARD_USER_FIELDS,
     });
 
     logger.info(`Synced card ${card.id} from ${card.type} → ${targetType} for user ${userId} (plan: ${plan})`);
