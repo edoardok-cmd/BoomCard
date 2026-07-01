@@ -1540,7 +1540,7 @@ router.post(
     detach(emailService.sendWelcomeEmail(user.email, {
       customerName,
       email: user.email,
-      dashboardUrl: process.env.APP_URL || 'https://mobile.boomcard.bg',
+      dashboardUrl: process.env.FRONTEND_URL || 'https://boomcard.bg',
     }, lang), (err) => logger.error('Failed to send welcome email:', err));
 
     // L1: Spec §11.2 "Profile created" → Transactional notification. The welcome

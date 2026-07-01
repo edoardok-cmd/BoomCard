@@ -13,7 +13,6 @@ import { logger } from '../utils/logger';
 import { detach } from '../utils/detach';
 import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
-const APP_URL = process.env.APP_URL || 'https://mobile.boomcard.bg';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://boomcard.bg';
 
 const router = Router();
