@@ -427,7 +427,8 @@ class ReceiptService {
 
       logger.info(`Receipt updated: ${id} by user: ${userId}`);
 
-      return { success: true, data: this.formatReceipt(updatedReceipt) };
+      const showDualCurrency = await isCurrencyTransitionWindowOpen();
+      return { success: true, data: this.formatReceipt(updatedReceipt, { showDualCurrency }) };
     } catch (error) {
       if (error instanceof AppError) throw error;
       logger.error('Error updating receipt:', error);

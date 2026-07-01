@@ -30,6 +30,7 @@ import { prisma } from '../../src/lib/prisma';
 import { invalidateCurrencyDisplayCache } from '../../src/utils/currencyDisplay';
 import { VOID_REASON_CATEGORIES } from '../../src/services/cashbackLifecycle.service';
 import { stripeService } from '../../src/services/stripe.service';
+import { cardService } from '../../src/services/card.service';
 import {
   createTestUser,
   createTestSubscription,
@@ -569,6 +570,68 @@ describe('INV-USER-CUR-STRIPE — GET /api/subscriptions/history Stripe branch r
   });
 });
 
+describe('INV-USER-QR-007 (syncCardTypeWithSubscription) — early-return paths must not expose qrCode', () => {
+  /**
+   * syncCardTypeWithSubscription has two early-return paths that return the card fetched
+   * by findFirst before reaching the prisma.card.update select-guarded path:
+   *   1. tier-unchanged (no-op): targetIndex === currentIndex → return card
+   *   2. downgrade-blocked: targetIndex < currentIndex && targetType !== PREMIUM_WEEKLY → return card
+   *
+   * Both paths must return the CARD_USER_FIELDS shape (no qrCode) because the findFirst
+   * now carries select: CARD_USER_FIELDS. These tests pin that contract.
+   */
+  let syncUserId: string;
+  let syncCardId: string;
+
+  beforeAll(async () => {
+    const u = await createTestUser();
+    syncUserId = u.user.id;
+    await createTestSubscription(syncUserId, 'BASIC', 'ACTIVE');
+    // Seed a BASIC card (mid-tier) so we can trigger both early-return paths:
+    //   - no-op: sync with plan=BASIC (tier unchanged)
+    //   - downgrade-blocked: sync with plan=PREMIUM_WEEKLY while card is BASIC
+    const card = await prisma.card.create({
+      data: {
+        userId: syncUserId,
+        cardNumber: `BOOM-SYNC-${syncUserId.slice(0, 8).toUpperCase()}`,
+        type: 'BASIC',
+        status: 'ACTIVE',
+        qrCode: 'data:image/png;base64,INTERNAL_QR_SECRET_FOR_SYNC_TEST',
+      },
+    });
+    syncCardId = card.id;
+  }, 60_000);
+
+  afterAll(async () => {
+    if (syncUserId) { try { await cleanupTestUser(syncUserId); } catch {} }
+  }, 30_000);
+
+  it('[QR-007/sync no-op] tier-unchanged early return must not contain qrCode', async () => {
+    // plan=BASIC matches card.type=BASIC → no-op early return path
+    const result = await cardService.syncCardTypeWithSubscription(syncUserId, 'BASIC');
+    expect(result).not.toBeNull();
+    expect(JSON.stringify(result)).not.toMatch(/qrCode/);
+    expect((result as any)?.qrCode).toBeUndefined();
+  });
+
+  it('[QR-007/sync downgrade-blocked] mid-tier downgrade-blocked early return must not contain qrCode', async () => {
+    // plan=PREMIUM_WEEKLY < card.type=BASIC, but target is not PREMIUM_WEEKLY ... wait:
+    // PREMIUM_WEEKLY IS allowed as downgrade target (subscription expired). Use BASIC card
+    // and try to sync to PREMIUM_WEEKLY to hit that path — actually that proceeds to update.
+    // To hit the blocked path: card=BASIC, plan=PREMIUM_WEEKLY triggers allowed downgrade (update).
+    // The blocked path requires: targetIndex < currentIndex AND targetType !== PREMIUM_WEEKLY.
+    // First upgrade the card to PREMIUM, then try syncing back to BASIC.
+    await prisma.card.update({ where: { id: syncCardId }, data: { type: 'PREMIUM' } });
+    // plan=BASIC < card.type=PREMIUM AND BASIC !== PREMIUM_WEEKLY → downgrade-blocked early return
+    const result = await cardService.syncCardTypeWithSubscription(syncUserId, 'BASIC');
+    expect(result).not.toBeNull();
+    expect(JSON.stringify(result)).not.toMatch(/qrCode/);
+    expect((result as any)?.qrCode).toBeUndefined();
+    // Restore card to BASIC for afterAll cleanup consistency
+    await prisma.card.update({ where: { id: syncCardId }, data: { type: 'BASIC' } });
+  });
+});
+
 describe('INV-USER-CUR-003 (receipts) — GET /api/receipts and /:id must gate money fields via toDualCurrency', () => {
   it('[CUR-RECEIPTS] window CLOSED → GET /api/receipts must not expose raw BGN totalAmount, cashbackAmount, or nested transaction.amount', async () => {
     await setCurrencyWindowOpen(false);
@@ -603,5 +666,14 @@ describe('INV-USER-CUR-003 (receipts) — GET /api/receipts and /:id must gate m
     expect(seeded).toBeDefined();
     expect(seeded.totalAmount).toEqual(expect.objectContaining({ bgn: 30, eur: expect.any(Number), windowOpen: true }));
     expect(seeded.totalAmount.bgn).toBeGreaterThan(0);
+  });
+
+  it('[CUR-RECEIPTS] window OPEN → GET /api/receipts/:id totalAmount exposes bgn > 0 display object', async () => {
+    await setCurrencyWindowOpen(true);
+    const res = await authRequest(token).get(`/api/receipts/${seededReceiptId}`);
+    expect(res.status).toBe(200);
+    const receipt = res.body?.data ?? res.body;
+    expect(receipt.totalAmount).toEqual(expect.objectContaining({ bgn: 30, eur: expect.any(Number), windowOpen: true }));
+    expect(receipt.totalAmount.bgn).toBeGreaterThan(0);
   });
 });
