@@ -123,11 +123,13 @@ export const formatMoneyByMode = (
   mode: 'dual' | 'eur_only',
   language: 'en' | 'bg' = 'en'
 ): string => {
-  const amountEUR = convertBGNToEUR(amountBGN);
+  const safe = Number(amountBGN);
+  if (!isFinite(safe)) return '—';
+  const amountEUR = convertBGNToEUR(safe);
   const bgnLabel = language === 'bg' ? 'лв.' : 'BGN';
 
   if (mode === 'dual') {
-    return `${amountBGN.toFixed(2)} ${bgnLabel} / €${amountEUR.toFixed(2)}`;
+    return `${safe.toFixed(2)} ${bgnLabel} / €${amountEUR.toFixed(2)}`;
   } else {
     // eur_only mode
     return `€${amountEUR.toFixed(2)}`;

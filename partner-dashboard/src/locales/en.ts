@@ -98,6 +98,7 @@ export const en = {
       partner: 'Partner',
       user: 'User',
       impersonating: 'Impersonating partner',
+      impersonatingUser: 'Impersonating user',
     },
   },
 
@@ -113,6 +114,8 @@ export const en = {
     stopping: 'Stopping…',
     bannerPrefix: 'You are impersonating',
     bannerSuffix: '. Actions are audited.',
+    rolePartner: 'partner',
+    roleUser: 'user',
     userModalTitle: 'Log in as user',
     userModalSubtitle: 'Pick an end-user to view the app from their perspective.',
     userSearchPlaceholder: 'Search by name or email…',
@@ -492,6 +495,12 @@ export const en = {
     gracePeriodDays: 'Your subscription access ends in {days} day(s). Please update your payment method.',
     gracePeriodExpired: 'Grace period has ended. Please renew to restore access.',
     gracePeriodCta: 'Update Payment',
+    quickActions: 'Quick Actions',
+    viewAnalytics: 'View Analytics',
+    analyticsSubtitle: 'Track performance and insights',
+    businessProfile: 'Business Profile',
+    businessProfileSubtitle: 'View business information',
+    viewProfile: 'View Profile',
   },
 
   // My Offers (Partner)

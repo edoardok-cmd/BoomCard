@@ -272,8 +272,8 @@ export interface AuthContextType extends AuthState {
   isImpersonating: boolean;
   impersonation: ImpersonationMeta | null;
   partnerRestriction: string | null;
-  login: (credentials: LoginCredentials) => Promise<void>;
-  loginWithOAuth: (oauthData: OAuthData) => Promise<void>;
+  login: (credentials: LoginCredentials) => Promise<User['role']>;
+  loginWithOAuth: (oauthData: OAuthData) => Promise<User['role']>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => void;
   updateProfile: (data: Partial<User>) => Promise<void>;
@@ -310,7 +310,7 @@ export interface AuthContextType extends AuthState {
   // pending credentials) rather than re-submitting formData. Resolves on a
   // successful login (user is now authenticated); rejects (and toasts) on a
   // wrong code, leaving the 2FA step active for a retry.
-  submitTwoFactor: (code: string) => Promise<void>;
+  submitTwoFactor: (code: string) => Promise<User['role']>;
   // Reset the 2FA step (e.g. when the user edits email/password to switch accounts).
   clearTwoFactorRequired: () => void;
 }
@@ -617,7 +617,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user, isLoading]);
 
-  const login = async (credentials: LoginCredentials): Promise<void> => {
+  const login = async (credentials: LoginCredentials): Promise<User['role']> => {
     setIsLoading(true);
 
     // rememberMe drives storage persistence. true → localStorage (survives
@@ -714,7 +714,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         pendingLoginRef.current = null;
 
         toast.success(`Welcome back, ${user.firstName}!`);
-        return;
+        return user.role;
       } catch (apiError) {
         // Our own control-flow signals thrown from within the inner try (e.g.
         // the frontend Archived defense-in-depth guard) must not be misclassified
@@ -794,7 +794,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // success/token/user handling — and the success-path 2FA reset — run
   // unchanged. On a wrong code login() throws a normal Error (already toasted)
   // and leaves twoFactorRequired/pendingLoginRef intact so the user can retry.
-  const submitTwoFactor = async (code: string): Promise<void> => {
+  const submitTwoFactor = async (code: string): Promise<User['role']> => {
     const pending = pendingLoginRef.current;
     if (!pending) {
       // Defensive: the pending credentials are gone (e.g. provider re-mounted
@@ -809,7 +809,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // when no code is supplied) is bypassed: a valid code logs in (success path
     // clears the ref + gate); a wrong code yields a 401 that login() toasts and
     // re-throws as a plain Error, leaving the ref + gate intact for a retry.
-    await login({ ...pending, totpCode: code });
+    return await login({ ...pending, totpCode: code });
     // login()'s success path already cleared the ref + gate; nothing else to do.
   };
 
@@ -1402,7 +1402,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const loginWithOAuth = async (oauthData: OAuthData): Promise<void> => {
+  const loginWithOAuth = async (oauthData: OAuthData): Promise<User['role']> => {
     setIsLoading(true);
 
     try {
@@ -1438,6 +1438,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Set user state — enrich with rawRole/permissions if the OAuth endpoint returns them
         const oauthUser: User = {
           ...response.user,
+          role: normalizeRole((response.user as any).role),
           rawRole: typeof (response.user as any).rawRole === 'string'
             ? (response.user as any).rawRole
             : typeof (response.user as any).role === 'string'
@@ -1469,7 +1470,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         toast.success(`Welcome, ${response.user.firstName}!`);
-        return;
+        return normalizeRole(oauthUser.role as string) as User['role'];
       } catch (apiError) {
         const err = apiError as ApiError;
         const nested = err?.response?.data?.error;

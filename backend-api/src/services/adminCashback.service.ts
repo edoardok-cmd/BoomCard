@@ -811,7 +811,7 @@ export async function getSubscriberCashbackEntries(
 
     return {
       id: e.id,
-      amount: e.amount,
+      amount: Number(e.amount),
       status,
       rawStatus: e.status,
       cashbackExpiresAt: e.cashbackExpiresAt,
@@ -1156,7 +1156,7 @@ export async function getAllCashbackEntries(
 
     return {
       id: e.id,
-      amount: e.amount,
+      amount: Number(e.amount),
       status,
       rawStatus: e.status,
       cashbackExpiresAt: e.cashbackExpiresAt,

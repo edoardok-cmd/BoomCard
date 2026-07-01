@@ -100,6 +100,7 @@ export const bg: TranslationKey = {
       partner: 'Партньор',
       user: 'Потребител',
       impersonating: 'Представяне като партньор',
+      impersonatingUser: 'Представяне като потребител',
     },
   },
 
@@ -115,6 +116,8 @@ export const bg: TranslationKey = {
     stopping: 'Спиране…',
     bannerPrefix: 'Представяш се като',
     bannerSuffix: '. Действията ти се отчитат.',
+    rolePartner: 'партньор',
+    roleUser: 'потребител',
     userModalTitle: 'Влез като потребител',
     userModalSubtitle: 'Избери потребител, за да видиш приложението от негова гледна точка.',
     userSearchPlaceholder: 'Търси по име или имейл…',
@@ -494,6 +497,12 @@ export const bg: TranslationKey = {
     gracePeriodDays: 'Достъпът ви изтича след {days} ден(дни). Моля, обновете метода си на плащане.',
     gracePeriodExpired: 'Гратисният период е изтекъл. Моля, подновете абонамента си.',
     gracePeriodCta: 'Обнови плащане',
+    quickActions: 'Бързи действия',
+    viewAnalytics: 'Анализи',
+    analyticsSubtitle: 'Проследявайте резултати и анализи',
+    businessProfile: 'Бизнес профил',
+    businessProfileSubtitle: 'Преглед на бизнес информацията',
+    viewProfile: 'Преглед на профил',
   },
 
   // My Offers (Partner)

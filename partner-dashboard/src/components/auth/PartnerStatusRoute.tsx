@@ -110,6 +110,12 @@ const PartnerStatusRoute: React.FC<PartnerStatusRouteProps> = ({
     return <>{children}</>;
   }
 
+  // Regular subscribers (role='user') are not partners but can view the dashboard.
+  // The partner-specific content is gated by isPartner in DashboardPage, not here.
+  if (user.role === 'user') {
+    return <>{children}</>;
+  }
+
   // Only applies to genuine partner-role accounts.
   if (user.role !== 'partner') {
     return <Navigate to="/dashboard" replace />;

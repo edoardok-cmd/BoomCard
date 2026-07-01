@@ -4,7 +4,6 @@ import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { useCurrencyDisplay } from '../../contexts/CurrencyDisplayContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import { palette } from '../../styles/adminTheme';
 import { formatMoneyByMode } from '../../utils/helpers';
@@ -12,6 +11,7 @@ import {
   adminCashbackService,
   CashbackEntry,
   CashbackEntryStatus,
+  DualCurrencyAmount,
 } from '../../services/adminCashback.service';
 
 /* ─── i18n ──────────────────────────────────────────────────────────────────── */
@@ -69,8 +69,8 @@ const I18N = {
   actionMarkPaid:   { en: 'Mark as paid',      bg: 'Маркирай платен' },
   actionExpire:     { en: 'Expire',            bg: 'Изтечи' },
   actionVoid:       { en: 'Void…',             bg: 'Анулирай…' },
-  confirmVoid:      { en: 'Void cashback for {email}?\nAmount: {amount} BGN\nReason: {reason}\nThe user will see this entry as "Voided" with the reason.',
-                      bg: 'Анулирай кешбек за {email}?\nСума: {amount} лв.\nПричина: {reason}\nАбонатът ще види записа като „Анулиран" с причината.' },
+  confirmVoid:      { en: 'Void cashback for {email}?\nAmount: {amount}\nReason: {reason}\nThe user will see this entry as "Voided" with the reason.',
+                      bg: 'Анулирай кешбек за {email}?\nСума: {amount}\nПричина: {reason}\nАбонатът ще види записа като „Анулиран" с причината.' },
   voidedReasonLabel:{ en: 'Voided:',            bg: 'Анулиран:' },
   // Void reason modal labels
   voidModalTitle:   { en: 'Void Cashback Entry', bg: 'Анулирай кешбек запис' },
@@ -86,14 +86,14 @@ const I18N = {
   voidCancel:       { en: 'Cancel',            bg: 'Отмени' },
   voidSubmit:       { en: 'Void Entry',        bg: 'Анулирай запис' },
   // Confirm dialogs
-  confirmApprove:   { en: 'Approve cashback entry for {email}?\nAmount: {amount} BGN',
-                      bg: 'Одобри кешбек записа за {email}?\nСума: {amount} лв.' },
-  confirmLock:      { en: 'Lock cashback entry for {email}?\nAmount: {amount} BGN',
-                      bg: 'Заключи кешбек записа за {email}?\nСума: {amount} лв.' },
-  confirmPay:       { en: 'Mark cashback as paid for {email}?\nAmount: {amount} BGN\nThis action cannot be undone.',
-                      bg: 'Маркирай като платен кешбек за {email}?\nСума: {amount} лв.\nТова действие не може да се отмени.' },
-  confirmExpire:    { en: 'Force-expire cashback for {email}?\nAmount: {amount} BGN{warning}\nThis action cannot be undone.',
-                      bg: 'Принудително изтичане на кешбек за {email}?\nСума: {amount} лв.{warning}\nТова действие не може да се отмени.' },
+  confirmApprove:   { en: 'Approve cashback entry for {email}?\nAmount: {amount}',
+                      bg: 'Одобри кешбек записа за {email}?\nСума: {amount}' },
+  confirmLock:      { en: 'Lock cashback entry for {email}?\nAmount: {amount}',
+                      bg: 'Заключи кешбек записа за {email}?\nСума: {amount}' },
+  confirmPay:       { en: 'Mark cashback as paid for {email}?\nAmount: {amount}\nThis action cannot be undone.',
+                      bg: 'Маркирай като платен кешбек за {email}?\nСума: {amount}\nТова действие не може да се отмени.' },
+  confirmExpire:    { en: 'Force-expire cashback for {email}?\nAmount: {amount}{warning}\nThis action cannot be undone.',
+                      bg: 'Принудително изтичане на кешбек за {email}?\nСума: {amount}{warning}\nТова действие не може да се отмени.' },
   lockedWarning:    { en: '\n⚠ Entry is LOCKED — the amount will NOT be paid.',
                       bg: '\n⚠ Записът е ЗАКЛЮЧЕН — сумата НЯМА да бъде платена.' },
   // Toast messages
@@ -508,7 +508,6 @@ function VoidReasonModal({ visible, onCancel, onSubmit, lang, triggerButtonRef }
 /* ─── Component ─────────────────────────────────────────────────────────────── */
 export default function AdminCashbackPage() {
   const { language } = useLanguage();
-  const { currencyDisplayMode } = useCurrencyDisplay();
   const queryClient = useQueryClient();
   const lang: Lang = language === 'bg' ? 'bg' : 'en';
   const locale = language === 'bg' ? 'bg-BG' : 'en-GB';
@@ -545,10 +544,15 @@ export default function AdminCashbackPage() {
       : '—';
 
   const fmt = (n: number | null | undefined) => fmtMoney(n, locale);
-  const bgn = T('bgn');
 
-  // Format amount for dialogs using the current currency display mode
-  const fmtAmount = (amount: number) => formatMoneyByMode(amount, currencyDisplayMode, language);
+  // Format amount for dialogs — derives display mode from the amount object itself.
+  const fmtAmount = (amount: DualCurrencyAmount) => {
+    const bgn = amount.bgn;
+    if (amount.windowOpen && bgn !== null) {
+      return formatMoneyByMode(bgn, 'dual', language);
+    }
+    return formatMoneyByMode(amount.eur, 'eur_only', language);
+  };
 
   const { data: stats } = useQuery({
     queryKey: ['admin-cashback-stats'],
@@ -673,7 +677,7 @@ export default function AdminCashbackPage() {
       header: T('colAmount'),
       render: (row) => (
         <span style={{ fontWeight: 700, color: palette.text }}>
-          {formatMoneyByMode(row.amount, currencyDisplayMode, language)}
+          {fmtAmount(row.amount)}
         </span>
       ),
     },
@@ -714,7 +718,7 @@ export default function AdminCashbackPage() {
       render: (row) => (
         <span style={{ fontSize: '0.8125rem', color: palette.textMuted }}>
           {row.partner?.businessName ?? row.receipt?.merchantName ?? '—'}
-          {row.receipt?.totalAmount != null && <MetaLine>{fmtAmount(row.receipt.totalAmount)}</MetaLine>}
+          {row.receipt?.totalAmount != null && <MetaLine>{fmt(row.receipt.totalAmount)}</MetaLine>}
         </span>
       ),
     },
@@ -745,7 +749,7 @@ export default function AdminCashbackPage() {
         [T('planPremiumWk')]:  thresholds.PREMIUM_WEEKLY,
         [T('planPremiumMo')]:  thresholds.PREMIUM,
       })
-        .map(([label, val]) => `${label} ${fmt(val)} ${bgn}`)
+        .map(([label, val]) => `${label} ${val ? fmtAmount(val) : '—'}`)
         .join(' · ')
     : '…';
 
@@ -764,49 +768,49 @@ export default function AdminCashbackPage() {
         <StatCard>
           <StatLabel>{T('statAccrued')}</StatLabel>
           <StatValue $color={palette.text}>
-            {stats ? `${fmt(stats.totalAccrued)} ${bgn}` : '—'}
+            {stats ? fmtAmount(stats.totalAccrued) : '—'}
           </StatValue>
         </StatCard>
         <StatCard>
           <StatLabel>{T('statCleared')}</StatLabel>
           <StatValue $color={palette.success}>
-            {stats ? `${fmt(stats.totalCleared)} ${bgn}` : '—'}
+            {stats ? fmtAmount(stats.totalCleared) : '—'}
           </StatValue>
         </StatCard>
         <StatCard>
           <StatLabel>{T('statPending')}</StatLabel>
           <StatValue $color={palette.warning}>
-            {stats ? `${fmt(stats.totalPending)} ${bgn}` : '—'}
+            {stats ? fmtAmount(stats.totalPending) : '—'}
           </StatValue>
         </StatCard>
         <StatCard>
           <StatLabel>{T('statExpiring')}</StatLabel>
-          <StatValue $color={stats && stats.expiringTotal > 0 ? palette.danger : palette.text}>
-            {stats ? `${fmt(stats.expiringTotal)} ${bgn}` : '—'}
+          <StatValue $color={stats && stats.expiringTotal.eur > 0 ? palette.danger : palette.text}>
+            {stats ? fmtAmount(stats.expiringTotal) : '—'}
           </StatValue>
         </StatCard>
         <StatCard>
           <StatLabel>{T('statLocked')}</StatLabel>
-          <StatValue $color={stats && stats.totalLocked > 0 ? palette.amber : palette.text}>
-            {stats ? `${fmt(stats.totalLocked)} ${bgn}` : '—'}
+          <StatValue $color={stats && stats.totalLocked.eur > 0 ? palette.amber : palette.text}>
+            {stats ? fmtAmount(stats.totalLocked) : '—'}
           </StatValue>
         </StatCard>
         <StatCard>
           <StatLabel>{T('statPaid')}</StatLabel>
           <StatValue $color={palette.info}>
-            {stats ? `${fmt(stats.totalPaid)} ${bgn}` : '—'}
+            {stats ? fmtAmount(stats.totalPaid) : '—'}
           </StatValue>
         </StatCard>
         <StatCard>
           <StatLabel>{T('statExpired')}</StatLabel>
-          <StatValue $color={stats && stats.totalExpired > 0 ? palette.danger : palette.text}>
-            {stats ? `${fmt(stats.totalExpired)} ${bgn}` : '—'}
+          <StatValue $color={stats && stats.totalExpired.eur > 0 ? palette.danger : palette.text}>
+            {stats ? fmtAmount(stats.totalExpired) : '—'}
           </StatValue>
         </StatCard>
         <StatCard>
           <StatLabel>{T('statVoided')}</StatLabel>
-          <StatValue $color={stats && stats.totalVoided > 0 ? palette.danger : palette.text}>
-            {stats ? `${fmt(stats.totalVoided)} ${bgn}` : '—'}
+          <StatValue $color={stats && stats.totalVoided.eur > 0 ? palette.danger : palette.text}>
+            {stats ? fmtAmount(stats.totalVoided) : '—'}
           </StatValue>
         </StatCard>
       </StatsRow>
@@ -957,7 +961,7 @@ function exportCsv(rows: CashbackEntry[], lang: Lang, locale: string): void {
       escape(r.id),
       escape(`${r.user.firstName ?? ''} ${r.user.lastName ?? ''}`.trim() || r.user.email),
       escape(r.user.email),
-      escape(fmtMoney(r.amount, locale)),
+      escape(fmtMoney(r.amount.bgn ?? r.amount.eur, locale)),
       escape(r.status),
       escape(r.cashbackExpiresAt ? new Date(r.cashbackExpiresAt).toLocaleDateString(locale) : ''),
       escape(r.partner?.businessName ?? r.receipt?.merchantName ?? ''),

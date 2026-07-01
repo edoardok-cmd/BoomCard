@@ -328,6 +328,33 @@ const SignupPrompt = styled.p`
   }
 `;
 
+const LangToggle = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 1.25rem;
+  padding: 0.5rem;
+  background: none;
+  border: none;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 200ms;
+
+  &:hover {
+    color: var(--color-text-primary);
+  }
+
+  svg {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+  }
+`;
+
 
 interface FormErrors {
   email?: string;
@@ -344,14 +371,20 @@ const LoginPage: React.FC = () => {
   // `search` so query params (planId/planCode/billing) survive the round-trip
   // and the user lands back on the exact in-progress page. Every success path
   // (password, 2FA, Google, Facebook) must use this so they can't drift apart.
-  const resolveFrom = (): string => {
+  const roleLanding = (role?: string): string => {
+    if (role === 'partner') return '/partners/offers';
+    if (role === 'admin') return '/admin/dashboard';
+    if (role === 'user') return '/dashboard';
+    return '/dashboard';
+  };
+  const resolveFrom = (role?: string): string => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const fromState = (location.state as any)?.from;
     return fromState?.pathname
       ? `${fromState.pathname}${fromState.search || ''}`
-      : '/';
+      : roleLanding(role);
   };
-  const { t, language } = useLanguage();
+  const { t, language, setLanguage } = useLanguage();
 
   const [formData, setFormData] = useState({
     email: '',
@@ -467,10 +500,6 @@ const LoginPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Resolve the post-login destination from router state (shared helper so the
-    // password, 2FA, Google and Facebook success paths stay in lock-step).
-    const from = resolveFrom();
-
     // ── 2FA second-factor step ───────────────────────────────────────────────
     // When the code field is shown, the credentials live in AuthContext (in a
     // ref that survived the remount), NOT in formData — which was wiped when
@@ -488,12 +517,12 @@ const LoginPage: React.FC = () => {
       try {
         setTotpError(undefined);
         // Sent verbatim — may be a 6-digit TOTP or a XXXXX-XXXXX recovery code.
-        await submitTwoFactor(trimmedCode);
+        const role = await submitTwoFactor(trimmedCode);
         // Success: the user is now authenticated. ProtectedRoute (requireAuth=false
         // wrapper on /login) already redirects authenticated users to "/", so this
         // navigate is a best-effort that lands them on the originally-requested page
         // when it survives the remount; the route-level redirect is the guarantee.
-        navigate(from, { replace: true });
+        navigate(resolveFrom(role), { replace: true });
       } catch (error) {
         // A wrong code (401) arrives here as a plain Error already toasted by
         // AuthContext, which keeps `twoFactorRequired` TRUE and the captured
@@ -529,14 +558,14 @@ const LoginPage: React.FC = () => {
     try {
       setTotpError(undefined);
       setLoginError(undefined);
-      await login({
+      const role = await login({
         email: formData.email,
         password: formData.password,
         rememberMe: formData.rememberMe,
       });
 
-      // Redirect to the page they were trying to access, or home
-      navigate(from, { replace: true });
+      // Redirect to the page they were trying to access, or their role's home
+      navigate(resolveFrom(role), { replace: true });
     } catch (error) {
       // 2FA required — reveal the code field, don't navigate or toast.
       if (error instanceof TwoFactorRequiredError) {
@@ -583,9 +612,9 @@ const LoginPage: React.FC = () => {
         id: userData.sub,
       };
 
-      await loginWithOAuth(oauthData);
+      const role = await loginWithOAuth(oauthData);
 
-      navigate(resolveFrom(), { replace: true });
+      navigate(resolveFrom(role), { replace: true });
     } catch (error) {
       console.error('Google login error:', error);
       // LOW-1 fix (review r2ab): surface caught errors to the user — Google success
@@ -618,9 +647,9 @@ const LoginPage: React.FC = () => {
         id: response.userInfo?.id,
       };
 
-      await loginWithOAuth(oauthData);
+      const role = await loginWithOAuth(oauthData);
 
-      navigate(resolveFrom(), { replace: true });
+      navigate(resolveFrom(role), { replace: true });
     } catch (error) {
       console.error('Facebook login error:', error);
       // LOW-1 fix: surface caught errors to the user — Facebook success path was
@@ -863,6 +892,17 @@ const LoginPage: React.FC = () => {
             {t('auth.applyAsPartner') || (language === 'bg' ? 'Кандидатствайте тук' : 'Apply here')}
           </Link>
         </SignupPrompt>
+
+        <LangToggle
+          type="button"
+          onClick={() => setLanguage(language === 'bg' ? 'en' : 'bg')}
+          aria-label="Toggle language"
+        >
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+          </svg>
+          {language === 'bg' ? 'English' : 'Български'}
+        </LangToggle>
 
       </LoginCard>
     </PageContainer>

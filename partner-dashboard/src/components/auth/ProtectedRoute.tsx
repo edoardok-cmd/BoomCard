@@ -75,11 +75,14 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     return <Navigate to={redirectTo} state={{ from: location }} replace />;
   }
 
-  // If route requires NO auth (e.g., login page) and user IS authenticated, redirect to home.
-  // Only redirect after auth check completes (isLoading=false) so we don't kick the user
-  // away from a public form mid-request when isLoading briefly flips to true.
+  // If route requires NO auth (e.g., login page) and user IS authenticated, redirect to the
+  // role-appropriate home. Only redirect after auth check completes (isLoading=false) so we
+  // don't kick the user away from a public form mid-request when isLoading briefly flips to true.
   if (!isLoading && !requireAuth && isAuthenticated) {
-    return <Navigate to="/" replace />;
+    // Send authenticated users to their role-appropriate home, not always "/"
+    if (user?.role === 'partner') return <Navigate to="/partners/offers" replace />;
+    if (user?.role === 'admin') return <Navigate to="/admin/dashboard" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   // Role-based access control

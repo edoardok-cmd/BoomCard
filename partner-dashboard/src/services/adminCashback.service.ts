@@ -20,14 +20,14 @@ export interface CashbackSummaryEntry {
 
 // Spec §3.1 + §4.4 subscriber-side cashback stats
 export interface CashbackDashboardStats {
-  totalAccrued: number;    // начислен — all-time sum of cleared credits
-  totalCleared: number;   // одобрен — currently available for payout
-  totalPending: number;   // изчакващ — not yet approved
-  expiringTotal: number;  // изтичащ — cleared but expiring within 14 days
-  totalLocked: number;    // заключен — locked by admin (CANCELLED + ANNULLED/FAILED, not yet paid)
-  totalPaid: number;      // платен — explicitly marked paid by admin via Locked→Paid action
-  totalExpired: number;   // изтекъл — past 60-day rolling expiry, never paid out
-  totalVoided: number;    // анулиран — risk review rejected or admin voided (spec §4.4 v1.1)
+  totalAccrued: DualCurrencyAmount;    // начислен — all-time sum of cleared credits
+  totalCleared: DualCurrencyAmount;   // одобрен — currently available for payout
+  totalPending: DualCurrencyAmount;   // изчакващ — not yet approved
+  expiringTotal: DualCurrencyAmount;  // изтичащ — cleared but expiring within 14 days
+  totalLocked: DualCurrencyAmount;    // заключен — locked by admin (CANCELLED + ANNULLED/FAILED, not yet paid)
+  totalPaid: DualCurrencyAmount;      // платен — explicitly marked paid by admin via Locked→Paid action
+  totalExpired: DualCurrencyAmount;   // изтекъл — past 60-day rolling expiry, never paid out
+  totalVoided: DualCurrencyAmount;    // анулиран — risk review rejected or admin voided (spec §4.4 v1.1)
 }
 
 export interface CashbackRateRow {
@@ -54,12 +54,21 @@ export interface CurrentCashbackRate {
   source: 'db' | 'default';
 }
 
+export interface DualCurrencyAmount {
+  /** BGN value — null once the transition window has closed (EUR-only display). */
+  bgn: number | null;
+  /** EUR value — always present. */
+  eur: number;
+  /** Whether the transition window is open (both currencies shown). */
+  windowOpen: boolean;
+}
+
 // Spec §4.4 v1.1 — entry-based cashback with 7 states (TrialPending + Voided added)
 export type CashbackEntryStatus = 'Pending' | 'TrialPending' | 'Cleared' | 'Locked' | 'Paid' | 'Expired' | 'Voided';
 
 export interface CashbackEntry {
   id: string;
-  amount: number;
+  amount: DualCurrencyAmount;
   status: CashbackEntryStatus;
   rawStatus: string;
   cashbackExpiresAt: string | null;
@@ -101,9 +110,9 @@ class AdminCashbackService {
     return { data: res.data, total: res.total, page: res.page, limit: res.limit };
   }
 
-  async getPayoutThresholds(): Promise<Record<string, number>> {
-    const res = await apiService.get<{ success: boolean; data: Record<string, number> }>(`${this.base}/payout-thresholds`);
-    return res.data ?? {};
+  async getPayoutThresholds(): Promise<Record<string, DualCurrencyAmount>> {
+    const res = await apiService.get<{ success: boolean; display: Record<string, DualCurrencyAmount> }>(`${this.base}/payout-thresholds`);
+    return res.display ?? {};
   }
 
 

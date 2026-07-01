@@ -139,7 +139,13 @@ const ImpersonationBanner: React.FC = () => {
           </svg>
         </BannerIcon>
         <BannerText>
-          {t('impersonation.bannerPrefix')} <strong>{displayName}</strong>{t('impersonation.bannerSuffix')}
+          {t('impersonation.bannerPrefix')}{' '}
+          {user.role === 'user'
+            ? t('impersonation.roleUser')
+            : user.role === 'partner'
+              ? t('impersonation.rolePartner')
+              : user.role}{' '}
+          <strong>{displayName}</strong>{t('impersonation.bannerSuffix')}
         </BannerText>
         <StopButton type="button" onClick={handleStop} disabled={stopping}>
           {stopping ? t('impersonation.stopping') : t('impersonation.stop')}

@@ -1373,7 +1373,7 @@ export const Header: React.FC<HeaderProps> = ({
                   if (account.role === 'SUPER_ADMIN' || account.role === 'ADMIN') {
                     navigate('/admin/dashboard');
                   } else if (account.role === 'PARTNER') {
-                    navigate('/dashboard');
+                    navigate('/partners/offers');
                   }
                 } catch {
                   // toast already shown by switchAccount
@@ -1517,7 +1517,11 @@ export const Header: React.FC<HeaderProps> = ({
                         <UserMenuEmail>{user.email}</UserMenuEmail>
                         <UserMenuRoleBadge $role={user.role} $impersonating={isImpersonating}>
                           {isImpersonating
-                            ? t('header.role.impersonating')
+                            ? user.role === 'user'
+                              ? t('header.role.impersonatingUser')
+                              : user.role === 'partner'
+                                ? t('header.role.impersonating')
+                                : user.role
                             : user.role === 'admin'
                               ? user.rawRole === 'SUPER_ADMIN'
                                 ? t('header.role.superAdmin')
