@@ -1860,11 +1860,6 @@ enum PartnerRequestStatus {
   ONBOARDING    @map("ONBOARDING")
   APPROVED      @map("ODOBRENA")
   REJECTED      @map("OTKAZANA")
-  NEW
-  COMMUNICATION
-  NEGOTIATION
-  APPROVED
-  REJECTED
 }
 
 enum PartnerStatus {
