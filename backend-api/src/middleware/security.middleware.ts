@@ -232,11 +232,17 @@ export const switchableAccountsRateLimiter = rateLimit({
 
 /**
  * API Rate Limiter
- * Standard rate limiting for API endpoints
+ * Standard rate limiting for authenticated write endpoints (favorites, loyalty).
+ * Keyed by user ID so NATed/shared-IP offices cannot starve each other.
+ * Must be mounted AFTER `authenticate` so req.user is populated.
  */
 export const apiRateLimiter = rateLimit({
   windowMs: parseInt(process.env.API_RATE_LIMIT_WINDOW_MS || '60000'), // 1 minute
   max: parseInt(process.env.API_RATE_LIMIT_MAX_REQUESTS || '30'), // 30 requests
+  keyGenerator: (req) => {
+    const userId = (req as any).user?.id;
+    return userId ? `api-write:${userId}` : `api-write-ip:${(req as any).ip || 'unknown'}`;
+  },
   message: {
     error: 'Too many requests',
     message: 'Rate limit exceeded, please slow down',
@@ -280,6 +286,7 @@ export const paymentRateLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test',
 });
 
 /**

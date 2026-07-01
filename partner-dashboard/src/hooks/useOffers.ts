@@ -20,7 +20,11 @@ export function useOffers(filters?: OfferFilters) {
     enabled: (filters?.enabled !== false) &&
       (filters?.partnerId !== undefined ? !!filters.partnerId : true),
     staleTime: 5 * 60 * 1000, // 5 minutes
-    retry: 1,
+    retry: (failureCount, error) => {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status !== undefined && status >= 400 && status < 500) return false;
+      return failureCount < 1;
+    },
     retryDelay: 1000,
   });
 }
@@ -197,7 +201,11 @@ export function useEntities(filters?: OfferFilters) {
     queryKey: ['entities', filters],
     queryFn: () => offersService.getEntities(filters),
     staleTime: 5 * 60 * 1000,
-    retry: 1,
+    retry: (failureCount, error) => {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status !== undefined && status >= 400 && status < 500) return false;
+      return failureCount < 1;
+    },
     retryDelay: 1000,
   });
 }

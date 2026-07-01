@@ -73,7 +73,13 @@ export function useUnreadCount() {
     queryFn: () => notificationsService.getUnreadCount(),
     staleTime: 10 * 1000,
     refetchInterval: 20 * 1000, // 20s — keeps badge lag under half a minute without realtime
-    retry: 1, // only one retry — avoids 3x ERR_CONNECTION_REFUSED noise during backend restarts
+    // only one retry for 5xx/network — avoids 3x ERR_CONNECTION_REFUSED noise during backend restarts;
+    // 4xx (including 429) are never retried to avoid amplifying rate-limit storms
+    retry: (failureCount, error) => {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status !== undefined && status >= 400 && status < 500) return false;
+      return failureCount < 1;
+    },
   });
 
   // Subscribe to real-time updates

@@ -116,7 +116,11 @@ export function useCurrentPartner(enabled: boolean = true) {
     queryFn: () => partnersService.getCurrentPartner(),
     enabled,
     staleTime: 10 * 60 * 1000,
-    retry: 1,
+    retry: (failureCount, error) => {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status !== undefined && status >= 400 && status < 500) return false;
+      return failureCount < 1;
+    },
     retryDelay: 1000,
   });
 }
@@ -130,7 +134,11 @@ export function usePartnerStats(partnerId: string | undefined) {
     queryFn: () => partnersService.getPartnerStats(partnerId!),
     enabled: !!partnerId,
     staleTime: 5 * 60 * 1000,
-    retry: 1,
+    retry: (failureCount, error) => {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status !== undefined && status >= 400 && status < 500) return false;
+      return failureCount < 1;
+    },
     retryDelay: 1000,
   });
 }

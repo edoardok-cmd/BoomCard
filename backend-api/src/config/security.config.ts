@@ -10,7 +10,6 @@ import {
   productionHelmetConfig,
   developmentHelmetConfig,
   authRateLimiter,
-  apiRateLimiter,
   uploadRateLimiter,
   paymentRateLimiter,
   securityHeaders,
@@ -100,9 +99,6 @@ export function applyRateLimiters(app: Application) {
   app.use('/api/receipts/upload', uploadRateLimiter);
   app.use('/api/receipts/scan', uploadRateLimiter);
   app.use('/api/offers/:id/image', uploadRateLimiter);
-
-  // General API endpoints - standard rate limiting
-  app.use('/api/', apiRateLimiter);
 
   logger.info('✅ Rate limiters configured');
 }

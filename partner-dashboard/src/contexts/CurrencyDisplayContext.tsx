@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { apiService } from '../services/api.service';
+import { getAccessToken } from '../lib/auth/session';
 
 interface CurrencyDisplayContextType {
   currencyDisplayMode: 'dual' | 'eur_only';
@@ -16,6 +17,7 @@ interface CurrencyDisplayProviderProps {
 
 const CACHE_KEY = 'boomcard_currency_display_cache';
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const POLL_INTERVAL_MS = 30 * 1000; // poll more frequently so post-login fetch fires within 30s
 
 interface CacheEntry {
   data: { currencyDisplayMode: 'dual' | 'eur_only'; windowOpen: boolean };
@@ -30,6 +32,12 @@ export const CurrencyDisplayProvider: React.FC<CurrencyDisplayProviderProps> = (
 
   useEffect(() => {
     const fetchCurrencyDisplayMode = async () => {
+      if (!getAccessToken()) {
+        setError(null);
+        setIsLoading(false);
+        return;
+      }
+
       try {
         setIsLoading(true);
         setError(null);
@@ -69,6 +77,11 @@ export const CurrencyDisplayProvider: React.FC<CurrencyDisplayProviderProps> = (
 
         setError(null);
       } catch (err) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status === 401) {
+          // Not authenticated yet — silent no-op, keep defaults
+          return;
+        }
         console.error('Error fetching currency display mode:', err);
         setError(err instanceof Error ? err.message : 'Unknown error');
         // Fall back to EUR-only on error
@@ -84,7 +97,7 @@ export const CurrencyDisplayProvider: React.FC<CurrencyDisplayProviderProps> = (
     // Set up polling interval (optional, to sync changes across tabs)
     const pollInterval = setInterval(() => {
       fetchCurrencyDisplayMode();
-    }, CACHE_TTL_MS);
+    }, POLL_INTERVAL_MS);
 
     return () => clearInterval(pollInterval);
   }, []);

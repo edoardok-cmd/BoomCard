@@ -376,7 +376,11 @@ const AnalyticsPage: React.FC = () => {
       { days: PERIOD_DAYS[selectedPeriod] },
     ),
     staleTime: 2 * 60 * 1000,
-    retry: 1,
+    retry: (failureCount, error) => {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status !== undefined && status >= 400 && status < 500) return false;
+      return failureCount < 1;
+    },
   });
 
   const analytics: AnalyticsData | null = analyticsResponse?.data ?? null;

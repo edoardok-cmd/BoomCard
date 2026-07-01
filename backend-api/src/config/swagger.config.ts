@@ -379,6 +379,30 @@ const swaggerOptions: swaggerJsdoc.Options = {
           },
         },
 
+        // ===== ErrorResponse Schema (used by auth error JSDoc $refs) =====
+        ErrorResponse: {
+          type: 'object',
+          required: ['error'],
+          properties: {
+            error: {
+              type: 'string',
+              description: 'Human-readable error message',
+              example: 'Account is suspended',
+            },
+            details: {
+              type: 'object',
+              description: 'Optional structured details about the error',
+              properties: {
+                code: {
+                  type: 'string',
+                  description: 'Machine-readable error code (e.g. TWO_FACTOR_REQUIRED, ACCOUNT_SUSPENDED)',
+                  example: 'ACCOUNT_SUSPENDED',
+                },
+              },
+            },
+          },
+        },
+
         // ===== Error Schema =====
         Error: {
           type: 'object',

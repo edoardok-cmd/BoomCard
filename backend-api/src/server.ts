@@ -1,10 +1,11 @@
-import express, { Application } from 'express';
+import express, { Application, Request as ExpressRequest } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server as SocketServer } from 'socket.io';
 import rateLimit from 'express-rate-limit';
+import jwt from 'jsonwebtoken';
 
 // Import routers
 import healthRouter, { requestTracker } from './routes/health.routes';
@@ -193,16 +194,56 @@ if (process.env.NODE_ENV === 'production' && process.env.SENTRY_DSN) {
   app.use(SentryConfig.tracingHandler());
 }
 
-// Rate limiting — 100 req/min applied in production/staging/unset; skipped only for explicit dev/test
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000'), // 1 minute window
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'), // 100 req/min per IP
+// Signature-verified helper: used exclusively for rate-limit key derivation.
+// Only cryptographically valid tokens get user-ID key derivation;
+// invalid/expired/forged tokens fall through to null (IP bucket).
+function extractRateLimitUserId(req: ExpressRequest): string | null {
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Bearer ')) return null;
+  try {
+    const decoded = jwt.verify(auth.slice(7), process.env.JWT_SECRET || '') as any;
+    return decoded?.id ? String(decoded.id) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Unauthenticated global limiter: IP-keyed, 100/min.
+// Skipped for authenticated requests (they have their own bucket).
+const unauthGlobalLimiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000') || 60000,
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100') || 100,
+  keyGenerator: (req) => `ip:${req.ip || 'unknown'}`,
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test',
+  skip: (req) => {
+    if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') return true;
+    return extractRateLimitUserId(req) !== null;
+  },
 });
-app.use('/api/', limiter);
+
+// Authenticated global limiter: user-ID-keyed, 300/min.
+// Prevents admin dashboard concurrent-request bursts from tripping IP-based limits.
+// Skipped for unauthenticated requests (handled by unauthGlobalLimiter).
+const authGlobalLimiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000') || 60000,
+  max: parseInt(process.env.AUTH_RATE_LIMIT_GLOBAL_MAX_REQUESTS || '300') || 300,
+  keyGenerator: (req) => {
+    const uid = extractRateLimitUserId(req);
+    return uid ? `user:${uid}` : `ip:${req.ip || 'unknown'}`;
+  },
+  message: 'Too many requests, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') return true;
+    return extractRateLimitUserId(req) === null;
+  },
+});
+
+app.use('/api/', unauthGlobalLimiter);
+app.use('/api/', authGlobalLimiter);
 
 // Route-specific rate limiters (auth, payment, upload) — production-only guard is inside the function
 applyRateLimiters(app);

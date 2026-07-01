@@ -54,7 +54,11 @@ export function useCurrentSubscription() {
     queryKey: ['billing', 'subscription'],
     queryFn: () => billingService.getCurrentSubscription(),
     staleTime: 5 * 60 * 1000, // 5 minutes
-    retry: 1,
+    retry: (failureCount, error) => {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status !== undefined && status >= 400 && status < 500) return false;
+      return failureCount < 1;
+    },
   });
 }
 

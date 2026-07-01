@@ -855,11 +855,12 @@ export class AuthService {
     // NOTE: `INACTIVE` maps to spec §1.5 "Inactive admin" (login allowed, read-only).
     // `SUSPENDED` maps to spec §1.5 "Archived admin" (no login). `ARCHIVED` is the
     // dedicated enum value added in schema migration BC-SCHEMA-1.
-    if (user.status === UserStatus.DELETED || (user.status as string) === 'SUSPENDED' || user.status === 'ARCHIVED') {
-      const failReason = user.status === UserStatus.DELETED ? 'deleted' : user.status === 'ARCHIVED' ? 'archived' : 'suspended';
-      const message = user.status === UserStatus.DELETED ? 'This account has been deleted' : user.status === 'ARCHIVED' ? 'Account has been archived' : 'Account has been suspended';
+    if (user.status === UserStatus.DELETED || user.status === UserStatus.SUSPENDED || user.status === UserStatus.ARCHIVED) {
+      const failReason = user.status === UserStatus.DELETED ? 'deleted' : user.status === UserStatus.ARCHIVED ? 'archived' : 'suspended';
+      const message = user.status === UserStatus.DELETED ? 'This account has been deleted' : user.status === UserStatus.ARCHIVED ? 'Account has been archived' : 'Account has been suspended';
+      const code = user.status === UserStatus.DELETED ? 'ACCOUNT_DELETED' : user.status === UserStatus.ARCHIVED ? 'ACCOUNT_ARCHIVED' : 'ACCOUNT_SUSPENDED';
       detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason } }), (err) => logger.error('loginHistory.create failed', { err }));
-      throw new AppError(message, 403);
+      throw new AppError(message, 403, { code });
     }
 
     // Set by the PARTNER block below when status is SUSPENDED/PAUSED; included
@@ -875,11 +876,11 @@ export class AuthService {
     if (user.role === 'PARTNER') {
       if (!user.emailVerified) {
         detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'email_unverified' } }), (err) => logger.error('loginHistory.create failed', { err }));
-        throw new AppError('Please verify your email address before logging in. Check your inbox for the verification link.', 403);
+        throw new AppError('Please verify your email address before logging in. Check your inbox for the verification link.', 403, { code: 'EMAIL_UNVERIFIED' });
       }
       if (user.status === 'PENDING_VERIFICATION') {
         detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'pending_verification' } }), (err) => logger.error('loginHistory.create failed', { err }));
-        throw new AppError('Your partner application is under review. You will be notified by email once approved.', 403);
+        throw new AppError('Your partner application is under review. You will be notified by email once approved.', 403, { code: 'PARTNER_PENDING_REVIEW' });
       }
 
       // Spec §5.3 v1.1 — Partner status matrix gates login.
@@ -908,6 +909,14 @@ export class AuthService {
       if (partner) {
         partnerAccountStatus = mapPartnerCanonicalStatus(partner.status);
       }
+      // Guard: a User with role=PARTNER must have a matching Partner row.
+      // If the row is missing (partial registration failure, migration artifact,
+      // manual DB edit) every subsequent optional-chaining guard silently no-ops
+      // and login would proceed for an unvalidated account. Block it explicitly.
+      if (!partner) {
+        detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'partner_not_found' } }), (err) => logger.error('loginHistory.create failed', { err }));
+        throw new AppError('Partner account configuration is incomplete. Please contact support.', 403, { code: 'PARTNER_NOT_FOUND' });
+      }
       // Block login for any partner who has never activated (regardless of status).
       // ARCHIVED and REJECTED are excluded from the verifiedAt-null path because
       // they have explicit blocks below, but in practice verifiedAt is always null
@@ -929,15 +938,15 @@ export class AuthService {
         const errorMessage = unconsumedLink
           ? 'Активационния линк е изпратен до вашия имейл. Моля проверете спама или го потърсете отново.'
           : 'Вашият партньорски акаунт очаква активиране. Моля проверете имейла си за активационен линк.';
-        throw new AppError(errorMessage, 403);
+        throw new AppError(errorMessage, 403, { code: 'PARTNER_AWAITING_ACTIVATION' });
       }
       if (partner?.status === 'ARCHIVED') {
         detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'partner_archived' } }), (err) => logger.error('loginHistory.create failed', { err }));
-        throw new AppError('Вашият партньорски акаунт е архивиран и достъпът е прекратен.', 403);
+        throw new AppError('Вашият партньорски акаунт е архивиран и достъпът е прекратен.', 403, { code: 'PARTNER_ARCHIVED' });
       }
       if (partner?.status === 'REJECTED') {
         detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'partner_rejected' } }), (err) => logger.error('loginHistory.create failed', { err }));
-        throw new AppError('Вашата кандидатура за партньорство е отказана.', 403);
+        throw new AppError('Вашата кандидатура за партньорство е отказана.', 403, { code: 'PARTNER_REJECTED' });
       }
       // SUSPENDED/PAUSED with verifiedAt set: login allowed with restriction.
       // The read-only gate in partnerStatus.middleware blocks write ops;
@@ -969,6 +978,13 @@ export class AuthService {
     if (user.totpEnabledAt) {
       if (!totpCode) {
         detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'totp_required' } }), (err) => logger.error('loginHistory.create failed', { err }));
+        // 403 (not 401) is intentional here: the password was already verified so
+        // the user's identity is partially established. 403 signals "you are who you
+        // say you are, but you must satisfy an additional account-security requirement
+        // (2FA) before access is granted" — distinct from 401 which means "we don't
+        // know who you are yet." The `code: 'TWO_FACTOR_REQUIRED'` extra field lets
+        // the client detect this specific case and show a TOTP-entry step rather than
+        // a generic "wrong credentials" message.
         throw new AppError('Two-factor authentication required', 403, { code: 'TWO_FACTOR_REQUIRED' });
       }
       // The same `totpCode` field accepts EITHER a 6-digit TOTP code OR a one-time
@@ -996,7 +1012,7 @@ export class AuthService {
         }
         if (!matchedRecoveryHash) {
           detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'totp_invalid' } }), (err) => logger.error('loginHistory.create failed', { err }));
-          throw new AppError('Invalid two-factor authentication code', 401);
+          throw new AppError('Invalid two-factor authentication code', 403, { code: 'TWO_FACTOR_INVALID' });
         }
         // Consume the used recovery code ATOMICALLY with a RELATIVE, in-place array
         // element removal performed by Postgres on the LIVE row value — not a full-array
@@ -1018,7 +1034,7 @@ export class AuthService {
           // A concurrent request already consumed this exact code → not a valid
           // single-use login. Treat it like any other invalid 2FA attempt.
           detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'totp_invalid' } }), (err) => logger.error('loginHistory.create failed', { err }));
-          throw new AppError('Invalid two-factor authentication code', 401);
+          throw new AppError('Invalid two-factor authentication code', 403, { code: 'TWO_FACTOR_INVALID' });
         }
         // Distinct login-history marker so a recovery-code login is auditable
         // separately from a normal TOTP login. This is the SINGLE success row for

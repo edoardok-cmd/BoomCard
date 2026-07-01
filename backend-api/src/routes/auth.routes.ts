@@ -335,7 +335,34 @@ router.post(
  *       400:
  *         $ref: '#/components/responses/ValidationError'
  *       401:
- *         $ref: '#/components/responses/UnauthorizedError'
+ *         description: >
+ *           Authentication failed before account-state checks.
+ *           Returned when: email address not found; password does not match;
+ *           or mobile client presents a non-USER role (deliberately 401 to
+ *           prevent role enumeration). Note — wrong TOTP code or consumed
+ *           recovery code returns 403 TWO_FACTOR_INVALID, not 401.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: >
+ *           Access denied due to account state (credentials were accepted).
+ *           Returned when: account is DELETED/SUSPENDED/ARCHIVED; partner email
+ *           not verified; partner status is PENDING_VERIFICATION, awaiting
+ *           activation (no verifiedAt), ARCHIVED, or REJECTED; or when 2FA is
+ *           enabled and a TOTP code was not supplied
+ *           (error code: TWO_FACTOR_REQUIRED); or when a wrong or already-consumed
+ *           TOTP/recovery code is submitted (error code: TWO_FACTOR_INVALID).
+ *           The response body carries a machine-readable `details.code` field; possible
+ *           values: TWO_FACTOR_REQUIRED, TWO_FACTOR_INVALID, ACCOUNT_DELETED,
+ *           ACCOUNT_SUSPENDED, ACCOUNT_ARCHIVED, EMAIL_UNVERIFIED,
+ *           PARTNER_PENDING_REVIEW, PARTNER_AWAITING_ACTIVATION,
+ *           PARTNER_ARCHIVED, PARTNER_REJECTED, PARTNER_NOT_FOUND.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       500:
  *         $ref: '#/components/responses/ServerError'
  */
