@@ -9,6 +9,16 @@ import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { createTestUser, cleanupTestUser, authRequest } from '../helpers/test-utils';
+import { invalidateCurrencyDisplayCache } from '../../src/utils/currencyDisplay';
+
+async function setCurrencyWindow(open: boolean) {
+  await prisma.systemSetting.upsert({
+    where: { key: 'currency_transition_window_open' },
+    create: { key: 'currency_transition_window_open', value: open ? 'true' : 'false' },
+    update: { value: open ? 'true' : 'false' },
+  });
+  invalidateCurrencyDisplayCache();
+}
 
 describe('Authentication Flow (F01)', () => {
   const createdUserIds: string[] = [];
@@ -584,6 +594,68 @@ describe('Authentication Flow (F01)', () => {
     it('should require authentication', async () => {
       const res = await request(app).get('/api/auth/data-export');
       expect(res.status).toBe(401);
+    });
+
+    it('receipts[].totalAmount is a dual-currency {bgn,eur} object (window OPEN)', async () => {
+      const { accessToken, user } = await createTestUser({ acceptTerms: true });
+      createdUserIds.push(user.id);
+      const receipt = await prisma.receipt.create({
+        data: { userId: user.id, totalAmount: 42.5, status: 'APPROVED' as any, cashbackAmount: 4.25 },
+      });
+      await setCurrencyWindow(true);
+      try {
+        const res = await authRequest(accessToken).get('/api/auth/data-export');
+        expect(res.status).toBe(200);
+        const rec = (res.body.userData.receipts as any[]).find((r: any) => r.id === receipt.id);
+        expect(rec).toBeDefined();
+        expect(typeof rec.totalAmount).not.toBe('number');
+        expect(rec.totalAmount).toHaveProperty('bgn', 42.5);
+        expect(rec.totalAmount).toHaveProperty('eur');
+        expect(rec.totalAmount.windowOpen).toBe(true);
+      } finally {
+        await prisma.receipt.delete({ where: { id: receipt.id } }).catch(() => {});
+        await setCurrencyWindow(false).catch(() => {});
+      }
+    });
+
+    it('receipts[].totalAmount has bgn:null after transition window closes', async () => {
+      const { accessToken, user } = await createTestUser({ acceptTerms: true });
+      createdUserIds.push(user.id);
+      const receipt = await prisma.receipt.create({
+        data: { userId: user.id, totalAmount: 42.5, status: 'APPROVED' as any, cashbackAmount: 4.25 },
+      });
+      await setCurrencyWindow(false);
+      try {
+        const res = await authRequest(accessToken).get('/api/auth/data-export');
+        expect(res.status).toBe(200);
+        const rec = (res.body.userData.receipts as any[]).find((r: any) => r.id === receipt.id);
+        expect(rec).toBeDefined();
+        expect(rec.totalAmount).toHaveProperty('bgn', null);
+        expect(rec.totalAmount).toHaveProperty('eur');
+        expect(rec.totalAmount.windowOpen).toBe(false);
+      } finally {
+        await prisma.receipt.delete({ where: { id: receipt.id } }).catch(() => {});
+        await setCurrencyWindow(true).catch(() => {});
+      }
+    });
+
+    it('receipts[].totalAmount is null when source is null', async () => {
+      const { accessToken, user } = await createTestUser({ acceptTerms: true });
+      createdUserIds.push(user.id);
+      const receipt = await prisma.receipt.create({
+        data: { userId: user.id, totalAmount: null, status: 'PENDING' as any, cashbackAmount: 0 },
+      });
+      await setCurrencyWindow(true);
+      try {
+        const res = await authRequest(accessToken).get('/api/auth/data-export');
+        expect(res.status).toBe(200);
+        const rec = (res.body.userData.receipts as any[]).find((r: any) => r.id === receipt.id);
+        expect(rec).toBeDefined();
+        expect(rec.totalAmount).toBeNull();
+      } finally {
+        await prisma.receipt.delete({ where: { id: receipt.id } }).catch(() => {});
+        await setCurrencyWindow(false).catch(() => {});
+      }
     });
   });
 

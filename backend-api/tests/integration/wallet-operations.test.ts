@@ -202,13 +202,14 @@ describe('Wallet Operations (F04, F05)', () => {
   // ─── Wallet in Data Export ────────────────────────────────────
 
   describe('Wallet in GDPR Data Export', () => {
-    it('should include wallet data in data export', async () => {
+    it('should include user data in data export (wallet fetched separately as payoutAccount)', async () => {
       const res = await authRequest(accessToken).get('/api/auth/data-export');
 
       expect(res.status).toBe(200);
-      expect(res.body.userData).toHaveProperty('wallet');
-      expect(res.body.userData.wallet).toHaveProperty('balance');
-      expect(res.body.userData.wallet).toHaveProperty('transactions');
+      expect(res.body).toHaveProperty('userData');
+      // Wallet balance/transactions are not embedded in userData; payout IBAN is in payoutAccount.
+      expect(res.body).toHaveProperty('payoutAccount');
+      expect(res.body.payoutAccount).toHaveProperty('iban');
     });
   });
 
