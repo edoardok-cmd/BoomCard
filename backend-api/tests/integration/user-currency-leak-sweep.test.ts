@@ -225,6 +225,7 @@ const MONEY_ENDPOINTS = [
   '/api/loyalty/rewards/redemptions',
   '/api/receipts',
   '/api/receipts/stats',
+  '/api/receipts/v2',
 ];
 
 // Detect a raw BGN scalar: a `currency:"BGN"` paired with a raw numeric amount,
@@ -672,6 +673,27 @@ describe('INV-USER-CUR-003 (receipts) — GET /api/receipts and /:id must gate m
   it('[CUR-RECEIPTS] window OPEN → GET /api/receipts/:id totalAmount exposes bgn > 0 display object', async () => {
     await setCurrencyWindowOpen(true);
     const res = await authRequest(token).get(`/api/receipts/${seededReceiptId}`);
+    expect(res.status).toBe(200);
+    const receipt = res.body?.data ?? res.body;
+    expect(receipt.totalAmount).toEqual(expect.objectContaining({ bgn: 30, eur: expect.any(Number), windowOpen: true }));
+    expect(receipt.totalAmount.bgn).toBeGreaterThan(0);
+  });
+
+  it('[CUR-RECEIPTS] window CLOSED → GET /api/receipts/v2/:id must not expose raw BGN money fields', async () => {
+    await setCurrencyWindowOpen(false);
+    const res = await authRequest(token).get(`/api/receipts/v2/${seededReceiptId}`);
+    expect(res.status).toBe(200);
+    const leaks = findRawBgnLeak(res.body?.data ?? res.body, `/api/receipts/v2/${seededReceiptId}`);
+    expect(
+      leaks.length === 0
+        ? 'no leaks'
+        : `Raw BGN leak(s) on GET /api/receipts/v2/${seededReceiptId}:\n` + leaks.join('\n'),
+    ).toBe('no leaks');
+  });
+
+  it('[CUR-RECEIPTS] window OPEN → GET /api/receipts/v2/:id totalAmount exposes bgn > 0 display object', async () => {
+    await setCurrencyWindowOpen(true);
+    const res = await authRequest(token).get(`/api/receipts/v2/${seededReceiptId}`);
     expect(res.status).toBe(200);
     const receipt = res.body?.data ?? res.body;
     expect(receipt.totalAmount).toEqual(expect.objectContaining({ bgn: 30, eur: expect.any(Number), windowOpen: true }));

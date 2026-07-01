@@ -223,7 +223,8 @@ class ReceiptService {
 
       logger.info(`Receipt created: ${receipt.id} for user: ${userId}`);
 
-      return { success: true, data: this.formatReceipt(receipt) };
+      const showDualCurrency = await isCurrencyTransitionWindowOpen();
+      return { success: true, data: this.formatReceipt(receipt, { showDualCurrency }) };
     } catch (error) {
       if (error instanceof AppError) throw error;
       logger.error('Error creating receipt:', error);
