@@ -493,6 +493,8 @@ export const bg: TranslationKey = {
     subStatusTrialing: 'Пробен',
     subStatusPastDue: 'Просрочен',
     subStatusCancelled: 'Отменен',
+    subStatusFailedPayment: 'Неуспешно плащане',
+    subStatusExpired: 'Изтекъл',
     gracePeriodTitle: 'Просрочено плащане',
     gracePeriodDays: 'Достъпът ви изтича след {days} ден(дни). Моля, обновете метода си на плащане.',
     gracePeriodExpired: 'Гратисният период е изтекъл. Моля, подновете абонамента си.',

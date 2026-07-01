@@ -111,6 +111,7 @@ router.get('/me', authenticate, asyncHandler(async (req: AuthRequest, res: Respo
     receipts,
     nextPaymentDate: (resolvedSubscription && 'currentPeriodEnd' in resolvedSubscription ? resolvedSubscription.currentPeriodEnd : null) ?? null,
     showUpgradePrompt: resolvedSubscription ? ((resolvedSubscription.plan === 'BASIC' || isPremiumWeekly) && resolvedSubscription.status === 'ACTIVE') : false,
+    currencyWindowOpen: showDualCurrency,
   });
 }));
 

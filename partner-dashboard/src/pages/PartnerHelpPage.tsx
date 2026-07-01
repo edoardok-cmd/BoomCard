@@ -140,6 +140,7 @@ function statusColor(status: TicketStatus): { bg: string; text: string } {
     case 'REJECTED':
     case 'CANCELLED':  return { bg: p.border, text: p.subtle };
     default: {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const _: never = status;
       return { bg: p.infoSoft, text: p.info };
     }

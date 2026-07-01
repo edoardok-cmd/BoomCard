@@ -491,6 +491,8 @@ export const en = {
     subStatusTrialing: 'Trial',
     subStatusPastDue: 'Past due',
     subStatusCancelled: 'Cancelled',
+    subStatusFailedPayment: 'Payment Failed',
+    subStatusExpired: 'Expired',
     gracePeriodTitle: 'Payment overdue',
     gracePeriodDays: 'Your subscription access ends in {days} day(s). Please update your payment method.',
     gracePeriodExpired: 'Grace period has ended. Please renew to restore access.',

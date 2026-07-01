@@ -346,13 +346,6 @@ const WalletValue = styled.div`
   color: ${palette.text};
 `;
 
-const WalletUnit = styled.span`
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: ${palette.textSubtle};
-  margin-left: 0.25rem;
-`;
-
 const SubTable = styled.table`
   width: 100%;
   border-collapse: collapse;

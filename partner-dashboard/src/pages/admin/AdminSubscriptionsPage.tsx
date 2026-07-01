@@ -734,14 +734,6 @@ export default function AdminSubscriptionsPage() {
       year: 'numeric',
     });
 
-  const fmtMoney = (amount: number) =>
-    new Intl.NumberFormat(lang === 'bg' ? 'bg-BG' : 'en-GB', {
-      style: 'currency',
-      currency: 'BGN',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-
   // Format amount using the current currency display mode
   const fmtAmount = (amount: number) => formatMoneyByMode(amount, currencyDisplayMode, language);
 

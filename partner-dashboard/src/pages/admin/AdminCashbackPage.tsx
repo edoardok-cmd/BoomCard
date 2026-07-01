@@ -367,8 +367,9 @@ const ModalBtn = styled.button<{ $primary?: boolean }>`
   cursor: pointer;
   transition: all 0.2s ease;
   &:hover {
-    background: ${({ $primary }) => $primary ? palette.accentDark : palette.bg};
-    border-color: ${({ $primary }) => $primary ? palette.accentDark : palette.text};
+    background: ${({ $primary }) => $primary ? palette.accent : palette.bg};
+    border-color: ${({ $primary }) => $primary ? palette.accent : palette.text};
+    opacity: ${({ $primary }) => $primary ? 0.9 : 1};
   }
   &:disabled { opacity: 0.5; cursor: default; }
 `;
@@ -909,7 +910,7 @@ export default function AdminCashbackPage() {
               hidden: (row) => !['Pending', 'TrialPending', 'Cleared', 'Locked'].includes(row.status),
               onClick: (row) => {
                 // Store the void trigger button reference for focus restoration after modal closes
-                voidTriggerRef.current = document.activeElement as HTMLButtonElement;
+                (voidTriggerRef as React.MutableRefObject<HTMLButtonElement | null>).current = document.activeElement as HTMLButtonElement;
                 setVoidModalEntry(row);
                 setVoidModalVisible(true);
               },

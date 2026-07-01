@@ -16,6 +16,7 @@ import { apiService } from '../services/api.service';
 // feature to end-users.
 const OFFER_MANAGEMENT_ENABLED = import.meta.env.VITE_OFFER_MANAGEMENT_ENABLED === 'true';
 import { useCurrencyDisplay, formatWithCurrency } from '../utils/currencyDisplay';
+import type { DualCurrencyAmount } from '../services/adminCashback.service';
 
 const PageContainer = styled.div`
   max-width: 72rem;
@@ -362,17 +363,6 @@ const CtaDesc = styled.p`
   color: rgba(255, 255, 255, 0.75);
 `;
 
-const CashbackGrid = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-
-  @media (max-width: 640px) {
-    grid-template-columns: 1fr;
-  }
-`;
-
 const SubscriptionCard = styled(motion.div)`
   background: white;
   border-radius: 1.5rem;
@@ -454,16 +444,18 @@ const StatusBadge = styled.span<{ $status: string }>`
     if ($status === 'APPROVED' || $status === 'ACTIVE') return '#d1fae5';
     if ($status === 'PENDING' || $status === 'TRIALING') return '#fef3c7';
     if ($status === 'MANUAL_REVIEW') return '#dbeafe';
-    if ($status === 'REJECTED' || $status === 'CANCELLED') return '#fee2e2';
+    if ($status === 'REJECTED' || $status === 'CANCELLED' || $status === 'FAILED_PAYMENT') return '#fee2e2';
     if ($status === 'PAST_DUE') return '#fff7ed';
+    if ($status === 'EXPIRED') return '#f3f4f6';
     return '#f3f4f6';
   }};
   color: ${({ $status }) => {
     if ($status === 'APPROVED' || $status === 'ACTIVE') return '#065f46';
     if ($status === 'PENDING' || $status === 'TRIALING') return '#92400e';
     if ($status === 'MANUAL_REVIEW') return '#1e40af';
-    if ($status === 'REJECTED' || $status === 'CANCELLED') return '#991b1b';
+    if ($status === 'REJECTED' || $status === 'CANCELLED' || $status === 'FAILED_PAYMENT') return '#991b1b';
     if ($status === 'PAST_DUE') return '#c2410c';
+    if ($status === 'EXPIRED') return '#374151';
     return '#374151';
   }};
 
@@ -472,16 +464,18 @@ const StatusBadge = styled.span<{ $status: string }>`
       if ($status === 'APPROVED' || $status === 'ACTIVE') return 'rgba(16, 185, 129, 0.2)';
       if ($status === 'PENDING' || $status === 'TRIALING') return 'rgba(245, 158, 11, 0.2)';
       if ($status === 'MANUAL_REVIEW') return 'rgba(59, 130, 246, 0.2)';
-      if ($status === 'REJECTED' || $status === 'CANCELLED') return 'rgba(239, 68, 68, 0.2)';
+      if ($status === 'REJECTED' || $status === 'CANCELLED' || $status === 'FAILED_PAYMENT') return 'rgba(239, 68, 68, 0.2)';
       if ($status === 'PAST_DUE') return 'rgba(234, 88, 12, 0.2)';
+      if ($status === 'EXPIRED') return 'rgba(107, 114, 128, 0.2)';
       return 'rgba(107, 114, 128, 0.2)';
     }};
     color: ${({ $status }) => {
       if ($status === 'APPROVED' || $status === 'ACTIVE') return '#34d399';
       if ($status === 'PENDING' || $status === 'TRIALING') return '#fcd34d';
       if ($status === 'MANUAL_REVIEW') return '#93c5fd';
-      if ($status === 'REJECTED' || $status === 'CANCELLED') return '#fca5a5';
+      if ($status === 'REJECTED' || $status === 'CANCELLED' || $status === 'FAILED_PAYMENT') return '#fca5a5';
       if ($status === 'PAST_DUE') return '#fb923c';
+      if ($status === 'EXPIRED') return '#d1d5db';
       return '#d1d5db';
     }};
   }
@@ -630,13 +624,159 @@ const ReadOnlyBannerText = styled.p`
   margin: 0;
 `;
 
+/* ── User dashboard status banners (§3.3, §3.5.1) ── */
+
+const UserStatusBanner = styled(motion.div)<{ $variant: 'danger' | 'warning' }>`
+  background: ${({ $variant }) => $variant === 'danger' ? '#fff1f2' : '#fffbeb'};
+  border: 1.5px solid ${({ $variant }) => $variant === 'danger' ? '#fca5a5' : '#fcd34d'};
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+
+  [data-theme="dark"] & {
+    background: ${({ $variant }) => $variant === 'danger' ? 'rgba(153, 27, 27, 0.15)' : 'rgba(120, 53, 15, 0.15)'};
+    border-color: ${({ $variant }) => $variant === 'danger' ? 'rgba(252, 165, 165, 0.5)' : 'rgba(252, 211, 77, 0.5)'};
+  }
+
+  @media (max-width: 640px) {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+`;
+
+const UserStatusBannerText = styled.p<{ $variant: 'danger' | 'warning' }>`
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: ${({ $variant }) => $variant === 'danger' ? '#991b1b' : '#78350f'};
+  margin: 0;
+
+  [data-theme="dark"] & {
+    color: ${({ $variant }) => $variant === 'danger' ? '#fca5a5' : '#fcd34d'};
+  }
+`;
+
+const UserStatusBannerLink = styled(Link)<{ $variant: 'danger' | 'warning' }>`
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: ${({ $variant }) => $variant === 'danger' ? '#991b1b' : '#78350f'};
+  text-decoration: underline;
+  white-space: nowrap;
+
+  [data-theme="dark"] & {
+    color: ${({ $variant }) => $variant === 'danger' ? '#fca5a5' : '#fcd34d'};
+  }
+
+  &:hover {
+    opacity: 0.8;
+  }
+`;
+
+/* ── User cashback card with 3-row layout ── */
+
+const CashbackCard = styled(motion.div)`
+  background: white;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 1.75rem 2rem;
+  margin-bottom: 2.5rem;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.04);
+
+  [data-theme="dark"] & {
+    background: #1f2937;
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+`;
+
+const CashbackRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0;
+
+  & + & {
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+
+    [data-theme="dark"] & {
+      border-top-color: rgba(255, 255, 255, 0.06);
+    }
+  }
+`;
+
+const CashbackRowLabel = styled.span`
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: #374151;
+
+  [data-theme="dark"] & {
+    color: #d1d5db;
+  }
+`;
+
+const CashbackRowValue = styled.span<{ $highlighted?: boolean }>`
+  font-size: 1rem;
+  font-weight: 700;
+  color: ${({ $highlighted }) => $highlighted ? '#dc2626' : '#111827'};
+
+  [data-theme="dark"] & {
+    color: ${({ $highlighted }) => $highlighted ? '#f87171' : '#f9fafb'};
+  }
+`;
+
+const ExpiringLabel = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: #dc2626;
+
+  [data-theme="dark"] & {
+    color: #f87171;
+  }
+`;
+
+/* ── Subscription auto-renewal indicator ── */
+
+const AutoRenewalRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+`;
+
+const AutoRenewalDot = styled.span<{ $on: boolean }>`
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: ${({ $on }) => $on ? '#10b981' : '#6b7280'};
+  flex-shrink: 0;
+`;
+
+const AutoRenewalText = styled.span`
+  font-size: 0.875rem;
+  color: #6b7280;
+
+  [data-theme="dark"] & {
+    color: #9ca3af;
+  }
+`;
+
 /* ── Types ── */
 
 interface DashboardReceipt {
   id: string;
   merchantName: string;
-  totalAmount: number;
-  cashbackAmount: number;
+  // Backend /dashboard/me wraps these through toDualCurrency() — they are
+  // DualCurrencyAmount objects, not plain numbers (F2 fix).
+  totalAmount: DualCurrencyAmount;
+  cashbackAmount: DualCurrencyAmount;
   status: string;
   createdAt: string;
 }
@@ -650,11 +790,15 @@ interface DashboardSubscription {
   // already documented this). The PAST_DUE grace banner that depended on it has
   // been removed accordingly.
   retryAttempt?: number;
+  // §3.5.1: auto-renewal indicator displayed in the Subscription block.
+  autoRenewal?: boolean;
 }
 
 interface DashboardWallet {
   availableBalance: number;
   pendingBalance: number;
+  // §3.5.1: cashback expiring within 7 days — only shown when > 0.
+  expiringBalance?: number;
 }
 
 interface DashboardData {
@@ -662,6 +806,9 @@ interface DashboardData {
   wallet: DashboardWallet;
   receipts: DashboardReceipt[];
   showUpgradePrompt?: boolean;
+  // §7.3 / Clash 12.1: when true, wallet amounts are BGN scalars; when false, EUR scalars.
+  // Populated by backend after parallel fix adds it to /api/dashboard/me.
+  currencyWindowOpen?: boolean;
 }
 
 /* ── Component ── */
@@ -745,13 +892,17 @@ const DashboardPage: React.FC = () => {
   // Consumer dashboard data
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(false);
+  // F2: track fetch failure so we can render an error notice instead of
+  // misleading subscription/cashback defaults when the API call fails.
+  const [hasDashboardError, setHasDashboardError] = useState(false);
 
   useEffect(() => {
     if (isPartner) return;
     setIsLoadingDashboard(true);
+    setHasDashboardError(false);
     apiService.get<DashboardData>('/dashboard/me')
       .then(data => setDashboardData(data))
-      .catch(() => { /* fail silently — show zeros */ })
+      .catch(() => { setHasDashboardError(true); })
       .finally(() => setIsLoadingDashboard(false));
   }, [isPartner]);
 
@@ -772,16 +923,30 @@ const DashboardPage: React.FC = () => {
   const formatCurrency = (amount: number) =>
     formatWithCurrency(amount, currencyMode, language === 'bg' ? 'bg' : 'en');
 
+  /**
+   * F1 fix: wallet amounts use a display mode driven by the API response field
+   * `currencyWindowOpen` (§7.3, Clash 12.1).  When the backend reports the BGN
+   * transition window is still open, wallet scalars are BGN → show DUAL (BGN + EUR).
+   * When the window is closed (or the field is absent), fall back to the
+   * date-based `currencyMode` which resolves to EUR_ONLY post-2026-01-01.
+   */
+  const walletDisplayMode = dashboardData?.currencyWindowOpen ? 'DUAL' : currencyMode;
+  const formatWalletCurrency = (amount: number) =>
+    formatWithCurrency(amount, walletDisplayMode, language === 'bg' ? 'bg' : 'en');
+
   const statusLabel = (status: string) => {
     const map: Record<string, { en: string; bg: string }> = {
-      APPROVED:      { en: t('dashboard.statusApproved'),     bg: t('dashboard.statusApproved') },
-      PENDING:       { en: t('dashboard.statusPending'),      bg: t('dashboard.statusPending') },
-      MANUAL_REVIEW: { en: t('dashboard.statusReview'),       bg: t('dashboard.statusReview') },
-      REJECTED:      { en: t('dashboard.statusRejected'),     bg: t('dashboard.statusRejected') },
-      ACTIVE:        { en: t('dashboard.subStatusActive'),    bg: t('dashboard.subStatusActive') },
-      TRIALING:      { en: t('dashboard.subStatusTrialing'),  bg: t('dashboard.subStatusTrialing') },
-      PAST_DUE:      { en: t('dashboard.subStatusPastDue'),   bg: t('dashboard.subStatusPastDue') },
-      CANCELLED:     { en: t('dashboard.subStatusCancelled'), bg: t('dashboard.subStatusCancelled') },
+      APPROVED:       { en: t('dashboard.statusApproved'),        bg: t('dashboard.statusApproved') },
+      PENDING:        { en: t('dashboard.statusPending'),         bg: t('dashboard.statusPending') },
+      MANUAL_REVIEW:  { en: t('dashboard.statusReview'),          bg: t('dashboard.statusReview') },
+      REJECTED:       { en: t('dashboard.statusRejected'),        bg: t('dashboard.statusRejected') },
+      ACTIVE:         { en: t('dashboard.subStatusActive'),       bg: t('dashboard.subStatusActive') },
+      TRIALING:       { en: t('dashboard.subStatusTrialing'),     bg: t('dashboard.subStatusTrialing') },
+      PAST_DUE:       { en: t('dashboard.subStatusPastDue'),      bg: t('dashboard.subStatusPastDue') },
+      CANCELLED:      { en: t('dashboard.subStatusCancelled'),    bg: t('dashboard.subStatusCancelled') },
+      // F4: missing subscription statuses
+      FAILED_PAYMENT: { en: t('dashboard.subStatusFailedPayment'), bg: t('dashboard.subStatusFailedPayment') },
+      EXPIRED:        { en: t('dashboard.subStatusExpired'),       bg: t('dashboard.subStatusExpired') },
     };
     return map[status]?.[language === 'bg' ? 'bg' : 'en'] ?? status;
   };
@@ -1091,51 +1256,65 @@ const DashboardPage: React.FC = () => {
         </>
       ) : (
         <>
-          {/* Upload Receipt CTA */}
-          <CtaCard
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35 }}
-          >
-            <CtaContent>
-              <CtaTitle>{t('dashboard.uploadReceiptCta')}</CtaTitle>
-              <CtaDesc>{t('dashboard.uploadReceiptCtaDesc')}</CtaDesc>
-            </CtaContent>
-            <Link to="/upload-receipt">
-              <Button variant="secondary" size="large">
-                {t('dashboard.uploadReceiptCta')}
-              </Button>
-            </Link>
-          </CtaCard>
+          {/* ── §3.3 / §3.5.1 Account status banners — rendered first ── */}
 
-          {/* Cashback Balances */}
-          <CashbackGrid>
-            <StatCard
-              initial={{ opacity: 0, y: 20 }}
+          {/* Banner 1: Account paused (user.status === 'INACTIVE') */}
+          {/* Suppress when hasDashboardError — the error banner below already informs the user. */}
+          {!hasDashboardError && user?.status === 'INACTIVE' && (
+            <UserStatusBanner
+              $variant="danger"
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.05 }}
+              transition={{ duration: 0.3 }}
             >
-              <StatLabel>{t('dashboard.cashbackAvailable')}</StatLabel>
-              <StatValue>
-                {isLoadingDashboard ? '...' : formatCurrency(dashboardData?.wallet.availableBalance ?? 0)}
-              </StatValue>
-              <StatChange $positive>{t('dashboard.readyToClaim')}</StatChange>
-            </StatCard>
+              <UserStatusBannerText $variant="danger">
+                {language === 'bg' ? 'Акаунтът е в пауза' : 'Account paused'}
+              </UserStatusBannerText>
+              <UserStatusBannerLink $variant="danger" to="/subscription">
+                {language === 'bg' ? 'Възобнови акаунта' : 'Resume account'}
+              </UserStatusBannerLink>
+            </UserStatusBanner>
+          )}
 
-            <StatCard
-              initial={{ opacity: 0, y: 20 }}
+          {/* Banner 2: Subscription payment failed */}
+          {dashboardData?.subscription?.status === 'FAILED_PAYMENT' && (
+            <UserStatusBanner
+              $variant="warning"
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.1 }}
+              transition={{ duration: 0.3 }}
             >
-              <StatLabel>{t('dashboard.cashbackPending')}</StatLabel>
-              <StatValue>
-                {isLoadingDashboard ? '...' : formatCurrency(dashboardData?.wallet.pendingBalance ?? 0)}
-              </StatValue>
-              <StatChange>{t('dashboard.awaitingApproval')}</StatChange>
-            </StatCard>
-          </CashbackGrid>
+              <UserStatusBannerText $variant="warning">
+                {language === 'bg'
+                  ? 'Плащането на абонамента е неуспешно'
+                  : 'Subscription payment failed'}
+              </UserStatusBannerText>
+              <UserStatusBannerLink $variant="warning" to="/subscription">
+                {language === 'bg'
+                  ? 'Обнови начина на плащане'
+                  : 'Update payment method'}
+              </UserStatusBannerLink>
+            </UserStatusBanner>
+          )}
 
-          {/* Subscription Status */}
+          {/* F2: API fetch failure — replace subscription/cashback/transaction blocks
+              with a clear error notice instead of showing misleading default values. */}
+          {!isLoadingDashboard && hasDashboardError ? (
+            <ErrorBanner
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <ErrorMessage>
+                {language === 'bg'
+                  ? 'Неуспешно зареждане на данните. Моля, опреснете страницата.'
+                  : 'Unable to load dashboard. Please refresh.'}
+              </ErrorMessage>
+            </ErrorBanner>
+          ) : (
+          <>
+
+          {/* ── §3.5.1 Subscription block ── */}
           <SectionHeader>
             <SectionTitle>{t('dashboard.subscriptionPlan')}</SectionTitle>
           </SectionHeader>
@@ -1143,7 +1322,7 @@ const DashboardPage: React.FC = () => {
           <SubscriptionCard
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.15 }}
+            transition={{ duration: 0.3, delay: 0.05 }}
           >
             <SubscriptionHeader>
               <PlanBadge $plan={dashboardData?.subscription?.plan ?? 'BASIC'}>
@@ -1164,13 +1343,87 @@ const DashboardPage: React.FC = () => {
                 </SubscriptionMetaValue>
               </SubscriptionMeta>
             )}
+
+            {/* §3.5.1: auto-renewal on/off indicator */}
+            {!isLoadingDashboard && dashboardData?.subscription?.autoRenewal !== undefined && (
+              <AutoRenewalRow>
+                <AutoRenewalDot $on={dashboardData.subscription.autoRenewal} />
+                <AutoRenewalText>
+                  {dashboardData.subscription.autoRenewal
+                    ? (language === 'bg' ? 'Автоматично подновяване: Вкл.' : 'Auto-renewal: On')
+                    : (language === 'bg' ? 'Автоматично подновяване: Изкл.' : 'Auto-renewal: Off')}
+                </AutoRenewalText>
+              </AutoRenewalRow>
+            )}
+
+            {/* PAST_DUE grace banner removed: it depended on the phantom
+                `gracePeriodEndsAt` field that /dashboard/me never returns, so the
+                countdown could never be computed and the banner never rendered. */}
           </SubscriptionCard>
 
-          {/* PAST_DUE grace banner removed: it depended on the phantom
-              `gracePeriodEndsAt` field that /dashboard/me never returns, so the
-              countdown could never be computed and the banner never rendered. */}
+          {/* ── §3.5.1 Cashback block ── */}
+          <SectionHeader>
+            <SectionTitle>
+              {language === 'bg' ? 'Кешбек' : 'Cashback'}
+            </SectionTitle>
+          </SectionHeader>
 
-          {/* Recent Transactions */}
+          <CashbackCard
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+          >
+            {/* Available (Cleared) */}
+            <CashbackRow>
+              <CashbackRowLabel>
+                {t('dashboard.cashbackAvailable')}
+              </CashbackRowLabel>
+              <CashbackRowValue>
+                {isLoadingDashboard ? '...' : formatWalletCurrency(dashboardData?.wallet.availableBalance ?? 0)}
+              </CashbackRowValue>
+            </CashbackRow>
+
+            {/* Pending */}
+            <CashbackRow>
+              <CashbackRowLabel>
+                {t('dashboard.cashbackPending')}
+              </CashbackRowLabel>
+              <CashbackRowValue>
+                {isLoadingDashboard ? '...' : formatWalletCurrency(dashboardData?.wallet.pendingBalance ?? 0)}
+              </CashbackRowValue>
+            </CashbackRow>
+
+            {/* Expiring within 7 days — only shown when > 0 */}
+            {!isLoadingDashboard && (dashboardData?.wallet.expiringBalance ?? 0) > 0 && (
+              <CashbackRow>
+                <ExpiringLabel>
+                  {language === 'bg' ? 'Изтичащ скоро (7 дни)' : 'Expiring soon (7 days)'}
+                </ExpiringLabel>
+                <CashbackRowValue $highlighted>
+                  {formatWalletCurrency(dashboardData!.wallet.expiringBalance!)}
+                </CashbackRowValue>
+              </CashbackRow>
+            )}
+          </CashbackCard>
+
+          {/* ── §3.5.1 Primary CTA: Upload receipt ── */}
+          <CtaCard
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.15 }}
+          >
+            <CtaContent>
+              <CtaTitle>{t('dashboard.uploadReceiptCta')}</CtaTitle>
+              <CtaDesc>{t('dashboard.uploadReceiptCtaDesc')}</CtaDesc>
+            </CtaContent>
+            <Link to="/upload-receipt">
+              <Button variant="secondary" size="large">
+                {t('dashboard.uploadReceiptCta')}
+              </Button>
+            </Link>
+          </CtaCard>
+
+          {/* ── §3.5.1 Recent transactions (last 3) ── */}
           <SectionHeader>
             <SectionTitle>{t('dashboard.recentTransactions')}</SectionTitle>
             <Link to="/receipts">
@@ -1198,7 +1451,9 @@ const DashboardPage: React.FC = () => {
                       {statusLabel(receipt.status)}
                     </StatusBadge>
                     <TransactionAmount>
-                      +{formatCurrency(receipt.cashbackAmount)}
+                      +{receipt.cashbackAmount.windowOpen && receipt.cashbackAmount.bgn !== null
+                        ? formatWithCurrency(receipt.cashbackAmount.bgn, 'DUAL', language === 'bg' ? 'bg' : 'en')
+                        : `€${receipt.cashbackAmount.eur.toFixed(2)}`}
                     </TransactionAmount>
                   </TransactionRow>
                 ))}
@@ -1208,7 +1463,7 @@ const DashboardPage: React.FC = () => {
             )}
           </ActivityContainer>
 
-          {/* Upgrade Banner */}
+          {/* ── §3.5.1 Upsell block — Basic / Premium Weekly with Active subscription ── */}
           {showUpgradeBanner && (
             <UpgradeBanner
               initial={{ opacity: 0, y: 12 }}
@@ -1223,6 +1478,8 @@ const DashboardPage: React.FC = () => {
                 <Button variant="secondary" size="medium">{t('dashboard.upgradeBtn')}</Button>
               </Link>
             </UpgradeBanner>
+          )}
+          </>
           )}
         </>
       )}

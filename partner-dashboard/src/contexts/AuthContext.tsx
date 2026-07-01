@@ -73,6 +73,9 @@ interface MePayload {
   avatar?: string;
   impersonation?: { adminId: string; adminRole: string } | null;
   partner_account_status?: 'Active' | 'Inactive' | 'Archived';
+  // Raw user account status (ACTIVE | INACTIVE | ARCHIVED) — returned by /auth/me.
+  // Used by the subscriber dashboard (§3.3, §3.5.1) to show the "Account paused" banner.
+  status?: string;
 }
 
 interface AuthSuccessPayload {
@@ -165,6 +168,10 @@ export interface User {
   // Active = full access, Inactive = read-only, Archived = no access.
   // Only present for partner accounts. Used by PartnerStatusRoute and partner pages.
   partner_account_status?: 'Active' | 'Inactive' | 'Archived';
+  // Raw user account status from the DB (ACTIVE | INACTIVE | ARCHIVED).
+  // Returned by /auth/me (getUserById selects status). Used by the subscriber
+  // dashboard (§3.3, §3.5.1) to show the "Account paused" banner.
+  status?: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED' | string;
 }
 
 // Backend emits roles in uppercase (USER|PARTNER|ADMIN|SUPER_ADMIN); this
@@ -517,6 +524,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               twoFactorEnabled: (meData as any).twoFactorEnabled ?? false,
               // Spec §1.2/§11.2: partner_account_status must survive page reloads
               partner_account_status: meData.partner_account_status,
+              // §3.3/§3.5.1: raw user account status for subscriber dashboard banner.
+              status: meData.status,
             };
             setUser(verifiedUser);
 
@@ -687,6 +696,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // some backend shapes return this field alongside the token rather than inside
           // the user sub-object (mirrors the pattern used in loadUser()).
           partner_account_status: incomingStatus,
+          // §3.3/§3.5.1: raw user account status for subscriber dashboard banner.
+          status: (userPayload as any).status,
         };
         setUser(user);
         authStorage.setItem(STORAGE_KEY, JSON.stringify(user), persistent);
@@ -879,6 +890,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: userPayload.createdAt ? new Date(userPayload.createdAt).getTime() : Date.now(),
         emailVerified: userPayload.emailVerified ?? false,
         avatar: userPayload.avatar,
+        status: (userPayload as any).status,
       };
       setUser(normalizedUser);
 
@@ -1033,6 +1045,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Spec §1.2/§11.2: preserve partner lifecycle status across account switches.
         // Use the same multi-shape probe as the Archived guard above.
         partner_account_status: switchIncomingStatus,
+        status: (userPayload as any).status,
       };
       setUser(nextUser);
       authStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser), inheritPersistent);
@@ -1114,6 +1127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Spec §1.2/§11.2: carry partner lifecycle status into impersonation session
       // (undefined for end-user targets, which is fine — no partner status gate).
       partner_account_status: userPayload.partner_account_status,
+      status: (userPayload as any).status,
     };
     setUser(nextUser);
     authStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser), inheritPersistent);
@@ -1218,6 +1232,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         twoFactorEnabled: (userPayload as any).twoFactorEnabled ?? false,
         // Admin accounts do not have partner_account_status; restored session is admin-role
         partner_account_status: userPayload.partner_account_status,
+        status: (userPayload as any).status,
       };
       setUser(adminUser);
       authStorage.setItem(STORAGE_KEY, JSON.stringify(adminUser), inheritPersistent);
@@ -1278,6 +1293,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // or nulls this field (expected for profile updates), preserve the in-memory value.
         // Prevents a backend regression from silently erasing the partner's access tier.
         partner_account_status: user.partner_account_status,
+        // F3: explicitly guard status — always taken from current auth state, never from
+        // the profile endpoint.  Makes the intent visible alongside its siblings so a
+        // future developer cannot accidentally add status to the profile allowlist.
+        status: user.status,
       });
 
       toast.success(t('profile.savedSuccessfully'));
@@ -1447,6 +1466,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           permissions: (response.user as any).permissions,
           // Spec §1.2/§11.2: persist partner lifecycle status from OAuth login response
           partner_account_status: oauthIncomingStatus,
+          // §3.3/§3.5.1: raw user account status for subscriber dashboard banner.
+          status: (response.user as any).status,
         };
         setUser(oauthUser);
 
@@ -1530,6 +1551,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         twoFactorEnabled: (meData as any).twoFactorEnabled ?? prev.twoFactorEnabled,
         // Spec §1.2/§11.2: refresh partner lifecycle status so mid-session changes are reflected
         partner_account_status: meData.partner_account_status ?? prev.partner_account_status,
+        status: meData.status ?? prev.status,
       } : prev);
       // Refresh partnerRestriction from /auth/me so a suspension or reinstatement
       // that happens mid-session is picked up the next time reloadUser() is called.

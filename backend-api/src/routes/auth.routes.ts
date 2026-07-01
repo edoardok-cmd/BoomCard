@@ -182,6 +182,7 @@ router.post(
           firstName: result.firstName,
           lastName: result.lastName,
           role: result.role,
+          status: result.status,
           avatar: result.avatar,
           emailVerified: true,
           mustChangePassword: result.mustChangePassword,
@@ -1319,6 +1320,7 @@ router.post(
                 firstName: existingUser.firstName,
                 lastName: existingUser.lastName,
                 role: existingUser.role,
+                status: existingUser.status,
               },
               ...tokens,
             },
@@ -1556,7 +1558,7 @@ router.post(
       success: true,
       message: 'Account created successfully',
       data: {
-        user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role },
+        user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role, status: user.status },
         ...tokens,
       },
     });
