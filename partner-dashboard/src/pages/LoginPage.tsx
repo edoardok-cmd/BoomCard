@@ -883,13 +883,16 @@ const LoginPage: React.FC = () => {
           </ComingSoonWrapper>
         </SocialButtons>
 
-        {/* LOW-2 fix: spec §2.3/§2.4 — the partner application does not create
-            a login account. Direct users to the partner application page instead
-            of a consumer subscription plan selector. */}
         <SignupPrompt>
-          {t('auth.notAPartnerYet') || (language === 'bg' ? 'Все още не сте партньор?' : 'Not a partner yet?')}{' '}
+          <Link to="/#subscription-plans">
+            {t('auth.viewSubscriptionPlans')}
+          </Link>
+        </SignupPrompt>
+
+        <SignupPrompt style={{ marginTop: '0.75rem' }}>
+          {t('auth.notAPartnerYet')}{' '}
           <Link to="/register/partner">
-            {t('auth.applyAsPartner') || (language === 'bg' ? 'Кандидатствайте тук' : 'Apply here')}
+            {t('auth.applyAsPartner')}
           </Link>
         </SignupPrompt>
 

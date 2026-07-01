@@ -253,8 +253,9 @@ export const bg: TranslationKey = {
     loggedOut: 'Успешно излизане',
     stoppedImpersonating: 'Спряхте да се представяте',
     emailUpdated: 'Имейлът е обновен успешно',
-    notAPartnerYet: 'Все още не сте партньор?',
-    applyAsPartner: 'Кандидатствайте тук',
+    notAPartnerYet: 'Не сте потребител?',
+    applyAsPartner: 'Станете партньор!',
+    viewSubscriptionPlans: 'Вижте абонаментните планове',
     archivedAccountFallback: 'Този акаунт е архивиран. Свържете се с office@boomcard.bg за съдействие.',
   },
 

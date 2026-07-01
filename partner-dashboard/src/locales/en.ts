@@ -251,8 +251,9 @@ export const en = {
     loggedOut: 'Logged out successfully',
     stoppedImpersonating: 'Stopped impersonating',
     emailUpdated: 'Email updated successfully',
-    notAPartnerYet: 'Not a partner yet?',
-    applyAsPartner: 'Apply here',
+    notAPartnerYet: 'Not a user?',
+    applyAsPartner: 'Apply for a Partner!',
+    viewSubscriptionPlans: 'View Subscription Plans',
     archivedAccountFallback: 'This account has been archived. Contact office@boomcard.bg for assistance.',
   },
 
