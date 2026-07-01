@@ -136,24 +136,30 @@ const ResponsiveImage: React.FC<ResponsiveImageProps> = ({
   };
 
   useEffect(() => {
-    // Preload best format if available
-    if (avifSrc) {
-      supportsAVIF().then((supported) => {
-        if (supported && lazy) {
-          const link = document.createElement('link');
-          link.rel = 'preload';
-          link.as = 'image';
-          link.href = avifSrc;
-          document.head.appendChild(link);
-        }
-      });
-    } else if (webpSrc && supportsWebP() && lazy) {
-      const link = document.createElement('link');
+    let cancelled = false;
+    let link: HTMLLinkElement | null = null;
+
+    const appendLink = (href: string) => {
+      if (cancelled) return;
+      link = document.createElement('link');
       link.rel = 'preload';
       link.as = 'image';
-      link.href = webpSrc;
+      link.href = href;
       document.head.appendChild(link);
+    };
+
+    if (avifSrc) {
+      supportsAVIF().then((supported) => {
+        if (supported && lazy) appendLink(avifSrc);
+      });
+    } else if (webpSrc && supportsWebP() && lazy) {
+      appendLink(webpSrc);
     }
+
+    return () => {
+      cancelled = true;
+      if (link && link.parentNode) link.parentNode.removeChild(link);
+    };
   }, [avifSrc, webpSrc, lazy]);
 
   const handleLoad = () => {

@@ -4,7 +4,7 @@ import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { CredentialResponse } from '@react-oauth/google';
 import Button from '../components/common/Button/Button';
-import { useAuth, OAuthData, TwoFactorRequiredError } from '../contexts/AuthContext';
+import { useAuth, OAuthData, TwoFactorRequiredError, BlockedAccountError } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import GoogleLoginButton from '../components/auth/GoogleLoginButton';
 import FacebookLoginButton from '../components/auth/FacebookLoginButton';
@@ -137,6 +137,22 @@ const ErrorMessage = styled(motion.span)`
   font-size: 0.875rem;
   color: #ef4444;
   margin-top: 0.25rem;
+`;
+
+const BlockMessage = styled(motion.div)`
+  font-size: 0.875rem;
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  line-height: 1.5;
+
+  [data-theme="dark"] & {
+    color: #fcd34d;
+    background: rgba(252, 211, 77, 0.1);
+    border-color: rgba(252, 211, 77, 0.3);
+  }
 `;
 
 const HelperText = styled.span`
@@ -348,6 +364,7 @@ const LoginPage: React.FC = () => {
     email: false,
     password: false,
   });
+  const [loginError, setLoginError] = useState<string | undefined>(undefined);
 
   // 2FA second-factor step. Whether the code field is shown (`twoFactorRequired`)
   // lives in AuthContext, NOT here: submitting login flips AuthContext.isLoading
@@ -420,6 +437,11 @@ const LoginPage: React.FC = () => {
     const newValue = type === 'checkbox' ? checked : value;
 
     setFormData(prev => ({ ...prev, [name]: newValue }));
+
+    // Clear any persisted block-reason message when the user changes credentials.
+    if ((name === 'email' || name === 'password') && loginError) {
+      setLoginError(undefined);
+    }
 
     // Editing email or password invalidates any in-flight 2FA step: a code is
     // bound to the specific account being authenticated, so a stale code must
@@ -506,6 +528,7 @@ const LoginPage: React.FC = () => {
 
     try {
       setTotpError(undefined);
+      setLoginError(undefined);
       await login({
         email: formData.email,
         password: formData.password,
@@ -515,15 +538,19 @@ const LoginPage: React.FC = () => {
       // Redirect to the page they were trying to access, or home
       navigate(from, { replace: true });
     } catch (error) {
-      // Expected step (not a failure): the account has 2FA enabled. AuthContext
-      // has already flipped the provider-level `twoFactorRequired` gate (which
-      // survives the isLoading-driven remount of this page) and captured the
-      // credentials, so the code field is already visible — just stop here
-      // without navigating or toasting.
+      // 2FA required — reveal the code field, don't navigate or toast.
       if (error instanceof TwoFactorRequiredError) {
         return;
       }
-      // Other errors are handled by the AuthContext with toast.
+      // Block-reason 403 (email unverified, pending review, not activated,
+      // archived, rejected) — show the backend message inline. AuthContext did
+      // NOT toast these, so the inline banner is the sole display.
+      if (error instanceof BlockedAccountError) {
+        setLoginError((error as Error).message);
+        return;
+      }
+      // All other errors (wrong credentials, network, server) are already
+      // toasted by AuthContext — no inline message needed.
       console.error('Login error:', error);
     }
   };
@@ -742,10 +769,11 @@ const LoginPage: React.FC = () => {
               type="button"
               onClick={() => {
                 // Return to the email/password form. Clears the provider-level
-                // gate + captured credentials and the local code state.
+                // gate + captured credentials and the local code/error state.
                 clearTwoFactorRequired();
                 setTotpCode('');
                 setTotpError(undefined);
+                setLoginError(undefined);
               }}
               disabled={isLoading}
             >
@@ -770,6 +798,16 @@ const LoginPage: React.FC = () => {
                 {t('auth.forgotPassword')}
               </ForgotPassword>
             </RememberForgotRow>
+          )}
+
+          {!twoFactorRequired && loginError && (
+            <BlockMessage
+              role="alert"
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              {loginError}
+            </BlockMessage>
           )}
 
           <SubmitButton

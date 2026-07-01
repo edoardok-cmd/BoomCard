@@ -39,6 +39,20 @@ export class TwoFactorRequiredError extends Error {
   }
 }
 
+/**
+ * Thrown by login() when the backend returns a 403 for a partner-account
+ * lifecycle state (email unverified, pending review, not activated, archived,
+ * rejected). Carries the specific backend message so LoginPage can render it
+ * inline. NOT toasted by AuthContext — LoginPage is the sole display owner.
+ */
+export class BlockedAccountError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BlockedAccountError';
+    Object.setPrototypeOf(this, BlockedAccountError.prototype);
+  }
+}
+
 // Backend responses arrive in two shapes across this codebase: the flat
 // payload itself, and an envelope { data: payload }. Callers have to probe
 // both, so typed responses carry an optional `data` wrapper of the same type.
@@ -638,7 +652,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           (responseData as any).partner_account_status ??
           (rawResponse as any).partner_account_status;
         if (normalizeRole(userPayload.role) === 'partner' && incomingStatus === 'Archived') {
-          throw new Error('This account has been archived. Contact office@boomcard.bg for assistance.');
+          throw new BlockedAccountError(t('auth.archivedAccountFallback'));
         }
 
         // Store tokens — `persistent` routes every auth key to the matching
@@ -702,6 +716,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         toast.success(`Welcome back, ${user.firstName}!`);
         return;
       } catch (apiError) {
+        // Our own control-flow signals thrown from within the inner try (e.g.
+        // the frontend Archived defense-in-depth guard) must not be misclassified
+        // as API errors. Re-throw directly so the outer catch handles them.
+        if (apiError instanceof BlockedAccountError || apiError instanceof TwoFactorRequiredError) {
+          throw apiError;
+        }
         const err = apiError as ApiError;
         const nested = err?.response?.data?.error;
         const apiMessage = (typeof nested === 'object' ? nested?.message : nested)
@@ -747,16 +767,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw new TwoFactorRequiredError(apiMessage || undefined);
         }
 
+        // 403 block-reason errors (email unverified, pending review, not activated,
+        // archived, rejected) carry a specific message that LoginPage renders
+        // inline — throw a BlockedAccountError so the outer catch skips the toast.
+        if (status === 403 && apiMessage) throw new BlockedAccountError(apiMessage);
         if (apiMessage) throw new Error(apiMessage);
         if (err?.response) throw new Error('Login failed. Please try again.');
         console.error('API unavailable:', err?.message || apiError);
         throw new Error('Server is currently unavailable. Please try again later.');
       }
     } catch (error) {
-      // The 2FA-required signal is an expected step, not a failure — let
-      // LoginPage handle it silently (reveal the code field). Toast everything
-      // else, including a WRONG code which arrives as a plain Error here.
-      if (error instanceof TwoFactorRequiredError) {
+      // 2FA-required and block-reason errors are handled in LoginPage — no toast.
+      if (error instanceof TwoFactorRequiredError || error instanceof BlockedAccountError) {
         throw error;
       }
       const message = (error as Error)?.message || 'Login failed';

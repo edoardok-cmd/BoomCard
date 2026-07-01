@@ -69,6 +69,14 @@ export default defineConfig(({ mode }) => {
     }
   },
   build: {
+    // Keep modulepreload for vendor chunks (both HTML-level and as transitive deps)
+    // but suppress it for lazy page-specific chunks so they don't accumulate 60+
+    // unused modulepreload hints in the browser as the user navigates between routes.
+    modulePreload: {
+      polyfill: true,
+      resolveDependencies: (_filename, deps) =>
+        deps.filter((d) => d.includes('-vendor-')),
+    },
     // Optimize chunk size warnings
     chunkSizeWarningLimit: 1000,
     rollupOptions: {

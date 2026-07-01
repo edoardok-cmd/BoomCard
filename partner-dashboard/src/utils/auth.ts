@@ -56,18 +56,3 @@ export const isTokenExpired = (token: string): boolean => {
   }
 };
 
-export const refreshToken = async (): Promise<string | null> => {
-  try {
-    const response = await fetch('/api/auth/refresh', {
-      method: 'POST',
-      credentials: 'include',
-    });
-    
-    if (!response.ok) return null;
-    
-    const data = await response.json();
-    return data.token;
-  } catch {
-    return null;
-  }
-};

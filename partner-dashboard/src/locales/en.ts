@@ -250,6 +250,7 @@ export const en = {
     emailUpdated: 'Email updated successfully',
     notAPartnerYet: 'Not a partner yet?',
     applyAsPartner: 'Apply here',
+    archivedAccountFallback: 'This account has been archived. Contact office@boomcard.bg for assistance.',
   },
 
   // Partner Registration

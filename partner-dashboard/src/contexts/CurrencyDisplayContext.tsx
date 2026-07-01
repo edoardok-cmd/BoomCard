@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { apiService } from '../services/api.service';
 
 interface CurrencyDisplayContextType {
   currencyDisplayMode: 'dual' | 'eur_only';
@@ -47,19 +48,9 @@ export const CurrencyDisplayProvider: React.FC<CurrencyDisplayProviderProps> = (
         }
 
         // Fetch fresh data
-        const response = await fetch('/api/admin/settings/currency-display-mode', {
-          method: 'GET',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch currency display mode: ${response.statusText}`);
-        }
-
-        const json = await response.json();
+        const json = await apiService.get<{ data?: { currencyDisplayMode?: 'dual' | 'eur_only'; windowOpen?: boolean } }>(
+          '/admin/settings/currency-display-mode'
+        );
         const data = json.data || {};
 
         // Update state

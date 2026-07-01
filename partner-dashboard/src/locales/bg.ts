@@ -252,6 +252,7 @@ export const bg: TranslationKey = {
     emailUpdated: 'Имейлът е обновен успешно',
     notAPartnerYet: 'Все още не сте партньор?',
     applyAsPartner: 'Кандидатствайте тук',
+    archivedAccountFallback: 'Този акаунт е архивиран. Свържете се с office@boomcard.bg за съдействие.',
   },
 
   // Partner Registration

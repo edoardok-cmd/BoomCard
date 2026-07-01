@@ -13,6 +13,31 @@ import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currenc
 const router = Router();
 
 // ============================================
+// User-facing subscription projection
+// ============================================
+
+/**
+ * Fields that are safe to expose to the user-facing API.
+ * Mirrors what GET /subscriptions/current returns.
+ * Internal fields (Stripe IDs, Paysera IDs, FK columns, dunning counters,
+ * trial-refund flags, joined relations) are excluded by this allowlist.
+ */
+const SUB_USER_FIELDS = [
+  'id', 'plan', 'status',
+  'currentPeriodStart', 'currentPeriodEnd',
+  'cancelAtPeriodEnd', 'cancelAt', 'canceledAt',
+  'trialStart', 'trialEnd',
+  'autoRenewal', 'pauseEndsAt',
+  'createdAt', 'updatedAt',
+] as const;
+
+function toSubUserView(sub: Record<string, any>): Record<string, any> {
+  return Object.fromEntries(
+    SUB_USER_FIELDS.filter(k => k in sub).map(k => [k, sub[k]])
+  );
+}
+
+// ============================================
 // Public Routes (no auth required)
 // ============================================
 
@@ -293,7 +318,11 @@ router.post('/create', authenticate, asyncHandler(async (req: AuthRequest, res: 
     paymentMethodId,
   });
 
-  res.json(result);
+  res.json({
+    subscription: toSubUserView(result.subscription),
+    clientSecret: result.clientSecret,
+    status: result.status,
+  });
 }));
 
 /**
@@ -303,7 +332,7 @@ router.post('/create', authenticate, asyncHandler(async (req: AuthRequest, res: 
 router.post('/:id/reactivate', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const result = await subscriptionService.reactivateSubscription(id, req.user!.id);
-  res.json(result);
+  res.json(toSubUserView(result));
 }));
 
 /**
@@ -328,7 +357,7 @@ router.post('/:id/cancel', authenticate, asyncHandler(async (req: AuthRequest, r
 
   const result = await subscriptionService.cancelSubscription(id, cancelAtPeriodEnd);
 
-  res.json(result);
+  res.json(toSubUserView(result));
 }));
 
 /**
@@ -344,7 +373,7 @@ router.patch('/:id/auto-renewal', authenticate, asyncHandler(async (req: AuthReq
   const { autoRenewal } = autoRenewalSchema.parse(req.body);
 
   const result = await subscriptionService.toggleAutoRenewal(id, req.user!.id, autoRenewal);
-  res.json(result);
+  res.json(toSubUserView(result));
 }));
 
 /**
@@ -356,7 +385,7 @@ router.post('/:id/trial-refund', authenticate, asyncHandler(async (req: AuthRequ
   const { id } = req.params;
 
   const result = await subscriptionService.requestTrialRefund(id, req.user!.id);
-  res.json(result);
+  res.json(toSubUserView(result));
 }));
 
 /**
@@ -366,7 +395,10 @@ router.post('/:id/trial-refund', authenticate, asyncHandler(async (req: AuthRequ
 router.post('/:id/retry-payment', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const result = await subscriptionService.retryPayment(id, req.user!.id);
-  res.json(result);
+  // toSubUserView: strips stripeSubscriptionId and other internal fields.
+  // Integration test omitted — this endpoint is Stripe-only (open invoice required);
+  // see INV-USER-SUB-011 describe block in user-currency-leak-sweep.test.ts.
+  res.json(toSubUserView(result));
 }));
 
 /**
@@ -391,7 +423,7 @@ router.post('/:id/update-plan', authenticate, asyncHandler(async (req: AuthReque
 
   const result = await subscriptionService.updateSubscriptionPlan(id, plan);
 
-  res.json(result);
+  res.json(toSubUserView(result));
 }));
 
 // Redirect/callback URLs for Paysera change-card flow. These MUST be set in any

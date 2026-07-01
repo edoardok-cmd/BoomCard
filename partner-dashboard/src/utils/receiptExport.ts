@@ -354,46 +354,6 @@ export async function printReceiptsPDF(receipts: PartnerReceipt[]): Promise<void
 }
 
 /**
- * Email receipts (requires backend integration).
- *
- * LOW fix: the backend `POST /api/receipts/email` route reads `{ receiptIds }`
- * (receipts.enhanced.routes.ts ~L516) and intentionally ignores any
- * client-supplied address — it always sends to the authenticated user's
- * verified email (req.user.email) to prevent cross-user phishing. The previous
- * payload `{ receipts, email }` therefore failed validation (the route expects
- * a `receiptIds` array) and the `email` field was dead weight. The payload now
- * sends `{ receiptIds }`; `emailAddress` is retained only for call-site
- * compatibility and is no longer transmitted.
- */
-export async function emailReceipts(
-  receipts: PartnerReceipt[],
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _emailAddress?: string
-): Promise<{ success: boolean; message: string }> {
-  // This would call your backend API to send email
-  try {
-    const response = await fetch('/api/receipts/v2/email', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        receiptIds: receipts.map(r => r.id),
-      }),
-    });
-
-    if (response.ok) {
-      return { success: true, message: 'Email sent successfully' };
-    } else {
-      return { success: false, message: 'Failed to send email' };
-    }
-  } catch (error) {
-    console.error('Error sending email:', error);
-    return { success: false, message: 'Network error' };
-  }
-}
-
-/**
  * Share receipt via social media or messaging.
  * Accepts PartnerReceipt to prevent accidental leakage of internal fields
  * (spec §11.3, Clash 10.6).

@@ -938,6 +938,128 @@ describe('INV-USER-CUR-003 (offers) — GET /api/offers endpoints must gate BGN 
   });
 });
 
+describe('INV-USER-SUB-011 — subscription mutation endpoints must not expose internal fields', () => {
+  const INTERNAL_SUB_FIELDS = [
+    'stripeSubscriptionId', 'stripeCustomerId', 'stripePriceId',
+    'payseraOrderId', 'metadata',
+    'retryAttempt', 'trialRefundEligibleUntil', 'trialRefundUsed',
+    'lastRenewalReminderSentAt', 'renewalRemindersSent',
+    'failedPaymentAt', 'failedPaymentClearedAt',
+    'userId', 'planId',
+    'user', 'planDetails',
+  ];
+
+  function assertNoInternalFields(body: any, label: string): void {
+    const bodyStr = JSON.stringify(body);
+    const leaking = INTERNAL_SUB_FIELDS.filter(f => {
+      // Check for key presence in the serialized response using a regex that
+      // matches the JSON key (e.g. "userId":) to avoid matching on value strings.
+      return new RegExp(`"${f}"\\s*:`).test(bodyStr);
+    });
+    expect(
+      leaking.length === 0
+        ? 'no leaks'
+        : `${label}: internal field(s) present in response: ${leaking.join(', ')}`,
+    ).toBe('no leaks');
+  }
+
+  let subUserId: string;
+  let subToken: string;
+  let subId: string;
+  let refundSubId: string;
+
+  beforeAll(async () => {
+    const u = await createTestUser();
+    subUserId = u.user.id;
+    subToken = u.accessToken;
+
+    // createTestUser auto-registers, which auto-creates a card — no manual card creation needed.
+
+    // Create a Paysera-type PREMIUM_WEEKLY subscription (no stripeSubscriptionId)
+    // so update-plan (PREMIUM_WEEKLY → BASIC) is the DB-only path with no wallet credit.
+    const plan = await prisma.plan.findFirst({ where: { planCode: 'PREMIUM_WEEKLY' } });
+    const sub = await prisma.subscription.create({
+      data: {
+        userId: subUserId,
+        plan: 'PREMIUM_WEEKLY',
+        planId: plan?.id,
+        payseraOrderId: `TEST-SUB011-${subUserId.slice(0, 8)}`,
+        status: 'ACTIVE',
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        cancelAtPeriodEnd: false,
+        autoRenewal: true,
+      },
+    });
+    subId = sub.id;
+
+    // Create a second subscription used exclusively by the trial-refund test.
+    // Needs trialRefundEligibleUntil in the future and trialRefundUsed=false.
+    const refundPlan = await prisma.plan.findFirst({ where: { planCode: 'PREMIUM_WEEKLY' } });
+    const refundSub = await prisma.subscription.create({
+      data: {
+        userId: subUserId,
+        plan: 'PREMIUM_WEEKLY',
+        planId: refundPlan?.id,
+        payseraOrderId: `TEST-REFUND-${subUserId.slice(0, 8)}`,
+        status: 'ACTIVE',
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        cancelAtPeriodEnd: false,
+        autoRenewal: true,
+        trialRefundEligibleUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        trialRefundUsed: false,
+      },
+    });
+    refundSubId = refundSub.id;
+  }, 30_000);
+
+  afterAll(async () => {
+    if (subUserId) { try { await cleanupTestUser(subUserId); } catch {} }
+  }, 30_000);
+
+  it('[SUB-011] PATCH /:id/auto-renewal must not expose internal fields', async () => {
+    const res = await authRequest(subToken).patch(`/api/subscriptions/${subId}/auto-renewal`).send({ autoRenewal: false });
+    expect(res.status).toBe(200);
+    assertNoInternalFields(res.body, 'PATCH auto-renewal');
+    // Restore auto-renewal state for subsequent tests
+    await authRequest(subToken).patch(`/api/subscriptions/${subId}/auto-renewal`).send({ autoRenewal: true });
+  });
+
+  it('[SUB-011] POST /:id/trial-refund must not expose internal fields', async () => {
+    const res = await authRequest(subToken).post(`/api/subscriptions/${refundSubId}/trial-refund`).send({});
+    expect(res.status).toBe(200);
+    assertNoInternalFields(res.body, 'POST trial-refund');
+  });
+
+  it('[SUB-011] POST /:id/cancel must not expose internal fields', async () => {
+    const res = await authRequest(subToken).post(`/api/subscriptions/${subId}/cancel`).send({ cancelAtPeriodEnd: true });
+    expect(res.status).toBe(200);
+    assertNoInternalFields(res.body, 'POST cancel');
+  });
+
+  it('[SUB-011] POST /:id/reactivate must not expose internal fields', async () => {
+    // Sub was scheduled for cancellation in prior test (cancelAtPeriodEnd=true, still ACTIVE);
+    // reactivate removes the cancellation schedule.
+    const res = await authRequest(subToken).post(`/api/subscriptions/${subId}/reactivate`).send({});
+    expect(res.status).toBe(200);
+    assertNoInternalFields(res.body, 'POST reactivate');
+  });
+
+  it('[SUB-011] POST /:id/update-plan must not expose internal fields', async () => {
+    // PREMIUM_WEEKLY → BASIC: Paysera DB-only path.
+    // applyUpgradeCredit returns early (no creditPct for PREMIUM_WEEKLY→BASIC),
+    // so no wallet dependency.
+    const res = await authRequest(subToken).post(`/api/subscriptions/${subId}/update-plan`).send({ plan: 'BASIC' });
+    expect(res.status).toBe(200);
+    assertNoInternalFields(res.body, 'POST update-plan');
+  });
+
+  // NOTE: POST /:id/retry-payment is Stripe-only (requires stripeSubscriptionId + PAST_DUE status
+  // + open Stripe invoice). Covered by the toSubUserView projection in the route layer; a
+  // Stripe-mock integration test for this path is out of scope for this suite.
+});
+
 describe('INV-USER-CUR-003 (verify-redirect) — POST /api/payments/verify-redirect must gate BGN amount via toDualCurrency', () => {
   it('[CUR-VERIFY-REDIRECT] window CLOSED → BGN amount is not a raw numeric scalar', async () => {
     await setCurrencyWindowOpen(false);
