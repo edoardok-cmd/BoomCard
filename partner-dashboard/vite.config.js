@@ -74,8 +74,12 @@ export default defineConfig(({ mode }) => {
     // unused modulepreload hints in the browser as the user navigates between routes.
     modulePreload: {
       polyfill: true,
-      resolveDependencies: (_filename, deps) =>
-        deps.filter((d) => d.includes('-vendor-')),
+      // Only preload the three named vendor chunks — match by exact chunk-name prefix so a future
+      // chunk whose name happens to contain "-vendor-" isn't accidentally included.
+      resolveDependencies: (_filename, deps) => {
+        const VENDOR_RE = /\/(react-vendor|ui-vendor|data-vendor)-[^/]+\.js$/;
+        return deps.filter((d) => VENDOR_RE.test(d));
+      },
     },
     // Optimize chunk size warnings
     chunkSizeWarningLimit: 1000,
