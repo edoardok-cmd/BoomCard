@@ -320,12 +320,22 @@ router.post('/scan/:scanId/receipt', authenticate, requireActiveSubscription, up
       imageBuffer: req.file.buffer,
     });
 
-    const { fraudScore: _rfs, fraudReasons: _rfr, specRiskLevel: _rsrl, ipAddress: _rip, userAgent: _rua, deviceFingerprint: _rdf, deviceFingerprintRaw: _rdfr, ocrData: _rod, receiptImageHash: _rrih, cashbackPercent: _rcp, ...safeReceiptScan } = scan as any;
+    const { fraudScore: _rfs, fraudReasons: _rfr, specRiskLevel: _rsrl, ipAddress: _rip, userAgent: _rua, deviceFingerprint: _rdf, deviceFingerprintRaw: _rdfr, ocrData: _rod, receiptImageHash: _rrih, cashbackPercent: _rcp, cashbackAmount: _rca, billAmount: _rba, verifiedAmount: _rva, ...safeReceiptScan } = scan as any;
+    const windowOpen = await isCurrencyTransitionWindowOpen();
+    const { windowOpen: _rcw, ...cashbackAmountDisplay } = toDualCurrency((scan as any).cashbackAmount ?? 0, windowOpen);
+    const { windowOpen: _rbw, ...billAmountDisplay } = toDualCurrency((scan as any).billAmount ?? 0, windowOpen);
+    const { windowOpen: _rvw, ...verifiedAmountDisplay } = toDualCurrency((scan as any).verifiedAmount ?? 0, windowOpen);
     res.json({
       success: true,
-      data: safeReceiptScan,
+      data: {
+        ...safeReceiptScan,
+        ...(windowOpen && { cashbackAmount: (scan as any).cashbackAmount, billAmount: (scan as any).billAmount, verifiedAmount: (scan as any).verifiedAmount }),
+        display: { cashbackAmount: cashbackAmountDisplay, billAmount: billAmountDisplay, verifiedAmount: verifiedAmountDisplay },
+      },
       message: scan.status === 'APPROVED'
-        ? `Cashback approved! You earned ${scan.cashbackAmount} BGN`
+        ? windowOpen
+          ? `Cashback approved! You earned ${(scan as any).cashbackAmount} BGN (${cashbackAmountDisplay.eur} EUR)`
+          : `Cashback approved! You earned ${cashbackAmountDisplay.eur} EUR`
         : scan.status === 'MANUAL_REVIEW'
         ? 'Receipt uploaded. Under review.'
         : 'Receipt uploaded successfully.',
@@ -351,11 +361,27 @@ router.get('/my-scans', authenticate, async (req: Request, res: Response) => {
     const { limit } = parsePagination(req.query, { defaultLimit: 50, maxLimit: 100 });
 
     const scans = await stickerService.getScansByUser(userId, limit);
+    const windowOpen = await isCurrencyTransitionWindowOpen();
+    const safeScans = scans.map((s: any) => {
+      const { cashbackAmount, billAmount, verifiedAmount, ...rest } = s;
+      const { windowOpen: _w1, ...cashbackAmountDisplay } = toDualCurrency(cashbackAmount ?? 0, windowOpen);
+      const { windowOpen: _w2, ...billAmountDisplay } = toDualCurrency(billAmount ?? 0, windowOpen);
+      const { windowOpen: _w3, ...verifiedAmountDisplay } = toDualCurrency(verifiedAmount ?? 0, windowOpen);
+      return {
+        ...rest,
+        ...(windowOpen && { cashbackAmount, billAmount, verifiedAmount }),
+        display: {
+          cashbackAmount: cashbackAmountDisplay,
+          billAmount: billAmountDisplay,
+          verifiedAmount: verifiedAmountDisplay,
+        },
+      };
+    });
 
     res.json({
       success: true,
-      data: scans,
-      count: scans.length,
+      data: safeScans,
+      count: safeScans.length,
     });
   } catch (error: any) {
     res.status(500).json({

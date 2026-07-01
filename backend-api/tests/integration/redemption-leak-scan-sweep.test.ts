@@ -51,6 +51,7 @@ import {
   cleanupTestVenue,
   authRequest,
 } from '../helpers/test-utils';
+import * as currencyDisplay from '../../src/utils/currencyDisplay';
 
 // A minimal JPEG buffer: JFIF APP0 marker followed by zero-bytes padding.
 // checkLivePhoto() only rejects when EXIF DateTimeOriginal is present AND
@@ -224,5 +225,178 @@ describe('[LEAK sweep] INV-RDM-081: GET /api/dashboard/me does not expose paymen
     expect(sub).toHaveProperty('plan');
     expect(sub).toHaveProperty('status');
     expect(sub).toHaveProperty('currentPeriodEnd');
+  });
+});
+
+// ─── INV-RDM-082/083: GET /my-scans + POST /receipt dual-currency display ─────
+
+describe('[LEAK sweep] INV-RDM-SCAN-CURRENCY: GET /my-scans applies dual-currency display', () => {
+  const createdUserIds: string[] = [];
+  let accessToken: string;
+  let venueId: string;
+
+  // Capture the POST /receipt response in beforeAll so message/display tests
+  // do not need a second scan (which would hit per-sticker cooldown).
+  let receiptResponseBody: Record<string, any>;
+
+  // Sofia coordinates — same as other sticker tests
+  const venueLatitude = 42.6977;
+  const venueLongitude = 23.3219;
+
+  beforeAll(async () => {
+    const testData = await createTestUser();
+    const userId = testData.user.id;
+    accessToken = testData.accessToken;
+    createdUserIds.push(userId);
+
+    await prisma.user.update({ where: { id: userId }, data: { status: 'ACTIVE' } });
+    await createTestSubscription(userId, 'PREMIUM_WEEKLY');
+
+    const venueData = await createTestVenue(userId);
+    venueId = venueData.venue.id;
+    const stickerId = venueData.sticker.stickerId;
+
+    // Set autoApproveThreshold well above billAmount (25.0) so the mock OCR
+    // result (totalAmount=30.0, confidence=85) reliably triggers APPROVED status —
+    // no conditional branches in the assertions below.
+    await prisma.venueStickerConfig.update({
+      where: { venueId },
+      data: { autoApproveThreshold: 100 },
+    });
+
+    const card = await prisma.card.findFirst({ where: { userId } });
+    const cardId = card!.id;
+
+    // Create a scan
+    const scanRes = await authRequest(accessToken)
+      .post('/api/stickers/scan')
+      .send({
+        stickerId,
+        cardId,
+        billAmount: 25.0,
+        latitude: venueLatitude,
+        longitude: venueLongitude,
+        payloadVenueId: venueId,
+        payloadVersion: '1',
+      });
+    if (scanRes.status !== 200) {
+      throw new Error(`Scan setup failed (${scanRes.status}): ${JSON.stringify(scanRes.body)}`);
+    }
+    const scanId = scanRes.body.data.id as string;
+
+    // Upload a receipt — with autoApproveThreshold=100, this lands in APPROVED.
+    const receiptRes = await authRequest(accessToken)
+      .post(`/api/stickers/scan/${scanId}/receipt`)
+      .attach('image', MINIMAL_JPEG, { filename: 'test.jpg', contentType: 'image/jpeg' });
+    if (receiptRes.status !== 200) {
+      throw new Error(`Receipt upload failed (${receiptRes.status}): ${JSON.stringify(receiptRes.body)}`);
+    }
+    receiptResponseBody = receiptRes.body;
+  });
+
+  afterAll(async () => {
+    await cleanupTestVenue(venueId);
+    for (const id of createdUserIds) {
+      await cleanupTestUser(id);
+    }
+  });
+
+  // ─── INV-RDM-082: GET /my-scans currency gating ───────────────────────────
+
+  it('[CURRENCY] INV-RDM-082: GET /my-scans returns display.cashbackAmount with eur', async () => {
+    const res = await authRequest(accessToken).get('/api/stickers/my-scans');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toBeInstanceOf(Array);
+    expect(res.body.data.length).toBeGreaterThan(0);
+    const scan = res.body.data[0];
+    expect(scan).toHaveProperty('display');
+    expect(scan.display).toHaveProperty('cashbackAmount');
+    expect(typeof scan.display.cashbackAmount.eur).toBe('number');
+  });
+
+  it('[CURRENCY] INV-RDM-082: GET /my-scans returns display.billAmount with eur', async () => {
+    const res = await authRequest(accessToken).get('/api/stickers/my-scans');
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeGreaterThan(0);
+    const scan = res.body.data[0];
+    expect(scan.display).toHaveProperty('billAmount');
+    expect(typeof scan.display.billAmount.eur).toBe('number');
+  });
+
+  it('[CURRENCY] INV-RDM-082: GET /my-scans returns display.verifiedAmount with eur', async () => {
+    const res = await authRequest(accessToken).get('/api/stickers/my-scans');
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeGreaterThan(0);
+    const scan = res.body.data[0];
+    expect(scan.display).toHaveProperty('verifiedAmount');
+    expect(typeof scan.display.verifiedAmount.eur).toBe('number');
+  });
+
+  it('[CURRENCY] INV-RDM-082: GET /my-scans display.cashbackAmount does not have windowOpen key', async () => {
+    const res = await authRequest(accessToken).get('/api/stickers/my-scans');
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeGreaterThan(0);
+    const scan = res.body.data[0];
+    expect(scan.display.cashbackAmount).not.toHaveProperty('windowOpen');
+    expect(scan.display.billAmount).not.toHaveProperty('windowOpen');
+    expect(scan.display.verifiedAmount).not.toHaveProperty('windowOpen');
+  });
+
+  it('[CURRENCY] INV-RDM-082: GET /my-scans window-closed branch: display.cashbackAmount.bgn is null, raw scalar absent', async () => {
+    // Spy on isCurrencyTransitionWindowOpen for this single request only.
+    const spy = jest.spyOn(currencyDisplay, 'isCurrencyTransitionWindowOpen').mockResolvedValueOnce(false);
+    try {
+      const res = await authRequest(accessToken).get('/api/stickers/my-scans');
+      expect(res.status).toBe(200);
+      expect(res.body.data.length).toBeGreaterThan(0);
+      const scan = res.body.data[0];
+      // When window is closed, bgn must be null (toDualCurrency returns bgn:null)
+      expect(scan.display.cashbackAmount.bgn).toBeNull();
+      expect(scan.display.billAmount.bgn).toBeNull();
+      expect(scan.display.verifiedAmount.bgn).toBeNull();
+      // Raw scalars must be absent (only included when windowOpen is true)
+      expect(scan).not.toHaveProperty('cashbackAmount');
+      expect(scan).not.toHaveProperty('billAmount');
+      expect(scan).not.toHaveProperty('verifiedAmount');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // ─── INV-RDM-083: POST /receipt currency gating ───────────────────────────
+
+  it('[CURRENCY] INV-RDM-083: POST /receipt APPROVED response contains display.cashbackAmount.eur', () => {
+    // receiptResponseBody captured in beforeAll with autoApproveThreshold=100 → APPROVED.
+    const data = receiptResponseBody.data;
+    expect(data).toHaveProperty('display');
+    expect(data.display).toHaveProperty('cashbackAmount');
+    expect(typeof data.display.cashbackAmount.eur).toBe('number');
+    expect(data.display.cashbackAmount.eur).toBeGreaterThanOrEqual(0);
+  });
+
+  it('[CURRENCY] INV-RDM-083: POST /receipt APPROVED response contains display.billAmount.eur', () => {
+    const data = receiptResponseBody.data;
+    expect(data.display).toHaveProperty('billAmount');
+    expect(typeof data.display.billAmount.eur).toBe('number');
+    expect(data.display.billAmount.eur).toBeGreaterThanOrEqual(0);
+  });
+
+  it('[CURRENCY] INV-RDM-083: POST /receipt APPROVED response contains display.verifiedAmount.eur', () => {
+    const data = receiptResponseBody.data;
+    expect(data.display).toHaveProperty('verifiedAmount');
+    expect(typeof data.display.verifiedAmount.eur).toBe('number');
+    expect(data.display.verifiedAmount).not.toHaveProperty('windowOpen');
+  });
+
+  it('[CURRENCY] INV-RDM-083: POST /receipt display.cashbackAmount does not have windowOpen key', () => {
+    const data = receiptResponseBody.data;
+    expect(data.display.cashbackAmount).not.toHaveProperty('windowOpen');
+    expect(data.display.billAmount).not.toHaveProperty('windowOpen');
+  });
+
+  it('[CURRENCY] INV-RDM-083: POST /receipt APPROVED message unconditionally references EUR', () => {
+    // autoApproveThreshold=100 guarantees APPROVED status — no conditional branch.
+    expect(receiptResponseBody.message).toMatch(/Cashback approved/i);
+    expect(receiptResponseBody.message).toMatch(/EUR/);
   });
 });
