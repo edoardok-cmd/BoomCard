@@ -414,6 +414,39 @@ describe('INV-USER-CUR-T9 — GET /api/subscriptions/history T9 synthetic entry 
   });
 });
 
+describe('INV-USER-QR-007 — GET /api/cards/my-card must not expose qrCode (raw QR token material)', () => {
+  let qrUserId: string;
+  let qrToken: string;
+
+  beforeAll(async () => {
+    const u = await createTestUser();
+    qrUserId = u.user.id;
+    qrToken = u.accessToken;
+    await createTestSubscription(qrUserId, 'BASIC', 'ACTIVE');
+    // Seed a card with explicit qrCode so the endpoint has data to (not) serialize.
+    await prisma.card.create({
+      data: {
+        userId: qrUserId,
+        cardNumber: `BOOM-SWPQ-${qrUserId.slice(0, 8).toUpperCase()}`,
+        type: 'PREMIUM_WEEKLY',
+        status: 'ACTIVE',
+        qrCode: 'data:image/png;base64,INTERNAL_QR_TOKEN_MATERIAL',
+      },
+    });
+  }, 60_000);
+
+  afterAll(async () => {
+    if (qrUserId) { try { await cleanupTestUser(qrUserId); } catch {} }
+  }, 30_000);
+
+  it('[QR-007] GET /api/cards/my-card response must not contain qrCode anywhere in the body', async () => {
+    const res = await authRequest(qrToken).get('/api/cards/my-card');
+    expect(res.status).toBe(200);
+    // qrCode must be absent at the top level and in any nested object.
+    expect(JSON.stringify(res.body)).not.toMatch(/qrCode/);
+  });
+});
+
 describe('INV-USER-CUR-STRIPE — GET /api/subscriptions/history Stripe branch returns EUR-native DualCurrencyAmount', () => {
   let stripeUserId: string;
   let stripeToken: string;

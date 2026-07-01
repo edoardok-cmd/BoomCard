@@ -134,6 +134,7 @@ Four sweep tests mechanically cover entire invariant classes for the user surfac
 | INV-USER-QR-004 | QR token must be Active; Inactive/In-Processing/not-found → transaction cannot complete | STATE | static |
 | INV-USER-QR-005 | On success a QR session + Pending transaction & cashback are created | STATE | static |
 | INV-USER-QR-006 | A user can only scan/redeem under their own identity (no cross-user scan attribution) | XSCOPE | [SUITE: XSCOPE] |
+| INV-USER-QR-007 | User-facing card serializers (`GET /api/cards/my-card`, `POST /api/cards`, and the `/:id/{upgrade,activate,deactivate}` handlers) MUST omit `qrCode` (raw QR token material, spec §4.3/§11.3 — "NEVER serialize to partner or user callers") and use an explicit `select` allowlist rather than returning the full `Card` row | LEAK | [SUITE: CUR/leak] |
 
 ## OCR — Receipt Upload & OCR / Risk (§9)
 

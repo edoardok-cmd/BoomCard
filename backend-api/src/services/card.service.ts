@@ -4,6 +4,17 @@ import QRCode from 'qrcode';
 import { logger } from '../utils/logger';
 import { subscriptionService } from './subscription.service';
 
+// Safe field allowlist for user-facing card serializers — excludes qrCode (spec §4.3/§11.3).
+const CARD_USER_FIELDS = {
+  id: true,
+  userId: true,
+  cardNumber: true,
+  type: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+};
+
 export class CardService {
   /**
    * Create card for user
@@ -50,6 +61,7 @@ export class CardService {
         status: 'ACTIVE',
         qrCode: qrCodeUrl,
       },
+      select: CARD_USER_FIELDS,
     });
 
     logger.info(`Created ${cardType} card for user ${userId}`);
@@ -63,7 +75,8 @@ export class CardService {
   async getUserCard(userId: string) {
     return prisma.card.findFirst({
       where: { userId },
-      include: {
+      select: {
+        ...CARD_USER_FIELDS,
         user: {
           select: {
             id: true,
@@ -114,6 +127,7 @@ export class CardService {
       data: {
         type: newTier,
       },
+      select: CARD_USER_FIELDS,
     });
 
     logger.info(`Upgraded card ${cardId} from ${card.type} to ${newTier}`);
@@ -130,6 +144,7 @@ export class CardService {
       data: {
         status: 'SUSPENDED',
       },
+      select: CARD_USER_FIELDS,
     });
 
     logger.warn(`Deactivated card ${cardId}: ${reason}`);
@@ -146,6 +161,7 @@ export class CardService {
       data: {
         status: 'ACTIVE',
       },
+      select: CARD_USER_FIELDS,
     });
   }
 
@@ -244,6 +260,7 @@ export class CardService {
   async validateCard(cardNumber: string) {
     const card = await prisma.card.findUnique({
       where: { cardNumber },
+      select: CARD_USER_FIELDS,
     });
 
     if (!card) {
