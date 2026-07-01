@@ -571,6 +571,10 @@ class ReceiptService {
         ]);
 
       const totalAmount = amountAgg._sum.totalAmount ?? 0;
+      const averageAmount = totalReceipts > 0
+        ? Math.round((totalAmount / totalReceipts) * 100) / 100
+        : 0;
+      const showDualCurrency = await isCurrencyTransitionWindowOpen();
 
       return {
         success: true,
@@ -579,10 +583,8 @@ class ReceiptService {
           validatedReceipts,
           rejectedReceipts,
           pendingReceipts,
-          totalAmount: Math.round(totalAmount * 100) / 100,
-          averageAmount: totalReceipts > 0
-            ? Math.round((totalAmount / totalReceipts) * 100) / 100
-            : 0,
+          totalAmount: toDualCurrency(Math.round(totalAmount * 100) / 100, showDualCurrency),
+          averageAmount: toDualCurrency(averageAmount, showDualCurrency),
         },
       };
     } catch (error) {
@@ -684,7 +686,7 @@ class ReceiptService {
         transaction: {
           ...safe.transaction,
           amount: toDualCurrency(safe.transaction.amount, showDualCurrency),
-          ...(safe.transaction.cashbackAmount !== undefined && {
+          ...(safe.transaction.cashbackAmount != null && {
             cashbackAmount: toDualCurrency(safe.transaction.cashbackAmount, showDualCurrency),
           }),
         },

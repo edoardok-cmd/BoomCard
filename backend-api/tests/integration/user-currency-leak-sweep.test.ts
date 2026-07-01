@@ -224,6 +224,7 @@ const MONEY_ENDPOINTS = [
   '/api/loyalty/rewards',
   '/api/loyalty/rewards/redemptions',
   '/api/receipts',
+  '/api/receipts/stats',
 ];
 
 // Detect a raw BGN scalar: a `currency:"BGN"` paired with a raw numeric amount,
@@ -232,7 +233,7 @@ function findRawBgnLeak(node: any, path = '$'): string[] {
   const leaks: string[] = [];
   // Genuine money fields only. Bare `total`/`count`/`page` are pagination
   // scalars, not currency — excluded to avoid false positives.
-  const MONEY_KEYS = /^(amount|balance|balanceBefore|balanceAfter|currentBalance|availableBalance|pendingBalance|expiringBalance|totalCashback|totalTopups|totalSpent|totalAmount|verifiedAmount|payoutAmount|cashbackAmount|cashbackBalance|cashValue)$/i;
+  const MONEY_KEYS = /^(amount|balance|balanceBefore|balanceAfter|currentBalance|availableBalance|pendingBalance|expiringBalance|totalCashback|totalTopups|totalSpent|totalAmount|verifiedAmount|payoutAmount|cashbackAmount|cashbackBalance|cashValue|averageAmount)$/i;
   function walk(n: any, p: string) {
     if (n == null) return;
     if (Array.isArray(n)) { n.forEach((v, i) => walk(v, `${p}[${i}]`)); return; }
