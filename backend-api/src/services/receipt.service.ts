@@ -20,6 +20,7 @@ import {
 } from '../constants/receipt.constants';
 import { getSystemSettingInt, getSystemSettingFloat } from '../utils/systemSettings';
 import { detach } from '../utils/detach';
+import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 /**
  * Receipt Item structure (parsed from OCR)
@@ -310,9 +311,10 @@ class ReceiptService {
         prisma.receipt.count({ where })
       ]);
 
+      const showDualCurrency = includeInternal ? false : await isCurrencyTransitionWindowOpen();
       return {
         success: true,
-        data: receipts.map(r => this.formatReceipt(r, { includeInternal })),
+        data: receipts.map(r => this.formatReceipt(r, { includeInternal, showDualCurrency })),
         pagination: {
           page,
           limit,
@@ -363,7 +365,8 @@ class ReceiptService {
         throw new AppError('Unauthorized to access this receipt', 403);
       }
 
-      return { success: true, data: this.formatReceipt(receipt) };
+      const showDualCurrency = await isCurrencyTransitionWindowOpen();
+      return { success: true, data: this.formatReceipt(receipt, { showDualCurrency }) };
     } catch (error) {
       if (error instanceof AppError) throw error;
       logger.error('Error fetching receipt:', error);
@@ -605,7 +608,7 @@ class ReceiptService {
    * telling a fraudster which rule tripped makes the next forgery easier.
    * Admin endpoints must pass { includeInternal: true }.
    */
-  private formatReceipt(receipt: any, opts: { includeInternal?: boolean } = {}) {
+  private formatReceipt(receipt: any, opts: { includeInternal?: boolean; showDualCurrency?: boolean } = {}) {
     const base = {
       ...receipt,
       items: receipt.items ? JSON.parse(receipt.items) : undefined,
@@ -671,7 +674,21 @@ class ReceiptService {
       cardId: _cid,
       ...safe
     } = base;
-    return safe;
+    const { showDualCurrency = false } = opts;
+    return {
+      ...safe,
+      totalAmount: safe.totalAmount != null ? toDualCurrency(safe.totalAmount, showDualCurrency) : undefined,
+      cashbackAmount: toDualCurrency(safe.cashbackAmount ?? 0, showDualCurrency),
+      ...(safe.transaction && {
+        transaction: {
+          ...safe.transaction,
+          amount: toDualCurrency(safe.transaction.amount, showDualCurrency),
+          ...(safe.transaction.cashbackAmount !== undefined && {
+            cashbackAmount: toDualCurrency(safe.transaction.cashbackAmount, showDualCurrency),
+          }),
+        },
+      }),
+    };
   }
 
   // ============================================

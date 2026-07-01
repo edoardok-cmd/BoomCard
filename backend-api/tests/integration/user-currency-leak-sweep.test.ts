@@ -39,6 +39,7 @@ import {
 
 let userId: string;
 let token: string;
+let seededReceiptId: string;
 
 async function setCurrencyWindowOpen(isOpen: boolean): Promise<void> {
   await prisma.systemSetting.upsert({
@@ -172,6 +173,33 @@ beforeAll(async () => {
     },
     update: {},
   });
+
+  // Seed a Receipt with non-zero money fields so /api/receipts and /api/receipts/:id
+  // return rows with amounts the dual-currency sweep can exercise.
+  // transactionId has @unique on Receipt, so we create a dedicated transaction.
+  const receiptTx = await prisma.transaction.create({
+    data: {
+      userId,
+      type: 'WALLET_TOPUP' as any,
+      amount: 30.00,
+      currency: 'BGN',
+      status: 'COMPLETED' as any,
+      paymentMethod: 'BANK_TRANSFER' as any,
+      description: 'seed-receipt-tx',
+      metadata: JSON.stringify({ orderId: 'seed-receipt-order-001' }),
+    },
+  });
+  const seededReceipt = await prisma.receipt.create({
+    data: {
+      userId,
+      transactionId: receiptTx.id,
+      totalAmount: 30.00,
+      cashbackAmount: 3.00,
+      status: 'APPROVED' as any,
+      merchantName: 'Sweep Test Merchant',
+    },
+  });
+  seededReceiptId = seededReceipt.id;
 }, 60_000);
 
 afterAll(async () => {
@@ -179,6 +207,8 @@ afterAll(async () => {
   // Delete redemption before reward (FK constraint) and before user cleanup (account FK).
   await prisma.rewardRedemption.delete({ where: { id: 'sweep-test-redemption-cashvalue' } }).catch(() => {});
   await prisma.reward.delete({ where: { id: 'sweep-test-reward-cashvalue' } }).catch(() => {});
+  // Delete receipt before its linked transaction (FK: Receipt.transactionId → Transaction).
+  if (seededReceiptId) { await prisma.receipt.delete({ where: { id: seededReceiptId } }).catch(() => {}); }
   if (userId) { try { await cleanupTestUser(userId); } catch {} }
 }, 30_000);
 
@@ -192,6 +222,7 @@ const MONEY_ENDPOINTS = [
   '/api/loyalty/accounts/me',
   '/api/loyalty/rewards',
   '/api/loyalty/rewards/redemptions',
+  '/api/receipts',
 ];
 
 // Detect a raw BGN scalar: a `currency:"BGN"` paired with a raw numeric amount,
@@ -414,17 +445,20 @@ describe('INV-USER-CUR-T9 — GET /api/subscriptions/history T9 synthetic entry 
   });
 });
 
-describe('INV-USER-QR-007 — GET /api/cards/my-card must not expose qrCode (raw QR token material)', () => {
+describe('INV-USER-QR-007 — card endpoints must not expose qrCode (raw QR token material)', () => {
   let qrUserId: string;
   let qrToken: string;
+  let qrCardId: string;
 
   beforeAll(async () => {
     const u = await createTestUser();
     qrUserId = u.user.id;
     qrToken = u.accessToken;
     await createTestSubscription(qrUserId, 'BASIC', 'ACTIVE');
-    // Seed a card with explicit qrCode so the endpoint has data to (not) serialize.
-    await prisma.card.create({
+    // Seed a PREMIUM_WEEKLY card with explicit qrCode so every endpoint has data to
+    // (not) serialize. PREMIUM_WEEKLY is the lowest tier and can be upgraded to BASIC
+    // by the upgrade test without needing a higher subscription.
+    const card = await prisma.card.create({
       data: {
         userId: qrUserId,
         cardNumber: `BOOM-SWPQ-${qrUserId.slice(0, 8).toUpperCase()}`,
@@ -433,6 +467,7 @@ describe('INV-USER-QR-007 — GET /api/cards/my-card must not expose qrCode (raw
         qrCode: 'data:image/png;base64,INTERNAL_QR_TOKEN_MATERIAL',
       },
     });
+    qrCardId = card.id;
   }, 60_000);
 
   afterAll(async () => {
@@ -444,6 +479,40 @@ describe('INV-USER-QR-007 — GET /api/cards/my-card must not expose qrCode (raw
     expect(res.status).toBe(200);
     // qrCode must be absent at the top level and in any nested object.
     expect(JSON.stringify(res.body)).not.toMatch(/qrCode/);
+  });
+
+  it('[QR-007] POST /api/cards/:id/deactivate response must not contain qrCode', async () => {
+    const res = await authRequest(qrToken).post(`/api/cards/${qrCardId}/deactivate`).send({});
+    expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).not.toMatch(/qrCode/);
+  });
+
+  it('[QR-007] POST /api/cards/:id/activate response must not contain qrCode', async () => {
+    // Card was suspended by the deactivate test above; re-activate it.
+    const res = await authRequest(qrToken).post(`/api/cards/${qrCardId}/activate`).send({});
+    expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).not.toMatch(/qrCode/);
+  });
+
+  it('[QR-007] POST /api/cards/:id/upgrade response must not contain qrCode', async () => {
+    // Upgrade PREMIUM_WEEKLY → BASIC. User has an active BASIC subscription which satisfies
+    // the service-layer subscription gate for the BASIC tier.
+    const res = await authRequest(qrToken).post(`/api/cards/${qrCardId}/upgrade`).send({ newTier: 'BASIC' });
+    expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).not.toMatch(/qrCode/);
+  });
+
+  it('[QR-007] POST /api/cards (create) response must not contain qrCode', async () => {
+    // Registration auto-creates a card; delete it first so POST /api/cards has a cardless user.
+    const fresh = await createTestUser();
+    try {
+      await prisma.card.deleteMany({ where: { userId: fresh.user.id } });
+      const res = await authRequest(fresh.accessToken).post('/api/cards').send({});
+      expect(res.status).toBe(201);
+      expect(JSON.stringify(res.body)).not.toMatch(/qrCode/);
+    } finally {
+      await cleanupTestUser(fresh.user.id).catch(() => {});
+    }
   });
 });
 
@@ -497,5 +566,42 @@ describe('INV-USER-CUR-STRIPE — GET /api/subscriptions/history Stripe branch r
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe('INV-USER-CUR-003 (receipts) — GET /api/receipts and /:id must gate money fields via toDualCurrency', () => {
+  it('[CUR-RECEIPTS] window CLOSED → GET /api/receipts must not expose raw BGN totalAmount, cashbackAmount, or nested transaction.amount', async () => {
+    await setCurrencyWindowOpen(false);
+    const res = await authRequest(token).get('/api/receipts');
+    expect(res.status).toBe(200);
+    const leaks = findRawBgnLeak(res.body?.data ?? res.body, '/api/receipts');
+    expect(
+      leaks.length === 0
+        ? 'no leaks'
+        : 'Raw BGN leak(s) on GET /api/receipts:\n' + leaks.join('\n'),
+    ).toBe('no leaks');
+  });
+
+  it('[CUR-RECEIPTS] window CLOSED → GET /api/receipts/:id must not expose raw BGN money fields or nested transaction.amount/cashbackAmount', async () => {
+    await setCurrencyWindowOpen(false);
+    const res = await authRequest(token).get(`/api/receipts/${seededReceiptId}`);
+    expect(res.status).toBe(200);
+    const leaks = findRawBgnLeak(res.body?.data ?? res.body, `/api/receipts/${seededReceiptId}`);
+    expect(
+      leaks.length === 0
+        ? 'no leaks'
+        : `Raw BGN leak(s) on GET /api/receipts/${seededReceiptId}:\n` + leaks.join('\n'),
+    ).toBe('no leaks');
+  });
+
+  it('[CUR-RECEIPTS] window OPEN → GET /api/receipts totalAmount exposes bgn > 0 display object', async () => {
+    await setCurrencyWindowOpen(true);
+    const res = await authRequest(token).get('/api/receipts');
+    expect(res.status).toBe(200);
+    const receipts: any[] = res.body?.data ?? [];
+    const seeded = receipts.find((r: any) => r.id === seededReceiptId);
+    expect(seeded).toBeDefined();
+    expect(seeded.totalAmount).toEqual(expect.objectContaining({ bgn: 30, eur: expect.any(Number), windowOpen: true }));
+    expect(seeded.totalAmount.bgn).toBeGreaterThan(0);
   });
 });
