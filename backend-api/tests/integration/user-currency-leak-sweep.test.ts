@@ -41,6 +41,7 @@ import {
 let userId: string;
 let token: string;
 let seededReceiptId: string;
+let seededScanId: string;
 
 async function setCurrencyWindowOpen(isOpen: boolean): Promise<void> {
   await prisma.systemSetting.upsert({
@@ -221,6 +222,65 @@ beforeAll(async () => {
     },
     update: { totalCashback: 3.00, totalSpent: 30.00, averageReceiptAmount: 30.00 },
   });
+
+  // Seed a StickerScan with non-zero money fields so GET /api/dashboard/me receipts[]
+  // is populated for the bulk closed-window sweep and [CUR-DASHBOARD] tests.
+  // StickerScan requires a Sticker (→ Venue → Partner → User), a Venue, and a Card.
+  // Create dedicated fixtures scoped to this test suite so they don't collide with others.
+  const sweepPartnerUser = await prisma.user.create({
+    data: {
+      email: `cur-sweep-partner-${userId.slice(0, 8)}@test.local`,
+      firstName: 'Sweep',
+      lastName: 'Partner',
+      phone: `+3599001${userId.replace(/-/g, '').slice(0, 6)}`,
+      status: 'ACTIVE',
+      role: 'PARTNER',
+      emailVerified: true,
+      passwordHash: 'unused',
+    },
+  });
+  const sweepPartner = await prisma.partner.create({
+    data: {
+      userId: sweepPartnerUser.id,
+      businessName: `CurSweep ${userId.slice(0, 8)}`,
+      category: 'RESTAURANT',
+      status: 'ACTIVE',
+      verifiedAt: new Date(),
+      discountRate: 10,
+    },
+  });
+  const sweepVenue = await prisma.venue.create({
+    data: { partnerId: sweepPartner.id, name: 'CurSweep Venue', address: 'Test St', city: 'Sofia' },
+  });
+  const sweepStickerLoc = await prisma.stickerLocation.create({
+    data: { venueId: sweepVenue.id, name: 'CurSweep Loc', locationNumber: `CS-${userId.replace(/-/g, '').slice(0, 8)}` },
+  });
+  const sweepSticker = await prisma.sticker.create({
+    data: {
+      venueId: sweepVenue.id,
+      locationId: sweepStickerLoc.id,
+      stickerId: `CS-S-${userId.replace(/-/g, '').slice(0, 8)}`,
+      qrCode: `CS-QR-${userId.replace(/-/g, '').slice(0, 8)}`,
+      status: 'ACTIVE',
+    },
+  });
+  // The test user's card is auto-created at registration; fetch the first one.
+  const sweepCard = await prisma.card.findFirst({ where: { userId } });
+  if (!sweepCard) throw new Error('No card found for test user — registration must auto-create one');
+  const sweepScan = await prisma.stickerScan.create({
+    data: {
+      userId,
+      cardId: sweepCard.id,
+      stickerId: sweepSticker.id,
+      venueId: sweepVenue.id,
+      billAmount: 25.00,
+      verifiedAmount: 25.00,
+      cashbackAmount: 2.50,
+      cashbackPercent: 10,
+      status: 'APPROVED',
+    },
+  });
+  seededScanId = sweepScan.id;
 }, 60_000);
 
 afterAll(async () => {
@@ -230,6 +290,13 @@ afterAll(async () => {
   await prisma.reward.delete({ where: { id: 'sweep-test-reward-cashvalue' } }).catch(() => {});
   // Delete receipt before its linked transaction (FK: Receipt.transactionId → Transaction).
   if (seededReceiptId) { await prisma.receipt.delete({ where: { id: seededReceiptId } }).catch(() => {}); }
+  // Delete StickerScan fixture and its supporting partner/venue/sticker chain.
+  if (seededScanId) { await prisma.stickerScan.delete({ where: { id: seededScanId } }).catch(() => {}); }
+  await prisma.sticker.deleteMany({ where: { stickerId: { startsWith: 'CS-S-' } } }).catch(() => {});
+  await prisma.stickerLocation.deleteMany({ where: { locationNumber: { startsWith: 'CS-' } } }).catch(() => {});
+  await prisma.venue.deleteMany({ where: { name: 'CurSweep Venue' } }).catch(() => {});
+  await prisma.partner.deleteMany({ where: { businessName: { startsWith: 'CurSweep ' } } }).catch(() => {});
+  await prisma.user.deleteMany({ where: { email: { startsWith: 'cur-sweep-partner-' } } }).catch(() => {});
   if (userId) { try { await cleanupTestUser(userId); } catch {} }
 }, 30_000);
 
@@ -247,6 +314,7 @@ const MONEY_ENDPOINTS = [
   '/api/receipts/stats',
   '/api/receipts/v2',
   '/api/receipts/v2/analytics',
+  '/api/dashboard/me',   // INV-USER-CUR-003: receipts[].totalAmount + cashbackAmount
 ];
 
 // Detect a raw BGN scalar: a `currency:"BGN"` paired with a raw numeric amount,
@@ -255,7 +323,7 @@ function findRawBgnLeak(node: any, path = '$'): string[] {
   const leaks: string[] = [];
   // Genuine money fields only. Bare `total`/`count`/`page` are pagination
   // scalars, not currency — excluded to avoid false positives.
-  const MONEY_KEYS = /^(amount|balance|balanceBefore|balanceAfter|currentBalance|availableBalance|pendingBalance|expiringBalance|totalCashback|totalTopups|totalSpent|totalAmount|verifiedAmount|payoutAmount|cashbackAmount|cashbackBalance|cashValue|averageAmount|averageReceiptAmount)$/i;
+  const MONEY_KEYS = /^(amount|balance|balanceBefore|balanceAfter|currentBalance|availableBalance|pendingBalance|expiringBalance|totalCashback|totalTopups|totalSpent|totalAmount|verifiedAmount|payoutAmount|cashbackAmount|cashbackBalance|cashValue|averageAmount|averageReceiptAmount|discountAmount|minPurchase|maxDiscount)$/i;
   function walk(n: any, p: string) {
     if (n == null) return;
     if (Array.isArray(n)) { n.forEach((v, i) => walk(v, `${p}[${i}]`)); return; }
@@ -721,3 +789,140 @@ describe('INV-USER-CUR-003 (receipts) — GET /api/receipts and /:id must gate m
     expect(receipt.totalAmount.bgn).toBeGreaterThan(0);
   });
 });
+
+describe('INV-USER-CUR-003 (dashboard) — GET /api/dashboard/me receipts[] must gate money fields via toDualCurrency', () => {
+  it('[CUR-DASHBOARD] window CLOSED → receipts[].totalAmount and cashbackAmount must not be raw BGN scalars', async () => {
+    await setCurrencyWindowOpen(false);
+    const res = await authRequest(token).get('/api/dashboard/me');
+    expect(res.status).toBe(200);
+    const leaks = findRawBgnLeak(res.body?.receipts ?? [], '/api/dashboard/me receipts');
+    expect(
+      leaks.length === 0
+        ? 'no leaks'
+        : 'Raw BGN leak(s) on GET /api/dashboard/me:\n' + leaks.join('\n'),
+    ).toBe('no leaks');
+  });
+
+  it('[CUR-DASHBOARD] window OPEN → receipts[].totalAmount exposes bgn > 0 display object', async () => {
+    await setCurrencyWindowOpen(true);
+    const res = await authRequest(token).get('/api/dashboard/me');
+    expect(res.status).toBe(200);
+    const seeded = (res.body?.receipts ?? []).find((r: any) => r.id === seededScanId);
+    expect(seeded).toBeDefined();
+    expect(seeded.totalAmount).toEqual(
+      expect.objectContaining({ bgn: expect.any(Number), eur: expect.any(Number), windowOpen: true }),
+    );
+    expect(seeded.totalAmount.bgn).toBeGreaterThan(0);
+  });
+});
+
+describe('INV-USER-CUR-003 (offers) — GET /api/offers endpoints must gate BGN money fields via toDualCurrency', () => {
+  let offersPartnerId: string;
+  let offersOfferId: string;
+  let offersOwnerUserId: string;
+
+  beforeAll(async () => {
+    const ownerUser = await createTestUser();
+    offersOwnerUserId = ownerUser.user.id;
+
+    const partner = await prisma.partner.create({
+      data: {
+        userId: offersOwnerUserId,
+        businessName: 'Sweep Test Partner',
+        businessNameBg: 'Тест Партньор',
+        category: 'Restaurant',
+        status: 'ACTIVE',
+        city: 'Sofia',
+        verifiedAt: new Date(),
+        discountRate: 10,
+      },
+    });
+    offersPartnerId = partner.id;
+
+    const offer = await prisma.offer.create({
+      data: {
+        partnerId: offersPartnerId,
+        title: 'Sweep Test Offer',
+        titleBg: 'Тест Оферта',
+        description: 'Sweep test offer for currency leak detection',
+        descriptionBg: 'Тест',
+        type: 'DISCOUNT',
+        status: 'ACTIVE',
+        discountAmount: 15.0,
+        minPurchase: 20.0,
+        maxDiscount: 10.0,
+        startDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      },
+    });
+    offersOfferId = offer.id;
+  }, 60_000);
+
+  afterAll(async () => {
+    if (offersOwnerUserId) {
+      try { await cleanupTestUser(offersOwnerUserId); } catch {}
+    }
+  }, 30_000);
+
+  it('[CUR-OFFERS] window CLOSED → all listing endpoints return no raw BGN scalar for discountAmount, minPurchase, maxDiscount', async () => {
+    await setCurrencyWindowOpen(false);
+    const endpoints = [
+      '/api/offers',
+      '/api/offers/top',
+      '/api/offers/featured',
+      `/api/offers/partner/${offersPartnerId}`,
+      '/api/offers/city/Sofia',
+      '/api/offers/category/Restaurant',
+    ];
+    const allLeaks: Record<string, string[]> = {};
+    for (const ep of endpoints) {
+      const res = await authRequest(token).get(ep);
+      if (res.status >= 200 && res.status < 300) {
+        const leaks = findRawBgnLeak(res.body?.data ?? res.body, ep);
+        if (leaks.length) allLeaks[ep] = leaks;
+      }
+    }
+    expect(
+      Object.keys(allLeaks).length === 0
+        ? 'no leaks'
+        : 'Raw BGN scalar(s) leaked while window CLOSED:\n' + JSON.stringify(allLeaks, null, 2),
+    ).toBe('no leaks');
+  });
+
+  it('[CUR-OFFERS] window CLOSED → GET /api/offers/:id returns no raw BGN scalar', async () => {
+    await setCurrencyWindowOpen(false);
+    const res = await authRequest(token).get(`/api/offers/${offersOfferId}`);
+    expect(res.status).toBe(200);
+    const leaks = findRawBgnLeak(res.body?.data ?? res.body, `/api/offers/${offersOfferId}`);
+    expect(
+      leaks.length === 0
+        ? 'no leaks'
+        : `Raw BGN leak(s) on GET /api/offers/${offersOfferId}:\n` + leaks.join('\n'),
+    ).toBe('no leaks');
+  });
+
+  it('[CUR-OFFERS] window OPEN → GET /api/offers/:id discountAmount is a {bgn, eur, windowOpen:true} object', async () => {
+    await setCurrencyWindowOpen(true);
+    const res = await authRequest(token).get(`/api/offers/${offersOfferId}`);
+    expect(res.status).toBe(200);
+    const offer = res.body?.data ?? res.body;
+    expect(offer.discountAmount).toEqual(
+      expect.objectContaining({ bgn: 15, eur: expect.any(Number), windowOpen: true }),
+    );
+    expect(offer.discountAmount.bgn).toBeGreaterThan(0);
+  });
+
+  it('[CUR-OFFERS] window OPEN → GET /api/offers/:id minPurchase and maxDiscount are also dual-currency objects', async () => {
+    await setCurrencyWindowOpen(true);
+    const res = await authRequest(token).get(`/api/offers/${offersOfferId}`);
+    expect(res.status).toBe(200);
+    const offer = res.body?.data ?? res.body;
+    expect(offer.minPurchase).toEqual(
+      expect.objectContaining({ bgn: 20, eur: expect.any(Number), windowOpen: true }),
+    );
+    expect(offer.maxDiscount).toEqual(
+      expect.objectContaining({ bgn: 10, eur: expect.any(Number), windowOpen: true }),
+    );
+  });
+});
+
