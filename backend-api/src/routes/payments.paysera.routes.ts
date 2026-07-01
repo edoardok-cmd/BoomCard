@@ -561,16 +561,16 @@ router.get(
         });
       }
 
+      const showDualCurrency = await isCurrencyTransitionWindowOpen();
+
       res.json({
         success: true,
         data: {
           orderId,
           status: transaction.status.toLowerCase(),
-          amount: transaction.amount,
-          currency: transaction.currency,
-          description: transaction.description,
+          amount: toDualCurrency(transaction.amount, showDualCurrency),
+          currency: showDualCurrency ? transaction.currency : 'EUR',
           createdAt: transaction.createdAt,
-          metadata: transaction.metadata,
         },
       });
     } catch (error: any) {

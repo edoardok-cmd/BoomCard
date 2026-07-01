@@ -471,6 +471,7 @@ describe('[USER-MONEY-INTROSPECT] all user/public GET routes must not leak bare 
       venueId: seededVenueId,
       stickerId: seededStickerId,
       loyaltyAccountId: seededLoyaltyAccountId,
+      orderId: 'introspect-order-001',
       // city / category are string params, not UUID-based — skip (routes with these will
       // be skipped if they have a colon-prefixed segment named something else)
     };
@@ -519,6 +520,7 @@ describe('[USER-MONEY-INTROSPECT] all user/public GET routes must not leak bare 
       venueId: seededVenueId,
       stickerId: seededStickerId,
       loyaltyAccountId: seededLoyaltyAccountId,
+      orderId: 'introspect-order-001',
     };
 
     const total = userPublicGetRoutes.length;
