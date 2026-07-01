@@ -315,6 +315,7 @@ const MONEY_ENDPOINTS = [
   '/api/receipts/v2',
   '/api/receipts/v2/analytics',
   '/api/dashboard/me',   // INV-USER-CUR-003: receipts[].totalAmount + cashbackAmount
+  '/api/auth/me',        // INV-USER-CUR-003: loyaltyAccount.cashbackBalance
 ];
 
 // Detect a raw BGN scalar: a `currency:"BGN"` paired with a raw numeric amount,
@@ -381,6 +382,16 @@ describe('INV-USER-CUR — user money endpoints respect the currency transition 
       expect.objectContaining({ bgn: 99.99, eur: expect.any(Number), windowOpen: true }),
     );
     expect(res.body.data.cashbackBalance.bgn).toBeGreaterThan(0);
+  });
+
+  it('[CUR] window OPEN → /api/auth/me loyaltyAccount.cashbackBalance exposes bgn > 0', async () => {
+    await setCurrencyWindowOpen(true);
+    const res = await authRequest(token).get('/api/auth/me');
+    expect(res.status).toBe(200);
+    expect(res.body.data.loyaltyAccount.cashbackBalance).toEqual(
+      expect.objectContaining({ bgn: 99.99, eur: expect.any(Number), windowOpen: true }),
+    );
+    expect(res.body.data.loyaltyAccount.cashbackBalance.bgn).toBeGreaterThan(0);
   });
 });
 
