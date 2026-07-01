@@ -201,6 +201,26 @@ beforeAll(async () => {
     },
   });
   seededReceiptId = seededReceipt.id;
+
+  // Seed ReceiptAnalytics with non-zero amounts so the MONEY_ENDPOINTS bulk test
+  // can detect a raw-scalar regression on GET /api/receipts/v2/analytics.
+  // The table is pre-aggregated (not auto-populated by direct Prisma inserts),
+  // so we seed it explicitly.
+  await prisma.receiptAnalytics.upsert({
+    where: { userId },
+    create: {
+      userId,
+      totalReceipts: 1,
+      approvedReceipts: 1,
+      rejectedReceipts: 0,
+      pendingReceipts: 0,
+      totalCashback: 3.00,
+      totalSpent: 30.00,
+      averageReceiptAmount: 30.00,
+      successRate: 100,
+    },
+    update: { totalCashback: 3.00, totalSpent: 30.00, averageReceiptAmount: 30.00 },
+  });
 }, 60_000);
 
 afterAll(async () => {
@@ -226,6 +246,7 @@ const MONEY_ENDPOINTS = [
   '/api/receipts',
   '/api/receipts/stats',
   '/api/receipts/v2',
+  '/api/receipts/v2/analytics',
 ];
 
 // Detect a raw BGN scalar: a `currency:"BGN"` paired with a raw numeric amount,
@@ -234,7 +255,7 @@ function findRawBgnLeak(node: any, path = '$'): string[] {
   const leaks: string[] = [];
   // Genuine money fields only. Bare `total`/`count`/`page` are pagination
   // scalars, not currency — excluded to avoid false positives.
-  const MONEY_KEYS = /^(amount|balance|balanceBefore|balanceAfter|currentBalance|availableBalance|pendingBalance|expiringBalance|totalCashback|totalTopups|totalSpent|totalAmount|verifiedAmount|payoutAmount|cashbackAmount|cashbackBalance|cashValue|averageAmount)$/i;
+  const MONEY_KEYS = /^(amount|balance|balanceBefore|balanceAfter|currentBalance|availableBalance|pendingBalance|expiringBalance|totalCashback|totalTopups|totalSpent|totalAmount|verifiedAmount|payoutAmount|cashbackAmount|cashbackBalance|cashValue|averageAmount|averageReceiptAmount)$/i;
   function walk(n: any, p: string) {
     if (n == null) return;
     if (Array.isArray(n)) { n.forEach((v, i) => walk(v, `${p}[${i}]`)); return; }
