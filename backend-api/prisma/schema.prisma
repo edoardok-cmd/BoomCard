@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
@@ -34,14 +35,6 @@ model User {
   emailVerificationToken     String?                    @unique
   notificationPreferences    Json?
   deletedAt                  DateTime?
-  /// BC-ADMIN-SPEC-REAUDIT2-ARCHIVE-RESTORE-BYPASS-1 — persists the user's account
-  /// status captured at soft-delete time (DELETE /:userId/account) so POST /:userId/restore
-  /// can revive the user to their EXACT prior state instead of unconditionally ACTIVE.
-  /// This preserves spec §1.1/§2.4 ARCHIVED-terminality across a DELETE→restore round-trip:
-  /// an Archived user that is soft-deleted must come back Archived, not Active. Nullable;
-  /// NULL for legacy rows deleted before this column existed (restore falls back to ACTIVE)
-  /// and is cleared back to NULL on every restore.
-  statusBeforeDelete         UserStatus?
   /// F-003: @deprecated — User.iban is a legacy field that may be out of sync with
   /// Wallet.payoutIban. For all payout and GDPR export operations, use Wallet.payoutIban
   /// as the authoritative source. This field is retained for backward compatibility only.
@@ -53,28 +46,37 @@ model User {
   marketingConsentPhoneAt    DateTime?
   riskBucket                 RiskBucket?
   riskScore                  Int                        @default(0)
-  riskOverriddenAt           DateTime?
-  riskOverriddenBy           String?
   totpEnabledAt              DateTime?
   totpSecret                 String?
+  preferredLanguage          String                     @default("bg")
+  lastActivityAt             DateTime?
+  city                       String?
+  country                    String?
+  pendingEmail               String?
+  pendingEmailExpiry         DateTime?
+  pendingEmailToken          String?                    @unique
   totpPendingSecret          String?
+  mustChangePassword         Boolean                    @default(false)
+  emailUnsubscribeToken      String?                    @unique
+  rolesUpdatedAt             DateTime?
+  address                    String?
+  riskOverriddenAt           DateTime?
+  riskOverriddenBy           String?
   /// BC-ADMIN-2FA-RECOVERY-AND-FRONTEND-FIX-015 — one-time backup recovery codes.
   /// Stores bcrypt HASHES of single-use 2FA recovery codes (never plaintext).
   /// Plaintext is shown to the admin exactly once at 2FA-enable time and is not
   /// retrievable again. A successful recovery-code login consumes (removes) the
   /// matching hash from this array so it cannot be reused.
   totpRecoveryCodes          String[]                   @default([])
-  mustChangePassword         Boolean                    @default(false)
-  preferredLanguage          String                     @default("bg")
-  lastActivityAt             DateTime?
-  address                    String?
-  city                       String?
-  country                    String?
-  pendingEmail               String?
-  pendingEmailExpiry         DateTime?
-  pendingEmailToken          String?                    @unique
-  emailUnsubscribeToken      String?                    @unique
-  rolesUpdatedAt             DateTime?
+  /// BC-ADMIN-SPEC-REAUDIT2-ARCHIVE-RESTORE-BYPASS-1 — persists the user's account
+  /// status captured at soft-delete time (DELETE /:userId/account) so POST /:userId/restore
+  /// can revive the user to their EXACT prior state instead of unconditionally ACTIVE.
+  /// This preserves spec §1.1/§2.4 ARCHIVED-terminality across a DELETE→restore round-trip:
+  /// an Archived user that is soft-deleted must come back Archived, not Active. Nullable;
+  /// NULL for legacy rows deleted before this column existed (restore falls back to ACTIVE)
+  /// and is cleared back to NULL on every restore.
+  statusBeforeDelete         UserStatus?
+  issuedActivationLinks      ActivationLink[]           @relation("ActivationLinkCreator")
   auditLogs                  AuditLog[]
   bookings                   Booking[]
   cards                      Card[]
@@ -85,6 +87,7 @@ model User {
   favorites                  Favorite[]
   assignedTickets            HelpTicket[]               @relation("TicketAssignee")
   helpTickets                HelpTicket[]               @relation("TicketUser")
+  triggeredLinkResends       LinkResendLog[]            @relation("LinkResendLogActor")
   loginHistory               LoginHistory[]
   loyaltyAccount             LoyaltyAccount?
   marketingListMembers       MarketingListMember[]
@@ -92,28 +95,29 @@ model User {
   notifications              Notification[]
   offerRedemptions           OfferRedemption[]
   partner                    Partner?
+  PartnerApplication         PartnerApplication[]
   partnerRequestNotes        PartnerRequestNote[]       @relation("PartnerRequestNoteAuthor")
+  partnerStatusChanges       PartnerStatusChange[]      @relation("PartnerStatusChanger")
   pushTokens                 PushToken[]
   receipts                   Receipt[]
   receiptUploadTokens        ReceiptUploadToken[]
   refreshTokens              RefreshToken[]
   reviews                    Review[]
+  ReviewVote                 ReviewVote[]
   stickerScans               StickerScan[]
   ticketReplies              TicketReply[]              @relation("TicketReplies")
   transactions               Transaction[]
   grantedAdminRoles          UserAdminRole[]            @relation("GrantedRoles")
   adminRoles                 UserAdminRole[]
-  permissionOverrides        UserPermissionOverride[]
   grantedPermissionOverrides UserPermissionOverride[]   @relation("GrantedOverrides")
+  permissionOverrides        UserPermissionOverride[]
+  criticalActionRequests     CriticalActionRequest[]    @relation("CriticalActionRequester")
+  criticalActionResolutions  CriticalActionRequest[]    @relation("CriticalActionResolver")
   savedPaymentMethods        SavedPaymentMethod[]
   superAdminRequests         PendingSuperAdminRequest[] @relation("SuperAdminRequester")
   subscriptions              Subscription[]
-  triggeredLinkResends       LinkResendLog[]            @relation("LinkResendLogActor")
-  partnerStatusChanges       PartnerStatusChange[]      @relation("PartnerStatusChanger")
-  criticalActionRequests     CriticalActionRequest[]    @relation("CriticalActionRequester")
-  criticalActionResolutions  CriticalActionRequest[]    @relation("CriticalActionResolver")
+  wallet_transactions        WalletTransaction[]
   wallet                     Wallet?
-  issuedActivationLinks      ActivationLink[]           @relation("ActivationLinkCreator")
 
   @@unique([email, role])
   @@index([email])
@@ -129,33 +133,24 @@ model PendingSuperAdminRequest {
   phone            String?
   passwordHash     String
   requestedById    String
-  status           String    @default("PENDING")
-  expiresAt        DateTime
-  secondApproverId String?
-  resolvedAt       DateTime?
   createdAt        DateTime  @default(now())
+  expiresAt        DateTime
+  resolvedAt       DateTime?
+  secondApproverId String?
+  status           String    @default("PENDING")
   requestedBy      User      @relation("SuperAdminRequester", fields: [requestedById], references: [id])
 
   @@index([requestedById])
+  @@index([expiresAt])
+  @@index([status])
   @@map("pending_super_admin_requests")
 }
 
-// Spec §10.3 — generic queue for critical admin actions that require a second
-// SUPER_ADMIN to approve before execution. The `actionType` field identifies
-// the class of action; `payload` carries the action-specific data (e.g. target
-// user ID, new value). The resolver (approver or rejecter) acts on the pending
-// row and then executes or discards the underlying operation.
-//
-// Supported actionTypes (extend as needed):
-//   BULK_PAYOUT_OVERRIDE        — bulk payout amount override above the safety cap
-//   PARTNER_ARCHIVE             — irreversible archive of an active partner
-//   ADMIN_PERMISSION_GRANT      — granting a sensitive permission outside normal flow
-//   DISCOUNT_RATE_CHANGE         — PARTNER_MANAGER proposes a new cashback rate; SUPER_ADMIN approval executes it
 model CriticalActionRequest {
   id            String    @id @default(uuid())
-  actionType    String // e.g. "BULK_PAYOUT_OVERRIDE", "PARTNER_ARCHIVE"
+  actionType    String
   requestedById String
-  status        String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  status        String    @default("PENDING")
   payload       Json
   note          String?
   resolvedById  String?
@@ -221,47 +216,31 @@ model Partner {
   partnerTypeId         String?
   pendingChanges        Json?
   pendingChangesAt      DateTime?
-  categories            String[]                 @default([])
+  categories            String[]
   assignedAdminId       String?
   isVisible             Boolean                  @default(true)
   requestStatus         PartnerRequestStatus?
-  // Spec §5.1 v1.1 — declared venue count bucket at application time. Stored as
-  // an enum so the value cannot drift via non-validating callers (bulk import,
-  // future scripts). The DB column maps to the string forms shown in the UI
-  // ("1" / "2-5" / "6-10" / "11+") via per-value @map directives below.
+  onboardingCompletedAt DateTime?
   requestObjectCount    PartnerVenueCountBucket?
-  // Spec §2.3 — partner-application fields captured on the public RegisterPartnerPage.
-  // Sent inside businessInfo. Nullable/defaulted so the migration is additive and
-  // safe on the shared DB. participationLevel is one of "basic" | "active" | "growth"
-  // (validated at the auth.validator layer); acceptPrivacy records the separate
-  // privacy-policy consent; additionalInfo is free text.
+  hasRiskFlag           Boolean                  @default(false)
+  statusReason          String?
   participationLevel    String?
   acceptPrivacy         Boolean?                 @default(false)
   additionalInfo        String?
-  // @internal — internal risk flag, never serialize to external callers (spec §11.3, Clash 5.1).
-  // This field is internal-only and must never be selected into partner-facing responses.
-  // Partner routes use explicit `select` allowlists that omit it; admin-only reads include it explicitly.
-  hasRiskFlag           Boolean                  @default(false)
-  onboardingCompletedAt DateTime?
-  // Spec §1.1, §1.3, §14.1 — sub-classification for PAUSED/SUSPENDED status values so
-  // the downstream display layer can show the correct Bulgarian label (Пауза vs Спрян)
-  // without extending the API contract beyond the three canonical spec values.
-  // Added in migration 20260602100000.
-  // Examples: "VOLUNTARY_PAUSE" | "ADMIN_SUSPENSION" | "FAILED_PAYMENT_SUSPENSION"
-  statusReason          String?
+  activationLinks       ActivationLink[]
   bookings              Booking[]
+  helpTickets           HelpTicket[]             @relation("PartnerHelpTickets")
   marketingListMembers  MarketingListMember[]
   offers                Offer[]
   partnerType           PartnerType?             @relation(fields: [partnerTypeId], references: [id])
   user                  User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  PartnerApplication    PartnerApplication?
   cashbackPayments      PartnerCashbackPayment[]
   requestNotes          PartnerRequestNote[]
+  statusChanges         PartnerStatusChange[]
   reviews               Review[]
   transactions          Transaction[]
   venues                Venue[]
-  activationLinks       ActivationLink[]
-  statusChanges         PartnerStatusChange[]
-  helpTickets           HelpTicket[]             @relation("PartnerHelpTickets")
   connectedIntegrations ConnectedIntegration[]
 
   @@index([category])
@@ -284,13 +263,6 @@ model PartnerCashbackPayment {
   status            CashbackPaymentStatus @default(PENDING)
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
-  // admin-only — internal margin component; NEVER include in partner API responses.
-  // Spec §7.4, §11.3, Clash 10.6: margin % and cashback % components are
-  // internal-only and must never be shown to the partner in any portal view.
-  // This field is internal-only: partner routes use explicit `select` allowlists
-  // that omit it, so it cannot leak via accidental spread or select-*. Admin-only
-  // reads include it explicitly in their select.
-  // @internal — never serialize to external callers
   marginAmount      Float                 @default(0)
   contractedRate    Float?
   turnoverAmount    Float                 @default(0)
@@ -302,18 +274,6 @@ model PartnerCashbackPayment {
   @@index([month])
 }
 
-// Spec §5.2, §9.5 v1.1 — partner activation link.
-// One-time token, valid 72h, only admin can resend. Each new link invalidates
-// the previous (enforced in service by setting invalidatedAt on the old row,
-// inside a transaction with the create of the new row — see activationLink.service.ts).
-// On resend a LinkResendLog row is appended for audit (§10.4).
-//
-// `reason` distinguishes an initial issuance (post-approve) from an admin
-// resend so the drawer can render the audit timeline accurately (resend count,
-// who clicked what, etc.).
-// `emailSentAt` / `emailError` are stamped after the email-layer call returns
-// so admins can see at a glance whether the partner actually received the
-// link (M5 in the audit).
 model ActivationLink {
   id            String               @id @default(uuid())
   partnerId     String
@@ -321,45 +281,30 @@ model ActivationLink {
   expiresAt     DateTime
   consumedAt    DateTime?
   invalidatedAt DateTime?
-  reason        ActivationLinkReason @default(INITIAL)
-  emailSentAt   DateTime?
-  emailError    String?
-  // Spec §9.3 — admin who created/issued this activation link. FK with SetNull on
-  // delete so the audit record is preserved even if the admin user is removed.
-  // Matches the PartnerStatusChange.changedBy pattern.
   createdById   String?
   createdAt     DateTime             @default(now())
+  emailError    String?
+  emailSentAt   DateTime?
+  reason        ActivationLinkReason @default(INITIAL)
+  createdBy     User?                @relation("ActivationLinkCreator", fields: [createdById], references: [id])
   partner       Partner              @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-  createdBy     User?                @relation("ActivationLinkCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([partnerId])
   @@index([expiresAt])
 }
 
-// Spec §10.4 v1.1 — audit trail for activation / verification link resends.
-// Kept separate from AuditLog because the link domain has its own primary
-// key relationship and reads (e.g., "show resend history" on partner row).
-//
-// `actorId` is nullable for two reasons: (1) some link types (EMAIL_VERIFICATION,
-// PASSWORD_RESET) may be self-service triggered, in which case there is no
-// admin actor; (2) historical rows from before the actor-FK was added may
-// have orphaned ids. Linking via @relation is OPTIONAL — if the User is
-// deleted we keep the row but null the actor (set-null on delete).
 model LinkResendLog {
   id        String   @id @default(uuid())
-  linkType  String // "PARTNER_ACTIVATION" | "EMAIL_VERIFICATION" | "PASSWORD_RESET"
-  subjectId String // partnerId or userId — interpreted via linkType
+  linkType  String
+  subjectId String
   actorId   String?
   createdAt DateTime @default(now())
-  actor     User?    @relation("LinkResendLogActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actor     User?    @relation("LinkResendLogActor", fields: [actorId], references: [id])
 
   @@index([linkType, subjectId])
   @@index([createdAt])
 }
 
-// Spec §5.3 v1.1 + §10.4 — partner status transition log. Drives the
-// "История на промени" view and is the source for audit reads when an
-// admin asks "why is partner X suspended".
 model PartnerStatusChange {
   id          String        @id @default(uuid())
   partnerId   String
@@ -368,8 +313,8 @@ model PartnerStatusChange {
   reason      String?
   changedById String?
   createdAt   DateTime      @default(now())
+  changedBy   User?         @relation("PartnerStatusChanger", fields: [changedById], references: [id])
   partner     Partner       @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-  changedBy   User?         @relation("PartnerStatusChanger", fields: [changedById], references: [id], onDelete: SetNull)
 
   @@index([partnerId])
   @@index([partnerId, createdAt])
@@ -428,8 +373,8 @@ model Venue {
   stickerScans        StickerScan[]
   transactions        Transaction[]
   partner             Partner              @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-  stickerConfig       VenueStickerConfig?
   statusHistory       VenueStatusHistory[]
+  stickerConfig       VenueStickerConfig?
 
   @@index([partnerId])
   @@index([city])
@@ -437,11 +382,6 @@ model Venue {
   @@index([venueStatus])
 }
 
-// Spec §5.4 — "История: Кога и защо е сменян". Per status change of a venue
-// we append a row here so the locations page can render a full timeline of
-// who changed what, when, and why. We do NOT FK changedById to User: this
-// mirrors Partner.assignedAdminId and keeps the User model's relation list
-// untouched. The actor is hydrated by a follow-up findMany when read.
 model VenueStatusHistory {
   id          String      @id @default(uuid())
   venueId     String
@@ -498,10 +438,6 @@ model Offer {
   type              OfferType
   discountPercent   Float?
   discountAmount    Float?
-  // @internal — internal cashback rate component, never serialize to partner or user callers (spec §11.3, Clash 10.6)
-  // Spec §8a: Offer model has no approved spec; this field is internal-only and must
-  // never be selected into partner- or user-facing responses until the spec is confirmed.
-  // Partner/user routes use explicit `select` allowlists that omit it; admin-only reads include it explicitly.
   cashbackPercent   Float?
   pointsMultiplier  Float?
   minPurchase       Float?
@@ -583,7 +519,6 @@ model Plan {
 model Transaction {
   id                String             @id @default(uuid())
   userId            String
-  subscriptionId    String? // Spec §4.2/4.3 — subscription active at transaction time
   partnerId         String?
   venueId           String?
   offerId           String?
@@ -592,14 +527,6 @@ model Transaction {
   type              TransactionType
   status            TransactionStatus
   amount            Float
-  // admin-only — internal margin; NEVER include in partner API responses.
-  // Spec §4.3 — persisted at creation; immutable to rate changes.
-  // Spec §11.3 / §7.4: margin % and cashback % components are internal-only.
-  // This field is internal-only and must never be selected into partner-facing
-  // responses; partner routes use explicit `select` allowlists that omit it.
-  // Admin-only reads include it explicitly in their select.
-  // @internal — never serialize to external callers
-  marginAmount      Float?
   discount          Float?
   discountAmount    Float?
   finalAmount       Float?
@@ -617,18 +544,17 @@ model Transaction {
   refundedAmount    Float?
   refundedAt        DateTime?
   completedAt       DateTime?
-  // @internal — internal risk score, never serialize to external callers (spec §11.3, Clash 5.1).
-  // This field is internal-only and must never be selected into partner- or user-facing
-  // responses; those routes use explicit `select` allowlists that omit it. Admin-only reads include it explicitly.
-  riskScore         Int?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
+  riskScore         Int?
+  marginAmount      Float?
+  subscriptionId    String?
   receipt           Receipt?
   stickerScan       StickerScan?
   booking           Booking?           @relation(fields: [bookingId], references: [id])
   offer             Offer?             @relation(fields: [offerId], references: [id])
   partner           Partner?           @relation(fields: [partnerId], references: [id])
-  subscription      Subscription?      @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  subscription      Subscription?      @relation(fields: [subscriptionId], references: [id], onUpdate: NoAction)
   user              User               @relation(fields: [userId], references: [id])
   venue             Venue?             @relation(fields: [venueId], references: [id])
   walletTransaction WalletTransaction?
@@ -681,21 +607,18 @@ model WalletTransaction {
   createdAt             DateTime                @default(now())
   cashbackExpiresAt     DateTime?
   cashbackPaidAt        DateTime?
-  // Spec §4.4 v1.1 — entry-based lifecycle. Only set for CASHBACK_CREDIT rows.
-  // clearedAt drives the 60-day rolling window (per spec, validity starts at
-  // Cleared, not at original transaction date). voided* are populated when a
-  // risk review rejects the originating transaction (§7.1).
   cashbackStatus        CashbackEntryStatus?
   clearedAt             DateTime?
-  lockedAt              DateTime?
   voidedAt              DateTime?
-  voidedReason          String?
   voidedByUserId        String?
+  voidedReason          String?
+  lockedAt              DateTime?
   payoutIbanSnapshot    String?
   receipt               Receipt?                @relation(fields: [receiptId], references: [id])
   stickerScan           StickerScan?            @relation(fields: [stickerScanId], references: [id])
   transaction           Transaction?            @relation(fields: [transactionId], references: [id])
-  wallet                Wallet                  @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  User                  User?                   @relation(fields: [voidedByUserId], references: [id], onUpdate: NoAction)
+  wallet                Wallet                  @relation(fields: [walletId], references: [id])
 
   @@index([walletId])
   @@index([type])
@@ -728,29 +651,17 @@ model Subscription {
   payseraOrderId            String?            @unique
   planId                    String?
   autoRenewal               Boolean            @default(true)
-  pauseEndsAt               DateTime?
-  // Stripe-only: incremented by the stripe.service webhook handler on each
-  // invoice.payment_failed event; reset to 0 on payment success or on
-  // FAILED_PAYMENT transition. Always 0 for Paysera subscriptions (Paysera
-  // has no automatic retry loop — the single-attempt model is enforced by
-  // paysera-renewal.ts which transitions directly to FAILED_PAYMENT).
   retryAttempt              Int                @default(0)
   trialRefundEligibleUntil  DateTime?
   trialRefundUsed           Boolean            @default(false)
   lastRenewalReminderSentAt DateTime?
-  // Spec §4.2 v1.1 — set when the single renewal attempt fails. While non-null
-  // and status=FAILED_PAYMENT, scanning is blocked and payouts are gated.
   failedPaymentAt           DateTime?
-  // Stamped when this FAILED_PAYMENT row is transitioned to EXPIRED because the
-  // user gained a newer ACTIVE/TRIALING subscription. Audit-only — kept so
-  // forensic queries can distinguish "naturally expired" from "force-cleared".
-  failedPaymentClearedAt    DateTime?
-  // Spec §8.3 — bitmask of reminders already sent for the current period:
-  // bit 0 = 3d, bit 1 = 1d, bit 2 = day-of. Reset on renewal.
   renewalRemindersSent      Int                @default(0)
-  planDetails               Plan?              @relation(fields: [planId], references: [id])
-  user                      User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  failedPaymentClearedAt    DateTime?
+  pauseEndsAt               DateTime?
   transactions              Transaction[]
+  planDetails               Plan?              @relation(fields: [planId], references: [id])
+  user                      User               @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([status])
@@ -801,18 +712,10 @@ model Receipt {
   verifiedAmount       Float?
   receiptDate          DateTime?
   items                String?
-  // @internal — internal cashback formula component, never serialize to external callers (spec §11.3).
-  // This field is internal-only and must never be selected into partner- or user-facing
-  // responses; those routes use explicit `select` allowlists that omit it. Admin-only reads include it explicitly.
   cashbackPercent      Float               @default(0)
-  // @internal — cashback formula component, never serialize to external callers (spec §11.3)
   cashbackAmount       Float               @default(0)
   ocrConfidence        Float               @default(0)
-  // @internal — internal fraud risk score, never serialize to external callers (spec §11.3, Clash 5.1).
-  // This field is internal-only and must never be selected into partner- or user-facing
-  // responses; those routes use explicit `select` allowlists that omit it. Admin-only reads include it explicitly.
   fraudScore           Float               @default(0)
-  // @internal — fraud rule names that contributed to fraud score, internal risk logic (spec §11.3)
   fraudReasons         String[]            @default([])
   latitude             Float?
   longitude            Float?
@@ -830,7 +733,9 @@ model Receipt {
   perceptualHash       String?
   deviceFingerprint    String?
   deviceFingerprintRaw String?
+  stickerScanId        String?
   disputeCases         Dispute[]
+  StickerScan          StickerScan?        @relation(fields: [stickerScanId], references: [id])
   transaction          Transaction?        @relation(fields: [transactionId], references: [id])
   user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   venue                Venue?              @relation(fields: [venueId], references: [id])
@@ -847,6 +752,7 @@ model Receipt {
   @@index([userId, deviceFingerprint])
   @@index([userId, perceptualHash])
   @@index([userId, createdAt])
+  @@index([stickerScanId])
 }
 
 model ReceiptUploadToken {
@@ -907,9 +813,6 @@ model VenueFraudConfig {
   id                        String   @id @default(uuid())
   venueId                   String?  @unique
   partnerId                 String?
-  // @internal — internal cashback rate config, never serialize to partner or user callers (spec §11.3, Clash 10.6).
-  // This field is internal-only and must never be selected into partner- or user-facing
-  // responses; those routes use explicit `select` allowlists that omit it. Admin-only reads include it explicitly.
   cashbackPercent           Float    @default(5.0)
   premiumBonus              Float    @default(2.0)
   platinumBonus             Float    @default(5.0)
@@ -920,13 +823,7 @@ model VenueFraudConfig {
   gpsVerificationEnabled    Boolean  @default(true)
   gpsRadiusMeters           Int      @default(100)
   ocrVerificationEnabled    Boolean  @default(true)
-  // @internal — internal fraud auto-approve threshold, never serialize to partner or user callers (spec §11.3, Clash 5.1).
-  // This field is internal-only and must never be selected into partner- or user-facing
-  // responses; those routes use explicit `select` allowlists that omit it. Admin-only reads include it explicitly.
   autoApproveThreshold      Float    @default(30)
-  // @internal — internal fraud reject threshold, never serialize to partner or user callers (spec §11.3, Clash 5.1).
-  // This field is internal-only and must never be selected into partner- or user-facing
-  // responses; those routes use explicit `select` allowlists that omit it. Admin-only reads include it explicitly.
   autoRejectThreshold       Float    @default(60)
   isActive                  Boolean  @default(true)
   metadata                  String?
@@ -949,9 +846,7 @@ model VenueReceiptTemplate {
   id                     String   @id @default(uuid())
   venueId                String
   merchantName           String
-  merchantNameVariations String[]
   description            String?
-  expectedKeywords       String[]
   imageUrl               String
   imageKey               String
   perceptualHash         String
@@ -959,6 +854,8 @@ model VenueReceiptTemplate {
   uploadedBy             String
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
+  expectedKeywords       String[]
+  merchantNameVariations String[]
 
   @@index([venueId])
   @@index([venueId, isActive])
@@ -977,8 +874,6 @@ model Dispute {
   updatedAt   DateTime           @updatedAt
   subjectId   String?
   subjectType DisputeSubjectType @default(RECEIPT)
-  // Spec §11.6 — link to the HelpTicket that initiated this dispute (optional;
-  // set when dispute-case is created from a DISPUTE-type help ticket).
   ticketId    String?
   assignee    User?              @relation("DisputeAssignee", fields: [assignedTo], references: [id])
   receipt     Receipt?           @relation(fields: [receiptId], references: [id])
@@ -1159,6 +1054,7 @@ model Review {
   updatedAt        DateTime     @updatedAt
   partner          Partner      @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   user             User         @relation(fields: [userId], references: [id])
+  ReviewVote       ReviewVote[]
 
   @@index([userId])
   @@index([partnerId])
@@ -1263,9 +1159,6 @@ model Card {
   cardNumber   String        @unique
   type         CardType      @default(PREMIUM_WEEKLY)
   status       CardStatus    @default(ACTIVE)
-  // @internal — raw QR token material; NEVER serialize to partner or user callers (spec §4.3, §11.3).
-  // This field is internal-only and must never be selected into partner- or user-facing
-  // responses; those routes use explicit `select` allowlists that omit it. Admin/internal reads include it explicitly.
   qrCode       String
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -1281,30 +1174,22 @@ model Sticker {
   venueId           String
   locationId        String
   stickerId         String          @unique
-  // @internal — raw QR token; NEVER serialize to partner or user callers (spec §4.3, §11.3).
-  // This field is internal-only and must never be selected into partner- or user-facing
-  // responses; those routes use explicit `select` allowlists that omit it. Admin/internal reads include it explicitly.
   qrCode            String          @unique
   locationType      LocationType    @default(TABLE)
   status            StickerStatus   @default(ACTIVE)
   printedAt         DateTime?
   activatedAt       DateTime?
   deactivatedAt     DateTime?
-  autoDeactivatedAt DateTime?
   totalScans        Int             @default(0)
   lastScannedAt     DateTime?
   metadata          String?
-  // Spec §5.4 — when a QR label is physically replaced, the new sticker's row
-  // links to the superseded one so the replacement chain is queryable.
-  // replacesId: set on the NEW sticker, pointing to the OLD sticker it supersedes.
-  // Use newSticker.replaces to navigate to the predecessor; oldSticker.replacedBy[]
-  // gives all successors (should be at most one in practice).
-  replacesId        String?
-  replaces          Sticker?        @relation("StickerReplacement", fields: [replacesId], references: [id])
-  replacedBy        Sticker[]       @relation("StickerReplacement")
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
+  replacesId        String?
+  autoDeactivatedAt DateTime?
   location          StickerLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  replaces          Sticker?        @relation("StickerReplacement", fields: [replacesId], references: [id])
+  replacedBy        Sticker[]       @relation("StickerReplacement")
   venue             Venue           @relation(fields: [venueId], references: [id], onDelete: Cascade)
   scans             StickerScan[]
 
@@ -1344,11 +1229,7 @@ model StickerScan {
   cardId               String
   billAmount           Float               @default(0)
   verifiedAmount       Float?
-  // @internal — internal cashback rate applied at scan time, never serialize to external callers (spec §11.3, Clash 10.6).
-  // This field is internal-only and must never be selected into partner- or user-facing
-  // responses; those routes use explicit `select` allowlists that omit it. Admin-only reads include it explicitly.
   cashbackPercent      Float               @default(0)
-  // @internal — cashback formula component, never serialize to external callers (spec §11.3)
   cashbackAmount       Float               @default(0)
   status               ScanStatus          @default(SESSION_ACTIVE)
   latitude             Float?
@@ -1356,25 +1237,12 @@ model StickerScan {
   distance             Float?
   receiptImageUrl      String?
   ocrData              String?
-  // admin-only — internal fraud/risk fields. NEVER include in partner or user API responses.
-  // Spec §11.3, Clash 5.1: internal risk logic and classification must not be
-  // surfaced in the Partner Portal or in user-facing transaction views.
-  // @internal — internal fraud risk score, never serialize to external callers (spec §11.3, Clash 5.1).
-  // This field is internal-only and must never be selected into partner- or user-facing
-  // responses; those routes use explicit `select` allowlists that omit it. Admin-only reads include it explicitly.
   fraudScore           Float               @default(0)
-  // @internal — fraud rule names contributing to score, internal risk logic (spec §11.3)
   fraudReasons         String[]            @default([])
-  ipAddress            String? // Customer PII — not relevant to partners
-  userAgent            String? // Customer PII — not relevant to partners
+  ipAddress            String?
+  userAgent            String?
   transactionId        String?             @unique
   rejectionReason      String?
-  // admin-only — internal risk classification (LOW/MEDIUM/HIGH per spec §2.1).
-  // Never expose to partner or user callers.
-  // @internal — internal risk classification, never serialize to external callers (spec §11.3, Clash 5.1).
-  // This field is internal-only and must never be selected into partner- or user-facing
-  // responses; those routes use explicit `select` allowlists that omit it. Admin-only reads include it explicitly.
-  specRiskLevel        String?
   processedAt          DateTime?
   metadata             String?
   createdAt            DateTime            @default(now())
@@ -1383,6 +1251,8 @@ model StickerScan {
   receiptImageHash     String?             @unique
   deviceFingerprint    String?
   deviceFingerprintRaw String?
+  specRiskLevel        String?
+  Receipt              Receipt[]
   card                 Card                @relation(fields: [cardId], references: [id])
   sticker              Sticker             @relation(fields: [stickerId], references: [id])
   transaction          Transaction?        @relation(fields: [transactionId], references: [id])
@@ -1403,9 +1273,6 @@ model StickerScan {
 model VenueStickerConfig {
   id                     String   @id @default(uuid())
   venueId                String   @unique
-  // @internal — internal cashback rate config, never serialize to partner or user callers (spec §11.3, Clash 10.6).
-  // This field is internal-only and must never be selected into partner- or user-facing
-  // responses; those routes use explicit `select` allowlists that omit it. Admin-only reads include it explicitly.
   cashbackPercent        Float    @default(5.0)
   premiumBonus           Float    @default(2.0)
   platinumBonus          Float    @default(5.0)
@@ -1416,9 +1283,6 @@ model VenueStickerConfig {
   gpsVerificationEnabled Boolean  @default(true)
   gpsRadiusMeters        Int      @default(100)
   ocrVerificationEnabled Boolean  @default(true)
-  // @internal — internal fraud auto-approve threshold, never serialize to partner or user callers (spec §11.3, Clash 5.1).
-  // This field is internal-only and must never be selected into partner- or user-facing
-  // responses; those routes use explicit `select` allowlists that omit it. Admin-only reads include it explicitly.
   autoApproveThreshold   Float    @default(30)
   isActive               Boolean  @default(true)
   metadata               String?
@@ -1466,9 +1330,9 @@ model PayoutThreshold {
   plan          SubscriptionPlan
   minAmount     Float
   createdBy     String?
-  createdByName String?
   notes         String?
   createdAt     DateTime         @default(now())
+  createdByName String?
 
   @@index([plan])
   @@index([createdAt])
@@ -1520,12 +1384,6 @@ model UserAdminRole {
   @@index([expiresAt])
 }
 
-// BC-ADMIN-RBAC-ROLES-019 — per-user permission overrides on top of role templates.
-// allow=true grants a permission the user's roles do not, allow=false explicitly denies
-// one their roles grant. Resolution precedence (in resolveUserPermissions, BE sub-task):
-// user-deny > user-allow > role-deny > role-allow. SUPER_ADMIN bypasses all.
-// Used both for the two override-only impersonation keys (impersonate.partner /
-// impersonate.user) and for any ad-hoc per-admin ability toggle.
 model UserPermissionOverride {
   id           String     @id @default(uuid())
   userId       String
@@ -1575,74 +1433,42 @@ model SystemSettingHistory {
   newValue      String
   changedBy     String?
   changedByName String?
-  notes         String?
   createdAt     DateTime @default(now())
+  notes         String?
 
   @@index([key])
   @@index([createdAt])
   @@map("system_setting_history")
 }
 
-// Spec §11 v1.1 — unified ticketing system. `requestType` separates
-// support from change requests (single inbox, filterable). `source`
-// records ingress channel ("WEB" / "EMAIL"). `externalEmail` captures
-// the original sender when ingested via email gateway (§11.2).
 model HelpTicket {
   id             String            @id @default(uuid())
   subject        String
   body           String            @default("")
   category       TicketCategory
-  // Spec §11.4: initial status is OPEN. NEW is kept in the enum for existing
-  // rows only — no new ticket should arrive with NEW; this default ensures any
-  // caller that omits status still lands in the correct initial state.
   status         TicketStatus      @default(OPEN)
   priority       TicketPriority    @default(MEDIUM)
   userId         String
   assigneeId     String?
-  // Spec §12.1 Rule 6 — partner tickets must be scoped to the submitting partner
-  // so cross-partner ticket access is prevented at the DB level, not only via
-  // userId filtering. Nullable because user-submitted (non-partner) tickets have
-  // no partnerId. SetNull on delete so the audit record survives partner removal.
-  // Populate for all tickets created via partner-facing paths.
-  partnerId      String?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
-  // Spec §10.4 — canonical Request Type Enum: Support | Dispute | Change | Other.
-  // Extended with DATA_CHANGE, LOCATION_CHANGE, CONTRACT_CHANGE for operational
-  // sub-categories of "Change". All values are enforced at the DB layer via the
-  // TicketRequestType enum; application code in shared/ticketing.ts must import
-  // and use the enum constants, not raw strings.
-  requestType    TicketRequestType @default(SUPPORT)
-  // Spec §11.1 ingress channel.
-  source         String            @default("WEB") // "WEB" | "EMAIL"
-  // Spec §11.2 — original sender email for tickets created from an inbound
-  // email (auto-parse). Used to validate reply spoofing and to send auto-reply.
   externalEmail  String?
-  // RFC 5322 Message-ID of the inbound email that created this ticket.
-  // Used by parser for In-Reply-To / References fallback matching.
-  // NOTE: enforced via raw SQL migration 20260629000001 — partial unique index
-  //   CREATE UNIQUE INDEX "HelpTicket_rootMessageId_unique" ON "HelpTicket"("rootMessageId") WHERE "rootMessageId" IS NOT NULL
-  // This prevents duplicate ticket creation on provider redeliveries (TOCTOU race).
-  rootMessageId  String?
-  // Auto re-open watermark (§11.4): when an inbound reply hits a CLOSED ticket
-  // we re-open and stamp this for the audit log.
-  reopenedAt     DateTime?
-  // Set when status transitions to RESOLVED so auto-close uses a stable
-  // timestamp rather than updatedAt (which bumps on any field change).
-  resolvedAt     DateTime?
   linkedTicketId String?
-  // Gap 8 fix: 8-char hex short-ref (first 8 hex chars of UUID, dashes stripped).
-  // Stored for O(1) subject-prefix lookup instead of the previous 200-ticket scan.
-  // Populated on creation by all ticket creation paths.
+  reopenedAt     DateTime?
+  rootMessageId  String?           @unique(map: "HelpTicket_rootMessageId_unique", where: raw("(\"rootMessageId\" IS NOT NULL)"))
+  source         String            @default("WEB")
+  resolvedAt     DateTime?
   shortRef       String?           @unique
+  partnerId      String?
+  requestType    TicketRequestType @default(SUPPORT)
+  disputes       Dispute[]         @relation("DisputeTicket")
   assignee       User?             @relation("TicketAssignee", fields: [assigneeId], references: [id])
-  user           User              @relation("TicketUser", fields: [userId], references: [id])
-  partner        Partner?          @relation("PartnerHelpTickets", fields: [partnerId], references: [id], onDelete: SetNull)
   linkedTicket   HelpTicket?       @relation("TicketLink", fields: [linkedTicketId], references: [id])
   linkingTickets HelpTicket[]      @relation("TicketLink")
-  disputes       Dispute[]         @relation("DisputeTicket")
-  replies        TicketReply[]
+  partner        Partner?          @relation("PartnerHelpTickets", fields: [partnerId], references: [id])
+  user           User              @relation("TicketUser", fields: [userId], references: [id])
   ccs            TicketCC[]
+  replies        TicketReply[]
 
   @@index([userId])
   @@index([assigneeId])
@@ -1661,21 +1487,11 @@ model TicketReply {
   body         String
   isAdmin      Boolean    @default(false)
   createdAt    DateTime   @default(now())
-  // Spec §11.2 — RFC 5322 threading headers. messageId is the unique ID of
-  // this message (outbound: generated by us; inbound: from the email).
-  // inReplyTo is the immediate parent. The parser uses these for thread match.
-  messageId    String?    @unique
-  inReplyTo    String?
-  // Ingress channel of this reply message:
-  //   "WEB"      — authored in the admin/partner/user web UI
-  //   "EMAIL"    — arrived via the inbound email gateway (ticketInbound.service)
-  //   "INTERNAL" — system-generated note (e.g. rejection reason, audit marker);
-  //                not shown to end-users, visible only in admin thread view
   channel      String     @default("WEB")
-  // Auto-replies and out-of-office headers — see §11.2 edge cases. Surfaced
-  // as a metadata-only note in the thread (no reply created).
+  externalFrom String?
+  inReplyTo    String?
   isAutoReply  Boolean    @default(false)
-  externalFrom String? // sender email when source="EMAIL"
+  messageId    String?    @unique
   author       User?      @relation("TicketReplies", fields: [authorId], references: [id])
   ticket       HelpTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
@@ -1683,15 +1499,10 @@ model TicketReply {
   @@index([inReplyTo])
 }
 
-// Spec §11.2 — CC'd admins ("cc-нати админи") recorded per ticket so that an
-// inbound reply from a CC'd address threads into the original ticket instead of
-// being treated as a spoofer. A join table is used for per-row provenance
-// (createdAt) and to support multiple CCs per ticket. Email is stored lowercased
-// and compared case-insensitively by the inbound spoof check.
 model TicketCC {
   id        String     @id @default(uuid())
   ticketId  String
-  email     String // stored lowercased
+  email     String
   createdAt DateTime   @default(now())
   ticket    HelpTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
@@ -1854,9 +1665,6 @@ model FraudRule {
   dailyScanLimit       Int?
   minTransactionValue  Float?
   maxTransactionValue  Float?
-  // @internal — internal fraud auto-approve threshold, never serialize to external callers (spec §11.3, Clash 5.1).
-  // This field is internal-only and must never be selected into partner- or user-facing
-  // responses; those routes use explicit `select` allowlists that omit it. Admin-only reads include it explicitly.
   autoApproveThreshold Float?
   isActive             Boolean             @default(true)
   notes                String?
@@ -1939,6 +1747,67 @@ model InboundBounce {
   @@index([createdAt])
 }
 
+model ConnectedIntegration {
+  id            String   @id @default(uuid())
+  partnerId     String
+  integrationId String
+  status        String   @default("active")
+  credentials   String?
+  settings      Json?
+  connectedAt   DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  partner       Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, integrationId])
+  @@index([partnerId])
+  @@map("connected_integrations")
+}
+
+model PartnerApplication {
+  id                 String                   @id
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime
+  firstName          String
+  lastName           String
+  email              String
+  phone              String
+  businessName       String
+  categoryIds        String[]                 @default([])
+  city               String
+  address            String
+  venueCount         Int
+  participationLevel String
+  additionalText     String?
+  termsConsent       Boolean                  @default(false)
+  privacyConsent     Boolean                  @default(false)
+  marketingConsent   Boolean                  @default(false)
+  status             PartnerApplicationStatus @default(NEW)
+  assignedAdminId    String?
+  internalNotes      String?
+  history            Json?
+  partnerId          String?                  @unique
+  User               User?                    @relation(fields: [assignedAdminId], references: [id])
+  Partner            Partner?                 @relation(fields: [partnerId], references: [id])
+
+  @@index([assignedAdminId])
+  @@index([createdAt])
+  @@index([email])
+  @@index([status])
+}
+
+model ReviewVote {
+  id        String   @id
+  reviewId  String
+  userId    String
+  helpful   Boolean
+  createdAt DateTime @default(now())
+  Review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewId, userId])
+  @@index([reviewId])
+}
+
 enum UserRole {
   USER
   PARTNER
@@ -1946,17 +1815,6 @@ enum UserRole {
   SUPER_ADMIN
 }
 
-// Spec Clash 5.1 defines canonical risk scoring thresholds:
-//   0–20  → Low
-//   21–50 → Medium
-//   51+   → High
-//
-// IMPORTANT: enum value names embed the spec threshold boundaries. Any code
-// mapping a computed risk score to a RiskBucket MUST use these ranges.
-// Previous names (LOW_0_30, REVIEW_31_60, HIGH_61_PLUS) embedded incorrect
-// thresholds and were corrected in migration 20260604_fix_risk_bucket_thresholds.
-// Existing DB rows are unaffected — the stored string values changed; remap
-// all application code referencing the old constants.
 enum RiskBucket {
   LOW_0_20     @map("LOW_0_20")
   MEDIUM_21_50 @map("MEDIUM_21_50")
@@ -1986,34 +1844,15 @@ enum AdminRoleKey {
   PARTNER_MANAGER
 }
 
-// F-022: Canonical spec values for UserAccountStatus: Active | Inactive.
-// Additional values below are operational extensions and are NOT spec-canonical user-facing labels.
-// SUSPENDED, PENDING_VERIFICATION, PENDING_PAYMENT, DELETED, ARCHIVED are internal/operational
-// states used by the authentication and onboarding lifecycle.
-// These must never be displayed directly to users as account status labels.
 enum UserStatus {
   ACTIVE
   INACTIVE
-  SUSPENDED // Operational extension: admin abuse lockout. Blocks login entirely (stricter than spec Inactive). Do NOT use to implement spec-Inactive behavior.
-  PENDING_VERIFICATION // Operational: email not yet verified. Not a canonical spec state.
-  PENDING_PAYMENT // Operational: awaiting initial payment. Not a canonical spec state.
-  DELETED // Operational: soft-delete. Not a canonical spec state.
-  ARCHIVED // Operational: permanently deactivated. Not a canonical spec state.
+  PENDING_VERIFICATION
+  PENDING_PAYMENT
+  DELETED
+  ARCHIVED
 }
 
-// Spec §2.1, §14.1 — partner application status lifecycle.
-// Spec canonical English names → DB stored values (@map) → Bulgarian display labels:
-//   NEW          → "NOVA"          → Нова
-//   COMMUNICATION→ "KOMUNIKACIYA"  → Комуникация
-//   NEGOTIATION  → "DOGOVARYANE"   → Договаряне
-//   ONBOARDING   → "ONBOARDING"    → Онбординг
-//   APPROVED     → "ODOBRENA"      → Одобрена
-//   REJECTED     → "OTKAZANA"      → Отказана
-//
-// The @map directives preserve the Bulgarian-transliterated DB column values
-// that exist in production rows while exposing spec-canonical English Prisma
-// enum names to all application code. Any code checking a request status MUST
-// use the enum constant (e.g. PartnerRequestStatus.NEW), never the raw string.
 enum PartnerRequestStatus {
   NEW           @map("NOVA")
   COMMUNICATION @map("KOMUNIKACIYA")
@@ -2021,55 +1860,13 @@ enum PartnerRequestStatus {
   ONBOARDING    @map("ONBOARDING")
   APPROVED      @map("ODOBRENA")
   REJECTED      @map("OTKAZANA")
+  NEW
+  COMMUNICATION
+  NEGOTIATION
+  APPROVED
+  REJECTED
 }
 
-// Spec §1.1 defines exactly three canonical partner_account_status values:
-// Active | Inactive | Archived.
-//
-// This enum intentionally carries SEVEN values, not three. The four extra values
-// (PENDING, SUSPENDED, PAUSED, REJECTED) are INTERNAL operational sub-states; they
-// are retained for fine-grained status history and backwards compatibility and are
-// NOT part of the partner-facing API contract. All seven values MUST be normalized
-// onto the canonical three (Active | Inactive | Archived) at the partner-facing API
-// boundary per the mapping table at the bottom of this comment. Do NOT remove any
-// enum value (existing production rows depend on them).
-//
-// PAUSED and SUSPENDED are extended operational sub-states retained in this
-// schema for fine-grained status history and backwards compatibility.
-// ALL code MUST normalize them to INACTIVE before any partner-facing API
-// response leaves the server. This includes:
-//   - Profile endpoints (partner portal, public profile)
-//   - Auth token payload / JWT claims
-//   - Status change notification payloads (PARTNER_STATUS_CHANGE)
-//   - QR cascade logic (treat PAUSED/SUSPENDED as non-ACTIVE)
-//   - Public-visibility gate (treat PAUSED/SUSPENDED as non-ACTIVE)
-//   - Login gate (treat PAUSED/SUSPENDED as blocked — no portal access)
-//   - Any query filtering by status MUST include PAUSED and SUSPENDED
-//     whenever the intent is to match all "Inactive" partners. Using a
-//     simple WHERE status='INACTIVE' will silently miss these rows.
-//
-// Use the Partner.statusReason field to carry the sub-classification
-// (e.g. "VOLUNTARY_PAUSE" | "ADMIN_SUSPENSION" | "FAILED_PAYMENT_SUSPENSION")
-// so the display layer can show the Bulgarian label (Пауза vs Спрян) without
-// extending the external API contract.
-//
-// PENDING: pre-activation state (partner applied but activation link not yet
-//   consumed). Treated as non-operational in QR, visibility, and login gates.
-//   Treat identically to ARCHIVED for access control purposes.
-//
-// REJECTED: application was rejected at the pre-partner stage. Treated as
-//   non-operational. Partners in REJECTED status cannot log in or access
-//   the portal. NOTE: REJECTED as a partner_application_status (PartnerRequestStatus)
-//   is semantically distinct — do not conflate the two.
-//
-// Canonical mapping table for all external-facing serializers:
-//   ACTIVE    → "Active"
-//   INACTIVE  → "Inactive"
-//   PAUSED    → "Inactive"   (statusReason distinguishes from pure Inactive)
-//   SUSPENDED → "Inactive"   (statusReason distinguishes from pure Inactive)
-//   ARCHIVED  → "Archived"
-//   PENDING   → not surfaced externally (treat as "Inactive" / blocked)
-//   REJECTED  → not surfaced externally (treat as "Inactive" / blocked)
 enum PartnerStatus {
   PENDING
   ACTIVE
@@ -2080,10 +1877,6 @@ enum PartnerStatus {
   REJECTED
 }
 
-// Spec §5.1 v1.1 — declared venue count bucket. The UI dropdown offers the
-// four options "1" / "2-5" / "6-10" / "11+"; the @map per value keeps the
-// physical column values stable so existing rows / external readers keep
-// working without a backfill.
 enum PartnerVenueCountBucket {
   ONE         @map("1")
   TWO_TO_FIVE @map("2-5")
@@ -2091,10 +1884,6 @@ enum PartnerVenueCountBucket {
   ELEVEN_PLUS @map("11+")
 }
 
-// Spec §5.2 v1.1 — activation-link issuance reason. The drawer's audit timeline
-// renders both INITIAL (the post-approve email) and RESEND (admin retries).
-// Stored on the row itself so the resend count is a SQL aggregate, not an
-// off-by-one cardinality heuristic.
 enum ActivationLinkReason {
   INITIAL
   RESEND
@@ -2113,20 +1902,12 @@ enum MenuStatus {
   REJECTED
 }
 
-// Spec §1.5, §4.2, §12.1 rule 1 — venue operational status.
-// Mapping from DB values to spec-canonical display labels:
-//   ACTIVE    → "Active"    — venue is operational; QR scanning is permitted
-//   INACTIVE  → "Inactive"  — venue deactivated (partner cascade or admin action);
-//                             all QR stickers at the venue are deactivated
-//   SUSPENDED → "Suspended" — admin-imposed penalty state; treated as non-operational
-//                             for QR gates. SUSPENDED is NOT a cascade target for
-//                             partner status changes — use INACTIVE for partner deactivation.
-//   REPLACED  → "Replaced"  — venue record superseded by a new venue (location move, rename)
 enum VenueStatus {
   ACTIVE
-  INACTIVE
   SUSPENDED
   REPLACED
+  INACTIVE
+  IN_PROCESSING
 }
 
 enum OfferStatus {
@@ -2191,45 +1972,33 @@ enum WalletTransactionStatus {
   RISK_HOLD
 }
 
-// K2: PREMIUM renamed to PREMIUM_MONTHLY (migration 20260602200000).
 enum SubscriptionPlan {
   PREMIUM_WEEKLY
   BASIC
   PREMIUM_MONTHLY
 }
 
-// F-022: Canonical spec values for SubscriptionStatus: Active | Expired | Cancelled | Failed Payment.
-// Additional values below are Stripe/operational extensions and are NOT user-facing status labels.
-// They exist to support Stripe's subscription lifecycle, Paysera PAUSED state, and internal
-// operational states. These must never be displayed directly to users — always map to a
-// user-friendly label before surfacing in any API response or notification.
 enum SubscriptionStatus {
   ACTIVE
-  PAST_DUE // Stripe-operational: payment overdue, retrying. Not user-facing.
+  PAST_DUE
   CANCELLED
-  INCOMPLETE // Stripe-operational: initial payment not yet confirmed. Not user-facing.
-  INCOMPLETE_EXPIRED // Stripe-operational: payment window expired. Not user-facing.
-  TRIALING // Stripe-operational extension: trial period. Maps to "Active" for users.
-  UNPAID // Stripe-operational: all retries exhausted. Not user-facing.
-  PAUSED // Operational extension: auto-renew off, grace window. Not user-facing.
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  TRIALING
+  UNPAID
+  PAUSED
   EXPIRED
-  // Spec §4.2 v1.1 — single attempt, no retry, no grace period. On entry: scanning
-  // blocked, CTA shown in mobile app, payouts gated (§6.1 subscription_gate).
   FAILED_PAYMENT
 }
 
-// Spec §4.4 v1.1 — entry-based cashback lifecycle. Every WalletTransaction
-// of type CASHBACK_CREDIT carries one of these statuses for its 60-day
-// rolling window. Voided is the new "rejected at risk review" terminal state
-// that stays visible to the user (vs deleting the row).
 enum CashbackEntryStatus {
-  PENDING // awaiting risk decision or initial clearance
-  TRIAL_PENDING // 24-hour trial window — voided if user cancels within trial (admin audit migration)
-  CLEARED // approved, 60-day rolling validity starts at clearedAt
-  LOCKED // included in a pending payout batch
-  PAID // payout completed
-  EXPIRED // 60-day window elapsed without payout
-  VOIDED // risk review rejected — visible to user with reason + audit
+  PENDING
+  CLEARED
+  LOCKED
+  PAID
+  EXPIRED
+  VOIDED
+  TRIAL_PENDING
 }
 
 enum ReceiptStatus {
@@ -2300,13 +2069,6 @@ enum MessageType {
   SYSTEM
 }
 
-// Spec §9.1, Clash 6.1 — partner notification categories (binding requirement).
-// Spec §9.2 / Clash 6.6: partners ARE notified of account status changes (PARTNER_STATUS_CHANGE
-// is mandatory; its absence would mean no schema-backed audit trail for status-change notifications).
-//
-// Partner-facing types (PARTNER_* prefix) are stored in the Notification model
-// linked to the partner's User record. They must NEVER appear in user-facing
-// notification list endpoints — API layer must filter by notification category.
 enum NotificationType {
   BOOKING_CONFIRMED
   BOOKING_CANCELLED
@@ -2325,16 +2087,14 @@ enum NotificationType {
   STICKER_SCAN_APPROVED
   FRAUD_ALERT
   MARKETING
-  // Spec §9.1 partner notification templates (Clash 6.1 / §9.2 Clash 6.6).
-  // DB values match those added in migration 20260602100000.
-  PARTNER_ACTIVATION_LINK // Activation link issued/resent
-  PARTNER_ONBOARDING_FOLLOWUP // Follow-up during onboarding stage
-  PARTNER_NEW_TRANSACTION // New transaction digest notification
-  PARTNER_MONTHLY_SUMMARY // Monthly financial summary
-  PARTNER_REQUEST_UPDATE // Update on a pending partner request
-  PARTNER_STATUS_CHANGE // Account status changed (§9.2 / Clash 6.6 — binding requirement)
-  PARTNER_CONTRACT_CHANGE // Contract / commission rate changed
-  PARTNER_MARKETING // Marketing / promotional notification
+  PARTNER_ACTIVATION_LINK
+  PARTNER_ONBOARDING_FOLLOWUP
+  PARTNER_NEW_TRANSACTION
+  PARTNER_MONTHLY_SUMMARY
+  PARTNER_REQUEST_UPDATE
+  PARTNER_STATUS_CHANGE
+  PARTNER_CONTRACT_CHANGE
+  PARTNER_MARKETING
 }
 
 enum LocationType {
@@ -2346,42 +2106,14 @@ enum LocationType {
   OTHER
 }
 
-// Spec §4.1 defines four canonical QR Code statuses:
-//   Active | Inactive | In Processing | Replaced
-//
-// PENDING: pre-print/pre-deploy state — maps to "In Processing" for display.
-//   Not in the spec enum directly but operationally required before a sticker
-//   is sent to print. Mobile and partner UIs should treat PENDING identically
-//   to PROCESSING (label: "В обработка").
-//
-// DAMAGED: NOT in the spec §4.1 enum. Retained for operational tracking of
-//   physically damaged labels that have not yet been replaced. Do NOT use in
-//   QR-validation or cascade logic — treat as INACTIVE for all operational
-//   gates. Any admin workflow that encounters DAMAGED must proceed via
-//   replaceSticker() to transition to REPLACED.
-//
-// RETIRED: NOT in the spec §4.1 enum. Semantically identical to REPLACED —
-//   the physical label is no longer in service. All new code MUST use REPLACED.
-//   RETIRED is preserved only for backward compatibility with existing rows.
-//   Migration note: run the following once to normalise legacy data:
-//     UPDATE "Sticker" SET "status" = 'REPLACED' WHERE "status" = 'RETIRED';
-//   After that migration, RETIRED can be safely removed from the enum in a
-//   subsequent migration.
 enum StickerStatus {
   PENDING
   ACTIVE
   INACTIVE
-  // Spec §5.4 "В обработка" — sticker ordered/printed but not yet deployed.
-  PROCESSING
-  // Non-spec operational state. Treat as INACTIVE for all scan/cascade gates.
-  // Use replaceSticker() to transition to REPLACED.
   DAMAGED
-  // Spec §5.4 "Заменен" — physically replaced by a new sticker; old code
-  // retired. Prefer REPLACED for all new writes.
-  REPLACED
-  // Alias for REPLACED — kept for backward compat with existing rows.
-  // Migrate existing RETIRED rows to REPLACED; remove this value afterward.
   RETIRED
+  PROCESSING
+  REPLACED
 }
 
 enum ScanStatus {
@@ -2407,43 +2139,14 @@ enum CardStatus {
   CANCELED
 }
 
-// Spec §10.4 defines request_status as: New | In Progress | Waiting | Closed | Cancelled.
-// This schema extends the spec with additional operational states. Mapping:
-//
-//   NEW        → spec "New"         — legacy value for existing rows only; no new tickets arrive
-//                                     with NEW (default is OPEN). Treat as "New" in display.
-//   OPEN       → spec "New"         — initial state for all new tickets; partner-visible label "Нова"
-//   IN_REVIEW  → spec "In Progress" — assigned to an admin, actively being worked; partner-visible
-//                                     label "В преглед". NOT a partner-visible distinct status;
-//                                     map to "In Progress" in partner API responses.
-//   WAITING    → spec "Waiting"     — awaiting user/partner response; partner-visible label "Изчакване"
-//   RESOLVED   → admin-internal     — admin has resolved; NOT shown to partners as a distinct status.
-//                                     Shown as "Closed" in partner API responses. Auto-closes after
-//                                     the defined inactivity window (spec §11.4).
-//   CLOSED     → spec "Closed"      — confirmed closed; partner-visible label "Затворена"
-//   REJECTED   → NOT in spec enum.  — admin declined the request with a reason. Admin-internal;
-//                                     partner-visible label "Отказана" (spec §11.4). Map to "Closed"
-//                                     in partner API responses unless the portal shows a rejection label.
-//   CANCELLED  → spec "Cancelled"   — user or admin cancelled before resolution; partner-visible "Отменена"
-//
-// Note: RESOLVED and IN_REVIEW are admin-internal operational states. Partner-facing serializers
-// MUST NOT expose them as distinct values — map both to the nearest spec-canonical label.
 enum TicketStatus {
   NEW
   OPEN
-  // Spec §11.4 — "В преглед": ticket has been assigned to an admin and is
-  // actively being worked. Distinct from OPEN (received + first contact made
-  // but not necessarily owned). Maps to spec "In Progress" in partner responses.
-  IN_REVIEW
   WAITING
-  // Admin-internal pre-close state. Maps to spec "Closed" in partner responses.
   RESOLVED
   CLOSED
-  // Spec §11.4 — "Отказана": admin declined the request with a reason.
-  // Terminal state, distinct from CLOSED (which means resolved+confirmed).
-  // Not in spec canonical enum — map to "Closed" in partner API responses.
+  IN_REVIEW
   REJECTED
-  // Terminal — user or admin cancelled the ticket before resolution.
   CANCELLED
 }
 
@@ -2454,18 +2157,14 @@ enum TicketPriority {
   URGENT
 }
 
-// Spec §10.4 — canonical Request Type Enum: Support | Dispute | Change | Other.
-// DATA_CHANGE, LOCATION_CHANGE, CONTRACT_CHANGE are operational sub-types of
-// "Change" retained for routing granularity. All code MUST use these constants
-// (never raw strings) to ensure DB-level validation.
 enum TicketRequestType {
-  SUPPORT // spec "Support"
-  DISPUTE // spec "Dispute"
-  CHANGE // spec "Change" — generic change request
-  DATA_CHANGE // sub-type of Change: personal / business data update
-  LOCATION_CHANGE // sub-type of Change: venue / location details update
-  CONTRACT_CHANGE // sub-type of Change: contract or commission rate change
-  OTHER // spec "Other"
+  SUPPORT
+  DISPUTE
+  CHANGE
+  DATA_CHANGE
+  LOCATION_CHANGE
+  CONTRACT_CHANGE
+  OTHER
 }
 
 enum TicketCategory {
@@ -2509,21 +2208,6 @@ enum PendingSubscriptionStatus {
   FAILED
 }
 
-// Spec §7.2 defines the monthly reporting period cycle as:
-//   Open → Under Review → Closed → Invoiced
-//
-// Mapping from DB values to spec-canonical display labels:
-//   OPEN       → "Open"          (spec: Open)
-//   FOR_REVIEW → "Under Review"  (spec: Under Review — renamed to FOR_REVIEW
-//                                  internally to avoid a SQL reserved-word collision)
-//   LOCKED     → "Closed"        (spec: Closed — the edit-lock semantics of LOCKED
-//                                  map to the spec's "Closed" terminal state before
-//                                  invoicing. Any code checking for the "Closed" phase
-//                                  MUST use LOCKED, not a literal 'CLOSED' string.)
-//   INVOICED   → "Invoiced"      (spec: Invoiced)
-//
-// Note: no CLOSED value exists in this enum. The spec's "Closed" state is
-// represented by LOCKED. Do NOT add a separate CLOSED value.
 enum ReportingPeriodStatus {
   OPEN
   FOR_REVIEW
@@ -2538,19 +2222,11 @@ enum FraudRuleTier {
   USER
 }
 
-model ConnectedIntegration {
-  id            String   @id @default(uuid())
-  partnerId     String
-  integrationId String
-  status        String   @default("active")
-  credentials   String?
-  settings      Json?
-  connectedAt   DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-
-  @@unique([partnerId, integrationId])
-  @@index([partnerId])
-  @@map("connected_integrations")
+enum PartnerApplicationStatus {
+  NEW
+  COMMUNICATION
+  NEGOTIATION
+  ONBOARDING
+  APPROVED
+  REJECTED
 }

@@ -6,6 +6,7 @@ import { logger } from '../utils/logger';
 import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
 import { imageUploadService } from '../services/imageUpload.service';
 import { parsePagination } from '../utils/pagination';
+import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 const router = Router();
 
@@ -28,12 +29,24 @@ async function resolveUserPlan(req: AuthRequest) {
 // (§14.3) and is legitimately public — the public partner directory
 // (/api/partners) exposes it, so we keep it here too for consistency.
 // ------------------------------------------------------------------
-function mapOffer(offer: any, isAdmin: boolean): any {
+function mapOffer(offer: any, isAdmin: boolean, windowOpen = false): any {
   if (isAdmin) return offer;
   // Strip the genuinely-internal cashbackPercent (and any margin field)
   // from the offer itself.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { cashbackPercent: _cp, ...safe } = offer;
+
+  // Gate BGN-denominated money fields through toDualCurrency (INV-USER-CUR-003).
+  // Only convert non-null values; null fields remain null (offer may omit them).
+  if (safe.discountAmount != null) {
+    safe.discountAmount = toDualCurrency(safe.discountAmount, windowOpen);
+  }
+  if (safe.minPurchase != null) {
+    safe.minPurchase = toDualCurrency(safe.minPurchase, windowOpen);
+  }
+  if (safe.maxDiscount != null) {
+    safe.maxDiscount = toDualCurrency(safe.maxDiscount, windowOpen);
+  }
 
   // Sanitize nested partner.partnerType: strip internal cashbackPercent
   // but keep the customer-facing fields including maxDiscountRate (§14.3).
@@ -79,9 +92,10 @@ router.get('/top', optionalAuthenticate, async (req: AuthRequest, res: Response)
     const { limit } = parsePagination(req.query, { defaultLimit: 10, maxLimit: 100 });
     const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
     const userPlan = await resolveUserPlan(req);
+    const windowOpen = isAdmin ? false : await isCurrencyTransitionWindowOpen();
     const offers = await offersService.getTopOffers(limit, userPlan, isAdmin);
 
-    res.json({ success: true, data: offers.map((o: any) => mapOffer(o, isAdmin)) });
+    res.json({ success: true, data: offers.map((o: any) => mapOffer(o, isAdmin, windowOpen)) });
   } catch (error: any) {
     logger.error('Failed to fetch top offers:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch top offers' });
@@ -97,9 +111,10 @@ router.get('/featured', optionalAuthenticate, async (req: AuthRequest, res: Resp
     const { limit } = parsePagination(req.query, { defaultLimit: 10, maxLimit: 100 });
     const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
     const userPlan = await resolveUserPlan(req);
+    const windowOpen = isAdmin ? false : await isCurrencyTransitionWindowOpen();
     const offers = await offersService.getFeaturedOffers(limit, userPlan, isAdmin);
 
-    res.json({ success: true, data: offers.map((o: any) => mapOffer(o, isAdmin)) });
+    res.json({ success: true, data: offers.map((o: any) => mapOffer(o, isAdmin, windowOpen)) });
   } catch (error: any) {
     logger.error('Failed to fetch featured offers:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch featured offers' });
@@ -114,6 +129,7 @@ router.get('/', optionalAuthenticate, async (req: AuthRequest, res: Response) =>
   try {
     const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
     const userPlan = await resolveUserPlan(req);
+    const windowOpen = isAdmin ? false : await isCurrencyTransitionWindowOpen();
     // tags query param: comma-separated or repeated: ?tags=spa,wellness or ?tags=spa&tags=wellness
     const rawTags = req.query.tags;
     const tags = rawTags
@@ -138,7 +154,7 @@ router.get('/', optionalAuthenticate, async (req: AuthRequest, res: Response) =>
     res.json({
       success: true,
       ...result,
-      data: result.data.map((o: any) => mapOffer(o, isAdmin)),
+      data: result.data.map((o: any) => mapOffer(o, isAdmin, windowOpen)),
     });
   } catch (error: any) {
     logger.error('Failed to fetch offers:', error);
@@ -154,6 +170,7 @@ router.get('/partner/:partnerId', optionalAuthenticate, async (req: AuthRequest,
   try {
     const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
     const userPlan = await resolveUserPlan(req);
+    const windowOpen = isAdmin ? false : await isCurrencyTransitionWindowOpen();
     const { page, limit } = parsePagination(req.query, { defaultLimit: 10, maxLimit: 100 });
     const filters = {
       page,
@@ -166,7 +183,7 @@ router.get('/partner/:partnerId', optionalAuthenticate, async (req: AuthRequest,
     res.json({
       success: true,
       ...result,
-      data: (result.data ?? []).map((o: any) => mapOffer(o, isAdmin)),
+      data: (result.data ?? []).map((o: any) => mapOffer(o, isAdmin, windowOpen)),
     });
   } catch (error: any) {
     logger.error('Failed to fetch partner offers:', error);
@@ -182,6 +199,7 @@ router.get('/city/:city', optionalAuthenticate, async (req: AuthRequest, res: Re
   try {
     const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
     const userPlan = await resolveUserPlan(req);
+    const windowOpen = isAdmin ? false : await isCurrencyTransitionWindowOpen();
     const { page, limit } = parsePagination(req.query, { defaultLimit: 10, maxLimit: 100 });
     const filters = {
       page,
@@ -194,7 +212,7 @@ router.get('/city/:city', optionalAuthenticate, async (req: AuthRequest, res: Re
     res.json({
       success: true,
       ...result,
-      data: (result.data ?? []).map((o: any) => mapOffer(o, isAdmin)),
+      data: (result.data ?? []).map((o: any) => mapOffer(o, isAdmin, windowOpen)),
     });
   } catch (error: any) {
     logger.error('Failed to fetch city offers:', error);
@@ -229,11 +247,12 @@ router.get('/category/:category', optionalAuthenticate, async (req: AuthRequest,
       minRating: !isNaN(parsedRating) ? parsedRating : undefined,
     };
 
+    const windowOpen = isAdmin ? false : await isCurrencyTransitionWindowOpen();
     const result = await offersService.getOffersByCategory(req.params.category, filters);
     res.json({
       success: true,
       ...result,
-      data: (result.data ?? []).map((o: any) => mapOffer(o, isAdmin)),
+      data: (result.data ?? []).map((o: any) => mapOffer(o, isAdmin, windowOpen)),
     });
   } catch (error: any) {
     logger.error('Failed to fetch category offers:', error);
@@ -285,13 +304,14 @@ router.get('/:id', optionalAuthenticate, async (req: AuthRequest, res: Response)
   try {
     const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
     const userPlan = await resolveUserPlan(req);
+    const windowOpen = isAdmin ? false : await isCurrencyTransitionWindowOpen();
     const offer = await offersService.getOfferById(req.params.id, userPlan, isAdmin);
 
     if (!offer) {
       return res.status(404).json({ success: false, error: 'Offer not found' });
     }
 
-    res.json({ success: true, data: mapOffer(offer, isAdmin) });
+    res.json({ success: true, data: mapOffer(offer, isAdmin, windowOpen) });
   } catch (error: any) {
     logger.error('Failed to fetch offer:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch offer' });
