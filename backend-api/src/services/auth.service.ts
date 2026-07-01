@@ -1909,7 +1909,6 @@ export class AuthService {
   static async forgotPassword(email: string) {
     // Email is not unique — multiple accounts (user/partner) may share it.
     // Issue a separate OTP per matching account so reset links don't collide.
-    // Always return success to prevent email enumeration.
     const users = await prisma.user.findMany({
       where: { email: email.toLowerCase() },
       orderBy: { createdAt: 'asc' },
@@ -2221,6 +2220,7 @@ export class AuthService {
                        // so we conservatively skip the PendingSubscription path
 
     // Only check PendingSubscription when NO User row of any kind exists for this email.
+    let pendingFound = false;
     if (users.length === 0 && deletedUserCount === 0) {
       const pendingRows = await prisma.pendingSubscription.findMany({
         where: {
@@ -2233,6 +2233,10 @@ export class AuthService {
         logger.error('[forgotPassword] pendingSubscription.findMany failed', err);
         return [] as never[];
       });
+
+      if (pendingRows.length > 0) {
+        pendingFound = true;
+      }
 
       for (const pending of pendingRows) {
         // Refresh the registration token — the original 30-min window may have expired.
@@ -2279,6 +2283,13 @@ export class AuthService {
           continue;
         }
       }
+    }
+
+    // Return 404 when the email is genuinely unknown: no User row (active or
+    // deleted) and no active PendingSubscription. When deletedUserCount > 0 we
+    // stay silent to avoid revealing that a soft-deleted account existed.
+    if (users.length === 0 && deletedUserCount === 0 && !pendingFound) {
+      throw new AppError('No account found with that email address.', 404);
     }
 
     return { message: 'If an account with that email exists, a reset code has been sent.' };

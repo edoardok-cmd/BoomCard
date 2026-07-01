@@ -339,6 +339,7 @@ const ForgotPasswordPage: React.FC = () => {
       contactSupport: 'Contact Support',
       genericError: 'Something went wrong. Please try again.',
       invalidCodeError: 'Invalid or expired code. Please try again.',
+      emailNotFound: 'No account found with that email address.',
     },
     bg: {
       backToLogin: 'Обратно към вход',
@@ -374,6 +375,7 @@ const ForgotPasswordPage: React.FC = () => {
       contactSupport: 'Свържете се с поддръжка',
       genericError: 'Нещо се обърка. Моля, опитайте отново.',
       invalidCodeError: 'Невалиден или изтекъл код. Моля, опитайте отново.',
+      emailNotFound: 'Няма намерен акаунт с този имейл адрес.',
     },
   };
 
@@ -449,11 +451,13 @@ const ForgotPasswordPage: React.FC = () => {
       });
       recordCodeSentAt(Date.now());
       setStep('otp');
-    } catch {
-      // Enumeration protection: advance regardless of whether the email exists.
-      // Also record the timestamp so the cooldown persists across reloads.
-      recordCodeSentAt(Date.now());
-      setStep('otp');
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 404) {
+        setErrors(prev => ({ ...prev, email: t.emailNotFound }));
+      } else {
+        toast.error(t.genericError);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -542,7 +546,7 @@ const ForgotPasswordPage: React.FC = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
         >
-          <BackButton type="button" onClick={() => { setStep('email'); setErrors({}); }}>
+          <BackButton type="button" onClick={() => { setStep('email'); setFormData(prev => ({ ...prev, email: '', otp: '', newPassword: '', confirmPassword: '' })); setErrors({}); sessionStorage.removeItem('otp_cooldown_sent_at'); setCodeSentAt(null); }}>
             <ArrowLeft />
             {t.backToLogin}
           </BackButton>
@@ -640,8 +644,10 @@ const ForgotPasswordPage: React.FC = () => {
               type="button"
               onClick={() => {
                 setStep('email');
-                setFormData(prev => ({ ...prev, otp: '', newPassword: '', confirmPassword: '' }));
+                setFormData(prev => ({ ...prev, email: '', otp: '', newPassword: '', confirmPassword: '' }));
                 setErrors({});
+                sessionStorage.removeItem('otp_cooldown_sent_at');
+                setCodeSentAt(null);
               }}
             >
               {t.resendCode}
