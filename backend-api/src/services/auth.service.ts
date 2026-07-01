@@ -1298,8 +1298,16 @@ export class AuthService {
       partner_account_status = mapPartnerCanonicalStatus(partner.status);
     }
 
+    const showDualCurrency = await isCurrencyTransitionWindowOpen();
+
     return {
       ...rest,
+      loyaltyAccount: rest.loyaltyAccount
+        ? {
+            ...rest.loyaltyAccount,
+            cashbackBalance: toDualCurrency(rest.loyaltyAccount.cashbackBalance, showDualCurrency),
+          }
+        : rest.loyaltyAccount,
       twoFactorEnabled: totpEnabledAt !== null,
       ...(partner_account_status ? { partner_account_status } : {}),
     };
