@@ -221,7 +221,7 @@ model Partner {
   partnerTypeId         String?
   pendingChanges        Json?
   pendingChangesAt      DateTime?
-  categories            String[]              @default([])
+  categories            String[]                 @default([])
   assignedAdminId       String?
   isVisible             Boolean                  @default(true)
   requestStatus         PartnerRequestStatus?
@@ -2548,7 +2548,7 @@ model ConnectedIntegration {
   connectedAt   DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  partner       Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   @@unique([partnerId, integrationId])
   @@index([partnerId])
