@@ -1439,14 +1439,19 @@ router.post('/verify-redirect', paymentRateLimiter, asyncHandler(async (req: Req
 
   try {
     const result = await payseraService.handleCallback({ data, ss1 });
+    const showDualCurrency = await isCurrencyTransitionWindowOpen();
+    const amountValue = result.amount ? result.amount / 100 : null;
+    const isBgn = result.currency === 'BGN';
 
     res.json({
       success: true,
       data: {
         orderId: result.orderId,
         status: result.status,
-        amount: result.amount ? result.amount / 100 : null,
-        currency: result.currency,
+        amount: amountValue != null
+          ? (isBgn ? toDualCurrency(amountValue, showDualCurrency) : amountValue)
+          : null,
+        currency: isBgn ? (showDualCurrency ? 'BGN' : 'EUR') : result.currency,
         paymentMethod: result.paymentMethod,
         isSuccess: result.status === 'success',
       },

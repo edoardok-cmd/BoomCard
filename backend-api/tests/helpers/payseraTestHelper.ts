@@ -25,11 +25,14 @@ export interface MockCallbackDataParams {
  * Create properly formatted Paysera callback data
  */
 export function createMockCallbackData(params: MockCallbackDataParams) {
+  const amountMajor = (parseInt(params.amount) / 100).toFixed(2);
   return {
     projectid: mockPayseraConfig.projectId,
     orderid: params.orderId,
     amount: params.amount,
     currency: params.currency,
+    request_amount: amountMajor,
+    request_currency: params.currency,
     payment: params.payment || 'card',
     status: params.status,
     requestid: params.requestId || `REQ-${Date.now()}`,

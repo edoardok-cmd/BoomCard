@@ -37,6 +37,7 @@ import {
   cleanupTestUser,
   authRequest,
 } from '../helpers/test-utils';
+import { createSignedCallback } from '../helpers/payseraTestHelper';
 
 let userId: string;
 let token: string;
@@ -934,6 +935,68 @@ describe('INV-USER-CUR-003 (offers) — GET /api/offers endpoints must gate BGN 
     expect(offer.maxDiscount).toEqual(
       expect.objectContaining({ bgn: 10, eur: expect.any(Number), windowOpen: true }),
     );
+  });
+});
+
+describe('INV-USER-CUR-003 (verify-redirect) — POST /api/payments/verify-redirect must gate BGN amount via toDualCurrency', () => {
+  it('[CUR-VERIFY-REDIRECT] window CLOSED → BGN amount is not a raw numeric scalar', async () => {
+    await setCurrencyWindowOpen(false);
+    const signed = createSignedCallback({
+      orderId: 'verify-redirect-sweep-001',
+      amount: '5000', // 50.00 BGN in cents
+      currency: 'BGN',
+      status: '1',
+    });
+    const res = await request(app)
+      .post('/api/payments/verify-redirect')
+      .send({ data: signed.data, ss1: signed.ss1 });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    // Window CLOSED: amount must be {bgn:null, eur:N} — not a raw number
+    expect(typeof res.body.data?.amount).not.toBe('number');
+    expect(res.body.data?.amount).toEqual(
+      expect.objectContaining({ bgn: null, eur: expect.any(Number) }),
+    );
+    // currency must not echo 'BGN' when window is CLOSED
+    expect(res.body.data?.currency).not.toBe('BGN');
+  });
+
+  it('[CUR-VERIFY-REDIRECT] window OPEN → BGN amount exposes dual-currency object with bgn > 0', async () => {
+    await setCurrencyWindowOpen(true);
+    const signed = createSignedCallback({
+      orderId: 'verify-redirect-sweep-002',
+      amount: '5000', // 50.00 BGN in cents
+      currency: 'BGN',
+      status: '1',
+    });
+    const res = await request(app)
+      .post('/api/payments/verify-redirect')
+      .send({ data: signed.data, ss1: signed.ss1 });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data?.amount).toEqual(
+      expect.objectContaining({ bgn: 50, eur: expect.any(Number), windowOpen: true }),
+    );
+    expect((res.body.data?.amount as any).bgn).toBeGreaterThan(0);
+  });
+
+  it('[CUR-VERIFY-REDIRECT] EUR payments are never raw-BGN-gated (no conversion applied to EUR amounts)', async () => {
+    await setCurrencyWindowOpen(false);
+    const signed = createSignedCallback({
+      orderId: 'verify-redirect-sweep-003',
+      amount: '2500', // 25.00 EUR in cents
+      currency: 'EUR',
+      status: '1',
+    });
+    const res = await request(app)
+      .post('/api/payments/verify-redirect')
+      .send({ data: signed.data, ss1: signed.ss1 });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    // EUR amounts pass through as-is (no dual-currency wrapping needed)
+    expect(typeof res.body.data?.amount).toBe('number');
+    expect(res.body.data?.amount).toBe(25);
+    expect(res.body.data?.currency).toBe('EUR');
   });
 });
 
