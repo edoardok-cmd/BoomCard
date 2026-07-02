@@ -12,15 +12,18 @@
 // ── Prisma mock ─────────────────────────────────────────────────────────────
 const mockStickerScanFindFirst = jest.fn();
 const mockExecuteRaw = jest.fn();
+const mockSystemSettingFindUnique = jest.fn().mockResolvedValue({ value: 'true' });
 
 jest.mock('../../src/lib/prisma', () => ({
   __esModule: true,
   default: {
     stickerScan: { findFirst: mockStickerScanFindFirst },
+    systemSetting: { findUnique: mockSystemSettingFindUnique },
     $executeRaw: mockExecuteRaw,
   },
   prisma: {
     stickerScan: { findFirst: mockStickerScanFindFirst },
+    systemSetting: { findUnique: mockSystemSettingFindUnique },
     $executeRaw: mockExecuteRaw,
   },
 }));
