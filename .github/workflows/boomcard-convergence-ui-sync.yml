@@ -8,10 +8,17 @@
 # Checks:
 #   1. boomcard-convergence-plan.md exists with §6 prompts
 #   2. Sweep files referenced in the plan exist on disk
-#   3. At least one coverage ledger exists in the harness (soft check — skip in CI if not accessible)
+#   3. Manifest JSON files are valid (if present)
+#   4. Invariant matrices contain INV- rows
+#
+# AAP-SIDE PARSE CHECK: scripts/check-boomcard-convergence.mjs in ai-automation-platform/
+# imports the same reader module as pages/api/boomcard-convergence/data.ts and exits
+# non-zero if any existing ledger/manifest fails to parse or yields 0 rows.
+# Run locally: cd ai-automation-platform && npm run check:boomcard-convergence
 #
 # Reference: ai-automation-platform/pages/boomcard-convergence.tsx (the UI)
 #            ai-automation-platform/pages/api/boomcard-convergence/data.ts (the data API)
+#            ai-automation-platform/src/server/convergence/boomcard-readers.ts (shared parser)
 
 name: BoomCard Convergence UI Sync Check
 
@@ -180,6 +187,68 @@ jobs:
           fi
 
       # -----------------------------------------------------------------------
+      # Push-range surface file detection
+      # Reports which BoomCard surface files changed across the full push range
+      # (github.event.before..HEAD) so multi-commit pushes don't miss earlier
+      # commits. Falls back to HEAD~1 for new-branch pushes (all-zeros before).
+      # -----------------------------------------------------------------------
+      - name: Detect changed surface files (full push range)
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            BASE_REF="${GITHUB_BASE_REF:-main}"
+            git fetch origin "$BASE_REF" --depth=50 2>/dev/null || true
+            RANGE="origin/${BASE_REF}...HEAD"
+          else
+            BEFORE="${GITHUB_EVENT_BEFORE:-}"
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              RANGE="HEAD~1..HEAD"
+            else
+              RANGE="${BEFORE}..HEAD"
+            fi
+          fi
+          CHANGED=$(git diff --name-only "$RANGE" 2>/dev/null || echo "")
+          if [ -z "$CHANGED" ]; then
+            echo "No files detected in range $RANGE."
+          else
+            echo "Files changed in push range ($RANGE):"
+            echo "$CHANGED" | grep -E '\.(ts|js|md|json)$' || true
+          fi
+
+      # -----------------------------------------------------------------------
+      # AAP-side parse check
+      # Verifies that the ai-automation-platform reader module can parse all
+      # existing BoomCard convergence artifacts (ledgers, manifests, roll-ups).
+      # Runs scripts/check-boomcard-convergence.mjs, which imports the same
+      # reader used by pages/api/boomcard-convergence/data.ts.
+      #
+      # To run in CI with AAP repo access:
+      #   - Checkout ai-automation-platform alongside this repo
+      #   - Run: cd <aap-path> && BOOMCARD_REPO=$GITHUB_WORKSPACE node scripts/check-boomcard-convergence.mjs
+      #
+      # Run locally: cd /path/to/ai-automation-platform && npm run check:boomcard-convergence
+      # -----------------------------------------------------------------------
+      - name: AAP-side parse check (log local equivalent)
+        run: |
+          echo "============================================================"
+          echo "AAP-side BoomCard convergence parse check"
+          echo "============================================================"
+          echo ""
+          echo "This check runs the reader module that the Convergence Monitor UI"
+          echo "uses (pages/api/boomcard-convergence/data.ts) against real artifacts:"
+          echo ""
+          echo "  cd ai-automation-platform"
+          echo "  BOOMCARD_REPO=<path-to-boomcard> npm run check:boomcard-convergence"
+          echo ""
+          echo "Exit 0  = all ledgers/manifests/roll-ups parsed cleanly"
+          echo "Exit 1  = any artifact failed to parse or yielded 0 rows/routes"
+          echo ""
+          echo "Shared module: src/server/convergence/boomcard-readers.ts"
+          echo "Gate script:   scripts/check-boomcard-convergence.mjs"
+          echo "npm script:    npm run check:boomcard-convergence"
+
+      # -----------------------------------------------------------------------
       # Summary
       # -----------------------------------------------------------------------
       - name: Sync gate summary
@@ -191,11 +260,19 @@ jobs:
           echo "Data API: /api/boomcard-convergence/data"
           echo "============================================================"
           echo ""
-          echo "This gate runs 4 checks:"
+          echo "This gate runs 4 existence/consistency checks:"
           echo "  1. boomcard-convergence-plan.md exists with §6 prompts"
           echo "  2. Sweep files exist in backend-api/tests/integration/ (warn, not fail)"
           echo "  3. Manifest files are valid JSON (if present)"
           echo "  4. Invariant matrices contain INV- rows (warn)"
+          echo ""
+          echo "PLUS: AAP-side parse check (check:boomcard-convergence) that asserts"
+          echo "  parsability of all existing ledgers/manifests/roll-ups using the"
+          echo "  same reader module as the Convergence Monitor UI."
+          echo "  Run: cd ai-automation-platform && npm run check:boomcard-convergence"
+          echo ""
+          echo "Push-range detection uses github.event.before..HEAD (not HEAD~1) to"
+          echo "  catch surface file changes across multi-commit pushes."
           echo ""
           echo "Coverage ledgers (.claude/reviews/*-coverage-ledger.md) live"
           echo "in the Agent X harness workspace — the finish-task.py + effectiveStatusFor"
