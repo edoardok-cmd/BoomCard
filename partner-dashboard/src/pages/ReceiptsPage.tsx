@@ -21,20 +21,20 @@ const PageHeader = styled.div`
 const Title = styled.h1`
   font-size: 2rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--color-text-primary);
   margin: 0 0 0.5rem 0;
   display: flex;
   align-items: center;
   gap: 0.75rem;
 
   svg {
-    color: #6b7280;
+    color: var(--color-text-secondary);
   }
 `;
 
 const Subtitle = styled.p`
   font-size: 1rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   margin: 0;
 `;
 
@@ -51,9 +51,9 @@ const CashbackSummary = styled.div`
 `;
 
 const CashbackCard = styled.div<{ $type: 'available' | 'pending' }>`
-  background: ${({ $type }) => ($type === 'available' ? '#000000' : '#f9fafb')};
-  color: ${({ $type }) => ($type === 'available' ? 'white' : '#111827')};
-  border: 2px solid ${({ $type }) => ($type === 'available' ? '#000000' : '#e5e7eb')};
+  background: ${({ $type }) => ($type === 'available' ? '#000000' : 'var(--color-background-secondary)')};
+  color: ${({ $type }) => ($type === 'available' ? 'white' : 'var(--color-text-primary)')};
+  border: 2px solid ${({ $type }) => ($type === 'available' ? '#000000' : 'var(--color-border)')};
   border-radius: 1rem;
   padding: 1.5rem 2rem;
   display: flex;
@@ -88,13 +88,13 @@ const PeriodChip = styled.button<{ $active: boolean }>`
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
-  border: 2px solid ${({ $active }) => ($active ? '#000000' : '#e5e7eb')};
-  background: ${({ $active }) => ($active ? '#000000' : 'white')};
-  color: ${({ $active }) => ($active ? 'white' : '#374151')};
+  border: 2px solid ${({ $active }) => ($active ? '#000000' : 'var(--color-border)')};
+  background: ${({ $active }) => ($active ? '#000000' : 'var(--color-background)')};
+  color: ${({ $active }) => ($active ? 'white' : 'var(--color-text-primary)')};
   transition: all 0.15s;
 
   &:hover {
-    border-color: #000000;
+    border-color: var(--color-text-primary);
   }
 `;
 
@@ -112,9 +112,9 @@ const FilterButton = styled.button<{ $active?: boolean }>`
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem 1.25rem;
-  background: ${props => props.$active ? '#000000' : 'white'};
-  color: ${props => props.$active ? 'white' : '#111827'};
-  border: 2px solid ${props => props.$active ? '#000000' : '#e5e7eb'};
+  background: ${props => props.$active ? '#000000' : 'var(--color-background)'};
+  color: ${props => props.$active ? 'white' : 'var(--color-text-primary)'};
+  border: 2px solid ${props => props.$active ? '#000000' : 'var(--color-border)'};
   border-radius: 0.75rem;
   font-size: 0.9375rem;
   font-weight: 600;
@@ -123,7 +123,7 @@ const FilterButton = styled.button<{ $active?: boolean }>`
 
   &:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-hover);
   }
 
   svg {
@@ -147,8 +147,8 @@ const FiltersPanel = styled.div<{ $isOpen: boolean }>`
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1rem;
   padding: 1.5rem;
-  background: white;
-  border: 2px solid #e5e7eb;
+  background: var(--color-background-secondary);
+  border: 2px solid var(--color-border);
   border-radius: 1rem;
   margin-bottom: 2rem;
 `;
@@ -162,21 +162,21 @@ const FilterGroup = styled.div`
 const FilterLabel = styled.label`
   font-size: 0.875rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--color-text-secondary);
 `;
 
 const FilterSelect = styled.select`
   padding: 0.75rem;
-  border: 2px solid #e5e7eb;
+  border: 2px solid var(--color-border);
   border-radius: 0.5rem;
   font-size: 0.9375rem;
-  color: #111827;
-  background: white;
+  color: var(--color-text-primary);
+  background: var(--color-background);
   cursor: pointer;
 
   &:focus {
     outline: none;
-    border-color: #000000;
+    border-color: var(--color-text-primary);
   }
 `;
 
@@ -192,11 +192,11 @@ const FilterChip = styled.div`
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
-  background: #f3f4f6;
+  background: var(--color-background-tertiary);
   border-radius: 9999px;
   font-size: 0.875rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--color-text-secondary);
 
   button {
     background: none;
@@ -205,10 +205,10 @@ const FilterChip = styled.div`
     padding: 0;
     display: flex;
     align-items: center;
-    color: #6b7280;
+    color: var(--color-text-secondary);
 
     &:hover {
-      color: #111827;
+      color: var(--color-text-primary);
     }
 
     svg {
@@ -232,27 +232,27 @@ const ReceiptsGrid = styled.div`
 const EmptyState = styled.div`
   text-align: center;
   padding: 4rem 2rem;
-  background: white;
-  border: 2px dashed #e5e7eb;
+  background: var(--color-background-secondary);
+  border: 2px dashed var(--color-border);
   border-radius: 1rem;
 
   svg {
     width: 64px;
     height: 64px;
-    color: #d1d5db;
+    color: var(--color-text-tertiary);
     margin: 0 auto 1rem;
   }
 
   h3 {
     font-size: 1.25rem;
     font-weight: 700;
-    color: #111827;
+    color: var(--color-text-primary);
     margin: 0 0 0.5rem 0;
   }
 
   p {
     font-size: 0.9375rem;
-    color: #6b7280;
+    color: var(--color-text-secondary);
     margin: 0 0 1.5rem 0;
   }
 `;
@@ -267,9 +267,9 @@ const Pagination = styled.div`
 
 const PageButton = styled.button<{ $active?: boolean }>`
   padding: 0.75rem 1.25rem;
-  background: ${props => props.$active ? '#000000' : 'white'};
-  color: ${props => props.$active ? 'white' : '#111827'};
-  border: 2px solid ${props => props.$active ? '#000000' : '#e5e7eb'};
+  background: ${props => props.$active ? '#000000' : 'var(--color-background)'};
+  color: ${props => props.$active ? 'white' : 'var(--color-text-primary)'};
+  border: 2px solid ${props => props.$active ? '#000000' : 'var(--color-border)'};
   border-radius: 0.5rem;
   font-size: 0.9375rem;
   font-weight: 600;
@@ -278,7 +278,7 @@ const PageButton = styled.button<{ $active?: boolean }>`
 
   &:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-hover);
   }
 
   &:disabled {
@@ -290,14 +290,14 @@ const PageButton = styled.button<{ $active?: boolean }>`
 
 const PageInfo = styled.div`
   font-size: 0.9375rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
 `;
 
 const LoadingSpinner = styled.div`
   text-align: center;
   padding: 4rem 2rem;
   font-size: 1.125rem;
-  color: #6b7280;
+  color: var(--color-text-secondary);
 `;
 
 type Period = '7' | '30' | 'all';
@@ -531,7 +531,7 @@ export const ReceiptsPage: React.FC = () => {
 
       {getActiveFilters().length > 0 && (
         <ActiveFilters>
-          <span style={{ fontSize: '0.875rem', color: '#6b7280', marginRight: '0.5rem' }}>
+          <span style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', marginRight: '0.5rem' }}>
             {content.activeFilters}
           </span>
           {getActiveFilters().map((filter) => (
