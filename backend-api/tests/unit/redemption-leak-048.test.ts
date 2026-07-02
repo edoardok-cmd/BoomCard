@@ -9,21 +9,29 @@
  * fail if the route forgot to destructure it away.
  */
 
+// ── systemSettings mock: short-circuit the module-level TTL cache ────────────
+// Without this, the _strCache Map in systemSettings.ts survives jest.clearAllMocks()
+// between tests, meaning the second receipt-path test uses a cached value and
+// never actually calls prisma.systemSetting.findUnique.
+jest.mock('../../src/utils/systemSettings', () => ({
+  getSystemSettingStr: jest.fn().mockResolvedValue('true'),
+  getSystemSettingInt: jest.fn().mockResolvedValue(0),
+  getSystemSettingFloat: jest.fn().mockResolvedValue(0),
+  invalidateSystemSettingCache: jest.fn(),
+}));
+
 // ── Prisma mock ─────────────────────────────────────────────────────────────
 const mockStickerScanFindFirst = jest.fn();
 const mockExecuteRaw = jest.fn();
-const mockSystemSettingFindUnique = jest.fn().mockResolvedValue({ value: 'true' });
 
 jest.mock('../../src/lib/prisma', () => ({
   __esModule: true,
   default: {
     stickerScan: { findFirst: mockStickerScanFindFirst },
-    systemSetting: { findUnique: mockSystemSettingFindUnique },
     $executeRaw: mockExecuteRaw,
   },
   prisma: {
     stickerScan: { findFirst: mockStickerScanFindFirst },
-    systemSetting: { findUnique: mockSystemSettingFindUnique },
     $executeRaw: mockExecuteRaw,
   },
 }));
@@ -162,10 +170,32 @@ describe('INV-RDM-048 LEAK: cashbackPercent stripped from sticker scan responses
       .expect(200);
 
     expect(res.body.success).toBe(true);
-    // cashbackPercent must be absent (stripped by the route's destructuring)
+    // cashbackPercent must be absent at the top level (stripped by the route's destructuring)
     expect(res.body.data.cashbackPercent).toBeUndefined();
+    // cashbackPercent must also be absent from the display sub-object (built from toDualCurrency)
+    expect(res.body.data.display?.cashbackPercent).toBeUndefined();
     // cashbackAmount must still be present (selective strip, not a blank response)
     expect(res.body.data.cashbackAmount).toBeDefined();
     expect(res.body.data.cashbackAmount).toBe(10);
+  });
+
+  it('[LEAK] INV-RDM-048c: POST /scan/:scanId/receipt duplicate path returns 400 with no scan fields', async () => {
+    // Arrange: scan exists (EXIF gate passes), but a duplicate receipt is detected
+    mockStickerScanFindFirst.mockResolvedValue({
+      sessionStartedAt: new Date(Date.now() - 5_000),
+      createdAt: new Date(Date.now() - 5_000),
+    });
+    mockFindDuplicateReceipt.mockResolvedValue({ id: 'existing-scan-id' });
+    mockExecuteRaw.mockResolvedValue(undefined);
+
+    const res = await request(app)
+      .post(`/api/stickers/scan/${TEST_SCAN_ID}/receipt`)
+      .attach('receipt', Buffer.from('fake-image-data'), 'receipt.jpg')
+      .expect(400);
+
+    expect(res.body.success).toBe(false);
+    // The 400 error JSON must not contain any scan fields
+    expect(res.body.cashbackPercent).toBeUndefined();
+    expect(res.body.data).toBeUndefined();
   });
 });
