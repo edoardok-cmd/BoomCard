@@ -1,7 +1,7 @@
 # BoomCard Redemption Surface — Invariant Matrix
 
 **Surface:** `/api/stickers`, `/api/venues`, `/api/bookings`, `/api/messaging`, `/api/dashboard`  
-**Routes:** 55 route-methods (stickers 24, venues 12, bookings 7, messaging 11, dashboard 1) / 81 invariants (scope = redemption; counts verified against route files — app-route-ownership-manifest.json is stale for bookings/messaging)  
+**Routes:** 55 route-methods (stickers 24, venues 12, bookings 7, messaging 11, dashboard 1) / 83 invariants (scope = redemption; counts verified against route files — app-route-ownership-manifest.json is stale for bookings/messaging)  
 **Created:** Round 1 bootstrap (BC-REDEMPTION-SPEC-REAUDIT)  
 **Spec ref:** docs/specs/05-consolidated-unified-spec.md (§1.1–§11.3), stickers.routes.ts, venues.routes.ts
 

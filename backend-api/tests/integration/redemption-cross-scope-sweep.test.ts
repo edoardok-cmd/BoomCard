@@ -95,13 +95,8 @@ async function createPartnerWithVenue(): Promise<{
   // (auth.service.ts L879) and the authenticate middleware (auth.middleware.ts L189).
   await prisma.user.update({ where: { id: user.id }, data: { role: 'PARTNER', status: 'ACTIVE' } });
 
-  // Login again to get a fresh JWT with role=PARTNER (token from registration has role=USER)
-  const loginRes = await request(app)
-    .post('/api/auth/login')
-    .send({ email: (await prisma.user.findUnique({ where: { id: user.id }, select: { email: true } }))!.email, password: 'TestPass123!', clientType: 'web' });
-  const partnerToken = loginRes.status === 200 ? loginRes.body.data.accessToken : accessToken;
-
-  // Create partner record
+  // Create partner record BEFORE login — auth.service.ts L918-920 guards: a PARTNER-role
+  // user with no matching Partner row gets 403 PARTNER_NOT_FOUND. Login must see the row.
   const partner = await prisma.partner.create({
     data: {
       userId: user.id,
@@ -114,6 +109,15 @@ async function createPartnerWithVenue(): Promise<{
       isVisible: true,
     },
   });
+
+  // Login after partner.create to get a fresh JWT with role=PARTNER (registration token has role=USER).
+  const loginRes = await request(app)
+    .post('/api/auth/login')
+    .send({ email: (await prisma.user.findUnique({ where: { id: user.id }, select: { email: true } }))!.email, password: 'TestPass123!', clientType: 'web' });
+  if (loginRes.status !== 200) {
+    throw new Error(`createPartnerWithVenue login failed (${loginRes.status}): ${JSON.stringify(loginRes.body)}`);
+  }
+  const partnerToken = loginRes.body.data.accessToken;
 
   // Create venue owned by this partner
   const venue = await prisma.venue.create({

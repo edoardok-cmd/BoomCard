@@ -1,11 +1,11 @@
 {
   "generated": "run UPDATE_ROUTE_OWNERSHIP=1 to refresh",
-  "total": 477,
+  "total": 500,
   "byScope": {
     "admin": 232,
-    "user": 158,
+    "user": 165,
     "partner": 24,
-    "redemption": 39,
+    "redemption": 55,
     "public": 7,
     "system": 17
   },
@@ -1277,6 +1277,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/auth/send-phone-otp",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
       "path": "/api/auth/stop-impersonate",
       "scope": "admin"
     },
@@ -1306,8 +1311,43 @@
       "scope": "user"
     },
     {
+      "method": "POST",
+      "path": "/api/auth/verify-phone",
+      "scope": "user"
+    },
+    {
       "method": "GET",
       "path": "/api/bookings/",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/bookings/",
+      "scope": "redemption"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/bookings/:id",
+      "scope": "redemption"
+    },
+    {
+      "method": "GET",
+      "path": "/api/bookings/:id",
+      "scope": "redemption"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/bookings/:id",
+      "scope": "redemption"
+    },
+    {
+      "method": "GET",
+      "path": "/api/bookings/partner",
+      "scope": "redemption"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/bookings/partner/:id/status",
       "scope": "redemption"
     },
     {
@@ -1517,7 +1557,82 @@
     },
     {
       "method": "GET",
+      "path": "/api/loyalty/badges",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/loyalty/rewards",
+      "scope": "user"
+    },
+    {
+      "method": "POST",
+      "path": "/api/loyalty/rewards/:rewardId/redeem",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/loyalty/rewards/redemptions",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/loyalty/transactions",
+      "scope": "user"
+    },
+    {
+      "method": "GET",
       "path": "/api/messaging/conversations",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/messaging/conversations",
+      "scope": "redemption"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/messaging/conversations/:id",
+      "scope": "redemption"
+    },
+    {
+      "method": "GET",
+      "path": "/api/messaging/conversations/:id",
+      "scope": "redemption"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/messaging/conversations/:id",
+      "scope": "redemption"
+    },
+    {
+      "method": "GET",
+      "path": "/api/messaging/conversations/:id/messages",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/messaging/conversations/:id/messages",
+      "scope": "redemption"
+    },
+    {
+      "method": "POST",
+      "path": "/api/messaging/conversations/:id/read",
+      "scope": "redemption"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/messaging/messages/:messageId",
+      "scope": "redemption"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/messaging/messages/:messageId",
+      "scope": "redemption"
+    },
+    {
+      "method": "GET",
+      "path": "/api/messaging/unread-count",
       "scope": "redemption"
     },
     {
