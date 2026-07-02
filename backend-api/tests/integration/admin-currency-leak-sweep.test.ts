@@ -16,11 +16,12 @@
  *
  * This file does NOT edit any src/** code. It is a test-only behavioural probe.
  *
- * EXPECTED STATE: RED. It is designed to surface the currently-open run-6
- * leaks (payouts wallet.* / filteredSummary.*Total, subscriber wallet.*,
- * subscription paymentTotalAmount/amount, cashback dashboard/summary,
- * dashboard finance.* scalars). Do NOT weaken the test to make it green —
- * it goes green only once the gating bugs are fixed in src/**.
+ * EXPECTED STATE: GREEN. All run-6 leaks (payouts wallet.* /
+ * filteredSummary.*Total, subscriber wallet.*, subscription
+ * paymentTotalAmount/amount, cashback dashboard/summary, dashboard finance.*
+ * scalars, payout-threshold minAmount) have been fixed and gated through
+ * toDualCurrency. The sweep must stay green — any new raw BGN leak or
+ * ungated money field fails the test and blocks the re-audit gate.
  */
 
 import request from 'supertest';

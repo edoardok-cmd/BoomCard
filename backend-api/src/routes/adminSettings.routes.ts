@@ -25,9 +25,9 @@
 
 import { Router, Response } from 'express';
 import { FraudRuleTier, SubscriptionPlan } from '@prisma/client';
-import { invalidatePayoutThresholdCache, getPayoutThresholdBGNSync } from '../utils/payoutThreshold';
+import { invalidatePayoutThresholdCache, getPayoutThresholdBGN } from '../utils/payoutThreshold';
 import { invalidateSystemSettingCache } from '../utils/systemSettings';
-import { isCurrencyTransitionWindowOpen, invalidateCurrencyDisplayCache, CURRENCY_TRANSITION_WINDOW_SETTING } from '../utils/currencyDisplay';
+import { isCurrencyTransitionWindowOpen, invalidateCurrencyDisplayCache, CURRENCY_TRANSITION_WINDOW_SETTING, toDualCurrency } from '../utils/currencyDisplay';
 import { authenticate, authorize, requirePermission, requireActiveAdmin, AuthRequest } from '../middleware/auth.middleware';
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
@@ -61,18 +61,22 @@ router.get(
   requirePermission('settings.read'),
   asyncHandler(async (_req: AuthRequest, res: Response) => {
     const plans: SubscriptionPlan[] = ['BASIC', 'PREMIUM_WEEKLY', 'PREMIUM_MONTHLY'];
-    const rows = await Promise.all(
-      plans.map((plan) =>
-        prisma.payoutThreshold.findFirst({ where: { plan }, orderBy: { createdAt: 'desc' } })
-      )
-    );
+    const [rows, windowOpen] = await Promise.all([
+      Promise.all(
+        plans.map((plan) =>
+          prisma.payoutThreshold.findFirst({ where: { plan }, orderBy: { createdAt: 'desc' } })
+        )
+      ),
+      isCurrencyTransitionWindowOpen(),
+    ]);
 
-    const current: Record<string, { minAmount: number; notes: string | null; updatedAt: string | null }> = {};
+    const current: Record<string, { minAmount: ReturnType<typeof toDualCurrency>; notes: string | null; updatedAt: string | null }> = {};
     for (let i = 0; i < plans.length; i++) {
       const plan = plans[i];
       const row = rows[i];
+      const bgnAmount = row ? row.minAmount : await getPayoutThresholdBGN(plan);
       current[plan] = {
-        minAmount: row ? row.minAmount : getPayoutThresholdBGNSync(plan),
+        minAmount: toDualCurrency(bgnAmount, windowOpen),
         notes: row?.notes ?? null,
         updatedAt: row?.createdAt?.toISOString() ?? null,
       };
@@ -91,10 +95,10 @@ router.get(
   '/payout-thresholds/history',
   requirePermission('settings.read'),
   asyncHandler(async (_req: AuthRequest, res: Response) => {
-    const history = await prisma.payoutThreshold.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 30,
-    });
+    const [history, windowOpen] = await Promise.all([
+      prisma.payoutThreshold.findMany({ orderBy: { createdAt: 'desc' }, take: 30 }),
+      isCurrencyTransitionWindowOpen(),
+    ]);
 
     // For rows that predate the createdByName column, fall back to a live lookup.
     const needsLookup = history.filter((r) => r.createdBy && !r.createdByName);
@@ -105,11 +109,14 @@ router.get(
     const adminMap = new Map(admins.map((u) => [u.id, u]));
 
     const data = history.map((r) => {
+      const { minAmount: rawMin, ...rest } = r;
+      const minAmount = toDualCurrency(rawMin, windowOpen);
       const storedName = r.createdByName;
-      if (storedName) return { ...r, createdByEmail: null, createdByName: storedName };
+      if (storedName) return { ...rest, minAmount, createdByEmail: null, createdByName: storedName };
       const admin = r.createdBy ? adminMap.get(r.createdBy) : undefined;
       return {
-        ...r,
+        ...rest,
+        minAmount,
         createdByEmail: admin?.email ?? null,
         createdByName: admin ? [admin.firstName, admin.lastName].filter(Boolean).join(' ') || admin.email : null,
       };
