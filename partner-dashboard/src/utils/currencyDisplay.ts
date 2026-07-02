@@ -61,9 +61,11 @@ export function formatWithCurrency(
   mode: CurrencyDisplayMode,
   language: 'bg' | 'en' = 'bg',
 ): string {
-  const fixed = amountBGN.toFixed(2);
+  const coerced = Number(amountBGN);
+  if (isNaN(coerced)) return '—';
+  const fixed = coerced.toFixed(2);
   const bgnLabel = language === 'bg' ? 'лв' : 'BGN';
-  const eur = convertBGNToEUR(amountBGN);
+  const eur = convertBGNToEUR(coerced);
 
   switch (mode) {
     case 'BGN_ONLY':

@@ -7,7 +7,6 @@ import { apiService } from '../services/api.service';
 import { PartnerReceipt, ReceiptStatus, ReceiptFilters } from '../types/receipt.types';
 import { ReceiptCard } from '../components/feature/ReceiptCard';
 import { FileText, Filter, Smartphone, X } from 'lucide-react';
-import { useCurrencyDisplay, formatWithCurrency } from '../utils/currencyDisplay';
 
 const PageContainer = styled.div`
   max-width: 1400px;
@@ -303,15 +302,22 @@ const LoadingSpinner = styled.div`
 
 type Period = '7' | '30' | 'all';
 
+// The backend /wallet/statistics endpoint returns amounts as DualCurrencyAmount
+// objects (bgn/eur pair) not plain numbers — see backend utils/currencyDisplay.ts.
+interface DualCurrencyAmount {
+  bgn: number | null;
+  eur: number;
+  windowOpen: boolean;
+}
+
 interface CashbackSummaryData {
-  availableBalance: number;
-  pendingBalance: number;
+  availableBalance: DualCurrencyAmount;
+  pendingBalance: DualCurrencyAmount;
 }
 
 export const ReceiptsPage: React.FC = () => {
   const { language } = useLanguage();
   const navigate = useNavigate();
-  const currencyMode = useCurrencyDisplay();
   const [receipts, setReceipts] = useState<PartnerReceipt[]>([]);
   const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
@@ -398,7 +404,8 @@ export const ReceiptsPage: React.FC = () => {
       const data = await apiService.get<CashbackSummaryData>('/wallet/statistics');
       setCashback(data);
     } catch {
-      setCashback({ availableBalance: 0, pendingBalance: 0 });
+      const zero: DualCurrencyAmount = { bgn: 0, eur: 0, windowOpen: false };
+      setCashback({ availableBalance: zero, pendingBalance: zero });
     }
   };
 
@@ -468,10 +475,13 @@ export const ReceiptsPage: React.FC = () => {
     }
   };
 
-  // MEDIUM-2 fix: currency-aware formatting instead of BGN-only suffix.
-  // Post-transition (2026-01-01) the mode is EUR_ONLY per Clash 12.1 / §7.3.
-  const formatCashback = (amount: number) =>
-    formatWithCurrency(amount, currencyMode, language === 'bg' ? 'bg' : 'en');
+  const formatCashback = (amount: DualCurrencyAmount): string => {
+    const bgnLabel = language === 'bg' ? 'лв' : 'BGN';
+    if (amount.windowOpen && amount.bgn != null) {
+      return `${amount.bgn.toFixed(2)} ${bgnLabel} / €${amount.eur.toFixed(2)}`;
+    }
+    return `€${amount.eur.toFixed(2)}`;
+  };
 
   return (
     <PageContainer>

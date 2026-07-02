@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { apiService } from '../services/api.service';
 import { getAccessToken } from '../lib/auth/session';
 
@@ -29,6 +29,8 @@ export const CurrencyDisplayProvider: React.FC<CurrencyDisplayProviderProps> = (
   const [windowOpen, setWindowOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Once we learn the user is not an admin (403), stop polling — it will always 403.
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const fetchCurrencyDisplayMode = async () => {
@@ -77,9 +79,20 @@ export const CurrencyDisplayProvider: React.FC<CurrencyDisplayProviderProps> = (
 
         setError(null);
       } catch (err) {
-        const status = (err as { response?: { status?: number } })?.response?.status;
+        // Axios v0: err.response.status; Axios v1: also exposes err.status directly.
+        const status =
+          (err as { response?: { status?: number } })?.response?.status ??
+          (err as { status?: number })?.status;
+        if (status === 403) {
+          // Non-admin user — this endpoint will always 403; stop polling.
+          if (pollIntervalRef.current !== null) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          return;
+        }
         if (status === 401) {
-          // Not authenticated yet — silent no-op, keep defaults
+          // Not authenticated yet — silent no-op, keep polling in case they log in.
           return;
         }
         console.error('Error fetching currency display mode:', err);
@@ -94,12 +107,15 @@ export const CurrencyDisplayProvider: React.FC<CurrencyDisplayProviderProps> = (
 
     fetchCurrencyDisplayMode();
 
-    // Set up polling interval (optional, to sync changes across tabs)
-    const pollInterval = setInterval(() => {
-      fetchCurrencyDisplayMode();
-    }, POLL_INTERVAL_MS);
+    // Poll to sync changes (e.g. admin toggles the flag in another tab).
+    // Stopped early if we learn the user is not an admin (403).
+    pollIntervalRef.current = setInterval(fetchCurrencyDisplayMode, POLL_INTERVAL_MS);
 
-    return () => clearInterval(pollInterval);
+    return () => {
+      if (pollIntervalRef.current !== null) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
   }, []);
 
   return (
