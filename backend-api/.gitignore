@@ -4,3 +4,9 @@ node_modules
 
 /src/generated/prisma
 .vercel
+
+# Generated per-HEAD sweep evidence for the convergence dashboard.
+# Records the git SHA it was run against; must equal live HEAD to count as
+# fresh, so it can never be committed without immediately going stale. Regenerate
+# with `npm run sweeps:report`.
+tests/sweep-results.json

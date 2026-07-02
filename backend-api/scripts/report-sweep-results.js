@@ -307,15 +307,23 @@ function main() {
       process.exit(1);
     }
 
-    // Clean up temp file
+    // Persist a copy of the raw jest JSON for post-run inspection, then clean temp.
+    try { fs.writeFileSync(path.join(TESTS_DIR, 'sweep-jest-raw.json'), JSON.stringify(jestOutput, null, 2)); } catch (_) { /* ignore */ }
     try { fs.unlinkSync(TMP_JSON); } catch (_) { /* ignore */ }
 
     // 6. Map jest testResults back to sweep names
     const fileToSweep = buildFileToSweepIndex();
 
     for (const testResult of (jestOutput.testResults || [])) {
-      // testResult.testFilePath is an absolute path
-      const filePath = testResult.testFilePath.replace(/\\/g, '/');
+      // testResult.testFilePath is an absolute path. Guard against entries that
+      // lack it (e.g. a suite that failed to load) — skip with a warning so
+      // step 7 marks the missing sweep as fail rather than crashing the reporter.
+      const rawPath = testResult.testFilePath || testResult.name;
+      if (!rawPath) {
+        console.warn(`[WARN] jest result entry has no testFilePath — status=${testResult.status}, message=${(testResult.message || testResult.failureMessage || '').slice(0, 300)}`);
+        continue;
+      }
+      const filePath = rawPath.replace(/\\/g, '/');
       const sweepName = fileToSweep[filePath];
       if (!sweepName) {
         // Try partial match — the path in the jest output should match one of our entries
