@@ -1282,6 +1282,8 @@ export class AuthService {
         marketingConsentPhone: true,
         totpEnabledAt: true,
         mustChangePassword: true,
+        phoneVerified: true,
+        phoneVerifiedAt: true,
         loyaltyAccount: {
           select: {
             tier: true,
@@ -1346,6 +1348,9 @@ export class AuthService {
     if (city !== undefined) sanitizedData.city = city && city.trim() !== '' ? city.trim() : null;
     const country = (data as any).country;
     if (country !== undefined) sanitizedData.country = country && country.trim() !== '' ? country.trim() : null;
+    // Allow callers to atomically reset phone-verified state in the same write.
+    if ((data as any).phoneVerified !== undefined) sanitizedData.phoneVerified = (data as any).phoneVerified;
+    if ((data as any).phoneVerifiedAt !== undefined) sanitizedData.phoneVerifiedAt = (data as any).phoneVerifiedAt;
 
     const user = await prisma.user.update({
       where: { id: userId },
@@ -1363,6 +1368,8 @@ export class AuthService {
         status: true,
         emailVerified: true,
         createdAt: true,
+        phoneVerified: true,
+        phoneVerifiedAt: true,
       },
     });
 

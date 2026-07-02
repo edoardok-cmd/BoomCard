@@ -10,7 +10,7 @@ import { AuthService } from '../services/auth.service';
 import { imageUploadService } from '../services/imageUpload.service';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
-import { switchAccountRateLimiter, switchableAccountsRateLimiter, impersonateRateLimiter } from '../middleware/security.middleware';
+import { switchAccountRateLimiter, switchableAccountsRateLimiter, impersonateRateLimiter, sendPhoneOtpRateLimiter, verifyPhoneOtpRateLimiter } from '../middleware/security.middleware';
 import { z } from 'zod';
 import { SubscriptionStatus, SubscriptionPlan, UserStatus, CardType } from '@prisma/client';
 import QRCode from 'qrcode';
@@ -24,6 +24,7 @@ import { fireAutomation } from '../lib/automationDispatcher';
 import { consumeActivationToken } from '../services/partnerActivation.service';
 import { ActivationLinkError } from '../services/activationLink.service';
 import { detach } from '../utils/detach';
+import { verifyService } from '../services/verify.service';
 
 const TERMS_VERSION = process.env.TERMS_VERSION ? String(process.env.TERMS_VERSION) : '2026-02-24';
 
@@ -85,6 +86,10 @@ router.post(
       accountType,
       businessInfo,
     });
+
+    if (phone && typeof phone === 'string') {
+      detach(verifyService.sendOtp(phone), (err) => logger.warn('OTP send failed at registration', err));
+    }
 
     res.status(201).json({
       success: true,
@@ -517,14 +522,37 @@ router.put(
     // Re-run validation inline for non-partner callers
     const { firstName, lastName, phone, city, country, preferredLanguage } = req.body;
 
-    const user = await AuthService.updateProfile(req.user!.id, {
+    const currentUser = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { phone: true },
+    });
+
+    const phoneChanged = phone !== undefined && phone !== currentUser?.phone;
+
+    // Build profile update payload. When the phone changes, include the
+    // phoneVerified reset in the same write so there is no window between
+    // updating the phone and clearing the verified flag.
+    const profileData: Record<string, any> = {
       firstName,
       lastName,
       phone,
       city,
       country,
       preferredLanguage,
-    } as any);
+    };
+    if (phoneChanged) {
+      profileData.phoneVerified = false;
+      profileData.phoneVerifiedAt = null;
+    }
+
+    const user = await AuthService.updateProfile(req.user!.id, profileData as any);
+
+    if (phoneChanged) {
+      const newPhone = typeof phone === 'string' && phone.trim() !== '' ? phone.trim() : null;
+      if (newPhone) {
+        detach(verifyService.sendOtp(newPhone), (err) => logger.warn('OTP send failed on phone update', err));
+      }
+    }
 
     res.json({
       success: true,
@@ -1534,6 +1562,12 @@ router.post(
       throw err;
     }
 
+    // Fire OTP send for phone verification if a phone number was provided.
+    // Fire-and-forget: failure must not block account creation.
+    if (phone?.trim()) {
+      detach(verifyService.sendOtp(phone.trim()), (err) => logger.warn('OTP send failed at complete-profile', err));
+    }
+
     // Send welcome email (fire-and-forget). Spec §7.1: respect the language
     // the user explicitly selected at profile creation.
     const customerName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email.split('@')[0];
@@ -1563,6 +1597,71 @@ router.post(
       },
     });
   }),
+);
+
+/**
+ * POST /api/auth/send-phone-otp
+ * Trigger a Twilio Verify SMS to the authenticated user's phone number.
+ * Per-user rate limit + Twilio's per-destination limit both apply.
+ */
+router.post(
+  '/send-phone-otp',
+  authenticate,
+  sendPhoneOtpRateLimiter,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const userRecord = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { phone: true },
+    });
+
+    if (!userRecord?.phone) {
+      return res.status(400).json({ success: false, error: 'No phone number on record' });
+    }
+
+    await verifyService.sendOtp(userRecord.phone);
+
+    return res.json({ success: true, message: 'OTP sent' });
+  })
+);
+
+/**
+ * POST /api/auth/verify-phone
+ * Check a Twilio Verify OTP code and stamp phoneVerified on success.
+ * Body: { code: string } — non-empty, 4–10 characters.
+ */
+router.post(
+  '/verify-phone',
+  authenticate,
+  verifyPhoneOtpRateLimiter,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { code } = req.body as { code?: unknown };
+
+    if (!code || typeof code !== 'string' || code.length < 4 || code.length > 10) {
+      return res.status(400).json({ success: false, error: 'code must be a non-empty string of 4–10 characters' });
+    }
+
+    const userRecord = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { phone: true },
+    });
+
+    if (!userRecord?.phone) {
+      return res.status(400).json({ success: false, error: 'No phone number on record' });
+    }
+
+    const approved = await verifyService.checkOtp(userRecord.phone, code);
+
+    if (!approved) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired code' });
+    }
+
+    await prisma.user.update({
+      where: { id: req.user!.id },
+      data: { phoneVerified: true, phoneVerifiedAt: new Date() },
+    });
+
+    return res.json({ success: true, message: 'Phone verified', phoneVerified: true });
+  })
 );
 
 export default router;

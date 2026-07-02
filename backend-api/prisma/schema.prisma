@@ -19,6 +19,8 @@ model User {
   status                     UserStatus                 @default(PENDING_VERIFICATION)
   emailVerified              Boolean                    @default(false)
   emailVerifiedAt            DateTime?
+  phoneVerified              Boolean                    @default(false)
+  phoneVerifiedAt            DateTime?
   lastLoginAt                DateTime?
   stripeCustomerId           String?                    @unique
   createdAt                  DateTime                   @default(now())

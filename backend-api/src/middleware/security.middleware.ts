@@ -290,6 +290,56 @@ export const paymentRateLimiter = rateLimit({
 });
 
 /**
+ * Phone OTP send rate limiter.
+ *
+ * Limits each authenticated user to 5 OTP send requests per 10 minutes.
+ * Keyed by user ID so a single compromised token cannot flood Twilio.
+ * Must be mounted AFTER `authenticate` so req.user is populated.
+ */
+export const sendPhoneOtpRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  max: 5,
+  keyGenerator: (req) => {
+    const userId = (req as any).user?.id;
+    return userId ? `send-phone-otp:${userId}` : `send-phone-otp-ip:${req.ip || 'unknown'}`;
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Too many OTP requests. Please wait before requesting a new code.',
+    });
+  },
+  skip: () => process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test',
+});
+
+/**
+ * Phone OTP verify rate limiter.
+ *
+ * Limits each authenticated user to 10 OTP verify attempts per 10 minutes.
+ * Slightly more permissive than the send limiter (users may mistype).
+ * Keyed by user ID. Must be mounted AFTER `authenticate` so req.user is populated.
+ */
+export const verifyPhoneOtpRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  max: 10,
+  keyGenerator: (req) => {
+    const userId = (req as any).user?.id;
+    return userId ? `verify-phone-otp:${userId}` : `verify-phone-otp-ip:${req.ip || 'unknown'}`;
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Too many verification attempts. Please wait before trying again.',
+    });
+  },
+  skip: () => process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test',
+});
+
+/**
  * Security Headers Middleware
  * Adds additional custom security headers
  */
