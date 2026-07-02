@@ -88,7 +88,7 @@ async function createPartnerWithVenue(): Promise<{
   venueId: string;
 }> {
   // Create user
-  const { user, accessToken } = await createTestUser();
+  const { user, email, password } = await createTestUser();
   cleanupUserIds.push(user.id);
 
   // Promote to PARTNER role + activate — status=PENDING_VERIFICATION blocks both login
@@ -113,7 +113,7 @@ async function createPartnerWithVenue(): Promise<{
   // Login after partner.create to get a fresh JWT with role=PARTNER (registration token has role=USER).
   const loginRes = await request(app)
     .post('/api/auth/login')
-    .send({ email: (await prisma.user.findUnique({ where: { id: user.id }, select: { email: true } }))!.email, password: 'TestPass123!', clientType: 'web' });
+    .send({ email, password, clientType: 'web' });
   if (loginRes.status !== 200) {
     throw new Error(`createPartnerWithVenue login failed (${loginRes.status}): ${JSON.stringify(loginRes.body)}`);
   }
