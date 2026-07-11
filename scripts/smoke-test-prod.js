@@ -19,6 +19,10 @@ function ensurePrivateDir(dir) {
 
 const DIR = ensurePrivateDir('/tmp/audit_screenshots_prod');
 
+// Redact long token-like substrings so an accidental session/auth token in a
+// logged URL doesn't get echoed verbatim to this script's stdout.
+const redact = s => s.replace(/[A-Za-z0-9_-]{24,}/g, '[REDACTED]');
+
 if (!process.env.BOOMCARD_TEST_EMAIL || !process.env.BOOMCARD_TEST_PASSWORD) {
   console.error('Set BOOMCARD_TEST_EMAIL and BOOMCARD_TEST_PASSWORD (see .env.example) before running this script.');
   process.exit(1);
@@ -74,7 +78,7 @@ if (!process.env.BOOMCARD_TEST_EMAIL || !process.env.BOOMCARD_TEST_PASSWORD) {
     await page.click('button:has-text("Качи бележка")');
     await page.waitForTimeout(800);
     const urlAfter = page.url();
-    console.log(`\n  Upload button → ${urlAfter}`);
+    console.log(`\n  Upload button → ${redact(urlAfter)}`);
     console.log(`  ${urlAfter.includes('/upload-receipt') ? '✅' : '❌'} Routes to /upload-receipt`);
     await page.screenshot({ path: `${DIR}/03_upload_page.png`, fullPage: false });
 

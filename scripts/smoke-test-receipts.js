@@ -19,6 +19,10 @@ function ensurePrivateDir(dir) {
 
 const DIR = ensurePrivateDir('/tmp/audit_screenshots_v2');
 
+// Redact long token-like substrings so an accidental session/auth token in a
+// logged URL doesn't get echoed verbatim to this script's stdout.
+const redact = s => s.replace(/[A-Za-z0-9_-]{24,}/g, '[REDACTED]');
+
 if (!process.env.BOOMCARD_TEST_EMAIL || !process.env.BOOMCARD_TEST_PASSWORD) {
   console.error('Set BOOMCARD_TEST_EMAIL and BOOMCARD_TEST_PASSWORD (see .env.example) before running this script.');
   process.exit(1);
@@ -89,7 +93,7 @@ if (!process.env.BOOMCARD_TEST_EMAIL || !process.env.BOOMCARD_TEST_PASSWORD) {
       await uploadBtn.click();
       await page.waitForTimeout(1000);
       const url = page.url();
-      console.log('After clicking upload button, URL:', url);
+      console.log('After clicking upload button, URL:', redact(url));
       await page.screenshot({ path: `${DIR}/03_after_upload_click.png`, fullPage: true });
 
       // Go back to receipts
@@ -109,7 +113,7 @@ if (!process.env.BOOMCARD_TEST_EMAIL || !process.env.BOOMCARD_TEST_PASSWORD) {
   } catch (err) {
     console.error('Error:', err.message);
     await page.screenshot({ path: `${DIR}/error.png`, fullPage: true }).catch(() => {});
-    console.log('URL at error:', page.url());
+    console.log('URL at error:', redact(page.url()));
   } finally {
     await browser.close();
   }
