@@ -141,6 +141,7 @@ const Input = styled.input<{ $hasError?: boolean }>`
   border: 2px solid ${props => props.$hasError ? '#ef4444' : '#e5e7eb'};
   border-radius: 0.5rem;
   font-size: 1rem;
+  color: #111827;
   transition: all 0.2s;
 
   &:focus {
