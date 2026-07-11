@@ -1,6 +1,5 @@
 require('dotenv').config();
 const { chromium } = require('playwright');
-const path = require('path');
 const fs = require('fs');
 
 // Refuses to reuse a pre-existing symlink at the target path (a local attacker
