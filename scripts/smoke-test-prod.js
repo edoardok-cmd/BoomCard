@@ -2,9 +2,22 @@ require('dotenv').config();
 const { chromium } = require('playwright');
 const fs = require('fs');
 
-const DIR = '/tmp/audit_screenshots_prod';
-if (!fs.existsSync(DIR)) fs.mkdirSync(DIR, { mode: 0o700 });
-fs.chmodSync(DIR, 0o700);
+// Refuses to reuse a pre-existing symlink at the target path (a local attacker
+// on a shared /tmp could pre-plant one) instead of blindly mkdir/chmod'ing through it.
+function ensurePrivateDir(dir) {
+  if (fs.existsSync(dir)) {
+    const st = fs.lstatSync(dir);
+    if (st.isSymbolicLink() || !st.isDirectory()) {
+      throw new Error(`Refusing to use ${dir}: exists and is not a plain directory (possible symlink attack)`);
+    }
+  } else {
+    fs.mkdirSync(dir, { mode: 0o700 });
+  }
+  fs.chmodSync(dir, 0o700);
+  return dir;
+}
+
+const DIR = ensurePrivateDir('/tmp/audit_screenshots_prod');
 
 if (!process.env.BOOMCARD_TEST_EMAIL || !process.env.BOOMCARD_TEST_PASSWORD) {
   console.error('Set BOOMCARD_TEST_EMAIL and BOOMCARD_TEST_PASSWORD (see .env.example) before running this script.');

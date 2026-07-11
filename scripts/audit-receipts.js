@@ -3,9 +3,22 @@ const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 
-const SCREENSHOTS_DIR = '/tmp/audit_screenshots';
-if (!fs.existsSync(SCREENSHOTS_DIR)) fs.mkdirSync(SCREENSHOTS_DIR, { mode: 0o700 });
-fs.chmodSync(SCREENSHOTS_DIR, 0o700);
+// Refuses to reuse a pre-existing symlink at the target path (a local attacker
+// on a shared /tmp could pre-plant one) instead of blindly mkdir/chmod'ing through it.
+function ensurePrivateDir(dir) {
+  if (fs.existsSync(dir)) {
+    const st = fs.lstatSync(dir);
+    if (st.isSymbolicLink() || !st.isDirectory()) {
+      throw new Error(`Refusing to use ${dir}: exists and is not a plain directory (possible symlink attack)`);
+    }
+  } else {
+    fs.mkdirSync(dir, { mode: 0o700 });
+  }
+  fs.chmodSync(dir, 0o700);
+  return dir;
+}
+
+const SCREENSHOTS_DIR = ensurePrivateDir('/tmp/audit_screenshots');
 
 // Redact long token-like substrings so an accidental console.log of a session/auth
 // token on the page under test doesn't get echoed verbatim to this script's stdout.
@@ -43,13 +56,13 @@ if (!process.env.BOOMCARD_TEST_EMAIL || !process.env.BOOMCARD_TEST_PASSWORD) {
     await page.click('button[type="submit"], button:has-text("Влез"), button:has-text("Login"), button:has-text("Sign in")');
     await page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 }).catch(() => {});
     await page.screenshot({ path: `${SCREENSHOTS_DIR}/03_after_login.png`, fullPage: true });
-    console.log('Screenshot: 03_after_login.png — URL:', page.url());
+    console.log('Screenshot: 03_after_login.png — URL:', redact(page.url()));
 
     // 4. Navigate to receipts page
     console.log('Navigating to receipts page...');
     await page.goto('https://boomcard.bg/receipts', { waitUntil: 'networkidle', timeout: 30000 });
     await page.screenshot({ path: `${SCREENSHOTS_DIR}/04_receipts_full.png`, fullPage: true });
-    console.log('Screenshot: 04_receipts_full.png — URL:', page.url());
+    console.log('Screenshot: 04_receipts_full.png — URL:', redact(page.url()));
 
     // 5. Capture DOM text for analysis
     const bodyText = await page.evaluate(() => document.body.innerText);
@@ -90,7 +103,7 @@ if (!process.env.BOOMCARD_TEST_EMAIL || !process.env.BOOMCARD_TEST_PASSWORD) {
   } catch (err) {
     console.error('Error:', err.message);
     await page.screenshot({ path: `${SCREENSHOTS_DIR}/error.png`, fullPage: true }).catch(() => {});
-    console.log('URL at error:', page.url());
+    console.log('URL at error:', redact(page.url()));
   } finally {
     await browser.close();
   }
