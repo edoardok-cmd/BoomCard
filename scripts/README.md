@@ -413,6 +413,27 @@ npm run screenshot:workflow
 
 ---
 
+## 🧾 Receipts Audit / Smoke-Test Scripts
+
+Ad-hoc Playwright scripts for manually verifying the receipts/cashback UI against prod, local dev, or during a spec audit. Relocated here from my-dashboard (they test BoomCard, not the dashboard).
+
+**Scripts:**
+- `audit-receipts.js` - General audit pass over the receipts page (screenshots + DOM/heading/filter/transaction dumps)
+- `smoke-test-receipts.js` - Spec-check pass against `https://boomcard.bg`
+- `smoke-test-prod.js` - Focused spec-check pass against prod with pass/fail summary
+- `smoke-test-local.js` - Same checks against a local dev server (`http://localhost:3001`)
+
+**Usage:**
+```bash
+export BOOMCARD_TEST_EMAIL="your-test-account@example.com"
+export BOOMCARD_TEST_PASSWORD="your-test-account-password"
+node scripts/audit-receipts.js
+```
+
+Use a dedicated non-privileged test account — never a real production login — since these scripts fill the login form and print/screenshot whatever the account sees.
+
+---
+
 ## 📚 Related Documentation
 
 - [Image Optimization Guide](../IMAGE_OPTIMIZATION_GUIDE.md)
