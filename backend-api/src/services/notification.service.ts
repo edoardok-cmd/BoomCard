@@ -1328,7 +1328,12 @@ export class NotificationService {
      *  created within the last N hours. Prevents cron-driven alerts from flooding
      *  the bell when the underlying condition persists across multiple runs. */
     cooldownHours?: number;
-  }): Promise<void> {
+    /** Set false to keep the in-app bell notification (and its cooldown check)
+     *  but suppress the individual critical-severity email — used by callers
+     *  that batch several items from the same scan into one digest email
+     *  (see sendAdminOpsDigestEmail) instead of one email per item. Default true. */
+    sendEmail?: boolean;
+  }): Promise<boolean> {
     try {
       // Sanitize opsType so LIKE-pattern wildcards (%, _) in a caller-supplied value
       // cannot suppress unrelated admin notifications via the Prisma `contains` query.
@@ -1363,7 +1368,7 @@ export class NotificationService {
         });
         if (recent) {
           logger.info(`[admin-ops] Cooldown active for opsType=${safeOpsType} — skipping duplicate notification.`);
-          return;
+          return false;
         }
       }
 
@@ -1391,33 +1396,62 @@ export class NotificationService {
       );
 
       // Email only for critical — floods otherwise. Caller can bump severity
-      // when an event really needs to page someone.
-      if (severity === 'critical') {
-        // Escape all partner-controlled values before embedding in HTML to
-        // prevent content injection (MEDIUM F2 — businessName/category from
-        // registration form may contain HTML markup).
-        const fieldLines = (params.fields ?? [])
-          .map((f) => `<li><strong>${escapeHtml(f.label)}:</strong> ${escapeHtml(f.value)}</li>`)
-          .join('');
-        const html = `
-          <p><strong>${escapeHtml(params.title)}</strong></p>
-          <p>${escapeHtml(params.message)}</p>
-          ${fieldLines ? `<ul>${fieldLines}</ul>` : ''}
-          ${params.actionUrl ? (() => { const safeHref = (/^https?:\/\//.test(params.actionUrl!) || params.actionUrl!.startsWith('/')) ? params.actionUrl!.replace(/"/g, '%22') : '#'; return `<p><a href="${safeHref}">Open in dashboard</a></p>`; })() : ''}
-        `;
-        await Promise.all(
-          admins
-            .filter((a) => a.email)
-            .map((admin) =>
-              emailService
-                .sendEmail({ to: admin.email!, subject: `[BoomCard admin] ${params.title}`, html })
-                .catch((err) => logger.error(`[admin-ops] Email to ${admin.email} failed:`, err))
-            )
-        );
+      // when an event really needs to page someone. sendEmail:false lets a
+      // caller keep the in-app row (and its cooldown bookkeeping above) while
+      // batching the actual email into a single digest — see
+      // sendAdminOpsDigestEmail.
+      if (severity === 'critical' && params.sendEmail !== false) {
+        await this.sendAdminOpsDigestEmail({
+          title: params.title,
+          message: params.message,
+          fields: params.fields,
+          actionUrl: params.actionUrl,
+        }, admins);
       }
+      return true;
     } catch (error) {
       logger.error('❌ Error in notifyAdminOps:', error);
+      return false;
     }
+  }
+
+  /**
+   * Sends a single critical-severity ops email to all admins, listing
+   * `fields` as bullet points. Used both by notifyAdminOps (one item) and by
+   * cron scans that batch several overdue/alerting items from the same run
+   * into one email instead of one-email-per-item (e.g. partner SLA escalation).
+   */
+  async sendAdminOpsDigestEmail(
+    params: {
+      title: string;
+      message: string;
+      fields?: Array<{ label: string; value: string }>;
+      actionUrl?: string;
+    },
+    admins?: Array<{ id: string; email: string | null }>
+  ): Promise<void> {
+    const recipients = admins ?? (await this.getAdminUsers());
+    // Escape all partner-controlled values before embedding in HTML to
+    // prevent content injection (MEDIUM F2 — businessName/category from
+    // registration form may contain HTML markup).
+    const fieldLines = (params.fields ?? [])
+      .map((f) => `<li><strong>${escapeHtml(f.label)}:</strong> ${escapeHtml(f.value)}</li>`)
+      .join('');
+    const html = `
+      <p><strong>${escapeHtml(params.title)}</strong></p>
+      <p>${escapeHtml(params.message)}</p>
+      ${fieldLines ? `<ul>${fieldLines}</ul>` : ''}
+      ${params.actionUrl ? (() => { const safeHref = (/^https?:\/\//.test(params.actionUrl!) || params.actionUrl!.startsWith('/')) ? params.actionUrl!.replace(/"/g, '%22') : '#'; return `<p><a href="${safeHref}">Open in dashboard</a></p>`; })() : ''}
+    `;
+    await Promise.all(
+      recipients
+        .filter((a) => a.email)
+        .map((admin) =>
+          emailService
+            .sendEmail({ to: admin.email!, subject: `[BoomCard admin] ${params.title}`, html })
+            .catch((err) => logger.error(`[admin-ops] Email to ${admin.email} failed:`, err))
+        )
+    );
   }
 
   /** New partner self-signup — admin should verify and activate. */
@@ -1427,7 +1461,7 @@ export class NotificationService {
     email: string;
     category: string;
   }): Promise<void> {
-    return this.notifyAdminOps({
+    await this.notifyAdminOps({
       opsType: 'partner_signup',
       title: 'New partner signup',
       message: `${params.businessName} (${params.category}) applied to join — waiting for verification.`,
@@ -1452,7 +1486,7 @@ export class NotificationService {
     importedBy: string;
   }): Promise<void> {
     const severity: NotificationSeverity = params.errorCount > 0 ? 'warning' : 'info';
-    return this.notifyAdminOps({
+    await this.notifyAdminOps({
       opsType: 'bulk_import_complete',
       title: `Bulk ${params.kind} import complete`,
       message: `${params.created} created, ${params.skipped} skipped, ${params.errorCount} error${params.errorCount === 1 ? '' : 's'}.`,
@@ -1478,7 +1512,7 @@ export class NotificationService {
     currency: string;
     reason?: string;
   }): Promise<void> {
-    return this.notifyAdminOps({
+    await this.notifyAdminOps({
       opsType: 'stripe_chargeback',
       title: 'Stripe chargeback opened',
       message: `A customer disputed ${(params.amountCents / 100).toFixed(2)} ${params.currency.toUpperCase()}. Respond via Stripe dashboard within 7 days.`,
@@ -1508,7 +1542,7 @@ export class NotificationService {
     // Sanitize jobName to a stable key (lowercase, non-alphanumerics → '_') so
     // it forms a safe, collision-free dedup token.
     const jobKey = params.jobName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-    return this.notifyAdminOps({
+    await this.notifyAdminOps({
       opsType: `scheduler_failure_${jobKey}`,
       title: `Scheduled job failed: ${params.jobName}`,
       message: `The ${params.jobName} job errored during its scheduled run. Investigate before the next run.`,
@@ -1533,7 +1567,7 @@ export class NotificationService {
     walletsAffected: number;
     totalExpiredBGN: number;
   }): Promise<void> {
-    return this.notifyAdminOps({
+    await this.notifyAdminOps({
       opsType: 'cashback_expiry_anomaly',
       title: 'Unusually large cashback expiry',
       message: `Nightly expiry deducted ${params.totalExpiredBGN.toFixed(2)} BGN from ${params.walletsAffected} wallets — above the alert threshold.`,
@@ -1553,7 +1587,7 @@ export class NotificationService {
   }): Promise<void> {
     const total = params.failures + params.successes;
     const rate = total === 0 ? 0 : (params.failures / total) * 100;
-    return this.notifyAdminOps({
+    await this.notifyAdminOps({
       opsType: 'payment_failure_spike',
       title: 'Payment failure rate spike',
       message: `${params.failures} failures out of ${total} attempts (${rate.toFixed(1)}%) in the last ${params.windowMinutes} minutes.`,
@@ -1572,7 +1606,7 @@ export class NotificationService {
     pendingCount: number;
     oldestAgeHours: number;
   }): Promise<void> {
-    return this.notifyAdminOps({
+    await this.notifyAdminOps({
       opsType: 'ocr_backlog',
       title: 'OCR manual-review backlog growing',
       message: `${params.pendingCount} receipts waiting for review. Oldest is ${params.oldestAgeHours.toFixed(1)}h old.`,
@@ -1602,7 +1636,7 @@ export class NotificationService {
     activatedPartners: number;
     completedOnboarding: number;
   }): Promise<void> {
-    return this.notifyAdminOps({
+    await this.notifyAdminOps({
       opsType: 'informational_digest',
       title: 'Daily informational digest',
       message: `${params.newRegistrations} new registration(s), ${params.activatedPartners} activated partner(s), ${params.completedOnboarding} completed onboarding(s).`,

@@ -1638,10 +1638,17 @@ async function escalateOverduePartnerSla(): Promise<void> {
     select: { id: true, businessName: true, createdAt: true, requestStatus: true },
   });
 
+  // Each overdue partner still gets its own in-app bell row (and its own 20h
+  // per-partner cooldown, so a persistently-overdue application doesn't
+  // re-alert every hourly tick) — but the emails are batched into ONE digest
+  // below instead of one email per partner. Without this, N overdue partners
+  // in the same run produced N separate "[BoomCard admin] Partner SLA Overdue"
+  // emails; admins only need one message listing all of them.
+  const overdueDigestFields: Array<{ label: string; value: string }> = [];
   for (const partner of overduePartners) {
     const hoursElapsed = Math.round((Date.now() - partner.createdAt.getTime()) / 36e5 * 10) / 10;
     try {
-      await notificationService.notifyAdminOps({
+      const fired = await notificationService.notifyAdminOps({
         opsType: `partner-sla-overdue-${partner.id}`,
         title: 'Partner SLA Overdue',
         message: `Application "${partner.businessName}" (status: ${partner.requestStatus}) has been UNASSIGNED for ${hoursElapsed}h — past the 24h internal assignment SLA (§1.6).`,
@@ -1650,9 +1657,29 @@ async function escalateOverduePartnerSla(): Promise<void> {
         relatedEntityType: 'Partner',
         relatedEntityId: partner.id,
         cooldownHours: 20,
+        sendEmail: false,
       });
+      if (fired) {
+        overdueDigestFields.push({
+          label: partner.businessName,
+          value: `${hoursElapsed}h unassigned (status: ${partner.requestStatus})`,
+        });
+      }
     } catch (err) {
       logger.error(`[partner-sla-escalation] Failed to alert for partner ${partner.id}:`, err);
+    }
+  }
+
+  if (overdueDigestFields.length > 0) {
+    try {
+      await notificationService.sendAdminOpsDigestEmail({
+        title: 'Partner SLA Overdue',
+        message: `${overdueDigestFields.length} partner application(s) have been UNASSIGNED past the 24h internal assignment SLA (§1.6).`,
+        fields: overdueDigestFields,
+        actionUrl: '/admin/partners?filter=unassigned',
+      });
+    } catch (err) {
+      logger.error('[partner-sla-escalation] Failed to send overdue-SLA digest email:', err);
     }
   }
 
