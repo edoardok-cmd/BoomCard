@@ -109,7 +109,11 @@ async function main() {
         await prisma.pendingSubscription.delete({ where: { id: pending.id } });
         console.log('\nCleaned up test data.');
       } catch (e) {
-        console.log('\nNote: Test data may have been consumed by the endpoint (expected for success).');
+        if (e.code === 'P2025') {
+          console.log('\nNote: Test data may have been consumed by the endpoint (expected for success).');
+        } else {
+          console.error('\nFAILED to clean up test data (unexpected error, row may be orphaned):', e);
+        }
       }
     }
     await prisma.$disconnect();
