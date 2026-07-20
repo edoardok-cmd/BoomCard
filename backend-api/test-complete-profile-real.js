@@ -16,9 +16,11 @@ const prisma = new PrismaClient({ adapter });
 
 async function main() {
   let pending;
+  let plan;
+  let planCreatedByThisRun = false;
   try {
     // Get or create a test plan
-    let plan = await prisma.plan.findFirst({
+    plan = await prisma.plan.findFirst({
       where: { planCode: 'BASIC' },
     });
 
@@ -32,6 +34,7 @@ async function main() {
           cashbackRate: 0.01,
         },
       });
+      planCreatedByThisRun = true;
     }
 
     console.log('Using plan:', plan.planCode);
@@ -113,6 +116,25 @@ async function main() {
           console.log('\nNote: Test data may have been consumed by the endpoint (expected for success).');
         } else {
           console.error('\nFAILED to clean up test data (unexpected error, row may be orphaned):', e);
+        }
+      }
+    }
+
+    // Cleanup - if this run had to create the 'BASIC' plan (because it
+    // didn't already exist), delete it too. Guaranteed via `finally`, same
+    // as the PendingSubscription cleanup above. Guarded on
+    // `planCreatedByThisRun` so a pre-existing plan is never touched. Runs
+    // after the PendingSubscription delete above since that row references
+    // this plan via a foreign key.
+    if (planCreatedByThisRun && plan) {
+      try {
+        await prisma.plan.delete({ where: { id: plan.id } });
+        console.log('Cleaned up test plan.');
+      } catch (e) {
+        if (e.code === 'P2025') {
+          console.log('Note: Test plan may have already been removed (unexpected but not an error).');
+        } else {
+          console.error('FAILED to clean up test plan (unexpected error, row may be orphaned):', e);
         }
       }
     }
