@@ -15,6 +15,7 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
+  let pending;
   try {
     // Get or create a test plan
     let plan = await prisma.plan.findFirst({
@@ -42,7 +43,7 @@ async function main() {
     const testEmail = `test-${Date.now()}-${crypto.randomBytes(4).toString('hex')}@example.com`;
 
     console.log('Creating test PendingSubscription...');
-    const pending = await prisma.pendingSubscription.create({
+    pending = await prisma.pendingSubscription.create({
       data: {
         email: testEmail,
         planId: plan.id,
@@ -62,40 +63,36 @@ async function main() {
 
     // Now call the complete-profile endpoint
     console.log('\nCalling complete-profile endpoint...');
-    const response = await fetch('http://localhost:3025/api/auth/complete-profile', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        token,
-        password: 'TestPassword123!',
-        firstName: 'Test',
-        lastName: 'User',
-        phone: '+359888123456',
-        marketingConsentEmail: false,
-        marketingConsentPhone: false,
-        lang: 'en',
-      }),
-    });
-
-    const data = await response.json();
-    console.log('Response status:', response.status);
-    console.log('Response body:', JSON.stringify(data, null, 2));
-
-    if (response.status === 201) {
-      console.log('\n✓ Success! Account created.');
-      console.log('User ID:', data.data.user.id);
-    } else {
-      console.log('\n✗ Failed with status', response.status);
-    }
-
-    // Cleanup - delete the pending subscription
     try {
-      await prisma.pendingSubscription.delete({ where: { id: pending.id } });
-      console.log('\nCleaned up test data.');
-    } catch (e) {
-      console.log('\nNote: Test data may have been consumed by the endpoint (expected for success).');
+      const response = await fetch('http://localhost:3025/api/auth/complete-profile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          token,
+          password: 'TestPassword123!',
+          firstName: 'Test',
+          lastName: 'User',
+          phone: '+359888123456',
+          marketingConsentEmail: false,
+          marketingConsentPhone: false,
+          lang: 'en',
+        }),
+      });
+
+      const data = await response.json();
+      console.log('Response status:', response.status);
+      console.log('Response body:', JSON.stringify(data, null, 2));
+
+      if (response.status === 201) {
+        console.log('\n✓ Success! Account created.');
+        console.log('User ID:', data.data.user.id);
+      } else {
+        console.log('\n✗ Failed with status', response.status);
+      }
+    } catch (fetchError) {
+      console.error('\nError calling complete-profile endpoint:', fetchError.message);
     }
   } catch (error) {
     console.error('Error:', error.message);
@@ -103,6 +100,18 @@ async function main() {
       console.error(error.stack);
     }
   } finally {
+    // Cleanup - always delete the pending subscription we created,
+    // regardless of whether the fetch above succeeded, threw, or the
+    // server wasn't reachable at all. Guarded on `pending` in case the
+    // script failed before the row was even created.
+    if (pending) {
+      try {
+        await prisma.pendingSubscription.delete({ where: { id: pending.id } });
+        console.log('\nCleaned up test data.');
+      } catch (e) {
+        console.log('\nNote: Test data may have been consumed by the endpoint (expected for success).');
+      }
+    }
     await prisma.$disconnect();
   }
 }
