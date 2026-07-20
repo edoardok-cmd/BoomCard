@@ -1,8 +1,15 @@
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const { PrismaClient } = require('@prisma/client');
 const crypto = require('crypto');
 
+if (!process.env.DATABASE_URL) {
+  console.error('FATAL: DATABASE_URL environment variable is not set.');
+  process.exit(1);
+}
+
 const prisma = new PrismaClient({
-  datasourceUrl: process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_3f1FtdpRDOTH@ep-old-salad-agie89z3-pooler.c-2.eu-central-1.aws.neon.tech/boomcard?sslmode=require',
+  datasourceUrl: process.env.DATABASE_URL,
 });
 
 async function main() {
