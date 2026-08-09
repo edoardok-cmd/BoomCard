@@ -3,6 +3,7 @@ import prisma from '../lib/prisma';
 import QRCode from 'qrcode';
 import { logger } from '../utils/logger';
 import { subscriptionService } from './subscription.service';
+import { safeParseJsonArray } from '../utils/json';
 
 // Safe field allowlist for user-facing card serializers — excludes qrCode (spec §4.3/§11.3).
 const CARD_USER_FIELDS = {

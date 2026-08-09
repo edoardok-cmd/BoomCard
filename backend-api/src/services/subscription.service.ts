@@ -8,6 +8,7 @@ import { emailService } from './email.service';
 import { writeAudit } from '../middleware/audit.middleware';
 import { AppError } from '../middleware/error.middleware';
 import { notificationService } from './notification.service';
+import { safeParseJsonArray } from '../utils/json';
 
 /**
  * Spec §4.2 v1.1 — when a user gains a new ACTIVE/TRIALING subscription, any

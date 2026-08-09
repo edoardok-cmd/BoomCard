@@ -173,6 +173,7 @@ router.get('/current', authenticate, asyncHandler(async (req: AuthRequest, res: 
 
   res.json({
     id: subscription.id,
+    userId: subscription.userId,
     plan: subscription.plan,
     status: subscription.status,
     currentPeriodStart: subscription.currentPeriodStart,
@@ -183,9 +184,14 @@ router.get('/current', authenticate, asyncHandler(async (req: AuthRequest, res: 
     trialEnd: subscription.trialEnd,
     autoRenewal: subscription.autoRenewal,
     pauseEndsAt: subscription.pauseEndsAt,
+    retryAttempt: subscription.retryAttempt,
+    trialRefundEligibleUntil: subscription.trialRefundEligibleUntil,
+    trialRefundUsed: subscription.trialRefundUsed,
+    stripeSubscriptionId: subscription.stripeSubscriptionId,
+    payseraOrderId: subscription.payseraOrderId,
     createdAt: subscription.createdAt,
+    updatedAt: subscription.updatedAt,
     paymentMethod,
-    benefits: await subscriptionService.getPlanBenefits(subscription.plan),
   });
 }));
 
