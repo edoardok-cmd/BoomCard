@@ -178,8 +178,8 @@ export class CardService {
 
     const cashbackRate  = plan?.cashbackRate  ?? 0;
     const bonusCashback = plan?.stickerBonus  ?? 0;
-    const features: string[]   = plan?.features   ? JSON.parse(plan.features)   : [];
-    const featuresBg: string[] = plan?.featuresBg ? JSON.parse(plan.featuresBg) : [];
+    const features: string[]   = safeParseJsonArray(plan?.features) as string[];
+    const featuresBg: string[] = safeParseJsonArray(plan?.featuresBg) as string[];
 
     return { cashbackRate, bonusCashback, features, featuresBg };
   }
