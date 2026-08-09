@@ -8,6 +8,7 @@ import { emailService } from './email.service';
 import { writeAudit } from '../middleware/audit.middleware';
 import { AppError } from '../middleware/error.middleware';
 import { notificationService } from './notification.service';
+import { safeParseJsonArray } from '../utils/json';
 
 /**
  * Spec §4.2 v1.1 — when a user gains a new ACTIVE/TRIALING subscription, any
@@ -930,17 +931,7 @@ export class SubscriptionService {
 
     const cashbackRate = row?.cashbackRate ?? 0;
     const monthlyFee   = row?.priceMonthlyEur != null ? row.priceMonthlyEur / 100 : null;
-
-    let features: string[] = [];
-    if (row?.features) {
-      try {
-        const parsed = JSON.parse(row.features);
-        features = Array.isArray(parsed) ? parsed : [];
-      } catch {
-        // Invalid JSON in features field - fall back to empty array
-        features = [];
-      }
-    }
+    const features: string[] = safeParseJsonArray(row?.features) as string[];
 
     return { cashbackRate, monthlyFee, features };
   }

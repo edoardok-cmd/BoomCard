@@ -10,20 +10,11 @@ import { Router, Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import { prisma } from '../lib/prisma';
 import { isCurrencyTransitionWindowOpen } from '../utils/currencyDisplay';
+import { safeParseJsonArray } from '../utils/json';
 import { EUR_TO_BGN_RATE } from '../constants/receipt.constants';
 
 function r2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
-}
-
-function safeParseJsonArray(raw: string | null | undefined): unknown[] {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
 }
 
 function eurToBgn(eurAmount: number | null, windowOpen: boolean): number | null {
