@@ -3,6 +3,7 @@ import prisma from '../lib/prisma';
 import QRCode from 'qrcode';
 import { logger } from '../utils/logger';
 import { subscriptionService } from './subscription.service';
+import { safeParseJsonArray } from '../utils/json';
 
 // Safe field allowlist for user-facing card serializers — excludes qrCode (spec §4.3/§11.3).
 const CARD_USER_FIELDS = {
@@ -177,26 +178,8 @@ export class CardService {
 
     const cashbackRate  = plan?.cashbackRate  ?? 0;
     const bonusCashback = plan?.stickerBonus  ?? 0;
-
-    let features: string[] = [];
-    if (plan?.features) {
-      try {
-        const parsed = JSON.parse(plan.features);
-        features = Array.isArray(parsed) ? parsed : [];
-      } catch {
-        features = [];
-      }
-    }
-
-    let featuresBg: string[] = [];
-    if (plan?.featuresBg) {
-      try {
-        const parsed = JSON.parse(plan.featuresBg);
-        featuresBg = Array.isArray(parsed) ? parsed : [];
-      } catch {
-        featuresBg = [];
-      }
-    }
+    const features: string[]   = safeParseJsonArray(plan?.features) as string[];
+    const featuresBg: string[] = safeParseJsonArray(plan?.featuresBg) as string[];
 
     return { cashbackRate, bonusCashback, features, featuresBg };
   }
