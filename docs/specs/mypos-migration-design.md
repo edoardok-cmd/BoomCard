@@ -289,6 +289,12 @@ contradictory across pages, or requires a direct conversation with myPOS):
   above (payout API existence for BoomCard's account tier) and should not
   be treated as a naming commitment.
 
+All six gaps above require a direct conversation with myPOS integration
+support/sales and/or sandbox access this spike did not have, and are
+bundled into a single follow-up task rather than resolved here. filed:
+BC-MYPOS-013
+Disposition: filed BC-MYPOS-013
+
 This is a research spike with no code changes — the items above are gaps in
 third-party (myPOS) documentation, not defects in BoomCard's own code, so
 none of them are follow-up tasks against this repo. They are inputs for
