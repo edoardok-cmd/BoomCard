@@ -110,6 +110,7 @@ const createPaymentSchema = z.object({
 
 router.post(
   '/create',
+  paymentRateLimiter,
   authenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const parseResult = createPaymentSchema.safeParse(req.body);
@@ -742,6 +743,7 @@ const subscriptionSchema = z.object({
 
 router.post(
   '/subscription',
+  paymentRateLimiter,
   authenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const parseResult = subscriptionSchema.safeParse(req.body);

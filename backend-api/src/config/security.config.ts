@@ -11,7 +11,6 @@ import {
   developmentHelmetConfig,
   authRateLimiter,
   uploadRateLimiter,
-  paymentRateLimiter,
   securityHeaders,
   configureTrustProxy,
   requestId,
@@ -92,8 +91,37 @@ export function applyRateLimiters(app: Application) {
   app.use('/api/auth/partner/activate', authRateLimiter);
   app.use('/api/auth/complete-profile', authRateLimiter);
 
-  // Payment endpoints - very restrictive
-  app.use('/api/payments', paymentRateLimiter);
+  // Payment endpoints - very restrictive.
+  //
+  // NOTE (BC-QA-002): this used to be a blanket `app.use('/api/payments', paymentRateLimiter)`
+  // covering the ENTIRE /api/payments/* prefix. That was a bug, not a feature, for two
+  // independent reasons — both confirmed live against production:
+  //
+  //  1. Double-counting. `paymentRateLimiter` is a single shared middleware instance
+  //     (one in-memory counter store keyed by user/IP). payments.paysera.routes.ts
+  //     ALSO applies it directly to POST /anonymous-subscription and POST /verify-redirect.
+  //     With the blanket mount ALSO matching those same paths, Express ran the identical
+  //     middleware twice per request, silently HALVING the advertised budget (10 req/15min
+  //     became 5 real attempts before a 429). Reproduced against boomcard-api.fly.dev:
+  //     ~5 real create-payment attempts from one IP was enough to 429 the guest checkout
+  //     flow (partner-dashboard CheckoutPage's "Плати" button →
+  //     "Грешка при обработка на плащането").
+  //
+  //  2. Wrong scope. The prefix also covers the Paysera webhook callbacks
+  //     (GET/POST /api/payments/callback, /api/payments/subscription/callback) — the ONLY
+  //     place a subscription is ever activated or a wallet top-up is ever credited (see
+  //     payments.paysera.routes.ts). Those requests come from Paysera's own server(s), not
+  //     from the paying customer, so EVERY BoomCard customer's payment confirmation shared
+  //     ONE global 10-req/15-min bucket. At any real transaction volume this silently 429s
+  //     Paysera's callback — money moves but the purchase never completes app-side. It also
+  //     covered read-only GETs (/methods, /history, /:orderId/status) that have nothing to
+  //     do with "payment attempts" and have no business consuming that budget.
+  //
+  // Fix: apply `paymentRateLimiter` directly, once, only to the routes that represent a
+  // genuine user-initiated payment-creation attempt. See payments.paysera.routes.ts —
+  // POST /create, POST /subscription, POST /anonymous-subscription, POST /verify-redirect.
+  // Webhook callbacks and read-only endpoints are intentionally left unprotected by this
+  // limiter.
 
   // Upload endpoints - moderately restrictive
   app.use('/api/receipts/upload', uploadRateLimiter);
