@@ -8,7 +8,6 @@ import { prisma } from '../lib/prisma';
 import { payseraService } from '../services/paysera.service';
 import crypto from 'crypto';
 import { logger } from '../utils/logger';
-import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 const router = Router();
 
@@ -226,15 +225,13 @@ router.get('/history', authenticate, asyncHandler(async (req: AuthRequest, res: 
       },
     });
 
-    const showDualCurrency = await isCurrencyTransitionWindowOpen();
-
     const history = transactions.map(t => {
       const meta = t.metadata ? JSON.parse(t.metadata as string) : {};
       return {
         id: t.id,
         date: t.createdAt.toISOString(),
-        amount: toDualCurrency(t.amount, showDualCurrency),
-        currency: showDualCurrency ? t.currency : 'EUR',
+        amount: t.amount,
+        currency: t.currency,
         status: t.status.toLowerCase(),
         description: t.description,
         orderId: meta.orderId,
@@ -258,16 +255,12 @@ router.get('/history', authenticate, asyncHandler(async (req: AuthRequest, res: 
           if (billingPeriod.includes('year')) return plan.priceYearlyEur ?? plan.priceMonthlyEur ?? 0;
           return plan.priceMonthlyEur ?? 0;
         })();
-        // T9 synthetic entry: plan prices are stored in EUR (not BGN), so we
-        // build the display object directly rather than routing through
-        // toDualCurrency (which assumes BGN input and would mis-convert).
-        // windowOpen is forced false: no BGN source exists for this EUR-native
-        // price, so there is nothing to show even when the transition window is open.
+        // T9 synthetic entry: plan prices are stored in EUR (not BGN).
         const eurAmount = priceInCents / 100;
         history.push({
           id: subscription.payseraOrderId,
           date: subscription.currentPeriodStart.toISOString(),
-          amount: { bgn: null, eur: eurAmount, windowOpen: false },
+          amount: eurAmount,
           currency: 'EUR',
           status: 'completed',
           description: `Subscription: ${plan.displayName}`,
@@ -287,8 +280,8 @@ router.get('/history', authenticate, asyncHandler(async (req: AuthRequest, res: 
   const history = stripeInvoices.data.map(inv => ({
     id: inv.id,
     date: new Date(inv.created * 1000).toISOString(),
-    amount: { bgn: null, eur: (inv.amount_paid ?? inv.amount_due ?? 0) / 100, windowOpen: false },
-    currency: 'EUR',
+    amount: (inv.amount_paid ?? inv.amount_due ?? 0) / 100,
+    currency: (inv.currency ?? 'eur').toUpperCase(),
     status: inv.status ?? 'unknown',
     pdfUrl: inv.invoice_pdf,
   }));

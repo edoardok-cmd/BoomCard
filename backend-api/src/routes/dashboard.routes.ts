@@ -4,7 +4,6 @@ import { subscriptionService } from '../services/subscription.service';
 import { walletService } from '../services/wallet.service';
 import { asyncHandler } from '../utils/asyncHandler';
 import { prisma } from '../lib/prisma';
-import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 const router = Router();
 
@@ -22,11 +21,6 @@ const router = Router();
  */
 router.get('/me', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
-
-  // Resolve the currency transition window state ONCE before any data fetch so that
-  // all money fields in this response (receipts and the wallet block returned by
-  // walletService.getBalance) share the same snapshot (INV-USER-CUR-003).
-  const showDualCurrency = await isCurrencyTransitionWindowOpen();
 
   const [subscription, wallet, scans] = await Promise.all([
     subscriptionService.getActiveSubscription(userId),
@@ -66,13 +60,11 @@ router.get('/me', authenticate, asyncHandler(async (req: AuthRequest, res: Respo
   };
 
   // Map scans to the dashboard "recent transactions" shape (§3.5.1).
-  // INV-USER-CUR-003: all monetary amounts must go through the currency transition
-  // window gate — raw BGN scalars must never be serialized to the user surface.
   const receipts = scans.map((s) => ({
     id: s.id,
     merchantName: s.venue?.name ?? null,
-    totalAmount: toDualCurrency(s.verifiedAmount ?? s.billAmount ?? 0, showDualCurrency),
-    cashbackAmount: toDualCurrency(s.cashbackAmount ?? 0, showDualCurrency), // INV-RDM-057: authoritative source is StickerScan.cashbackAmount
+    totalAmount: s.verifiedAmount ?? s.billAmount ?? 0,
+    cashbackAmount: s.cashbackAmount ?? 0, // INV-RDM-057: authoritative source is StickerScan.cashbackAmount
     status: SCAN_TO_RECEIPT_STATUS[s.status] ?? 'PENDING',
     createdAt: s.createdAt,
   }));
@@ -111,7 +103,6 @@ router.get('/me', authenticate, asyncHandler(async (req: AuthRequest, res: Respo
     receipts,
     nextPaymentDate: (resolvedSubscription && 'currentPeriodEnd' in resolvedSubscription ? resolvedSubscription.currentPeriodEnd : null) ?? null,
     showUpgradePrompt: resolvedSubscription ? ((resolvedSubscription.plan === 'BASIC' || isPremiumWeekly) && resolvedSubscription.status === 'ACTIVE') : false,
-    currencyWindowOpen: showDualCurrency,
   });
 }));
 

@@ -1,5 +1,4 @@
 import { prisma } from '../lib/prisma';
-import { isCurrencyTransitionWindowOpen, toDualCurrency, DualCurrencyAmount } from '../utils/currencyDisplay';
 
 /**
  * Receipt Analytics Service
@@ -19,12 +18,12 @@ interface AnalyticsData {
   approvedReceipts: number;
   rejectedReceipts: number;
   pendingReceipts: number;
-  totalCashback: DualCurrencyAmount;
-  totalSpent: DualCurrencyAmount;
-  averageReceiptAmount: DualCurrencyAmount;
+  totalCashback: number;
+  totalSpent: number;
+  averageReceiptAmount: number;
   successRate: number;
   lastReceiptDate: Date;
-  topMerchants?: Array<{ name: string; count: number; totalSpent: DualCurrencyAmount }>;
+  topMerchants?: Array<{ name: string; count: number; totalSpent: number }>;
 }
 
 interface MonthlyStats {
@@ -64,17 +63,10 @@ class ReceiptAnalyticsService {
 
     // Calculate top merchants from actual receipts
     const topMerchants = await this.getTopMerchants(userId);
-    const showDualCurrency = await isCurrencyTransitionWindowOpen();
 
     return {
       ...analytics,
-      totalCashback: toDualCurrency(analytics.totalCashback, showDualCurrency),
-      totalSpent: toDualCurrency(analytics.totalSpent, showDualCurrency),
-      averageReceiptAmount: toDualCurrency(analytics.averageReceiptAmount, showDualCurrency),
-      topMerchants: topMerchants.map(m => ({
-        ...m,
-        totalSpent: toDualCurrency(m.totalSpent, showDualCurrency),
-      })),
+      topMerchants,
     };
   }
 

@@ -26,8 +26,6 @@ jest.mock('../../src/lib/prisma', () => {
     venueStickerConfig: { findFirst: (...a: any[]) => mockVenueStickerConfigFindFirst(...a) },
     venueReceiptTemplate: { findMany: (...a: any[]) => mockVenueReceiptTemplateFindMany(...a) },
     venueFraudConfig: { upsert: (...a: any[]) => mockVenueFraudConfigUpsert(...a) },
-    // Required by isCurrencyTransitionWindowOpen → getSystemSettingStr (called in scans/analytics/config routes).
-    // Returns null → fallback 'true' → window open.
     systemSetting: { findUnique: jest.fn().mockResolvedValue(null) },
   };
   return { __esModule: true, default: client, prisma: client };

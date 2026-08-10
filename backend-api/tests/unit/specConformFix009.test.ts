@@ -5,14 +5,9 @@
  *  - M4: computePartnerSla treats an ASSIGNED application as SLA-satisfied
  *        (assignment deadline), independent of elapsed time.
  *  - M3: the SLA clock anchors on the supplied createdAt.
- *  - M7: currencyDisplay emits {bgn, eur} during the transition window and
- *        EUR-only (bgn=null) after it closes; the fixed currency-board rate
- *        is applied.
  */
 
 import { computePartnerSla } from '../../src/services/partnerSla.helper';
-import { bgnToEur, toDualCurrency } from '../../src/utils/currencyDisplay';
-import { EUR_TO_BGN_RATE } from '../../src/constants/receipt.constants';
 
 describe('M4 — SLA assignment-deadline semantics', () => {
   it('an ASSIGNED application past 24h is SLA-satisfied (ok, not overdue)', () => {
@@ -42,26 +37,5 @@ describe('M3 — SLA clock anchors on createdAt', () => {
     const sla = computePartnerSla(created, null, null);
     expect(sla.state).toBe('ok');
     expect(sla.hoursRemaining).toBeGreaterThan(22);
-  });
-});
-
-describe('M7 — dual-currency display', () => {
-  it('converts BGN→EUR at the fixed currency-board rate', () => {
-    expect(bgnToEur(EUR_TO_BGN_RATE)).toBeCloseTo(1, 2);
-    expect(bgnToEur(100)).toBeCloseTo(100 / EUR_TO_BGN_RATE, 2);
-  });
-
-  it('emits BOTH currencies while the window is OPEN', () => {
-    const d = toDualCurrency(195.583, true);
-    expect(d.windowOpen).toBe(true);
-    expect(d.bgn).toBeCloseTo(195.58, 2);
-    expect(d.eur).toBeCloseTo(100, 2);
-  });
-
-  it('hides BGN (null) and keeps EUR after the window CLOSES', () => {
-    const d = toDualCurrency(195.583, false);
-    expect(d.windowOpen).toBe(false);
-    expect(d.bgn).toBeNull();
-    expect(d.eur).toBeCloseTo(100, 2);
   });
 });

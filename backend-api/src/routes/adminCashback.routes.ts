@@ -22,7 +22,6 @@ import {
   CashbackEntryStatus, approveEntry, lockEntry, expireEntry, payEntry, voidEntry, backfillCashbackExpiry,
 } from '../services/adminCashback.service';
 import { getPayoutThresholdBGN } from '../utils/payoutThreshold';
-import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 import { parsePagination } from '../utils/pagination';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
@@ -40,22 +39,8 @@ router.use(auditMiddleware);
 router.get('/stats', requirePermission('cashback.read'), async (_req: AuthRequest, res: Response) => {
   try {
     const stats = await adminCashbackService.getDashboardStats();
-    const windowOpen = await isCurrencyTransitionWindowOpen();
 
-    // M1 FIX: Gate all BGN monetary fields through toDualCurrency so raw BGN is nulled when window is closed.
-    // Spec §8.1 rule 4 / Clash 12.1: when window CLOSED, NO raw BGN scalar may leave the API.
-    const gatedStats = {
-      totalAccrued: toDualCurrency(stats.totalAccrued, windowOpen),
-      totalCleared: toDualCurrency(stats.totalCleared, windowOpen),
-      totalPending: toDualCurrency(stats.totalPending, windowOpen),
-      expiringTotal: toDualCurrency(stats.expiringTotal, windowOpen),
-      totalLocked: toDualCurrency(stats.totalLocked, windowOpen),
-      totalPaid: toDualCurrency(stats.totalPaid, windowOpen),
-      totalExpired: toDualCurrency(stats.totalExpired, windowOpen),
-      totalVoided: toDualCurrency(stats.totalVoided, windowOpen),
-    };
-
-    res.json({ success: true, data: gatedStats });
+    res.json({ success: true, data: stats });
   } catch (error: any) {
     logger.error('Failed to fetch cashback stats:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch cashback stats' });
@@ -85,16 +70,7 @@ router.get('/summary', requirePermission('cashback.read'), async (req: AuthReque
       status: status as 'PENDING' | 'PAID' | 'OVERDUE' | undefined,
     });
 
-    const windowOpen = await isCurrencyTransitionWindowOpen();
-
-    // M1 FIX: Gate totalOwed (raw BGN) through toDualCurrency so it's nulled when window is closed.
-    // Spec §8.1 rule 4 / Clash 12.1: when window CLOSED, NO raw BGN scalar may leave the API.
-    const gatedSummary = summary.map(entry => ({
-      ...entry,
-      totalOwed: toDualCurrency(entry.totalOwed, windowOpen),
-    }));
-
-    res.json({ success: true, data: gatedSummary });
+    res.json({ success: true, data: summary });
   } catch (error: any) {
     logger.error('Failed to fetch cashback summary:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch cashback summary' });
@@ -281,7 +257,6 @@ router.delete('/rates/snapshot/:iso', requirePermission('cashback.write'), async
 // ------------------------------------------------------------------
 // GET /api/admin/cashback/payout-thresholds
 // Returns per-plan payout thresholds from DB; falls back to constants.
-// Spec §3.7 + §8.1 rule 4 — dual-currency display gated by transition window.
 // ------------------------------------------------------------------
 router.get('/payout-thresholds', requirePermission('cashback.read'), async (_req: AuthRequest, res: Response) => {
   try {
@@ -297,24 +272,14 @@ router.get('/payout-thresholds', requirePermission('cashback.read'), async (_req
       getPayoutThresholdBGN('PREMIUM_WEEKLY'),
       getPayoutThresholdBGN('PREMIUM_MONTHLY'),
     ]);
-    // Spec §3.7 + §8.1 rule 4 — dual-currency display for payout thresholds
-    // (stored BGN). Raw BGN values gated by window state.
-    const windowOpen = await isCurrencyTransitionWindowOpen();
     res.json({
       success: true,
       data: {
-        ...(windowOpen && { BASIC: basic }),
-        ...(windowOpen && { PREMIUM_WEEKLY: premiumWeekly }),
-        ...(windowOpen && { PREMIUM: premiumMonthly }),
+        BASIC: basic,
+        PREMIUM_WEEKLY: premiumWeekly,
+        PREMIUM: premiumMonthly,
         // Backward-compat alias for enum-native consumers (spec key is PREMIUM).
-        ...(windowOpen && { PREMIUM_MONTHLY: premiumMonthly }),
-      },
-      display: {
-        BASIC: toDualCurrency(basic, windowOpen),
-        PREMIUM_WEEKLY: toDualCurrency(premiumWeekly, windowOpen),
-        PREMIUM: toDualCurrency(premiumMonthly, windowOpen),
-        // Backward-compat alias for enum-native consumers (spec key is PREMIUM).
-        PREMIUM_MONTHLY: toDualCurrency(premiumMonthly, windowOpen),
+        PREMIUM_MONTHLY: premiumMonthly,
       },
     });
   } catch (error: any) {
@@ -401,15 +366,7 @@ router.get('/entries', requirePermission('cashback.read'), async (req: AuthReque
 
     const result = await getAllCashbackEntries(page, limit, statusFilter, search, dateFrom, dateTo, riskLevelFilter);
 
-    // M1 FIX: Gate all BGN monetary fields through toDualCurrency so raw BGN is nulled when window is closed.
-    // Spec §8.1 rule 4 / Clash 12.1: when window CLOSED, NO raw BGN scalar may leave the API.
-    const windowOpen = await isCurrencyTransitionWindowOpen();
-    const gatedData = result.data.map(entry => ({
-      ...entry,
-      amount: toDualCurrency(entry.amount, windowOpen),
-    }));
-
-    res.json({ success: true, ...result, data: gatedData });
+    res.json({ success: true, ...result });
   } catch (error: any) {
     logger.error('Failed to fetch cashback entries:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch cashback entries' });
@@ -428,15 +385,7 @@ router.get('/subscriber/:userId', requirePermission('cashback.read'), async (req
 
     const result = await getSubscriberCashbackEntries(userId, page, limit);
 
-    // M1 FIX: Gate all BGN monetary fields through toDualCurrency so raw BGN is nulled when window is closed.
-    // Spec §8.1 rule 4 / Clash 12.1: when window CLOSED, NO raw BGN scalar may leave the API.
-    const windowOpen = await isCurrencyTransitionWindowOpen();
-    const gatedData = result.data.map(entry => ({
-      ...entry,
-      amount: toDualCurrency(entry.amount, windowOpen),
-    }));
-
-    res.json({ success: true, ...result, data: gatedData });
+    res.json({ success: true, ...result });
   } catch (error: any) {
     if (error?.statusCode === 404) {
       return res.status(404).json({ success: false, error: error.message });
@@ -459,20 +408,8 @@ router.get('/:partnerId/:month/receipts', requirePermission('cashback.read'), as
     }
 
     const result = await adminCashbackService.getReceiptsByPartnerMonth({ partnerId, month });
-    const windowOpen = await isCurrencyTransitionWindowOpen();
 
-    // M1 FIX: Gate cashback amounts (raw BGN) through toDualCurrency so they're nulled when window is closed.
-    // Spec §8.1 rule 4 / Clash 12.1: when window CLOSED, NO raw BGN scalar may leave the API.
-    const gatedResult = {
-      ...result,
-      receipts: result.receipts.map(r => ({
-        ...r,
-        cashbackAmount: toDualCurrency(r.cashbackAmount, windowOpen),
-      })),
-      totalCashbackOwed: toDualCurrency(result.totalCashbackOwed, windowOpen),
-    };
-
-    res.json({ success: true, data: gatedResult });
+    res.json({ success: true, data: result });
   } catch (error: any) {
     logger.error('Failed to fetch partner receipts:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch partner receipts' });

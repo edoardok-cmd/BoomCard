@@ -23,7 +23,6 @@ import * as XLSX from 'xlsx';
 import { Prisma, ReportingPeriodStatus, ScanStatus } from '@prisma/client';
 import { adminCashbackService } from '../services/adminCashback.service';
 import { parsePagination } from '../utils/pagination';
-import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 const router = Router();
 
@@ -40,25 +39,6 @@ const VALID_PAYOUT_STATUSES = ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', '
 // isn't a real Prisma SubscriptionPlan enum value — wallet/payout queries treat it as
 // "no subscribers" rather than issuing an invalid enum query.
 const VALID_PLANS = ['PREMIUM_WEEKLY', 'BASIC', 'PREMIUM_MONTHLY', 'UNKNOWN'] as const;
-
-/**
- * Transforms a PartnerCashbackPayment row for wire format, applying dual-currency
- * gating per spec §8.1 rule 4. Raw BGN scalars are conditionally excluded when the
- * currency transition window is closed; a dual-currency display object is always attached.
- */
-async function formatInvoiceForWire(inv: any) {
-  const windowOpen = await isCurrencyTransitionWindowOpen();
-  const { totalCashbackOwed, turnoverAmount, marginAmount, ...rest } = inv;
-  return {
-    ...rest,
-    ...(windowOpen && { totalCashbackOwed, turnoverAmount, marginAmount }),
-    display: {
-      totalCashbackOwed: toDualCurrency(totalCashbackOwed ?? 0, windowOpen),
-      turnoverAmount: toDualCurrency(turnoverAmount ?? 0, windowOpen),
-      marginAmount: toDualCurrency(marginAmount ?? 0, windowOpen),
-    },
-  };
-}
 
 /* ─── Invoices ────────────────────────────────────────────────────────────── */
 
@@ -118,27 +98,10 @@ router.get(
       : [];
     const periodStatusByMonth = new Map(reportingPeriods.map(p => [p.month, p.status]));
 
-    // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for invoice amounts
-    // (stored BGN). Raw BGN scalars are gated by isCurrencyTransitionWindowOpen();
-    // when window is CLOSED, EUR-only display; when OPEN, both BGN+EUR.
-    const windowOpen = await isCurrencyTransitionWindowOpen();
-    const enriched = invoices.map(inv => {
-      // DEFECT E1 FIX: destructure to exclude raw BGN fields from spread,
-      // then conditionally re-add them only when window is open.
-      const { totalCashbackOwed, turnoverAmount, marginAmount, ...rest } = inv;
-      return {
-        ...rest,
-        ...(windowOpen && { totalCashbackOwed, turnoverAmount, marginAmount }),
-        reportingPeriodStatus: periodStatusByMonth.get(inv.month) ?? null,
-        display: {
-          totalCashbackOwed: toDualCurrency(totalCashbackOwed ?? 0, windowOpen),
-          turnoverAmount: toDualCurrency(turnoverAmount ?? 0, windowOpen),
-          // N2 (spec §3.7 + §8.1 rule 4) — margin dual-denominated to match the
-          // CSV/xlsx export, which already emits BGN+EUR for margin.
-          marginAmount: toDualCurrency(marginAmount ?? 0, windowOpen),
-        },
-      };
-    });
+    const enriched = invoices.map(inv => ({
+      ...inv,
+      reportingPeriodStatus: periodStatusByMonth.get(inv.month) ?? null,
+    }));
 
     res.json({
       success: true,
@@ -355,9 +318,7 @@ router.post(
     }
 
     const updated = await prisma.partnerCashbackPayment.findUnique({ where: { id } });
-    const display = await formatInvoiceForWire(updated);
-
-    res.json({ success: true, data: display, message: 'Invoice marked as paid' });
+    res.json({ success: true, data: updated, message: 'Invoice marked as paid' });
   })
 );
 
@@ -399,8 +360,7 @@ router.patch(
     }
 
     const updated = await prisma.partnerCashbackPayment.findUnique({ where: { id } });
-    const display = await formatInvoiceForWire(updated);
-    res.json({ success: true, data: display });
+    res.json({ success: true, data: updated });
   })
 );
 
@@ -424,8 +384,7 @@ router.patch(
       data: { notes: notes || null },
     });
 
-    const display = await formatInvoiceForWire(updated);
-    res.json({ success: true, data: display });
+    res.json({ success: true, data: updated });
   })
 );
 
@@ -591,21 +550,7 @@ router.get(
 
     const periods = Array.from(monthMap.values()).sort((a, b) => b.month.localeCompare(a.month));
 
-    const windowOpen = await isCurrencyTransitionWindowOpen();
-    const periodsWithDisplay = periods.map(p => ({
-      month: p.month,
-      count: p.count,
-      pending: p.pending,
-      paid: p.paid,
-      overdue: p.overdue,
-      hasUnbilledScans: p.hasUnbilledScans,
-      ...(windowOpen && { total: p.total }),
-      display: {
-        total: toDualCurrency(p.total, windowOpen),
-      },
-    }));
-
-    res.json({ success: true, data: periodsWithDisplay, meta: { year } });
+    res.json({ success: true, data: periods, meta: { year } });
   })
 );
 
@@ -800,24 +745,14 @@ router.get(
     ]);
 
     // Wallet tx map: always include core types so the UI can show 0 placeholders
-    // DEFECT E2a FIX: gate raw BGN totals by window state and add display objects
-    const windowOpen = await isCurrencyTransitionWindowOpen();
     const CORE_WALLET_TYPES = ['CASHBACK_CREDIT', 'WITHDRAWAL', 'TOP_UP'] as const;
     const txByType: Record<string, Record<string, any>> = {};
     for (const t of CORE_WALLET_TYPES) {
-      txByType[t] = {
-        ...(windowOpen && { total: 0 }),
-        count: 0,
-        display: toDualCurrency(0, windowOpen),
-      };
+      txByType[t] = { total: 0, count: 0 };
     }
     for (const row of walletStats) {
       const val = row._sum.amount ?? 0;
-      txByType[row.type] = {
-        ...(windowOpen && { total: val }),
-        count: row._count.id,
-        display: toDualCurrency(val, windowOpen),
-      };
+      txByType[row.type] = { total: val, count: row._count.id };
     }
 
     // Aggregate per-partner breakdown.
@@ -901,18 +836,14 @@ router.get(
       cur.turnover += scan.verifiedAmount ?? scan.billAmount ?? 0;
       planAccum[plan] = cur;
     }
-    // DEFECT E2c FIX: destructure to exclude raw BGN fields, then conditionally re-add them
     const planBreakdown = Object.entries(planAccum)
       .map(([plan, { scanCount, cashback, turnover }]) => ({
         plan,
         scanCount,
-        ...(windowOpen && { cashback, turnover }),
-        display: {
-          cashback: toDualCurrency(cashback, windowOpen),
-          turnover: toDualCurrency(turnover, windowOpen),
-        },
+        cashback,
+        turnover,
       }))
-      .sort((a, b) => (b.display?.cashback?.eur ?? 0) - (a.display?.cashback?.eur ?? 0));
+      .sort((a, b) => b.cashback - a.cashback);
 
     // Merge period rows with the full months list so the frontend always receives an entry for
     // every month in range — status is null for months that have no ReportingPeriod record yet.
@@ -937,38 +868,22 @@ router.get(
     }));
 
     // Strip internal accumulator field before sending
-    // DEFECT E2b FIX: destructure to exclude raw BGN fields, then conditionally re-add them
     const partnerBreakdown = Array.from(partnerMap.values()).map(
-      ({ _seenRates: _ignored, cashback, margin, turnover, ...rest }) => ({
-        ...rest,
-        ...(windowOpen && { cashback, margin, turnover }),
-        display: {
-          cashback: toDualCurrency(cashback, windowOpen),
-          margin: toDualCurrency(margin, windowOpen),
-          turnover: toDualCurrency(turnover, windowOpen),
-        },
-      }),
+      ({ _seenRates: _ignored, ...rest }) => rest,
     );
 
     // Build payout-by-status breakdown.  Always include the canonical statuses with 0 placeholders
     // so the UI shows a stable row layout even when no payouts exist for that status in the period.
-    // DEFECT E2d FIX: gate raw BGN totals by window state
     const PAYOUT_STATUSES_DISPLAY = ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'RISK_HOLD'] as const;
     const payoutByStatus: Record<string, Record<string, any>> = {};
     for (const s of PAYOUT_STATUSES_DISPLAY) {
-      payoutByStatus[s] = {
-        ...(windowOpen && { total: 0 }),
-        count: 0,
-      };
+      payoutByStatus[s] = { total: 0, count: 0 };
     }
     for (const row of payoutStatusStats) {
       const val = row._sum.amount ?? 0;
-      payoutByStatus[row.status] = {
-        ...(windowOpen && { total: val }),
-        count: row._count.id,
-      };
+      payoutByStatus[row.status] = { total: val, count: row._count.id };
     }
-    const payoutTotal = Object.values(payoutByStatus).reduce((s, v) => s + (windowOpen ? v.total ?? 0 : 0), 0);
+    const payoutTotal = Object.values(payoutByStatus).reduce((s, v) => s + (v.total ?? 0), 0);
     const payoutCount = Object.values(payoutByStatus).reduce((s, v) => s + v.count, 0);
 
     // Compute aggregate invoice totals for the cashbackInvoices section
@@ -976,37 +891,25 @@ router.get(
     const marginTotalBgn = invoiceTotals._sum.marginAmount ?? 0;
     const turnoverTotalBgn = invoiceTotals._sum.turnoverAmount ?? 0;
 
-    // Add display object with dual-currency to payoutByStatus
-    for (const status in payoutByStatus) {
-      const val = payoutByStatus[status].total ?? 0;
-      payoutByStatus[status].display = toDualCurrency(val, windowOpen);
-    }
-
     res.json({
       success: true,
       data: {
         period: { from: from.toISOString(), to: to.toISOString() },
         walletTransactions: txByType,
         cashbackInvoices: {
-          ...(windowOpen && { total: invoiceTotalBgn }),
-          ...(windowOpen && { marginTotal: marginTotalBgn }),
-          ...(windowOpen && { turnoverTotal: turnoverTotalBgn }),
+          total: invoiceTotalBgn,
+          marginTotal: marginTotalBgn,
+          turnoverTotal: turnoverTotalBgn,
           count: invoiceTotals._count.id,
-          display: {
-            total: toDualCurrency(invoiceTotalBgn, windowOpen),
-            marginTotal: toDualCurrency(marginTotalBgn, windowOpen),
-            turnoverTotal: toDualCurrency(turnoverTotalBgn, windowOpen),
-          },
         },
         partnerBreakdown,
         periodStatuses: allPeriodStatuses,
         planBreakdown,
         payoutBreakdown: {
           byStatus: payoutByStatus,
-          ...(windowOpen && { total: payoutTotal }),
+          total: payoutTotal,
           count: payoutCount,
           filtered: !!payoutStatusParam,
-          display: toDualCurrency(payoutTotal, windowOpen),
         },
       },
     });
@@ -1052,30 +955,20 @@ router.get(
       getPayoutThresholdBGN('BASIC'),
       getPayoutThresholdBGN('PREMIUM_MONTHLY' as any),
     ]);
-    // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for payout thresholds
-    // (stored BGN). Raw BGN values gated by window state (DEFECT 1).
     // N1 (spec §3.7) — the spec-canonical plan key set is `BASIC, PREMIUM_WEEKLY,
     // PREMIUM`. The SubscriptionPlan enum stores the third plan as `PREMIUM_MONTHLY`;
     // we read the threshold by the enum key but emit it under the spec key `PREMIUM`
     // so the response shape matches §3.7 and the sibling cashback endpoint exactly.
     // `PREMIUM_MONTHLY` is retained as a backward-compat alias (additive — no key
     // removed) because some enum-native callers reference it.
-    const windowOpen = await isCurrencyTransitionWindowOpen();
     res.json({
       success: true,
       data: {
-        ...(windowOpen && { BASIC: basic }),
-        ...(windowOpen && { PREMIUM_WEEKLY: light }),
-        ...(windowOpen && { PREMIUM: premium }),
+        BASIC: basic,
+        PREMIUM_WEEKLY: light,
+        PREMIUM: premium,
         // Backward-compat alias for enum-native consumers (spec key is PREMIUM).
-        ...(windowOpen && { PREMIUM_MONTHLY: premium }),
-      },
-      display: {
-        BASIC: toDualCurrency(basic, windowOpen),
-        PREMIUM_WEEKLY: toDualCurrency(light, windowOpen),
-        PREMIUM: toDualCurrency(premium, windowOpen),
-        // Backward-compat alias for enum-native consumers (spec key is PREMIUM).
-        PREMIUM_MONTHLY: toDualCurrency(premium, windowOpen),
+        PREMIUM_MONTHLY: premium,
       },
     });
   })
@@ -1389,40 +1282,23 @@ router.get(
       // Resolve paidBy UUIDs → admin display names for accounting readability.
       const invoiceNameMap = await resolveAdminNames(invoices.map(i => i.paidBy));
 
-      // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency CSV/xlsx export. EUR columns
-      // are always emitted; BGN columns are blanked once the transition window closes
-      // (EUR-only display). During the window BOTH currencies appear side by side.
-      const invWindowOpen = await isCurrencyTransitionWindowOpen();
-      const bgnCell = (n: number): number | string => (invWindowOpen ? n : '');
-
-      rows = invoices.map(i => {
-        const obligationBgn = Math.round((i.totalCashbackOwed + i.marginAmount) * 100) / 100;
-        const turnoverEur = toDualCurrency(i.turnoverAmount, invWindowOpen).eur;
-        const cashbackEur = toDualCurrency(i.totalCashbackOwed, invWindowOpen).eur;
-        const marginEur = toDualCurrency(i.marginAmount, invWindowOpen).eur;
-        const obligationEur = toDualCurrency(obligationBgn, invWindowOpen).eur;
-        return {
-          invoiceNumber: i.invoiceNumber ?? '',
-          id: i.id,
-          partner: i.partner.businessName,
-          city: i.partner.city ?? '',
-          month: i.month,
-          turnoverAmount: bgnCell(i.turnoverAmount),
-          turnoverAmountEur: turnoverEur,
-          contractedRate: i.contractedRate ?? '',
-          totalCashbackOwed: bgnCell(i.totalCashbackOwed),
-          totalCashbackOwedEur: cashbackEur,
-          marginAmount: bgnCell(i.marginAmount),
-          marginAmountEur: marginEur,
-          obligation: bgnCell(obligationBgn),
-          obligationEur,
-          status: i.status,
-          paidAt: i.paidAt?.toISOString() ?? '',
-          paidBy: i.paidBy ? (invoiceNameMap.get(i.paidBy) ?? i.paidBy) : '',
-          notes: i.notes ?? '',
-          createdAt: i.createdAt.toISOString(),
-        };
-      });
+      rows = invoices.map(i => ({
+        invoiceNumber: i.invoiceNumber ?? '',
+        id: i.id,
+        partner: i.partner.businessName,
+        city: i.partner.city ?? '',
+        month: i.month,
+        turnoverAmount: i.turnoverAmount,
+        contractedRate: i.contractedRate ?? '',
+        totalCashbackOwed: i.totalCashbackOwed,
+        marginAmount: i.marginAmount,
+        obligation: Math.round((i.totalCashbackOwed + i.marginAmount) * 100) / 100,
+        status: i.status,
+        paidAt: i.paidAt?.toISOString() ?? '',
+        paidBy: i.paidBy ? (invoiceNameMap.get(i.paidBy) ?? i.paidBy) : '',
+        notes: i.notes ?? '',
+        createdAt: i.createdAt.toISOString(),
+      }));
 
     } else if (type === 'periods') {
       const where: Parameters<typeof prisma.reportingPeriod.findMany>[0]['where'] = {};
@@ -1463,25 +1339,15 @@ router.get(
       const resolveName = (id: string | null) =>
         id ? (expNameMap.get(id) ?? id) : '';
 
-      // DEFECT 5 fix: add EUR columns and gate BGN columns for periods export
-      const periodWindowOpen = await isCurrencyTransitionWindowOpen();
-      const periodBgnCell = (n: number): number | string => (periodWindowOpen ? n : '');
-
       rows = periods.map(p => {
         const fin = finByMonth.get(p.month);
-        const cashbackBgn = fin?.cashback ?? 0;
-        const marginBgn = fin?.margin ?? 0;
-        const totalBgn = fin?.total ?? 0;
         return {
           month: p.month,
           status: p.status,
           partners: fin?.count ?? 0,
-          cashback: periodBgnCell(cashbackBgn),
-          cashbackEur: toDualCurrency(cashbackBgn, periodWindowOpen).eur,
-          margin: periodBgnCell(marginBgn),
-          marginEur: toDualCurrency(marginBgn, periodWindowOpen).eur,
-          total: periodBgnCell(totalBgn),
-          totalEur: toDualCurrency(totalBgn, periodWindowOpen).eur,
+          cashback: fin?.cashback ?? 0,
+          margin: fin?.margin ?? 0,
+          total: fin?.total ?? 0,
           paid: fin?.paid ?? 0,
           pending: fin?.pending ?? 0,
           overdue: fin?.overdue ?? 0,
@@ -1663,10 +1529,6 @@ router.get(
       }
 
       // Section 1 — invoice rows: one row per partner-month (period + partner + cashback + margin + invoice status)
-      // DEFECT 6 fix: add EUR columns and gate BGN columns
-      const reportWindowOpen = await isCurrencyTransitionWindowOpen();
-      const reportBgnCell = (n: number): number | string => (reportWindowOpen ? n : '');
-
       const INVOICE_STATUS_BG: Record<string, string> = { PENDING: 'Чакащ', PAID: 'Платен', OVERDUE: 'Просрочен' };
       const invoiceSection = invoiceRows.map(i => ({
         section: 'Фактура',
@@ -1675,12 +1537,9 @@ router.get(
         partnerId: i.partnerId,
         plan: '',
         scanCount: '',
-        cashback: reportBgnCell(i.totalCashbackOwed),
-        cashbackEur: toDualCurrency(i.totalCashbackOwed, reportWindowOpen).eur,
-        margin: reportBgnCell(i.marginAmount),
-        marginEur: toDualCurrency(i.marginAmount, reportWindowOpen).eur,
-        turnover: reportBgnCell(i.turnoverAmount),
-        turnoverEur: toDualCurrency(i.turnoverAmount, reportWindowOpen).eur,
+        cashback: i.totalCashbackOwed,
+        margin: i.marginAmount,
+        turnover: i.turnoverAmount,
         invoiceStatus: INVOICE_STATUS_BG[i.status] ?? i.status,
         walletType: '',
         walletTotal: '',
@@ -1700,12 +1559,9 @@ router.get(
           partnerId: '',
           plan: PLAN_LABELS_BG[plan] ?? plan,
           scanCount: stats.scanCount,
-          cashback: reportBgnCell(stats.cashback),
-          cashbackEur: toDualCurrency(stats.cashback, reportWindowOpen).eur,
+          cashback: stats.cashback,
           margin: '',
-          marginEur: '',
-          turnover: reportBgnCell(stats.turnover),
-          turnoverEur: toDualCurrency(stats.turnover, reportWindowOpen).eur,
+          turnover: stats.turnover,
           invoiceStatus: '',
           walletType: '',
           walletTotal: '',
@@ -1734,28 +1590,21 @@ router.get(
           ? `Портфейл (${walletPlanLabel} — ${walletPartnerNote})`
           : `Портфейл (${walletPlanLabel})`;
       }
-      const walletSection = walletStats.map(w => {
-        const walletAmount = w._sum.amount ?? 0;
-        return {
-          section: walletSectionLabel,
-          period: '',
-          partnerName: '',
-          partnerId: '',
-          plan: '',
-          scanCount: '',
-          cashback: '',
-          cashbackEur: '',
-          margin: '',
-          marginEur: '',
-          turnover: '',
-          turnoverEur: '',
-          invoiceStatus: '',
-          walletType: WALLET_TYPE_BG[w.type] ?? w.type,
-          walletTotal: reportBgnCell(walletAmount),
-          walletTotalEur: toDualCurrency(walletAmount, reportWindowOpen).eur,
-          walletCount: w._count.id,
-        };
-      });
+      const walletSection = walletStats.map(w => ({
+        section: walletSectionLabel,
+        period: '',
+        partnerName: '',
+        partnerId: '',
+        plan: '',
+        scanCount: '',
+        cashback: '',
+        margin: '',
+        turnover: '',
+        invoiceStatus: '',
+        walletType: WALLET_TYPE_BG[w.type] ?? w.type,
+        walletTotal: w._sum.amount ?? 0,
+        walletCount: w._count.id,
+      }));
 
       // Section 4 — payout-by-status rows: WITHDRAWAL transactions grouped by payout status
       // (spec §6.4 "плащания" dimension)
@@ -1770,28 +1619,21 @@ router.get(
       const payoutSectionLabel = payoutFilterParts.length > 0
         ? `Плащания по статус (филтър: ${payoutFilterParts.join(', ')})`
         : 'Плащания по статус';
-      const payoutSection = expPayoutByStatus.map(p => {
-        const payoutAmount = Math.abs(p._sum.amount ?? 0);
-        return {
-          section: payoutSectionLabel,
-          period: '',
-          partnerName: '',
-          partnerId: '',
-          plan: '',
-          scanCount: '',
-          cashback: '',
-          cashbackEur: '',
-          margin: '',
-          marginEur: '',
-          turnover: '',
-          turnoverEur: '',
-          invoiceStatus: '',
-          walletType: PAYOUT_STATUS_BG_REPORT[p.status] ?? p.status,
-          walletTotal: reportBgnCell(payoutAmount),
-          walletTotalEur: toDualCurrency(payoutAmount, reportWindowOpen).eur,
-          walletCount: p._count.id,
-        };
-      });
+      const payoutSection = expPayoutByStatus.map(p => ({
+        section: payoutSectionLabel,
+        period: '',
+        partnerName: '',
+        partnerId: '',
+        plan: '',
+        scanCount: '',
+        cashback: '',
+        margin: '',
+        turnover: '',
+        invoiceStatus: '',
+        walletType: PAYOUT_STATUS_BG_REPORT[p.status] ?? p.status,
+        walletTotal: Math.abs(p._sum.amount ?? 0),
+        walletCount: p._count.id,
+      }));
 
       rows = [...invoiceSection, ...planSection, ...walletSection, ...payoutSection];
 
@@ -1849,10 +1691,6 @@ router.get(
         ANNULLED: 'Анулирано', TRIAL_PENDING: 'Изчакване (пробен)',
       };
 
-      // DEFECT 7 fix: add EUR column and gate BGN column for payouts export
-      const payoutWindowOpen = await isCurrencyTransitionWindowOpen();
-      const payoutBgnCell = (n: number): number | string => (payoutWindowOpen ? n : '');
-
       const parseCompletedAt = (meta: string | null): string => {
         if (!meta) return '';
         try {
@@ -1861,24 +1699,20 @@ router.get(
         } catch { return ''; }
       };
 
-      rows = payoutsExp.map(p => {
-        const amountBgn = Math.abs(p.amount);
-        return {
-          id: p.id,
-          subscriberName: [p.wallet.user.firstName, p.wallet.user.lastName].filter(Boolean).join(' ') || '',
-          email: p.wallet.user.email,
-          phone: p.wallet.user.phone ?? '',
-          iban: p.wallet.payoutIban ?? '',
-          beneficiaryName: p.wallet.payoutBeneficiaryName ?? '',
-          amount: payoutBgnCell(amountBgn),
-          amountEur: toDualCurrency(amountBgn, payoutWindowOpen).eur,
-          currency: p.currency,
-          status: PAYOUT_STATUS_BG[p.status] ?? p.status,
-          description: p.description ?? '',
-          requestedAt: p.createdAt.toISOString(),
-          completedAt: parseCompletedAt(p.metadata),
-        };
-      });
+      rows = payoutsExp.map(p => ({
+        id: p.id,
+        subscriberName: [p.wallet.user.firstName, p.wallet.user.lastName].filter(Boolean).join(' ') || '',
+        email: p.wallet.user.email,
+        phone: p.wallet.user.phone ?? '',
+        iban: p.wallet.payoutIban ?? '',
+        beneficiaryName: p.wallet.payoutBeneficiaryName ?? '',
+        amount: Math.abs(p.amount),
+        currency: p.currency,
+        status: PAYOUT_STATUS_BG[p.status] ?? p.status,
+        description: p.description ?? '',
+        requestedAt: p.createdAt.toISOString(),
+        completedAt: parseCompletedAt(p.metadata),
+      }));
 
     } else if (type === 'cashback-summary') {
       const VALID_CB_STATUSES = ['PENDING', 'PAID', 'OVERDUE'] as const;
@@ -1893,18 +1727,13 @@ router.get(
         OVERDUE: 'Просрочено',
       };
 
-      // DEFECT 8 fix: add EUR column and gate BGN column for cashback-summary export
-      const summaryWindowOpen = await isCurrencyTransitionWindowOpen();
-      const summaryBgnCell = (n: number): number | string => (summaryWindowOpen ? n : '');
-
       rows = summary.map(s => ({
         partnerId: s.partnerId,
         partnerName: s.partnerName,
         partnerEmail: s.partnerEmail ?? '',
         month: s.month,
         receiptCount: s.receiptCount,
-        totalOwed: summaryBgnCell(s.totalOwed),
-        totalOwedEur: toDualCurrency(s.totalOwed, summaryWindowOpen).eur,
+        totalOwed: s.totalOwed,
         paymentStatus: CB_STATUS_BG[s.paymentStatus] ?? s.paymentStatus,
         paidAt: s.paidAt ?? '',
         notes: s.notes ?? '',
@@ -1918,11 +1747,11 @@ router.get(
     // because wallet rows and cashback rows have different keys — the first
     // row alone does not represent the full schema.
     const HEADERS: Record<string, string[]> = {
-      invoices:          ['invoiceNumber', 'id', 'partner', 'city', 'month', 'turnoverAmount', 'turnoverAmountEur', 'contractedRate', 'totalCashbackOwed', 'totalCashbackOwedEur', 'marginAmount', 'marginAmountEur', 'obligation', 'obligationEur', 'status', 'paidAt', 'paidBy', 'notes', 'createdAt'],
-      periods:           ['month', 'status', 'partners', 'cashback', 'cashbackEur', 'margin', 'marginEur', 'total', 'totalEur', 'paid', 'pending', 'overdue', 'openedAt', 'openedBy', 'reviewedAt', 'reviewedBy', 'lockedAt', 'lockedBy', 'invoicedAt', 'invoicedBy', 'notes'],
-      reports:           ['section', 'period', 'partnerName', 'partnerId', 'plan', 'scanCount', 'cashback', 'cashbackEur', 'margin', 'marginEur', 'turnover', 'turnoverEur', 'invoiceStatus', 'walletType', 'walletTotal', 'walletTotalEur', 'walletCount'],
-      payouts:           ['id', 'subscriberName', 'email', 'phone', 'iban', 'beneficiaryName', 'amount', 'amountEur', 'currency', 'status', 'description', 'requestedAt', 'completedAt'],
-      'cashback-summary': ['partnerId', 'partnerName', 'partnerEmail', 'month', 'receiptCount', 'totalOwed', 'totalOwedEur', 'paymentStatus', 'paidAt', 'notes'],
+      invoices:          ['invoiceNumber', 'id', 'partner', 'city', 'month', 'turnoverAmount', 'contractedRate', 'totalCashbackOwed', 'marginAmount', 'obligation', 'status', 'paidAt', 'paidBy', 'notes', 'createdAt'],
+      periods:           ['month', 'status', 'partners', 'cashback', 'margin', 'total', 'paid', 'pending', 'overdue', 'openedAt', 'openedBy', 'reviewedAt', 'reviewedBy', 'lockedAt', 'lockedBy', 'invoicedAt', 'invoicedBy', 'notes'],
+      reports:           ['section', 'period', 'partnerName', 'partnerId', 'plan', 'scanCount', 'cashback', 'margin', 'turnover', 'invoiceStatus', 'walletType', 'walletTotal', 'walletCount'],
+      payouts:           ['id', 'subscriberName', 'email', 'phone', 'iban', 'beneficiaryName', 'amount', 'currency', 'status', 'description', 'requestedAt', 'completedAt'],
+      'cashback-summary': ['partnerId', 'partnerName', 'partnerEmail', 'month', 'receiptCount', 'totalOwed', 'paymentStatus', 'paidAt', 'notes'],
     };
     // Bulgarian column header labels for all export types (accounting-friendly)
     const INVOICES_DISPLAY_HEADERS: Record<string, string> = {
@@ -1932,14 +1761,10 @@ router.get(
       city: 'Град',
       month: 'Месец',
       turnoverAmount: 'Оборот (лв.)',
-      turnoverAmountEur: 'Оборот (€)',
       contractedRate: 'Договорена ставка (%)',
       totalCashbackOwed: 'Кешбек (лв.)',
-      totalCashbackOwedEur: 'Кешбек (€)',
       marginAmount: 'Марджин (лв.)',
-      marginAmountEur: 'Марджин (€)',
       obligation: 'Задължение общо (лв.)',
-      obligationEur: 'Задължение общо (€)',
       status: 'Статус',
       paidAt: 'Платено на',
       paidBy: 'Платено от',
@@ -1951,11 +1776,8 @@ router.get(
       status: 'Статус',
       partners: 'Партньори',
       cashback: 'Кешбек (лв.)',
-      cashbackEur: 'Кешбек (€)',
       margin: 'Марджин (лв.)',
-      marginEur: 'Марджин (€)',
       total: 'Общо задължение (лв.)',
-      totalEur: 'Общо задължение (€)',
       paid: 'Платено',
       pending: 'Чакащи',
       overdue: 'Просрочени',
@@ -1977,15 +1799,11 @@ router.get(
       plan: 'Абонатен план',
       scanCount: 'Брой сканирания',
       cashback: 'Кешбек (лв.)',
-      cashbackEur: 'Кешбек (€)',
       margin: 'Марджин (лв.)',
-      marginEur: 'Марджин (€)',
       turnover: 'Оборот (лв.)',
-      turnoverEur: 'Оборот (€)',
       invoiceStatus: 'Статус на фактура',
       walletType: 'Тип транзакция',
       walletTotal: 'Общо портфейл (лв.)',
-      walletTotalEur: 'Общо портфейл (€)',
       walletCount: 'Брой транзакции',
     };
     const PAYOUTS_DISPLAY_HEADERS: Record<string, string> = {
@@ -1996,7 +1814,6 @@ router.get(
       iban: 'IBAN',
       beneficiaryName: 'Получател',
       amount: 'Сума (лв.)',
-      amountEur: 'Сума (€)',
       currency: 'Валута',
       status: 'Статус',
       description: 'Бележка',
@@ -2010,7 +1827,6 @@ router.get(
       month:         'Месец',
       receiptCount:  'Брой сканирания',
       totalOwed:     'Дължимо (лв.)',
-      totalOwedEur:  'Дължимо (€)',
       paymentStatus: 'Статус',
       paidAt:        'Платено на',
       notes:         'Бележки',

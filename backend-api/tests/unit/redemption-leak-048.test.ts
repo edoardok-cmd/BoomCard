@@ -172,8 +172,6 @@ describe('INV-RDM-048 LEAK: cashbackPercent stripped from sticker scan responses
     expect(res.body.success).toBe(true);
     // cashbackPercent must be absent at the top level (stripped by the route's destructuring)
     expect(res.body.data.cashbackPercent).toBeUndefined();
-    // cashbackPercent must also be absent from the display sub-object (built from toDualCurrency)
-    expect(res.body.data.display?.cashbackPercent).toBeUndefined();
     // cashbackAmount must still be present (selective strip, not a blank response)
     expect(res.body.data.cashbackAmount).toBeDefined();
     expect(res.body.data.cashbackAmount).toBe(10);

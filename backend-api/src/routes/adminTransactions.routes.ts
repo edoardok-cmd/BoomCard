@@ -5,7 +5,6 @@ import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { deriveCashbackEntryStatus } from '../services/adminCashback.service';
 import { parsePagination } from '../utils/pagination';
-import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -84,8 +83,6 @@ router.get('/', requirePermission('transactions.read'), async (req, res, next) =
 
     const where = buildWhere(req.query);
 
-    const windowOpen = await isCurrencyTransitionWindowOpen();
-
     const [transactions, total] = await Promise.all([
       prisma.walletTransaction.findMany({
         where,
@@ -121,25 +118,7 @@ router.get('/', requirePermission('transactions.read'), async (req, res, next) =
       prisma.walletTransaction.count({ where }),
     ]);
 
-    // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for transaction amounts
-    // (stored BGN). Raw BGN scalars are gated by isCurrencyTransitionWindowOpen();
-    // when window is CLOSED, EUR-only display; when OPEN, both BGN+EUR.
-    const enriched = transactions.map(tx => {
-      // DEFECT E1 FIX: destructure to exclude raw BGN fields from spread,
-      // then conditionally re-add them only when window is open.
-      const { amount, balanceBefore, balanceAfter, ...rest } = tx;
-      return {
-        ...rest,
-        ...(windowOpen && { amount, balanceBefore, balanceAfter }),
-        display: {
-          amount: toDualCurrency(amount ?? 0, windowOpen),
-          balanceBefore: toDualCurrency(balanceBefore ?? 0, windowOpen),
-          balanceAfter: toDualCurrency(balanceAfter ?? 0, windowOpen),
-        },
-      };
-    });
-
-    res.json({ transactions: enriched, total, page: pageNum, limit: take });
+    res.json({ transactions, total, page: pageNum, limit: take });
   } catch (error) {
     next(error);
   }
@@ -149,8 +128,6 @@ router.get('/', requirePermission('transactions.read'), async (req, res, next) =
 router.get('/stats', requirePermission('transactions.read'), async (req, res, next) => {
   try {
     const baseWhere = buildWhere(req.query);
-
-    const windowOpen = await isCurrencyTransitionWindowOpen();
 
     const [volumeResult, cashbackResult, withdrawalResult] = await Promise.all([
       prisma.walletTransaction.aggregate({
@@ -167,20 +144,14 @@ router.get('/stats', requirePermission('transactions.read'), async (req, res, ne
       }),
     ]);
 
-    // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for aggregate amounts
     const totalVolume = volumeResult._sum.amount ?? 0;
     const totalCashback = cashbackResult._sum.amount ?? 0;
     const totalWithdrawals = withdrawalResult._sum.amount ?? 0;
 
     res.json({
-      ...(windowOpen && { totalVolume }),
-      ...(windowOpen && { totalCashback }),
-      ...(windowOpen && { totalWithdrawals }),
-      display: {
-        totalVolume: toDualCurrency(totalVolume, windowOpen),
-        totalCashback: toDualCurrency(totalCashback, windowOpen),
-        totalWithdrawals: toDualCurrency(totalWithdrawals, windowOpen),
-      },
+      totalVolume,
+      totalCashback,
+      totalWithdrawals,
     });
   } catch (error) {
     next(error);
@@ -280,25 +251,10 @@ router.post('/adjust', requirePermission('transactions.write'), async (req, res,
       throw txErr;
     }
 
-    // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for transaction amounts
-    // (stored BGN). Raw BGN scalars are gated by isCurrencyTransitionWindowOpen();
-    // when window is CLOSED, EUR-only display; when OPEN, both BGN+EUR.
-    const windowOpen = await isCurrencyTransitionWindowOpen();
-    const { amount: txAmount, balanceBefore: txBalanceBefore, balanceAfter: txBalanceAfter, ...rest } = created;
-    const enriched = {
-      ...rest,
-      ...(windowOpen && { amount: txAmount, balanceBefore: txBalanceBefore, balanceAfter: txBalanceAfter }),
-      display: {
-        amount: toDualCurrency(txAmount ?? 0, windowOpen),
-        balanceBefore: toDualCurrency(txBalanceBefore ?? 0, windowOpen),
-        balanceAfter: toDualCurrency(txBalanceAfter ?? 0, windowOpen),
-      },
-    };
-
     req.auditAction = 'transaction.wallet-adjust';
     req.auditObjectType = 'transaction';
     req.auditObjectId = userId;
-    res.status(201).json(enriched);
+    res.status(201).json(created);
   } catch (error) {
     if (validationError) {
       res.status(400).json({ error: validationError });
@@ -535,7 +491,6 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
     );
 
     const now = new Date();
-    const windowOpen = await isCurrencyTransitionWindowOpen();
 
     const rows = transactions.map((tx) => {
       // Recover partner from venue when Transaction.partnerId is null.
@@ -629,21 +584,12 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
         ...rest,
         partner: partnerOut,
         venue: venueOut,
-        // M7 / Spec §3.7 + §8.1 rule 4 — gate raw BGN scalars by window state
-        ...(windowOpen && { amount }),
-        ...(windowOpen && { marginAmount }),
-        ...(windowOpen && { cashbackAmount: cashbackAmountResolved }),
-        ...(windowOpen && { discountAmount }),
-        ...(windowOpen && { finalAmount }),
-        ...(windowOpen && { netAmount }),
-        display: {
-          amount: toDualCurrency(amount ?? 0, windowOpen),
-          marginAmount: toDualCurrency(margin ?? 0, windowOpen),
-          cashbackAmount: toDualCurrency(cashback ?? 0, windowOpen),
-          discountAmount: toDualCurrency(discountAmount ?? 0, windowOpen),
-          finalAmount: toDualCurrency(finalAmount ?? 0, windowOpen),
-          netAmount: toDualCurrency(netAmount ?? 0, windowOpen),
-        },
+        amount,
+        marginAmount,
+        cashbackAmount: cashbackAmountResolved,
+        discountAmount,
+        finalAmount,
+        netAmount,
         margin,
         partnerDiscountRate,
         riskScore,
@@ -695,8 +641,6 @@ function getTodayBoundariesInSofia(): [Date, Date] {
 router.get('/business/stats', requirePermission('transactions.read'), async (req, res, next) => {
   try {
     const where = buildBusinessWhere(req.query);
-
-    const windowOpen = await isCurrencyTransitionWindowOpen();
 
     const [startOfToday, endOfToday] = getTodayBoundariesInSofia();
 
@@ -760,7 +704,6 @@ router.get('/business/stats', requirePermission('transactions.read'), async (req
       }),
     ]);
 
-    // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for aggregate amounts
     const totalVolume = agg._sum.amount ?? 0;
     const averageValue = agg._avg.amount ?? 0;
     const totalCashback =
@@ -769,14 +712,9 @@ router.get('/business/stats', requirePermission('transactions.read'), async (req
     res.json({
       count: agg._count._all,
       todayCount,
-      ...(windowOpen && { totalVolume }),
-      ...(windowOpen && { averageValue }),
-      ...(windowOpen && { totalCashback }),
-      display: {
-        totalVolume: toDualCurrency(totalVolume, windowOpen),
-        averageValue: toDualCurrency(averageValue, windowOpen),
-        totalCashback: toDualCurrency(totalCashback, windowOpen),
-      },
+      totalVolume,
+      averageValue,
+      totalCashback,
     });
   } catch (error) {
     next(error);

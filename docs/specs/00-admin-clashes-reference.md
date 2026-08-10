@@ -339,6 +339,8 @@ The closing **Recommended order to close these** section sequences the highest-l
 
 **Where:** TABLE 39 row 1: *„Валута: BGN (с поддръжка за EUR след въвеждане в България)."* **Clash:** Transition flip is undefined. Are old transactions converted at a fixed rate? Reported in both currencies? Are partners invoiced going forward in EUR while historical reports remain BGN? The operational migration is unspecified.
 
+**Update (2026-08-10, BC-QA-031):** This clash was resolved by implementing dual-currency (BGN+EUR) display gated by a `currency_transition_window_open` flag (`utils/currencyDisplay.ts` and all call sites across admin/partner/user routes and services). Bulgaria's BGN→EUR transition is now effectively over, and the feature has been fully removed — all monetary amounts are EUR-only, with none of the transition-window machinery remaining. This entry is kept as the historical record of the original spec ambiguity; the resolution history is: feature removed, EUR-only retained.
+
 ### 12.2 (G) Receipt-OCR matching threshold is unspecified
 
 **Where:** §5.5 (Касови бележки) collects receipt profile, merchant name, variations, reference photos. TABLE 27 row 3: "Receipt match" is a binary risk signal. **Clash:** What is "match"? Exact merchant string? Fuzzy match with score threshold? Required fields? The signal is consumed by risk-level computation (which is itself undefined — see 5.1) so this gap compounds.

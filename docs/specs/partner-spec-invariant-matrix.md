@@ -15,8 +15,9 @@
 
 **Class sweeps (exhaustive, route-introspecting — live in `backend-api/tests/`):**
 - `[SUITE: SCOPE]` — `partner-cross-scope-sweep.test.ts` — partner A must never read/modify partner B's resource (FLAGSHIP).
-- `[SUITE: CUR]` — `partner-currency-leak-sweep.test.ts` — no raw BGN scalar leaves a partner GET when the BGN→EUR window is CLOSED; ALSO flags internal-field-name leaks (margin/cashback/fraud/raw-QR/PII).
 - `[SUITE: INPUT]` — `partner-uuid-500-sweep.test.ts` — no partner `:param` route 500s on malformed/absent id.
+
+(The former `partner-currency-leak-sweep.test.ts` carried TWO invariant classes: the `[SUITE: CUR]` BGN→EUR dual-currency-display check, retired 2026-08-10 (BC-QA-031) along with the feature — see the retired §9 Currency Display section below — and the internal-field-name leak check (margin/cashback/fraud/raw-QR/PII), which is UNRELATED to currency and was extracted intact into `partner-internal-field-leak-sweep.test.ts` as `[SUITE: INTERNAL]`, now cited on the INV-INTERNAL-*/INV-SM-QR-007 rows below.)
 
 A suite-covered row is `verified` by suite while that suite is green. A `review`-tagged row has no exhaustive sweep and must be independently re-checked each round.
 
@@ -70,7 +71,7 @@ A suite-covered row is `verified` by suite while that suite is green. A `review`
 | INV-SM-QR-004 | Archived→Active reactivation does NOT auto-reactivate QR; admin reactivates each per-code. | status-change service | static read | review |
 | INV-SM-QR-005 | Partner CANNOT generate QR codes (no partner-role endpoint). | route surface | static read | review |
 | INV-SM-QR-006 | Partner CANNOT deactivate/reactivate QR codes (no partner-role endpoint). | route surface | static read | review |
-| INV-SM-QR-007 | Partner CANNOT see the raw QR token (`qrCode`/`stickerId`) in any response. | me/stickers; stickers/venue | suite (CUR-internal)+probe | [SUITE: CUR] |
+| INV-SM-QR-007 | Partner CANNOT see the raw QR token (`qrCode`/`stickerId`) in any response. | me/stickers; stickers/venue | suite (CUR-internal)+probe | [SUITE: INTERNAL] |
 | INV-SM-QR-008 | QR status enum is `Active|Inactive|In Processing|Replaced`; partner sees status read-only. | me/stickers | runtime probe | review |
 | INV-SM-QR-009 | QR codes cannot be manually activated while partner is Inactive/Archived. | status-change service | static read | review |
 | INV-SM-QR-010 | Every QR code is bound to a specific location (not just the partner). | schema (Sticker.venueId/locationId) | static read | review |
@@ -126,29 +127,21 @@ A suite-covered row is `verified` by suite while that suite is green. A `review`
 
 | ID | Invariant | Binding | Method | Coverage |
 |---|---|---|---|---|
-| INV-INTERNAL-001 | `marginAmount` never serialized to partner (finance). | me/finance; stats | suite | [SUITE: CUR] |
-| INV-INTERNAL-002 | per-scan `cashbackPercent` never serialized to partner. | transactions; analytics; venue config | suite | [SUITE: CUR] |
-| INV-INTERNAL-003 | per-scan `cashbackAmount` never serialized to partner (aggregate savings is a separate, opt-in decision — see INV-INTERNAL-010). | transactions | suite | [SUITE: CUR] |
-| INV-INTERNAL-004 | `fraudScore`/`fraudReasons`/`specRiskLevel` never serialized to partner. | scans; transactions | suite | [SUITE: CUR] |
-| INV-INTERNAL-005 | raw QR token (`qrCode`, `stickerId`) never serialized to partner. | me/stickers; venue stickers | suite | [SUITE: CUR] |
-| INV-INTERNAL-006 | customer PII (`ipAddress`/`userAgent`/`deviceFingerprint*`/`ocrData`/`latitude`/`longitude`/`distance`) never serialized to partner. | scans; transactions | suite | [SUITE: CUR] |
-| INV-INTERNAL-007 | `paidBy`/`notes` never serialized to partner (finance). | me/finance | suite | [SUITE: CUR] |
-| INV-INTERNAL-008 | ticket `priority`/`assignee`/`internalNote`/`source`/`externalEmail` never serialized to partner. | partnerHelp routes | suite | [SUITE: CUR] |
+| INV-INTERNAL-001 | `marginAmount` never serialized to partner (finance). | me/finance; stats | suite | [SUITE: INTERNAL] |
+| INV-INTERNAL-002 | per-scan `cashbackPercent` never serialized to partner. | transactions; analytics; venue config | suite | [SUITE: INTERNAL] |
+| INV-INTERNAL-003 | per-scan `cashbackAmount` never serialized to partner (aggregate savings is a separate, opt-in decision — see INV-INTERNAL-010). | transactions | suite | [SUITE: INTERNAL] |
+| INV-INTERNAL-004 | `fraudScore`/`fraudReasons`/`specRiskLevel` never serialized to partner. | scans; transactions | suite | [SUITE: INTERNAL] |
+| INV-INTERNAL-005 | raw QR token (`qrCode`, `stickerId`) never serialized to partner. | me/stickers; venue stickers | suite | [SUITE: INTERNAL] |
+| INV-INTERNAL-006 | customer PII (`ipAddress`/`userAgent`/`deviceFingerprint*`/`ocrData`/`latitude`/`longitude`/`distance`) never serialized to partner. | scans; transactions | suite | [SUITE: INTERNAL] |
+| INV-INTERNAL-007 | `paidBy`/`notes` never serialized to partner (finance). | me/finance | suite | [SUITE: INTERNAL] |
+| INV-INTERNAL-008 | ticket `priority`/`assignee`/`internalNote`/`source`/`externalEmail` never serialized to partner. | partnerHelp routes | suite | [SUITE: INTERNAL] |
 | INV-INTERNAL-009 | venue config internal fields (premiumBonus/platinumBonus/maxCashbackPerScan/autoApprove/autoReject thresholds/gps*/ocr*) never serialized to partner. | stickers/venue/:venueId/config | runtime probe | review |
 | INV-INTERNAL-010 | Internal margin %/cashback formula split never reconstructable from any partner finance/dashboard view. | dashboard/finance | runtime probe | review |
 | INV-INTERNAL-011 | Internal risk logic / risk level never shown in any transaction view. | transactions; detail | runtime probe | review |
 
-## 9. Currency Display (INV-CUR) — §7.3, Clash 12.1
+## 9. Currency Display (INV-CUR) — §7.3, Clash 12.1 — RETIRED 2026-08-10, BC-QA-031
 
-| ID | Invariant | Binding | Method | Coverage |
-|---|---|---|---|---|
-| INV-CUR-001 | When the BGN→EUR window is CLOSED, no raw BGN scalar leaves `GET /me/finance`. | me/finance | suite | [SUITE: CUR] |
-| INV-CUR-002 | Window CLOSED → no raw BGN scalar leaves `GET /me/transactions`. | me/transactions | suite | [SUITE: CUR] |
-| INV-CUR-003 | Window CLOSED → no raw BGN scalar leaves `GET /me/analytics`. | me/analytics | suite | [SUITE: CUR] |
-| INV-CUR-004 | Window CLOSED → no raw BGN scalar leaves `GET /:id/stats`. | stats | suite | [SUITE: CUR] |
-| INV-CUR-005 | Dual-currency (BGN+EUR) shown during the transition window; rule applies to ALL partner-facing amounts. | all partner money views | runtime probe | review |
-| INV-CUR-006 | No partner monetary endpoint emits an unclassified numeric money field (forces classify-or-gate). | all partner GETs | suite | [SUITE: CUR] |
-| INV-CUR-007 | Every partner money `*Display` object has EXACTLY the contract shape `{bgn,eur}` — no internal `windowOpen` (or other internal) key leaks (spec §7.3). | all partner money GETs | suite | [SUITE: CUR] |
+The dual-currency (BGN+EUR) display feature has been fully removed now that Bulgaria's BGN→EUR transition window has closed. All monetary amounts are EUR-only (or the pre-feature original scalar), with no `currency_transition_window_open` flag, no `currencyDisplay.ts` module, and no `display`/dual-currency wrapper objects anywhere in the partner surface. The 7 INV-CUR-* rows formerly here and the currency half of `partner-currency-leak-sweep.test.ts` no longer apply and have been removed along with the feature. See `00-admin-clashes-reference.md` §12.1 for the historical record.
 
 ## 10. Input-Boundary / Never-500 (INV-INPUT)
 
@@ -221,12 +214,12 @@ A suite-covered row is `verified` by suite while that suite is green. A `review`
 ## Coverage tags
 
 - `[SUITE: SCOPE]` — `partner-cross-scope-sweep.test.ts` (cross-partner isolation, exhaustive over partner-owned-resource routes).
-- `[SUITE: CUR]` — `partner-currency-leak-sweep.test.ts` (raw-BGN-when-closed + internal-field-name leak, exhaustive over partner GETs).
+- `[SUITE: INTERNAL]` — `partner-internal-field-leak-sweep.test.ts` (internal-field-name leak — margin/cashback/fraud/raw-QR/PII — exhaustive over partner GETs). Renamed 2026-08-10 (BC-QA-031) from `partner-currency-leak-sweep.test.ts` when the currency half of that file was retired along with the dual-currency feature.
 - `[SUITE: INPUT]` — `partner-uuid-500-sweep.test.ts` (no-500 on malformed/absent id, exhaustive over partner :param routes).
 - `review` — no exhaustive sweep covers it; an independent re-audit round must re-check it. These are the rows the ledger drives to `verified` by runtime probe / static read each round.
 
 ## Notes on suite boundaries
 
-- The `[SUITE: CUR]` sweep is the partner analogue of the admin currency sweep but ADDS an internal-field-name assertion (margin/cashback/fraud/raw-QR/PII keys), because the partner spec's §11.3 internal-field rule is a recurring partner-specific finding class. A monetary field it cannot classify FAILS the sweep (forces classify-or-gate), exactly like the admin sweep.
+- The `[SUITE: INTERNAL]` sweep asserts an internal-field-name denylist (margin/cashback/fraud/raw-QR/PII keys), because the partner spec's §11.3 internal-field rule is a recurring partner-specific finding class. A field it cannot classify FAILS the sweep (forces classify-or-gate).
 - The `[SUITE: SCOPE]` sweep seeds TWO partners (A, B) with their own venues/scans/finance/tickets, authenticates as A, and asserts every partner-owned-resource route rejects B's resource ids (403/404, never 200-with-B-data). It fails on any route that returns B's data OR 500s — and on any newly-added partner `:id`/`:venueId` route not explicitly classified.
 - Admin-side cascade/notification/application-state invariants (QR cascade, activation issuance, application transitions, invoicing) are partner-DOMAIN rules enforced on the admin side; they are `review`-tagged and checked by static read + an admin-authenticated probe, since a PARTNER login cannot exercise them directly.

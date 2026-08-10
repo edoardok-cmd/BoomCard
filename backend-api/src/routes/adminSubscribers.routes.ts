@@ -12,7 +12,6 @@ import { logger } from '../utils/logger';
 import { getClientIp } from '../utils/requestIp';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
-import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 const router = Router();
 router.use(auditMiddleware);
@@ -279,8 +278,6 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
         ? [{ lastActivityAt: { sort: dir, nulls: 'last' } }, { createdAt: 'desc' }]
         : { createdAt: dir };
 
-    const windowOpen = await isCurrencyTransitionWindowOpen();
-
     const [users, total] = await Promise.all([
       prisma.user.findMany({
         where,
@@ -309,18 +306,10 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
       return {
         ...rest,
         riskOverridden: !!riskOverriddenAt,
-        ...(windowOpen && {
-          wallet: {
-            availableBalance,
-            balance,
-            pendingBalance,
-          },
-        }),
-        ...(!windowOpen && { wallet: {} }),
-        walletDisplay: {
-          availableBalance: toDualCurrency(availableBalance ?? 0, windowOpen),
-          balance: toDualCurrency(balance ?? 0, windowOpen),
-          pendingBalance: toDualCurrency(pendingBalance ?? 0, windowOpen),
+        wallet: {
+          availableBalance,
+          balance,
+          pendingBalance,
         },
       };
     });
@@ -374,8 +363,6 @@ router.get('/export', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePe
       truncatedCandidates = resolved.truncated;
     }
 
-    const windowOpen = await isCurrencyTransitionWindowOpen();
-
     const users = await prisma.user.findMany({
       where,
       take: EXPORT_MAX,
@@ -396,18 +383,10 @@ router.get('/export', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePe
       return {
         ...rest,
         riskOverridden: !!riskOverriddenAt,
-        ...(windowOpen && {
-          wallet: {
-            availableBalance,
-            balance,
-            pendingBalance,
-          },
-        }),
-        ...(!windowOpen && { wallet: {} }),
-        walletDisplay: {
-          availableBalance: toDualCurrency(availableBalance ?? 0, windowOpen),
-          balance: toDualCurrency(balance ?? 0, windowOpen),
-          pendingBalance: toDualCurrency(pendingBalance ?? 0, windowOpen),
+        wallet: {
+          availableBalance,
+          balance,
+          pendingBalance,
         },
       };
     });
@@ -450,8 +429,6 @@ router.get('/:userId/cashback', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
 router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('subscribers.read'), async (req, res, next) => {
   try {
     const { userId } = req.params;
-
-    const windowOpen = await isCurrencyTransitionWindowOpen();
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -506,27 +483,16 @@ router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
       return res.status(404).json({ error: 'Subscriber not found' });
     }
 
-    // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for wallet amounts
-    // (stored BGN). Raw BGN scalars are gated by isCurrencyTransitionWindowOpen();
-    // when window is CLOSED, EUR-only display; when OPEN, both BGN+EUR.
     const { wallet, ...restUser } = user;
     const { availableBalance = 0, balance = 0, pendingBalance = 0 } = wallet ?? {};
 
     // Enrich each subscription with a human-readable plan name (PREMIUM_WEEKLY → "Premium Weekly")
     const enriched = {
       ...restUser,
-      ...(windowOpen && {
-        wallet: {
-          availableBalance,
-          balance,
-          pendingBalance,
-        },
-      }),
-      ...(!windowOpen && { wallet: {} }),
-      walletDisplay: {
-        availableBalance: toDualCurrency(availableBalance ?? 0, windowOpen),
-        balance: toDualCurrency(balance ?? 0, windowOpen),
-        pendingBalance: toDualCurrency(pendingBalance ?? 0, windowOpen),
+      wallet: {
+        availableBalance,
+        balance,
+        pendingBalance,
       },
       subscriptions: user.subscriptions.map((s) => ({
         ...s,

@@ -8,7 +8,6 @@
  * GET    /api/admin/settings/system                                  — all key/value system settings
  * PUT    /api/admin/settings/system                                  — upsert one or many settings
  * GET    /api/admin/settings/system/history                          — last 30 system-setting change records
- * GET    /api/admin/settings/currency-display-mode                   — FIX-012: resolved currency display mode
  * GET    /api/admin/settings/mobile-app                              — structured mobile app settings
  * PUT    /api/admin/settings/mobile-app                              — update mobile app settings
  * GET    /api/admin/settings/mobile-app/history                      — last 30 mobile-app setting change records
@@ -27,7 +26,6 @@ import { Router, Response } from 'express';
 import { FraudRuleTier, SubscriptionPlan } from '@prisma/client';
 import { invalidatePayoutThresholdCache, getPayoutThresholdBGN } from '../utils/payoutThreshold';
 import { invalidateSystemSettingCache } from '../utils/systemSettings';
-import { isCurrencyTransitionWindowOpen, invalidateCurrencyDisplayCache, CURRENCY_TRANSITION_WINDOW_SETTING, toDualCurrency } from '../utils/currencyDisplay';
 import { authenticate, authorize, requirePermission, requireActiveAdmin, AuthRequest } from '../middleware/auth.middleware';
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
@@ -61,22 +59,19 @@ router.get(
   requirePermission('settings.read'),
   asyncHandler(async (_req: AuthRequest, res: Response) => {
     const plans: SubscriptionPlan[] = ['BASIC', 'PREMIUM_WEEKLY', 'PREMIUM_MONTHLY'];
-    const [rows, windowOpen] = await Promise.all([
-      Promise.all(
-        plans.map((plan) =>
-          prisma.payoutThreshold.findFirst({ where: { plan }, orderBy: { createdAt: 'desc' } })
-        )
-      ),
-      isCurrencyTransitionWindowOpen(),
-    ]);
+    const rows = await Promise.all(
+      plans.map((plan) =>
+        prisma.payoutThreshold.findFirst({ where: { plan }, orderBy: { createdAt: 'desc' } })
+      )
+    );
 
-    const current: Record<string, { minAmount: ReturnType<typeof toDualCurrency>; notes: string | null; updatedAt: string | null }> = {};
+    const current: Record<string, { minAmount: number; notes: string | null; updatedAt: string | null }> = {};
     for (let i = 0; i < plans.length; i++) {
       const plan = plans[i];
       const row = rows[i];
       const bgnAmount = row ? row.minAmount : await getPayoutThresholdBGN(plan);
       current[plan] = {
-        minAmount: toDualCurrency(bgnAmount, windowOpen),
+        minAmount: bgnAmount,
         notes: row?.notes ?? null,
         updatedAt: row?.createdAt?.toISOString() ?? null,
       };
@@ -95,10 +90,7 @@ router.get(
   '/payout-thresholds/history',
   requirePermission('settings.read'),
   asyncHandler(async (_req: AuthRequest, res: Response) => {
-    const [history, windowOpen] = await Promise.all([
-      prisma.payoutThreshold.findMany({ orderBy: { createdAt: 'desc' }, take: 30 }),
-      isCurrencyTransitionWindowOpen(),
-    ]);
+    const history = await prisma.payoutThreshold.findMany({ orderBy: { createdAt: 'desc' }, take: 30 });
 
     // For rows that predate the createdByName column, fall back to a live lookup.
     const needsLookup = history.filter((r) => r.createdBy && !r.createdByName);
@@ -109,14 +101,11 @@ router.get(
     const adminMap = new Map(admins.map((u) => [u.id, u]));
 
     const data = history.map((r) => {
-      const { minAmount: rawMin, ...rest } = r;
-      const minAmount = toDualCurrency(rawMin, windowOpen);
       const storedName = r.createdByName;
-      if (storedName) return { ...rest, minAmount, createdByEmail: null, createdByName: storedName };
+      if (storedName) return { ...r, createdByEmail: null, createdByName: storedName };
       const admin = r.createdBy ? adminMap.get(r.createdBy) : undefined;
       return {
-        ...rest,
-        minAmount,
+        ...r,
         createdByEmail: admin?.email ?? null,
         createdByName: admin ? [admin.firstName, admin.lastName].filter(Boolean).join(' ') || admin.email : null,
       };
@@ -204,12 +193,6 @@ const ALLOWED_KEYS = new Set([
   'timezone',
   'date_format',
   'number_format',
-  // Spec §3.7 + §8.1 rule 4 — BGN→EUR transition-window flag.
-  // When "true" (default): dual-currency display (both BGN and EUR shown).
-  // When "false": EUR-only display (BGN hidden after transition closes).
-  // Used by currencyDisplay.ts (isCurrencyTransitionWindowOpen) and admin FE.
-  // Must be "true" or "false" (case-insensitive); any other value defaults to open.
-  'currency_transition_window_open',
 ]);
 
 /**
@@ -292,18 +275,6 @@ router.put(
     for (const [key, value] of entries) {
       if (REQUIRED_KEYS.has(key) && value === '') {
         return res.status(400).json({ success: false, error: `${key} is required and cannot be cleared` });
-      }
-    }
-
-    // Spec §3.7 + §8.1 rule 4 — currency display mode must be "true" or "false".
-    // FIX-012: When "true": dual-currency display (both BGN and EUR).
-    // When "false": EUR-only display (BGN hidden after transition window closes).
-    for (const [key, value] of entries) {
-      if (key === 'currency_transition_window_open' && value !== 'true' && value !== 'false') {
-        return res.status(400).json({
-          success: false,
-          error: 'currency_transition_window_open must be "true" (dual BGN/EUR display) or "false" (EUR-only display)',
-        });
       }
     }
 
@@ -465,13 +436,6 @@ router.put(
 
     for (const [key] of entries) {
       invalidateSystemSettingCache(key);
-      // CRITICAL FIX (r2): When currency_transition_window_open changes, also invalidate
-      // the currency-display module's cache to ensure GET /api/admin/settings/currency-display-mode
-      // reflects the change immediately (zero staleness). Without this, clients see old value
-      // for up to 60s after a PUT.
-      if (key === CURRENCY_TRANSITION_WINDOW_SETTING) {
-        invalidateCurrencyDisplayCache();
-      }
     }
 
     res.json({ success: true, message: 'Settings saved' });
@@ -503,48 +467,6 @@ router.get(
       take: 30,
     });
     res.json({ success: true, data: history });
-  })
-);
-
-/* ─── Currency Display Mode (FIX-012 & FIX-013: Spec §3.7 + §8.1 rule 4) ──── */
-
-/**
- * GET /api/admin/settings/currency-display-mode
- *
- * FIX-012: Expose the resolved currency display mode to the admin frontend
- * (consumed by FIX-013 for dual-currency rendering).
- *
- * Spec §3.7 + §8.1 rule 4: During the BGN→EUR transition window, amounts must
- * display in BOTH currencies (dual mode). After the window closes, BGN is hidden
- * and EUR is shown alone (EUR-only mode).
- *
- * The mode is derived from the `currency_transition_window_open` SystemSetting
- * (identical source to currencyDisplay.ts:isCurrencyTransitionWindowOpen):
- *   - window open  (true)  → mode: 'dual'      (show both BGN and EUR)
- *   - window close (false) → mode: 'eur_only'  (EUR only, BGN hidden)
- *
- * Returns: { success: true, data: { currencyDisplayMode: 'dual' | 'eur_only', windowOpen: boolean } }
- *
- * CONTRACT FOR FIX-013:
- * The admin FE should fetch this endpoint once on app init (or via a settings context)
- * and use the `currencyDisplayMode` value to decide whether to show dual-currency
- * or EUR-only amounts on all admin financial surfaces (cashback, payouts, transactions,
- * subscriptions, etc.). When the FE receives 'dual', render "X лв. / €Y"; when 'eur_only',
- * render "€Y" only (hide BGN). Both the FE and BE use the same source, so they always agree.
- */
-router.get(
-  '/currency-display-mode',
-  requirePermission('settings.read'),
-  asyncHandler(async (_req: AuthRequest, res: Response) => {
-    const windowOpen = await isCurrencyTransitionWindowOpen();
-    const currencyDisplayMode = windowOpen ? 'dual' : 'eur_only';
-    res.json({
-      success: true,
-      data: {
-        currencyDisplayMode,
-        windowOpen,
-      },
-    });
   })
 );
 

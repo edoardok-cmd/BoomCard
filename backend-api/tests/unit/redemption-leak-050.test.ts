@@ -172,8 +172,6 @@ describe('INV-RDM-050 LEAK: fraudReasons stripped from sticker scan responses', 
     expect(res.body.success).toBe(true);
     // fraudReasons must be absent at the top level (stripped by the route's destructuring)
     expect(res.body.data.fraudReasons).toBeUndefined();
-    // fraudReasons must also be absent from the display sub-object (built from toDualCurrency)
-    expect(res.body.data.display?.fraudReasons).toBeUndefined();
     // cashbackAmount must still be present (selective strip, not a blank response)
     expect(res.body.data.cashbackAmount).toBeDefined();
     expect(res.body.data.cashbackAmount).toBe(10);

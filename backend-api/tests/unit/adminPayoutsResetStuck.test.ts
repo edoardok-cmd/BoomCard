@@ -9,12 +9,6 @@
  * actually created.
  */
 
-jest.mock('../../src/utils/currencyDisplay', () => ({
-  isCurrencyTransitionWindowOpen: jest.fn(async () => false),
-  buildDualCurrencyMap: jest.fn(() => ({})),
-  toDualCurrency: jest.fn((v: any) => v),
-}));
-
 const findFirstMock = jest.fn();
 const findUniqueMock = jest.fn();
 const updateManyMock = jest.fn();

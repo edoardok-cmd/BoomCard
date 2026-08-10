@@ -44,12 +44,6 @@ jest.mock('../../src/services/sticker.service', () => ({
   },
 }));
 
-// ── currencyDisplay mock ─────────────────────────────────────────────────────
-jest.mock('../../src/utils/currencyDisplay', () => ({
-  isCurrencyTransitionWindowOpen: jest.fn().mockResolvedValue(false),
-  toDualCurrency: (amount: number) => ({ bgn: null, eur: +(amount / 1.95583).toFixed(2), windowOpen: false }),
-}));
-
 // ── Auth middleware: authenticated PARTNER ────────────────────────────────────
 const TEST_PARTNER_ID = 'test-partner-id';
 const TEST_VENUE_ID = 'test-venue-id';

@@ -92,19 +92,6 @@ jest.mock('../../src/utils/systemSettings', () => ({
   getSystemSettingInt: jest.fn(async (_key: string, fallback: number) => fallback),
 }));
 
-jest.mock('../../src/utils/currencyDisplay', () => ({
-  CURRENCY_TRANSITION_WINDOW_SETTING: 'currency_transition_window_open',
-  isCurrencyTransitionWindowOpen: jest.fn(async () => true),
-  invalidateCurrencyDisplayCache: jest.fn(),
-  bgnToEur: jest.fn((amount: number) => amount / 1.95583),
-  toDualCurrency: jest.fn((amount: number, windowOpen: boolean) => ({
-    bgn: windowOpen ? amount : null,
-    eur: amount / 1.95583,
-    windowOpen,
-  })),
-  buildDualCurrencyMap: jest.fn(async (amounts: any) => amounts),
-}));
-
 // ─── Email service mock ───────────────────────────────────────────────────────
 
 const emailSendCalls: any[] = [];
@@ -280,62 +267,5 @@ describe('Fix 2 — POST /ticket confirmation email uses dynamic office_email', 
     // Must NOT contain the old hardcoded address
     expect(emailSendCalls[0].html).not.toContain('office@boomcard.bg');
     expect(emailSendCalls[0].html).toContain('help@otherdomain.com');
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FIX-012 — PUT /system with currency_transition_window_open validation
-//
-// Unit tests for FIX-012 currency display mode validation.
-// The GET /currency-display-mode endpoint and window-flag behaviour are verified
-// in the integration tests (bc-admin-audit-fix-012.integration.test.ts) which test
-// against the live DB and cache system, not mocks.
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('FIX-012 — currency_transition_window_open validation in PUT /system', () => {
-  it('accepts currency_transition_window_open="true"', async () => {
-    const { $transaction, systemSetting } = jest.requireMock('../../src/lib/prisma').prisma;
-    ($transaction as jest.Mock).mockResolvedValue([]);
-    (systemSetting.findMany as jest.Mock).mockResolvedValue([]);
-
-    const res = await buildSettingsApp()
-      .put('/system')
-      .send({ settings: { currency_transition_window_open: 'true' } });
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-  });
-
-  it('accepts currency_transition_window_open="false"', async () => {
-    const { $transaction, systemSetting } = jest.requireMock('../../src/lib/prisma').prisma;
-    ($transaction as jest.Mock).mockResolvedValue([]);
-    (systemSetting.findMany as jest.Mock).mockResolvedValue([]);
-
-    const res = await buildSettingsApp()
-      .put('/system')
-      .send({ settings: { currency_transition_window_open: 'false' } });
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-  });
-
-  it('rejects currency_transition_window_open with invalid value', async () => {
-    const res = await buildSettingsApp()
-      .put('/system')
-      .send({ settings: { currency_transition_window_open: 'invalid' } });
-
-    expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
-    expect(res.body.error).toMatch(/currency_transition_window_open.*must be/i);
-  });
-
-  it('rejects currency_transition_window_open as non-string', async () => {
-    const res = await buildSettingsApp()
-      .put('/system')
-      .send({ settings: { currency_transition_window_open: true } });
-
-    expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
-    expect(res.body.error).toMatch(/value must be a string/i);
   });
 });

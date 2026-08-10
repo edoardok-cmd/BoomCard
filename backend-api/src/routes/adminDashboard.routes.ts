@@ -9,7 +9,6 @@ import { Router, Response } from 'express';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
-import { buildDualCurrencyMap, isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 const router = Router();
 
@@ -235,7 +234,6 @@ router.get(
       ? parseFloat((todayVolume / todayTxCount).toFixed(2))
       : 0;
     const payoutsDue = Math.abs(payoutsDueAgg._sum.amount ?? 0);
-    const windowOpen = await isCurrencyTransitionWindowOpen();
 
     // §3.1 cashback status breakdown — zero-fill all 7 canonical statuses so the
     // tile always renders every state even when no rows exist for it.
@@ -254,22 +252,12 @@ router.get(
       return {
         status,
         count: row?._count?._all ?? 0,
-        ...(windowOpen && { amount }),
-        display: toDualCurrency(amount, windowOpen),
+        amount,
       };
     });
 
-    // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for the dashboard's
-    // financial figures (all stored amounts are BGN). Emitted ALONGSIDE the existing
-    // scalar BGN fields (backward-compat) under `financeDisplay`. `payoutsDue` is
-    // already computed above.
     const partnerReceivablesAmt = partnerReceivables._sum.totalCashbackOwed ?? 0;
     const marginAmt = totalMargin._sum.marginAmount ?? 0;
-    const financeDisplay = await buildDualCurrencyMap({
-      payoutsDue,
-      partnerReceivables: partnerReceivablesAmt,
-      margin: marginAmt,
-    });
 
     res.json({
       success: true,
@@ -288,27 +276,16 @@ router.get(
         },
         transactions: {
           todayCount: todayTxCount,
-          ...(windowOpen && { todayVolume }),
-          ...(windowOpen && { todayAvg }),
-          ...(windowOpen && { totalVolume: totalTxVolume._sum.finalAmount ?? 0 }),
-          display: {
-            todayVolume: toDualCurrency(todayVolume, windowOpen),
-            todayAvg: toDualCurrency(todayAvg, windowOpen),
-            totalVolume: toDualCurrency(totalTxVolume._sum.finalAmount ?? 0, windowOpen),
-          },
+          todayVolume,
+          todayAvg,
+          totalVolume: totalTxVolume._sum.finalAmount ?? 0,
         },
         cashback: {
-          ...(windowOpen && { accrued: accruedCashback._sum.amount ?? 0 }),
-          ...(windowOpen && { approved: approvedCashback._sum.amount ?? 0 }),
-          ...(windowOpen && { pending: pendingCashback._sum.amount ?? 0 }),
-          ...(windowOpen && { expiringSoon: expiringCashback._sum.amount ?? 0 }),
+          accrued: accruedCashback._sum.amount ?? 0,
+          approved: approvedCashback._sum.amount ?? 0,
+          pending: pendingCashback._sum.amount ?? 0,
+          expiringSoon: expiringCashback._sum.amount ?? 0,
           statusBreakdown: cashbackStatusBreakdown,
-          display: {
-            accrued: toDualCurrency(accruedCashback._sum.amount ?? 0, windowOpen),
-            approved: toDualCurrency(approvedCashback._sum.amount ?? 0, windowOpen),
-            pending: toDualCurrency(pendingCashback._sum.amount ?? 0, windowOpen),
-            expiringSoon: toDualCurrency(expiringCashback._sum.amount ?? 0, windowOpen),
-          },
         },
         partners: {
           active: activePartners,
@@ -316,14 +293,10 @@ router.get(
           locations: activeLocations,
         },
         finance: {
-          payoutsDue: windowOpen ? payoutsDue : null,
+          payoutsDue,
           payoutsDueCount,
-          partnerReceivables: windowOpen ? partnerReceivablesAmt : null,
-          margin: windowOpen ? marginAmt : null,
-          // M7 — dual-currency {bgn, eur} pairs (BGN null after the transition window).
-          // Scalar fields above are also gated to null when the window is closed, keeping
-          // the scalar and display representations consistent (spec §8.1 rule 4).
-          display: financeDisplay,
+          partnerReceivables: partnerReceivablesAmt,
+          margin: marginAmt,
         },
       },
       generatedAt: now.toISOString(),

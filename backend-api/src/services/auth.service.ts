@@ -17,7 +17,6 @@ import { writeAudit } from '../middleware/audit.middleware';
 import { findInvalidCategoryEntry } from '../constants/categoryRegistry';
 import { parseVenueCountBucket } from './partnerVenueCountBucket.helper';
 import { detach, detachImmediate } from '../utils/detach';
-import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 // Translate a Prisma P2002 (unique violation) on the (email, role) index
 // into a user-facing 409. Two concurrent register POSTs with the same
@@ -1318,16 +1317,8 @@ export class AuthService {
       partner_account_status = mapPartnerCanonicalStatus(partner.status);
     }
 
-    const showDualCurrency = await isCurrencyTransitionWindowOpen();
-
     return {
       ...rest,
-      loyaltyAccount: rest.loyaltyAccount
-        ? {
-            ...rest.loyaltyAccount,
-            cashbackBalance: toDualCurrency(rest.loyaltyAccount.cashbackBalance, showDualCurrency),
-          }
-        : rest.loyaltyAccount,
       twoFactorEnabled: totpEnabledAt !== null,
       ...(partner_account_status ? { partner_account_status } : {}),
     };
@@ -1790,21 +1781,12 @@ export class AuthService {
     // User.iban is a legacy field that may be out of sync. Fetch wallet IBAN
     // separately and prefer it in the export. User.iban is included for completeness
     // but labelled as legacy so downstream consumers know which to trust.
-    const [wallet, windowOpen] = await Promise.all([
-      prisma.wallet.findUnique({
-        where: { userId },
-        select: { payoutIban: true, payoutBeneficiaryName: true },
-      }).catch(() => null),
-      isCurrencyTransitionWindowOpen(),
-    ]);
+    const wallet = await prisma.wallet.findUnique({
+      where: { userId },
+      select: { payoutIban: true, payoutBeneficiaryName: true },
+    }).catch(() => null);
 
-    const userData = {
-      ...user,
-      receipts: user.receipts.map(r => ({
-        ...r,
-        totalAmount: r.totalAmount != null ? toDualCurrency(Number(r.totalAmount), windowOpen) : null,
-      })),
-    };
+    const userData = user;
 
     const exportData = {
       exportDate: new Date().toISOString(),

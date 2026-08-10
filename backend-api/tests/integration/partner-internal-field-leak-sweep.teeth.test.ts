@@ -1,22 +1,29 @@
 /**
- * TEETH TEST: partner-currency-leak-sweep (INV-CUR-001..007, INV-INTERNAL-001..011)
+ * TEETH TEST: partner-internal-field-leak-sweep (INV-INTERNAL-001..011)
  *
- * Proves that the BGN/internal-field leak detector has teeth: it fires on a
+ * Proves that the internal-field leak detector has teeth: it fires on a
  * synthetic "broken" response body and passes on the production API response.
  *
  * RED scenario (inline): feed the walk() detector a synthetic JSON body that
- *   contains raw BGN amounts / internal fields → detector reports leaks.
- * GREEN scenario (live API): query analytics + finance with currency window CLOSED
- *   → detector reports zero leaks.
+ *   contains internal fields → detector reports leaks.
+ * GREEN scenario (live API): query analytics + finance + transactions
+ *   → detector reports zero internal-field leaks.
  *
  * This file does NOT edit any src/** code.
+ *
+ * NOTE — history: this teeth test formerly also proved a dual-currency-display
+ * (BGN→EUR transition window) invariant, ex-`partner-currency-leak-sweep.teeth.test.ts`
+ * (INV-CUR-001..007). That invariant and its dual-currency machinery were fully
+ * removed 2026-08-10 (BC-QA-031) — the transition window closed and the feature
+ * was retired, so there is no `display:{bgn,eur}` shape left to police. Only the
+ * internal-field-name invariant (unrelated to currency) survives, in this
+ * renamed file.
  */
 
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { createTestApp } from '../setup';
 import { prisma } from '../../src/lib/prisma';
-import { invalidateCurrencyDisplayCache } from '../../src/utils/currencyDisplay';
 
 jest.mock('../../src/services/email.service', () => ({
   emailService: { sendEmail: (_o: any) => Promise.resolve() },
@@ -28,7 +35,7 @@ jest.mock('../../src/services/notification.service', () => ({
   },
 }));
 
-const RUN_TAG = `teeth-curleak-${Date.now()}`;
+const RUN_TAG = `teeth-intleak-${Date.now()}`;
 
 function tok(userId: string): string {
   const s = process.env.JWT_SECRET;
@@ -40,28 +47,6 @@ function tok(userId: string): string {
 
 // ─── Leak detection logic (mirror of the production sweep) ───────────────────
 
-const MONEY_KEY =
-  /(amount|balance|total|fee|margin|cashback|discount|netamount|payout|price|threshold|revenue|payment|refund|sum|cost|gross|net|owed|turnover|earnings|spend|withdraw|deposit|credit|debit|wallet|savings)/i;
-
-// Mirror of the production sweep's allowlists exactly — so GREEN tests use identical logic.
-const ALLOW_NONMONEY = new Set<string>(
-  [
-    'count', 'totalcount', 'pendingcount', 'paymentcount', 'totalpayments', 'totalrefunds', 'totalpayouts',
-    'totaltransactions', 'transactioncount', 'usercount', 'partnercount', 'subscribercount', 'cashbackcount',
-    'totalcashbackcount', 'pending', 'paid', 'overdue', 'processing', 'failed', 'completed', 'cancelled',
-    'total', 'rate', 'discountrate', 'maxdiscountrate', 'mindiscountrate', 'defaultdiscountrate', 'cashbackrate',
-    'cashbackpercent', 'percentage', 'percent', 'marginpercent', 'commissionrate', 'contractedrate', 'taxrate',
-    'feerate', 'discountstep', 'discountmin', 'discountmax', 'discountpercent', 'avgdiscount', 'totalvisits',
-    'totalredumptions', 'totalredemptions', 'monthvisits', 'reviewcount',
-    'effectivediscountrate', 'totaluses', 'totalvenues', 'totaloffers', 'totalreviews', 'totalscans',
-    'totalsavings',
-  ].map((s) => s.toLowerCase()),
-);
-
-const ALWAYS_IGNORE_KEYS = new Set<string>(
-  ['page', 'limit', 'pages', 'totalpages', 'offset', 'size', 'perpage', 'pagesize'].map((s) => s.toLowerCase()),
-);
-
 const FORBIDDEN_INTERNAL_KEYS = new Set<string>(
   [
     'marginamount', 'cashbackamount', 'cashbackpercent', 'fraudscore', 'fraudreasons', 'specrisklevel',
@@ -71,13 +56,7 @@ const FORBIDDEN_INTERNAL_KEYS = new Set<string>(
   ].map((s) => s.toLowerCase()),
 );
 
-interface Leak { jsonPath: string; key: string; value: any; kind: 'MONEY' | 'INTERNAL'; }
-
-function isNumericLeaf(v: any): boolean {
-  if (typeof v === 'number' && Number.isFinite(v)) return true;
-  if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) return true;
-  return false;
-}
+interface Leak { jsonPath: string; key: string; value: any; }
 
 function walk(node: any, path: string, leaks: Leak[]): void {
   if (node === null || node === undefined) return;
@@ -87,26 +66,10 @@ function walk(node: any, path: string, leaks: Leak[]): void {
     const childPath = path ? `${path}.${key}` : key;
     const keyLc = key.toLowerCase();
     if (FORBIDDEN_INTERNAL_KEYS.has(keyLc) && value !== null && value !== undefined) {
-      leaks.push({ jsonPath: childPath, key, value, kind: 'INTERNAL' });
+      leaks.push({ jsonPath: childPath, key, value });
     }
-    if (value && typeof value === 'object') { walk(value, childPath, leaks); continue; }
-    if (!isNumericLeaf(value)) continue;
-    if (ALWAYS_IGNORE_KEYS.has(keyLc)) continue;
-    if (keyLc === 'bgn') { leaks.push({ jsonPath: childPath, key, value, kind: 'MONEY' }); continue; }
-    if (keyLc === 'eur') continue;
-    if (!MONEY_KEY.test(key)) continue;
-    if (ALLOW_NONMONEY.has(keyLc)) continue;
-    leaks.push({ jsonPath: childPath, key, value, kind: 'MONEY' });
+    if (value && typeof value === 'object') { walk(value, childPath, leaks); }
   }
-}
-
-async function setCurrencyWindowOpen(open: boolean): Promise<void> {
-  await prisma.systemSetting.upsert({
-    where: { key: 'currency_transition_window_open' },
-    create: { key: 'currency_transition_window_open', value: open ? 'true' : 'false' },
-    update: { value: open ? 'true' : 'false' },
-  });
-  invalidateCurrencyDisplayCache();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -114,50 +77,21 @@ async function setCurrencyWindowOpen(open: boolean): Promise<void> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('TEETH — RED: detector fires on known-bad response bodies', () => {
-  it('RED: raw BGN amount on revenue key is detected as MONEY leak', () => {
-    const brokenBody = {
-      data: {
-        stats: {
-          revenue: 1250.50, // raw BGN scalar — MUST NOT appear when window is CLOSED
-        },
-      },
-    };
-    const leaks: Leak[] = [];
-    walk(brokenBody, '', leaks);
-    const moneyLeaks = leaks.filter((l) => l.kind === 'MONEY');
-    expect(moneyLeaks.length).toBeGreaterThanOrEqual(1);
-    expect(moneyLeaks.some((l) => l.key === 'revenue')).toBe(true);
-  });
-
-  it('RED: raw BGN scalar on "bgn" key is detected', () => {
-    const brokenBody = {
-      data: {
-        revenue: {
-          display: { bgn: 500, eur: 255.8 }, // bgn present while window CLOSED
-        },
-      },
-    };
-    const leaks: Leak[] = [];
-    walk(brokenBody, '', leaks);
-    // bgn key with a real value is always a MONEY leak
-    expect(leaks.some((l) => l.key === 'bgn' && l.kind === 'MONEY')).toBe(true);
-  });
-
-  it('RED: marginAmount internal field is detected as INTERNAL leak', () => {
+  it('RED: marginAmount internal field is detected', () => {
     const brokenBody = {
       data: {
         payment: {
           marginAmount: 20,     // internal field — must never reach partner
-          turnoverAmount: 1000, // also money
+          turnoverAmount: 1000,
         },
       },
     };
     const leaks: Leak[] = [];
     walk(brokenBody, '', leaks);
-    expect(leaks.some((l) => l.key === 'marginAmount' && l.kind === 'INTERNAL')).toBe(true);
+    expect(leaks.some((l) => l.key === 'marginAmount')).toBe(true);
   });
 
-  it('RED: cashbackAmount internal field is detected as INTERNAL leak', () => {
+  it('RED: cashbackAmount and fraudScore internal fields are detected', () => {
     const brokenBody = {
       data: {
         scan: {
@@ -168,8 +102,8 @@ describe('TEETH — RED: detector fires on known-bad response bodies', () => {
     };
     const leaks: Leak[] = [];
     walk(brokenBody, '', leaks);
-    expect(leaks.some((l) => l.key === 'cashbackAmount' && l.kind === 'INTERNAL')).toBe(true);
-    expect(leaks.some((l) => l.key === 'fraudScore' && l.kind === 'INTERNAL')).toBe(true);
+    expect(leaks.some((l) => l.key === 'cashbackAmount')).toBe(true);
+    expect(leaks.some((l) => l.key === 'fraudScore')).toBe(true);
   });
 
   it('RED: qrCode internal field is detected regardless of value type', () => {
@@ -178,37 +112,27 @@ describe('TEETH — RED: detector fires on known-bad response bodies', () => {
     };
     const leaks: Leak[] = [];
     walk(brokenBody, '', leaks);
-    expect(leaks.some((l) => l.key === 'qrCode' && l.kind === 'INTERNAL')).toBe(true);
+    expect(leaks.some((l) => l.key === 'qrCode')).toBe(true);
   });
 
-  it('BASELINE: clean dual-currency display body produces zero leaks (window CLOSED shape)', () => {
+  it('BASELINE: clean plain-scalar body produces zero leaks', () => {
     const cleanBody = {
       data: {
-        revenue: {
-          display: {
-            total: { bgn: null, eur: 640.23 },
-            average: { bgn: null, eur: 32.01 },
-          },
-        },
-        cashback: {
-          display: {
-            total: { bgn: null, eur: 32.01 },
-          },
-        },
+        revenue: { total: 640.23, average: 32.01 },
+        cashback: { total: 32.01 },
       },
     };
     const leaks: Leak[] = [];
     walk(cleanBody, '', leaks);
-    // bgn:null should NOT fire (we only leak on numeric bgn)
     expect(leaks).toEqual([]);
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GREEN scenario — live API with window CLOSED
+// GREEN scenario — live API leaks no internal field
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('GREEN: live partner API leaks nothing when window CLOSED', () => {
+describe('GREEN: live partner API leaks no internal field', () => {
   let app: any;
   let partnerToken: string;
   let fixtures: Record<string, string> = {};
@@ -220,7 +144,7 @@ describe('GREEN: live partner API leaks nothing when window CLOSED', () => {
       data: {
         email: `${RUN_TAG}-p@test.local`,
         firstName: 'Teeth',
-        lastName: 'CurLeak',
+        lastName: 'IntLeak',
         phone: '+359000900200',
         status: 'ACTIVE',
         role: 'PARTNER',
@@ -298,12 +222,9 @@ describe('GREEN: live partner API leaks nothing when window CLOSED', () => {
     partnerToken = tok(user.id);
     fixtures.partnerId = partner.id;
     fixtures.venueId = venue.id;
-
-    await setCurrencyWindowOpen(false);
   });
 
   afterAll(async () => {
-    await setCurrencyWindowOpen(true);
     try {
       await prisma.stickerScan.deleteMany({
         where: { venue: { partner: { user: { email: { startsWith: RUN_TAG } } } } },
@@ -327,7 +248,7 @@ describe('GREEN: live partner API leaks nothing when window CLOSED', () => {
     await app?.close?.();
   });
 
-  it('GREEN: venue analytics endpoint has no raw BGN or internal field when window CLOSED', async () => {
+  it('GREEN: venue analytics endpoint has no internal field', async () => {
     const res = await request(app)
       .get(`/api/stickers/venue/${fixtures.venueId}/analytics`)
       .set('Authorization', `Bearer ${partnerToken}`);
@@ -335,12 +256,12 @@ describe('GREEN: live partner API leaks nothing when window CLOSED', () => {
     const leaks: Leak[] = [];
     walk(res.body, '', leaks);
     if (leaks.length > 0) {
-      console.log('[curleak-teeth] GREEN FAILS — leaks:', leaks);
+      console.log('[intleak-teeth] GREEN FAILS — leaks:', leaks);
     }
     expect(leaks).toEqual([]);
   });
 
-  it('GREEN: partner finance endpoint has no raw BGN scalar when window CLOSED', async () => {
+  it('GREEN: partner finance endpoint has no internal field', async () => {
     const res = await request(app)
       .get(`/api/partners/${fixtures.partnerId}/finance`)
       .set('Authorization', `Bearer ${partnerToken}`);
@@ -350,7 +271,7 @@ describe('GREEN: live partner API leaks nothing when window CLOSED', () => {
     expect(leaks).toEqual([]);
   });
 
-  it('GREEN: partner /me/analytics has no raw BGN scalar when window CLOSED', async () => {
+  it('GREEN: partner /me/analytics has no internal field', async () => {
     const res = await request(app)
       .get('/api/partners/me/analytics')
       .set('Authorization', `Bearer ${partnerToken}`);

@@ -36,12 +36,6 @@
 import express from 'express';
 import request from 'supertest';
 
-jest.mock('../../src/utils/currencyDisplay', () => ({
-  isCurrencyTransitionWindowOpen: jest.fn(async () => false),
-  toDualCurrency: jest.fn((v: any) => v),
-  buildDualCurrencyMap: jest.fn(() => ({})),
-}));
-
 // ─── Mutable mock state ────────────────────────────────────────────────────────
 
 let reportingPeriodFindUniqueResult: any = null;

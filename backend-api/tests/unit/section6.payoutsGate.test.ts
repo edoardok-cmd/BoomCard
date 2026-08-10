@@ -17,14 +17,6 @@
  *   9.  bulk-approve: subscription.findFirst called with orderBy: createdAt desc per user
  */
 
-// ── Currency display mock (prevents isCurrencyTransitionWindowOpen DB hit) ────
-
-jest.mock('../../src/utils/currencyDisplay', () => ({
-  isCurrencyTransitionWindowOpen: jest.fn(async () => false),
-  buildDualCurrencyMap: jest.fn(() => ({})),
-  toDualCurrency: jest.fn((v: any) => v),
-}));
-
 // ── Mutable mock state ────────────────────────────────────────────────────────
 
 let txFindFirstResult: any = null;

@@ -47,15 +47,6 @@ jest.mock('../../src/middleware/audit.middleware', () => ({
   auditMiddleware: (_req: any, _res: any, next: any) => next(),
 }));
 
-jest.mock('../../src/utils/currencyDisplay', () => ({
-  isCurrencyTransitionWindowOpen: jest.fn(async () => false),
-  toDualCurrency: jest.fn((amount: number, _windowOpen: boolean) => ({
-    windowOpen: false,
-    bgn: null,
-    eur: +(amount / 1.95583).toFixed(2),
-  })),
-}));
-
 jest.mock('../../src/services/adminCashback.service', () => ({
   deriveCashbackEntryStatus: jest.fn(),
 }));
@@ -149,9 +140,7 @@ describe('POST /api/admin/transactions/adjust', () => {
       expect(res.body.type).toBe('ADJUSTMENT');
       expect(res.body.status).toBe('COMPLETED');
       expect(res.body.id).toBe('tx-1');
-      // display block must always be present
-      expect(res.body.display).toBeDefined();
-      expect(res.body.display.amount).toBeDefined();
+      expect(res.body.amount).toBeDefined();
       expect(prismaTransactionMock).toHaveBeenCalledTimes(1);
     });
 

@@ -20,7 +20,6 @@ import {
 } from '../constants/receipt.constants';
 import { getSystemSettingInt, getSystemSettingFloat } from '../utils/systemSettings';
 import { detach } from '../utils/detach';
-import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 /**
  * Receipt Item structure (parsed from OCR)
@@ -223,8 +222,7 @@ class ReceiptService {
 
       logger.info(`Receipt created: ${receipt.id} for user: ${userId}`);
 
-      const showDualCurrency = await isCurrencyTransitionWindowOpen();
-      return { success: true, data: this.formatReceipt(receipt, { showDualCurrency }) };
+      return { success: true, data: this.formatReceipt(receipt) };
     } catch (error) {
       if (error instanceof AppError) throw error;
       logger.error('Error creating receipt:', error);
@@ -312,10 +310,9 @@ class ReceiptService {
         prisma.receipt.count({ where })
       ]);
 
-      const showDualCurrency = includeInternal ? false : await isCurrencyTransitionWindowOpen();
       return {
         success: true,
-        data: receipts.map(r => this.formatReceipt(r, { includeInternal, showDualCurrency })),
+        data: receipts.map(r => this.formatReceipt(r, { includeInternal })),
         pagination: {
           page,
           limit,
@@ -366,8 +363,7 @@ class ReceiptService {
         throw new AppError('Unauthorized to access this receipt', 403);
       }
 
-      const showDualCurrency = await isCurrencyTransitionWindowOpen();
-      return { success: true, data: this.formatReceipt(receipt, { showDualCurrency }) };
+      return { success: true, data: this.formatReceipt(receipt) };
     } catch (error) {
       if (error instanceof AppError) throw error;
       logger.error('Error fetching receipt:', error);
@@ -428,8 +424,7 @@ class ReceiptService {
 
       logger.info(`Receipt updated: ${id} by user: ${userId}`);
 
-      const showDualCurrency = await isCurrencyTransitionWindowOpen();
-      return { success: true, data: this.formatReceipt(updatedReceipt, { showDualCurrency }) };
+      return { success: true, data: this.formatReceipt(updatedReceipt) };
     } catch (error) {
       if (error instanceof AppError) throw error;
       logger.error('Error updating receipt:', error);
@@ -575,7 +570,6 @@ class ReceiptService {
       const averageAmount = totalReceipts > 0
         ? Math.round((totalAmount / totalReceipts) * 100) / 100
         : 0;
-      const showDualCurrency = await isCurrencyTransitionWindowOpen();
 
       return {
         success: true,
@@ -584,8 +578,8 @@ class ReceiptService {
           validatedReceipts,
           rejectedReceipts,
           pendingReceipts,
-          totalAmount: toDualCurrency(Math.round(totalAmount * 100) / 100, showDualCurrency),
-          averageAmount: toDualCurrency(averageAmount, showDualCurrency),
+          totalAmount: Math.round(totalAmount * 100) / 100,
+          averageAmount,
         },
       };
     } catch (error) {
@@ -612,7 +606,7 @@ class ReceiptService {
    * telling a fraudster which rule tripped makes the next forgery easier.
    * Admin endpoints must pass { includeInternal: true }.
    */
-  private formatReceipt(receipt: any, opts: { includeInternal?: boolean; showDualCurrency?: boolean } = {}) {
+  private formatReceipt(receipt: any, opts: { includeInternal?: boolean } = {}) {
     const base = {
       ...receipt,
       items: receipt.items ? JSON.parse(receipt.items) : undefined,
@@ -678,21 +672,7 @@ class ReceiptService {
       cardId: _cid,
       ...safe
     } = base;
-    const { showDualCurrency = false } = opts;
-    return {
-      ...safe,
-      totalAmount: safe.totalAmount != null ? toDualCurrency(safe.totalAmount, showDualCurrency) : undefined,
-      cashbackAmount: toDualCurrency(safe.cashbackAmount ?? 0, showDualCurrency),
-      ...(safe.transaction && {
-        transaction: {
-          ...safe.transaction,
-          amount: toDualCurrency(safe.transaction.amount, showDualCurrency),
-          ...(safe.transaction.cashbackAmount != null && {
-            cashbackAmount: toDualCurrency(safe.transaction.cashbackAmount, showDualCurrency),
-          }),
-        },
-      }),
-    };
+    return safe;
   }
 
   // ============================================

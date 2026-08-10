@@ -7,7 +7,6 @@ import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { WalletTransactionStatus, WalletTransactionType } from '@prisma/client';
 import { parsePagination } from '../utils/pagination';
-import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 import { logger } from '../utils/logger';
 
 const router = Router();
@@ -172,22 +171,15 @@ router.get('/statistics', asyncHandler(async (req: AuthRequest, res: Response) =
       .filter(s => s.type === WalletTransactionType.PURCHASE)
       .reduce((sum, s) => sum + Math.abs(s._sum.amount || 0), 0);
 
-    const showDualCurrency = await isCurrencyTransitionWindowOpen();
-
     res.json({
-      totalCashback: toDualCurrency(totalCashback, showDualCurrency),
-      totalTopups: toDualCurrency(totalTopups, showDualCurrency),
-      totalSpent: toDualCurrency(totalSpent, showDualCurrency),
-      currentBalance: toDualCurrency(wallet.balance, showDualCurrency),
-      availableBalance: toDualCurrency(wallet.availableBalance, showDualCurrency),
-      pendingBalance: toDualCurrency(wallet.pendingBalance, showDualCurrency),
-      transactionsByType: stats.map(s => ({
-        ...s,
-        _sum: {
-          amount: s._sum.amount != null ? toDualCurrency(s._sum.amount, showDualCurrency) : null,
-        },
-      })),
-      currency: showDualCurrency ? 'BGN' : 'EUR',
+      totalCashback,
+      totalTopups,
+      totalSpent,
+      currentBalance: wallet.balance,
+      availableBalance: wallet.availableBalance,
+      pendingBalance: wallet.pendingBalance,
+      transactionsByType: stats,
+      currency: 'BGN',
     });
   } catch (error: any) {
     logger.error('Error fetching wallet statistics:', error);

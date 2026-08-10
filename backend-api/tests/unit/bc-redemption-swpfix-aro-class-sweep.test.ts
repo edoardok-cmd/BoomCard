@@ -74,10 +74,6 @@ jest.mock('../../src/services/imageUpload.service', () => ({
 jest.mock('../../src/utils/exifLivePhoto', () => ({
   checkLivePhoto: jest.fn().mockResolvedValue({ ok: true }),
 }));
-jest.mock('../../src/utils/currencyDisplay', () => ({
-  isCurrencyTransitionWindowOpen: jest.fn().mockResolvedValue(false),
-  toDualCurrency: jest.fn(),
-}));
 jest.mock('../../src/utils/logger', () => ({
   logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
 }));

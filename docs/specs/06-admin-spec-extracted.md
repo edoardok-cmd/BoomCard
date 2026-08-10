@@ -477,10 +477,9 @@ Note: The source spec does not define business rules for rate transitions, requi
 - Thresholds: 0–20 = Low, 21–50 = Medium, 51+ = High.
 - Only High-risk (51+) records enter the mandatory manual admin review queue. Low and Medium risk auto-approve within 24h (Medium routing amended per BC-USER-SPEC-FIX-010 §9.4, 2026-06-04 — see §2.2).
 
-**Currency Display Rule (Clash 12.1):**
+**Currency Display Rule (Clash 12.1 — resolved 2026-08-10, BC-QA-031):**
 
-- During the BGN→EUR transition window: amounts displayed in both BGN and EUR simultaneously.
-- After the transition window closes: BGN display is hidden; EUR only.
+- The BGN→EUR transition window has closed. The dual-currency display machinery has been removed; all amounts are shown in EUR only.
 
 **Payout Threshold Read Endpoint** *(implementation detail — not in source spec §3.7; concept referenced in source §7.3 and Clash 5.4):*
 
@@ -708,10 +707,9 @@ The following terms have distinct meanings in the admin panel context and must n
 - New payouts: Allowed when `subscription_status` is Active or Cancelled-within-paid-period. Blocked when Cancelled (post period end), Failed Payment, or Expired.
 - In-flight payouts: Always continue regardless of subsequent `subscription_status` changes (cashback earned during an active period can be paid out even after cancellation).
 
-**4. Currency Display:**
+**4. Currency Display (resolved 2026-08-10, BC-QA-031):**
 
-- During the BGN→EUR transition window: amounts displayed in both BGN and EUR simultaneously.
-- After the transition window closes: BGN display is hidden; EUR only.
+- The BGN→EUR transition window has closed. Dual-currency display machinery has been removed; all amounts are EUR only.
 
 **5. Partner Status and QR Codes:**
 
@@ -755,7 +753,7 @@ The following clash resolutions from the Appendix (Source §10) directly constra
 | **9.1** | Status rule takes precedence over visibility field: Inactive/Archived partners are always hidden from public site regardless of field value. Enforced in admin panel, API, and frontend. |
 | **9.4** | All four QR statuses (Active, Inactive, In Processing, Replaced) have defined transitions and semantics. |
 | **11.4** | Password reset rate-limiting: alert at 3 resets in 24h; account suspension pending Super Admin review at 5 resets in 24h. |
-| **12.1** | Dual-currency display during BGN→EUR transition window; BGN hidden after window closes. |
+| **12.1** | RESOLVED (2026-08-10, BC-QA-031): dual-currency display during the BGN→EUR transition window was implemented then removed once the transition ended. All amounts are EUR-only; no dual-currency machinery remains. |
 | **13.3** | Super Admin creation requires 2-of-N dual approval; 72h expiry; initiator can cancel; initiator cannot self-approve; bootstrap exception for single-SA systems. |
 | **2.1/2.2** | Cancelled subscription: scanning allowed through last paid day, then auto-transitions to Expired. |
 | **2.4** | Archived user: reactivates via password reset + new subscription. Archived partner: reactivates via admin action + new onboarding review. QR codes require explicit admin reactivation per code (not auto-reactivated after partner Archived reactivation). |

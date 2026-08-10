@@ -48,16 +48,6 @@ jest.mock('../../src/services/sticker.service', () => ({
   },
 }));
 
-// ── Currency display mock ────────────────────────────────────────────────────
-jest.mock('../../src/utils/currencyDisplay', () => ({
-  isCurrencyTransitionWindowOpen: jest.fn().mockResolvedValue(false),
-  toDualCurrency: jest.fn().mockImplementation((amount: number) => ({
-    bgn: amount,
-    eur: parseFloat((amount / 1.95583).toFixed(2)),
-    windowOpen: false,
-  })),
-}));
-
 // ── Auth middleware: PARTNER user ────────────────────────────────────────────
 const TEST_PARTNER_ID = 'test-partner-id';
 const TEST_VENUE_ID = 'test-venue-id';
@@ -153,6 +143,5 @@ describe('INV-RDM-053 LEAK: cashbackAmount and cashbackPercent stripped from GET
     // returning an empty object as a side effect of over-eager stripping.
     expect(responseData.id).toBe('scan-id-1');
     expect(responseData.status).toBe('PENDING');
-    expect(responseData.display).toBeDefined();
   });
 });

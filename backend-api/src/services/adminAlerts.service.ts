@@ -1,7 +1,6 @@
 import { ScanStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { getPayoutThresholdBGN } from '../utils/payoutThreshold';
-import { isCurrencyTransitionWindowOpen, toDualCurrency, DualCurrencyAmount } from '../utils/currencyDisplay';
 
 // Spec 3.2: Критични / Оперативни / Информационни
 // Lowercase matches the frontend type and the wire values emitted below so that
@@ -19,9 +18,7 @@ export interface AlertItem {
   // The frontend uses these to (a) interpolate display strings — e.g. "(≥50 лв)" — without
   // baking them into the i18n title, and (b) preserve the alert's exact filter when
   // a focus banner forwards the user to a deep-linked page.
-  // M7 / Spec §8.1 rule 4: monetary thresholds are wrapped via toDualCurrency
-  // and gated by the currency-transition-window flag (bgn null when closed).
-  meta?: Record<string, string | number | DualCurrencyAmount>;
+  meta?: Record<string, string | number>;
 }
 
 export interface AdminAlertsResult {
@@ -136,7 +133,6 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
   const suspiciousWindowStart = new Date(
     now.getTime() - SUSPICIOUS_ACTIVITY_WINDOW_HOURS * 60 * 60 * 1000,
   );
-  const windowOpen = await isCurrencyTransitionWindowOpen();
 
   // Read thresholds from settings, fall back to safe defaults.
   // Guard against malformed values: parseFloat can yield NaN, which would
@@ -493,7 +489,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       title: 'Абонати достигнали праг за изплащане',
       count: walletsAtThreshold,
       link: '/admin/finance/payouts',
-      meta: { threshold: toDualCurrency(PAYOUT_THRESHOLD, windowOpen) },
+      meta: { threshold: PAYOUT_THRESHOLD },
     });
   }
   if (largePendingTx > 0) {
@@ -506,7 +502,7 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       // minAmount mirrors the alert's amount filter so the landing page row count
       // matches the badge — without it the user lands on ALL pending wallet TXs.
       link: `/admin/subscribers/transactions?view=wallet&status=PENDING&minAmount=${LARGE_TX_THRESHOLD}`,
-      meta: { threshold: toDualCurrency(LARGE_TX_THRESHOLD, windowOpen) },
+      meta: { threshold: LARGE_TX_THRESHOLD },
     });
   }
 

@@ -18,7 +18,6 @@ import crypto from 'crypto';
 import { z } from 'zod';
 import { paymentRateLimiter } from '../middleware/security.middleware';
 import { parsePagination } from '../utils/pagination';
-import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 import { detach } from '../utils/detach';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production'
@@ -562,15 +561,13 @@ router.get(
         });
       }
 
-      const showDualCurrency = await isCurrencyTransitionWindowOpen();
-
       res.json({
         success: true,
         data: {
           orderId,
           status: transaction.status.toLowerCase(),
-          amount: toDualCurrency(transaction.amount, showDualCurrency),
-          currency: showDualCurrency ? transaction.currency : 'EUR',
+          amount: transaction.amount,
+          currency: transaction.currency,
           createdAt: transaction.createdAt,
         },
       });
@@ -600,7 +597,6 @@ router.get(
     const { take: limitVal, skip: offsetVal } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     try {
-      const showDualCurrency = await isCurrencyTransitionWindowOpen();
       const transactions = await prisma.transaction.findMany({
         where: {
           userId: user.id,
@@ -625,8 +621,8 @@ router.get(
         data: transactions.map(t => ({
           id: t.id,
           orderId: t.metadata ? (JSON.parse(t.metadata as string) as any)?.orderId : undefined,
-          amount: toDualCurrency(t.amount, showDualCurrency),
-          currency: showDualCurrency ? t.currency : 'EUR',
+          amount: t.amount,
+          currency: t.currency,
           status: t.status.toLowerCase(),
           description: t.description,
           createdAt: t.createdAt,
@@ -1441,19 +1437,14 @@ router.post('/verify-redirect', paymentRateLimiter, asyncHandler(async (req: Req
 
   try {
     const result = await payseraService.handleCallback({ data, ss1 });
-    const showDualCurrency = await isCurrencyTransitionWindowOpen();
-    const amountValue = result.amount ? result.amount / 100 : null;
-    const isBgn = result.currency === 'BGN';
 
     res.json({
       success: true,
       data: {
         orderId: result.orderId,
         status: result.status,
-        amount: amountValue != null
-          ? (isBgn ? toDualCurrency(amountValue, showDualCurrency) : amountValue)
-          : null,
-        currency: isBgn ? (showDualCurrency ? 'BGN' : 'EUR') : result.currency,
+        amount: result.amount ? result.amount / 100 : null,
+        currency: result.currency,
         paymentMethod: result.paymentMethod,
         isSuccess: result.status === 'success',
       },

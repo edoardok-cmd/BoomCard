@@ -12,7 +12,6 @@ import { runWithConcurrency } from '../utils/concurrency';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
 import { reasonIndicatesIbanProblem } from '../utils/payoutFailureReason';
-import { buildDualCurrencyMap, isCurrencyTransitionWindowOpen } from '../utils/currencyDisplay';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -81,28 +80,6 @@ function subGateMessage(gate: SubGateResult): string {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-// Spec §3.7 + §8.1 rule 4 — DEFECT 2 gate: omit raw BGN fields from payout
-// objects when the currency transition window is CLOSED. This helper gates
-// a single payout returned from a mutation endpoint, applying the same logic
-// as the GET endpoint (lines 312–328). Prevents data leakage when window CLOSED.
-async function gateBgnInPayoutResponse(payout: any): Promise<any> {
-  const windowOpen = await isCurrencyTransitionWindowOpen();
-  if (windowOpen) {
-    return payout;
-  }
-  return {
-    ...payout,
-    amount: undefined,
-    balanceBefore: undefined,
-    balanceAfter: undefined,
-    wallet: {
-      ...payout.wallet,
-      availableBalance: undefined,
-      pendingBalance: undefined,
-    },
-  };
-}
 
 // Concurrency cap for /bulk-approve: limits in-flight Paysera Transfer API calls
 // so a large batch does not (a) exhaust the Prisma connection pool, (b) trip
@@ -293,26 +270,17 @@ router.get(
         }),
       ]);
 
-      // DEFECT 1 gate: raw BGN scalars only shown when window is open
-      // NOTE: isCurrencyTransitionWindowOpen() uses a 60-second in-process cache.
-      // In multi-process deployments, when the setting is updated, only the process
-      // that handled the PUT request invalidates its cache. Other processes will serve
-      // stale cached values for up to 60 seconds (eventual-consistency behavior).
-      // For true immediate propagation across all processes, the cache would need to
-      // be migrated to Redis-backed storage.
-      const windowOpen = await isCurrencyTransitionWindowOpen();
-
       const fgb = (s: string) => filteredGroupBy.find(g => g.status === s);
       const filteredSummary = {
         pendingCount:    fgb('PENDING')?._count._all    ?? 0,
-        ...(windowOpen && { pendingTotal:    Math.abs(fgb('PENDING')?._sum.amount    ?? 0) }),
+        pendingTotal:    Math.abs(fgb('PENDING')?._sum.amount    ?? 0),
         processingCount: fgb('PROCESSING')?._count._all ?? 0,
-        ...(windowOpen && { processingTotal: Math.abs(fgb('PROCESSING')?._sum.amount ?? 0) }),
+        processingTotal: Math.abs(fgb('PROCESSING')?._sum.amount ?? 0),
         completedCount:  fgb('COMPLETED')?._count._all  ?? 0,
-        ...(windowOpen && { completedTotal:  Math.abs(fgb('COMPLETED')?._sum.amount  ?? 0) }),
+        completedTotal:  Math.abs(fgb('COMPLETED')?._sum.amount  ?? 0),
         riskHoldCount:   fgb('RISK_HOLD')?._count._all  ?? 0,
         failedCount:     fgb('FAILED')?._count._all     ?? 0,
-        ...(windowOpen && { failedTotal:     Math.abs(fgb('FAILED')?._sum.amount     ?? 0) }),
+        failedTotal:     Math.abs(fgb('FAILED')?._sum.amount     ?? 0),
         cancelledCount:  fgb('CANCELLED')?._count._all  ?? 0,
         totalCount:      filteredGroupBy.reduce((acc, g) => acc + g._count._all, 0),
       };
@@ -322,51 +290,22 @@ router.get(
       const completedTotalBgn  = Math.abs(completedTotal._sum.amount  ?? 0);
       const failedTotalBgn     = Math.abs(failedTotal._sum.amount     ?? 0);
 
-      // M7 / Spec §3.7 + §8.1 rule 4 — dual-currency display for payout totals
-      // (stored BGN). Added alongside the existing scalar BGN totals (backward-compat).
-      const summaryDisplay = await buildDualCurrencyMap({
-        pendingTotal:    pendingTotalBgn,
-        processingTotal: processingTotalBgn,
-        completedTotal:  completedTotalBgn,
-        failedTotal:     failedTotalBgn,
-      });
-
-      // DEFECT 2 gate: payouts array items should omit raw BGN fields when window closed
-      const payoutsDisplay = payouts.map(p => {
-        if (windowOpen) {
-          return p;
-        }
-        return {
-          ...p,
-          amount: undefined,
-          balanceBefore: undefined,
-          balanceAfter: undefined,
-          wallet: {
-            ...p.wallet,
-            availableBalance: undefined,
-            pendingBalance: undefined,
-          },
-        };
-      });
-
       res.json({
-        payouts: payoutsDisplay,
+        payouts,
         total,
         page: pageNum,
         limit: limitNum,
         summary: {
           pendingCount,
-          ...(windowOpen && { pendingTotal: pendingTotalBgn }),
+          pendingTotal: pendingTotalBgn,
           processingCount,
-          ...(windowOpen && { processingTotal: processingTotalBgn }),
+          processingTotal: processingTotalBgn,
           completedCount,
-          ...(windowOpen && { completedTotal: completedTotalBgn }),
+          completedTotal: completedTotalBgn,
           riskHoldCount,
           failedCount,
-          ...(windowOpen && { failedTotal: failedTotalBgn }),
+          failedTotal: failedTotalBgn,
           totalCount,
-          // M7 — dual-currency {bgn, eur} pairs (BGN null after transition window).
-          display: summaryDisplay,
         },
         filteredSummary,
       });
@@ -526,9 +465,8 @@ router.patch(
               availableBalance: Math.abs(payout.amount),
               threshold: 0, // n/a for this context
             }), (err) => logger.error(`[approve] no-IBAN notification failed for user ${payout.wallet.userId}:`, err));
-          const gated = await gateBgnInPayoutResponse(held);
           res.status(202).json({
-            ...gated,
+            ...held,
             message: 'Payout held — user notified to add bank details (IBAN) before retry.',
             reason: 'NO_IBAN_HELD_FOR_UPDATE',
           });
@@ -562,8 +500,7 @@ router.patch(
             where: { id },
             include: { wallet: true },
           });
-          const gated = await gateBgnInPayoutResponse(updated);
-          res.json(gated);
+          res.json(updated);
           return;
         }
         updated = await prisma.walletTransaction.findUnique({
@@ -582,8 +519,7 @@ router.patch(
       }
 
       detach(notifySubscriber(id, 'approved'), () => {});
-      const gated = await gateBgnInPayoutResponse(updated);
-      res.json(gated);
+      res.json(updated);
     } catch (error) {
       next(error);
     }
@@ -708,8 +644,7 @@ router.patch(
       });
 
       detach(notifySubscriber(id, 'completed'), () => {});
-      const gated = await gateBgnInPayoutResponse(updated);
-      res.json(gated);
+      res.json(updated);
     } catch (error) {
       next(error);
     }
@@ -758,8 +693,7 @@ router.patch(
       });
 
       detach(notifySubscriber(id, 'held', reason), () => {});
-      const gated = await gateBgnInPayoutResponse(updated);
-      res.json(gated);
+      res.json(updated);
     } catch (error) {
       next(error);
     }
@@ -816,8 +750,7 @@ router.patch(
       });
 
       detach(notifySubscriber(id, 'released'), () => {});
-      const gated = await gateBgnInPayoutResponse(updated);
-      res.json(gated);
+      res.json(updated);
     } catch (error) {
       next(error);
     }
@@ -1131,8 +1064,7 @@ router.patch(
         include: { wallet: true },
       });
       logger.warn(`[reset-stuck] Payout ${id} reset PROCESSING → PENDING (no payseraTransferId; admin recovery).`);
-      const gated = await gateBgnInPayoutResponse(updated);
-      res.json(gated);
+      res.json(updated);
     } catch (error) {
       next(error);
     }

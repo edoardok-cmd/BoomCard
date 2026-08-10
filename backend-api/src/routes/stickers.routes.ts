@@ -15,7 +15,6 @@ import prisma from '../lib/prisma';
 import { validateAmount, validateGPSCoordinates, ValidationError } from '../utils/validation';
 import { checkLivePhoto } from '../utils/exifLivePhoto';
 import { parsePagination } from '../utils/pagination';
-import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 /**
  * DEFENSE-IN-DEPTH ACCOUNT STATUS GATING (BC-ADMIN-SPEC-REAUDIT-SCANGATE-INACTIVE-1)
@@ -321,21 +320,16 @@ router.post('/scan/:scanId/receipt', authenticate, requireActiveSubscription, up
     });
 
     const { fraudScore: _rfs, fraudReasons: _rfr, specRiskLevel: _rsrl, ipAddress: _rip, userAgent: _rua, deviceFingerprint: _rdf, deviceFingerprintRaw: _rdfr, ocrData: _rod, receiptImageHash: _rrih, cashbackPercent: _rcp, cashbackAmount: _rca, billAmount: _rba, verifiedAmount: _rva, ...safeReceiptScan } = scan as any;
-    const windowOpen = await isCurrencyTransitionWindowOpen();
-    const { windowOpen: _rcw, ...cashbackAmountDisplay } = toDualCurrency((scan as any).cashbackAmount ?? 0, windowOpen);
-    const { windowOpen: _rbw, ...billAmountDisplay } = toDualCurrency((scan as any).billAmount ?? 0, windowOpen);
-    const { windowOpen: _rvw, ...verifiedAmountDisplay } = toDualCurrency((scan as any).verifiedAmount ?? 0, windowOpen);
     res.json({
       success: true,
       data: {
         ...safeReceiptScan,
-        ...(windowOpen && { cashbackAmount: (scan as any).cashbackAmount, billAmount: (scan as any).billAmount, verifiedAmount: (scan as any).verifiedAmount }),
-        display: { cashbackAmount: cashbackAmountDisplay, billAmount: billAmountDisplay, verifiedAmount: verifiedAmountDisplay },
+        cashbackAmount: (scan as any).cashbackAmount,
+        billAmount: (scan as any).billAmount,
+        verifiedAmount: (scan as any).verifiedAmount,
       },
       message: scan.status === 'APPROVED'
-        ? windowOpen
-          ? `Cashback approved! You earned ${(scan as any).cashbackAmount} BGN (${cashbackAmountDisplay.eur} EUR)`
-          : `Cashback approved! You earned ${cashbackAmountDisplay.eur} EUR`
+        ? `Cashback approved! You earned ${(scan as any).cashbackAmount} BGN`
         : scan.status === 'MANUAL_REVIEW'
         ? 'Receipt uploaded. Under review.'
         : 'Receipt uploaded successfully.',
@@ -361,20 +355,13 @@ router.get('/my-scans', authenticate, async (req: Request, res: Response) => {
     const { limit } = parsePagination(req.query, { defaultLimit: 50, maxLimit: 100 });
 
     const scans = await stickerService.getScansByUser(userId, limit);
-    const windowOpen = await isCurrencyTransitionWindowOpen();
     const safeScans = scans.map((s: any) => {
       const { cashbackAmount, billAmount, verifiedAmount, ...rest } = s;
-      const { windowOpen: _w1, ...cashbackAmountDisplay } = toDualCurrency(cashbackAmount ?? 0, windowOpen);
-      const { windowOpen: _w2, ...billAmountDisplay } = toDualCurrency(billAmount ?? 0, windowOpen);
-      const { windowOpen: _w3, ...verifiedAmountDisplay } = toDualCurrency(verifiedAmount ?? 0, windowOpen);
       return {
         ...rest,
-        ...(windowOpen && { cashbackAmount, billAmount, verifiedAmount }),
-        display: {
-          cashbackAmount: cashbackAmountDisplay,
-          billAmount: billAmountDisplay,
-          verifiedAmount: verifiedAmountDisplay,
-        },
+        cashbackAmount,
+        billAmount,
+        verifiedAmount,
       };
     });
 
@@ -700,21 +687,13 @@ router.get('/venue/:venueId/scans', authenticate, authorize('PARTNER', 'ADMIN', 
 
     const scans = await stickerService.getScansByVenue(venueId, limit);
 
-    const windowOpen = await isCurrencyTransitionWindowOpen();
     const safeScans = scans.map((s: any) => {
       // cashbackAmount/cashbackPercent are @internal business-formula components (spec §11.3, Clash 10.6)
-      // billAmount/verifiedAmount are BGN money fields gated by currency transition window (M7/§8.1 rule 4)
       const { fraudScore: _fs, fraudReasons: _fr, specRiskLevel: _srl, ipAddress: _ip, userAgent: _ua, deviceFingerprint: _df, deviceFingerprintRaw: _dfr, ocrData: _od, receiptImageHash: _rih, cashbackAmount: _ca, cashbackPercent: _cp, billAmount, verifiedAmount, ...rest } = s;
-      // Strip windowOpen from display shape — partner contract is { bgn, eur } only (spec §7.3)
-      const { windowOpen: _w1, ...billAmountDisplay } = toDualCurrency(billAmount ?? 0, windowOpen);
-      const { windowOpen: _w2, ...verifiedAmountDisplay } = toDualCurrency(verifiedAmount ?? 0, windowOpen);
       return {
         ...rest,
-        ...(windowOpen && { billAmount, verifiedAmount }),
-        display: {
-          billAmount: billAmountDisplay,
-          verifiedAmount: verifiedAmountDisplay,
-        },
+        billAmount,
+        verifiedAmount,
       };
     });
 
@@ -745,25 +724,19 @@ router.get('/venue/:venueId/analytics', authenticate, authorize('PARTNER', 'ADMI
 
     const analytics = await stickerService.getVenueAnalytics(venueId, days);
 
-    // M7/§8.1 rule 4: revenue.total/average and cashback.total/average are BGN money fields
-    const windowOpen = await isCurrencyTransitionWindowOpen();
     const { revenue, cashback, ...restAnalytics } = analytics;
-    const { windowOpen: _w1, ...revTotalDisplay } = toDualCurrency(revenue.total, windowOpen);
-    const { windowOpen: _w2, ...revAvgDisplay } = toDualCurrency(revenue.average, windowOpen);
-    const { windowOpen: _w3, ...cashTotalDisplay } = toDualCurrency(cashback.total, windowOpen);
-    const { windowOpen: _w4, ...cashAvgDisplay } = toDualCurrency(cashback.average, windowOpen);
 
     res.json({
       success: true,
       data: {
         ...restAnalytics,
         revenue: {
-          ...(windowOpen && { total: revenue.total, average: revenue.average }),
-          display: { total: revTotalDisplay, average: revAvgDisplay },
+          total: revenue.total,
+          average: revenue.average,
         },
         cashback: {
-          ...(windowOpen && { total: cashback.total, average: cashback.average }),
-          display: { total: cashTotalDisplay, average: cashAvgDisplay },
+          total: cashback.total,
+          average: cashback.average,
         },
       },
     });
@@ -789,21 +762,14 @@ router.get('/venue/:venueId/config', authenticate, authorize('PARTNER', 'ADMIN',
     const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
 
     // Spec §11.3, Clash 10.6: cashback formula components are internal-only
-    // M7/§8.1 rule 4: minBillAmount is a BGN money field — gate it by the currency transition window (partner only)
-    const data = isAdmin ? rawConfig : await (async () => {
-      const windowOpen = await isCurrencyTransitionWindowOpen();
+    const data = isAdmin ? rawConfig : (() => {
       const { cashbackPercent: _c, premiumBonus: _p, platinumBonus: _pl,
               maxCashbackPerScan: _m, autoApproveThreshold: _a,
               gpsVerificationEnabled: _g,
               gpsRadiusMeters: _gr, ocrVerificationEnabled: _o, minBillAmount, ...rest } = rawConfig as any;
-      // Strip windowOpen from display shape — partner contract is { bgn, eur } only (spec §7.3)
-      const { windowOpen: _w, ...minBillAmountDisplay } = toDualCurrency(minBillAmount ?? 0, windowOpen);
       return {
         ...rest,
-        ...(windowOpen && { minBillAmount }),
-        display: {
-          minBillAmount: minBillAmountDisplay,
-        },
+        minBillAmount,
       };
     })();
 

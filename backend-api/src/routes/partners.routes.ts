@@ -30,7 +30,6 @@ import { notificationService } from '../services/notification.service';
 import { publicPartnerFilter } from '../services/publicPartnerFilter';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
-import { isCurrencyTransitionWindowOpen, toDualCurrency } from '../utils/currencyDisplay';
 
 /**
  * Normalize a categories[] payload alongside its main category id.
@@ -331,15 +330,12 @@ router.get(
     const venueIds = partner.venues.map(v => v.id);
 
     if (venueIds.length === 0) {
-      const windowOpenEmpty = await isCurrencyTransitionWindowOpen();
-      const { windowOpen: _wSE, ...totalSavingsDisplayEmpty } = toDualCurrency(0, windowOpenEmpty);
       return res.json({
         success: true,
         data: {
           period: { days, startDate: new Date(), endDate: new Date() },
           stats: {
-            ...(windowOpenEmpty && { totalSavings: 0 }),
-            totalSavingsDisplay: totalSavingsDisplayEmpty,
+            totalSavings: 0,
             activeCards: 0,
             totalUses: 0,
             avgDiscount: 0,
@@ -466,17 +462,14 @@ router.get(
       return { ...v, color: COLORS[i % COLORS.length], percentage };
     });
 
-    const windowOpen = await isCurrencyTransitionWindowOpen();
     const roundedSavings = Math.round(totalSavings * 100) / 100;
-    const { windowOpen: _wS, ...totalSavingsDisplay } = toDualCurrency(roundedSavings, windowOpen);
 
     res.json({
       success: true,
       data: {
         period: { days, startDate: currentStart, endDate: now },
         stats: {
-          ...(windowOpen && { totalSavings: roundedSavings }),
-          totalSavingsDisplay,
+          totalSavings: roundedSavings,
           activeCards,
           totalUses,
           avgDiscount,
@@ -489,14 +482,8 @@ router.get(
           // period-comparable metric, so there is no meaningful period delta.
           avgDiscount: 0,
         },
-        timeSeries: timeSeries.map(({ savings, ...rest }) => {
-          const { windowOpen: _wTS, ...savingsDisplay } = toDualCurrency(savings, windowOpen);
-          return { ...rest, ...(windowOpen && { savings }), savingsDisplay };
-        }),
-        byVenue: byVenue.map(({ savings, ...rest }) => {
-          const { windowOpen: _wBV, ...savingsDisplay } = toDualCurrency(savings, windowOpen);
-          return { ...rest, ...(windowOpen && { savings }), savingsDisplay };
-        }),
+        timeSeries: timeSeries.map(({ savings, ...rest }) => ({ ...rest, savings })),
+        byVenue: byVenue.map(({ savings, ...rest }) => ({ ...rest, savings })),
       },
     });
   }),
@@ -714,18 +701,14 @@ router.get(
       prisma.stickerScan.count({ where }),
     ]);
 
-    const windowOpen = await isCurrencyTransitionWindowOpen();
-
     const data = scans.map((s) => {
       const rawAmount = s.verifiedAmount ?? s.billAmount;
-      const { windowOpen: _wT, ...amountDisplay } = toDualCurrency(rawAmount ?? 0, windowOpen);
       return {
         id: s.id,
         createdAt: s.createdAt,
         venueId: s.venueId,
         venueName: s.venue?.name ?? null,
-        ...(windowOpen && rawAmount != null && { amount: rawAmount }),
-        amountDisplay,
+        ...(rawAmount != null && { amount: rawAmount }),
         status: s.status,
         transactionId: s.transactionId,
       };
@@ -786,18 +769,13 @@ router.get(
         })
       : [];
     const periodStatusByMonth = new Map(periods.map((p) => [p.month, p.status]));
-    const windowOpen = await isCurrencyTransitionWindowOpen();
 
     const data = payments.map((p) => {
-      const { windowOpen: _wF1, ...turnoverAmountDisplay } = toDualCurrency(p.turnoverAmount ?? 0, windowOpen);
-      const { windowOpen: _wF2, ...totalCashbackOwedDisplay } = toDualCurrency(p.totalCashbackOwed ?? 0, windowOpen);
       return {
         month: p.month,
-        ...(windowOpen && { turnoverAmount: p.turnoverAmount }),
-        turnoverAmountDisplay,
+        turnoverAmount: p.turnoverAmount,
         contractedRate: p.contractedRate,
-        ...(windowOpen && { totalCashbackOwed: p.totalCashbackOwed }),
-        totalCashbackOwedDisplay,
+        totalCashbackOwed: p.totalCashbackOwed,
         status: p.status,
         paidAt: p.paidAt,
         invoiceNumber: p.invoiceNumber,
@@ -882,11 +860,8 @@ router.get(
 
     const revenue = approvedScans.reduce((sum, s) => sum + s.cashbackAmount, 0);
     const expectedAmount = expectedAgg._sum.totalCashbackOwed ?? 0;
-    const windowOpen = await isCurrencyTransitionWindowOpen();
     const roundedRevenue = Math.round(revenue * 100) / 100;
     const roundedExpected = Math.round(expectedAmount * 100) / 100;
-    const { windowOpen: _wR, ...revenueDisplay } = toDualCurrency(roundedRevenue, windowOpen);
-    const { windowOpen: _wE, ...expectedAmountDisplay } = toDualCurrency(roundedExpected, windowOpen);
 
     res.json({
       success: true,
@@ -898,11 +873,9 @@ router.get(
         averageRating: partner.rating,
         totalReviews: partner.reviewCount,
         monthlyRedemptions: monthScans,
-        ...(windowOpen && { revenue: roundedRevenue }),
-        revenueDisplay,
+        revenue: roundedRevenue,
         // BC-PARTNER-PORTAL-SCOPE-B B3 — new §5.3 KPI fields.
-        ...(windowOpen && { expectedAmount: roundedExpected }),
-        expectedAmountDisplay,
+        expectedAmount: roundedExpected,
         totalVisits,
       },
     });

@@ -24,12 +24,13 @@
 
 ## ⚙️ Suite-covered classes (verified-by-suite, not row-by-row)
 
-Four sweep tests mechanically cover entire invariant classes for the user surface. When green, every row tagged with the corresponding `[SUITE: X]` is verified by the suite rather than probed one-by-one. A re-audit confirms the suite is green and that new endpoints were added to the sweep's route list.
+Three sweep tests mechanically cover entire invariant classes for the user surface. When green, every row tagged with the corresponding `[SUITE: X]` is verified by the suite rather than probed one-by-one. A re-audit confirms the suite is green and that new endpoints were added to the sweep's route list.
 
 - **`user-cross-scope-sweep.test.ts`** — `[SUITE: XSCOPE]`. Two real subscribers A and B; asserts A cannot read or mutate B's receipts, help tickets, notifications, subscriptions, reviews, wallet, or favorites (403/404, never B's data in a 200 body). Each test has a positive control (owner CAN access) proving the gate is real.
 - **`user-input-500-sweep.test.ts`** — `[SUITE: INPUT]`. For every user route with a `:id`-style path param, sends malformed values (`not-a-uuid`, empty, SQL-ish, overlong) and asserts a clean 4xx, NEVER a 500 / Prisma `P2023`/`22P02`.
 - **`user-auth-gate-sweep.test.ts`** — `[SUITE: AUTH]`. Asserts (a) every user endpoint rejects an unauthenticated request (401), and (b) admin/partner-only sub-routes physically mounted under user routers (`/receipts/admin/all`, `/receipts/v2/admin/*`, `/receipts/v2/bulk-approve|reject`, `/reviews/:id/approve|reject|flag|admin-response`, discount mutations) reject a plain subscriber (403).
-- **`user-currency-leak-sweep.test.ts`** — `[SUITE: CUR]`. With `currency_transition_window_open=false`, asserts no user-facing money response leaks a raw BGN scalar; with the window open, asserts dual BGN+EUR display. Covers the CUR class on wallet/payments/subscription/receipt money fields.
+
+(The former `user-currency-leak-sweep.test.ts` carried TWO invariant classes: the `[SUITE: CUR]` dual-currency-display class, retired 2026-08-10 (BC-QA-031) along with the feature — see the CUR section below — and the INV-USER-ACL-003 / INV-USER-PAY-007 / INV-USER-NOTIF-005 / INV-USER-QR-007 / INV-USER-SUB-011 internal-field / admin-identity invariants, which are UNRELATED to currency and were extracted intact into `user-internal-field-leak-sweep.test.ts`.)
 
 ---
 
@@ -134,7 +135,7 @@ Four sweep tests mechanically cover entire invariant classes for the user surfac
 | INV-USER-QR-004 | QR token must be Active; Inactive/In-Processing/not-found → transaction cannot complete | STATE | static |
 | INV-USER-QR-005 | On success a QR session + Pending transaction & cashback are created | STATE | static |
 | INV-USER-QR-006 | A user can only scan/redeem under their own identity (no cross-user scan attribution) | XSCOPE | [SUITE: XSCOPE] |
-| INV-USER-QR-007 | User-facing card serializers (`GET /api/cards/my-card`, `POST /api/cards`, and the `/:id/{upgrade,activate,deactivate}` handlers) MUST omit `qrCode` (raw QR token material, spec §4.3/§11.3 — "NEVER serialize to partner or user callers") and use an explicit `select` allowlist rather than returning the full `Card` row | LEAK | [SUITE: CUR/leak] |
+| INV-USER-QR-007 | User-facing card serializers (`GET /api/cards/my-card`, `POST /api/cards`, and the `/:id/{upgrade,activate,deactivate}` handlers) MUST omit `qrCode` (raw QR token material, spec §4.3/§11.3 — "NEVER serialize to partner or user callers") and use an explicit `select` allowlist rather than returning the full `Card` row | LEAK | runtime probe |
 
 ## OCR — Receipt Upload & OCR / Risk (§9)
 
@@ -247,7 +248,7 @@ Four sweep tests mechanically cover entire invariant classes for the user surfac
 ## Exit criteria (audit is DONE only when ALL hold)
 
 1. **Every ledger row is `verified`** — zero `open`, zero `untested`.
-2. **All four executable sweeps are green** (`user-cross-scope-sweep`, `user-input-500-sweep`, `user-auth-gate-sweep`, `user-currency-leak-sweep`).
+2. **All executable sweeps are green** (`user-cross-scope-sweep`, `user-input-500-sweep`, `user-auth-gate-sweep`, `user-internal-field-leak-sweep`). (`user-currency-leak-sweep` was retired 2026-08-10, BC-QA-031, along with the dual-currency feature; its non-currency invariants moved to `user-internal-field-leak-sweep`.)
 3. **Two consecutive independent passes add ZERO new invariants** to this matrix AND zero new findings — the enumeration has stopped growing.
 
 Until all three hold, the audit continues. A single `open`/`untested` row, a red suite, or a pass that discovers a new invariant resets the "done" claim.

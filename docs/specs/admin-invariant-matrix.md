@@ -29,47 +29,17 @@
 
 ## ⚙️ Suite-covered classes (verified-by-suite, not row-by-row)
 
-Two exhaustive sweep tests mechanically cover entire invariant classes. When green, every row tagged **[SUITE: CUR]** or **[SUITE: INPUT]** is verified by the suite rather than probed one-by-one. A re-audit still confirms the suite is green and that new endpoints were added to the sweep's route list.
+One exhaustive sweep test mechanically covers an entire invariant class. When green, every row tagged **[SUITE: INPUT]** is verified by the suite rather than probed one-by-one. A re-audit still confirms the suite is green and that new endpoints were added to the sweep's route list.
 
-- **`admin-currency-leak-sweep.test.ts`** — flips `currency_transition_window_open=false`, then asserts that NO admin GET/mutation response contains any raw BGN scalar in any field at any nesting depth (top-level `amount`/`balance*`, nested `wallet.*`, summary/`filteredSummary` totals, per-row `display` absence is allowed, raw scalars are not). Covers the entire **CUR** class. (Run-6 Unit E proved this class was still OPEN on `/admin/payouts` — the sweep is the mechanical guard that closes it and keeps it closed.)
 - **`admin-uuid-500-sweep.test.ts`** — for every admin route with a `:id`/`:userId`/`:partnerId`/`:tokenId`/`:memberId`/`:overId`/`:roleKey` path param, sends a malformed value (`not-a-uuid`, empty, SQL-ish, overlong) and asserts the response is a clean 4xx (typically 404/400), NEVER a 500 / Prisma `P2023`/`22P02`. Covers the entire **INPUT** class.
+
+(The former **CUR** class and its `admin-currency-leak-sweep.test.ts` suite were retired 2026-08-10, BC-QA-031, along with the dual-currency display feature — see the CUR section below.)
 
 ---
 
-## CUR — Currency dual-display (Clash 12.1 / §3.7 / §8.1.4)
+## CUR — Currency dual-display (RETIRED 2026-08-10, BC-QA-031)
 
-Rule: window OPEN → both BGN+EUR shown; window CLOSED → BGN hidden, EUR only. Every admin GET (and mutation response) that returns money is a CUR row. Window read via `currencyDisplay.isCurrencyTransitionWindowOpen()` (fail-CLOSED on missing/garbage flag). **All CUR rows are [SUITE: CUR].** Verify each by: window-flip runtime probe OR the sweep test.
-
-| ID | Invariant | Spec ref | Surface | How to verify |
-|----|-----------|----------|---------|---------------|
-| INV-CUR-001 | Window CLOSED → no raw BGN scalar in `GET /admin/cashback/stats` (totalAccrued/Cleared/Pending/Locked/Paid/Expired/Voided/expiringTotal); only `display` EUR. | §8.1.4 | `adminCashback.routes.ts` GET /stats | runtime probe (flip window) / [SUITE: CUR] |
-| INV-CUR-002 | Window CLOSED → no raw BGN in `GET /admin/cashback/summary` (totalOwed). | §8.1.4 | GET /cashback/summary | runtime / [SUITE: CUR] |
-| INV-CUR-003 | Window CLOSED → `GET /admin/cashback/payout-thresholds` omits raw BGN per plan; `display` only. | §3.7, §7.3 | GET /cashback/payout-thresholds | runtime / [SUITE: CUR] |
-| INV-CUR-004 | Window CLOSED → `GET /admin/cashback/:partnerId/:month/receipts` omits raw cashbackAmount + totalCashbackOwed BGN. | §8.1.4 | GET /cashback/:partnerId/:month/receipts | runtime / [SUITE: CUR] |
-| INV-CUR-005 | Window CLOSED → `GET /admin/subscribers` list omits raw wallet.availableBalance/balance/pendingBalance BGN. | §8.1.4 | GET /subscribers | runtime / [SUITE: CUR] |
-| INV-CUR-006 | Window CLOSED → `GET /admin/subscribers/export` omits raw wallet BGN scalars. | §8.1.4 | GET /subscribers/export | runtime / [SUITE: CUR] |
-| INV-CUR-007 | Window CLOSED → `GET /admin/subscribers/:userId` detail omits raw wallet BGN. | §8.1.4 | GET /subscribers/:userId | runtime / [SUITE: CUR] |
-| INV-CUR-008 | Window CLOSED → `GET /admin/subscribers/:userId/cashback` omits raw BGN. | §8.1.4 | GET /subscribers/:userId/cashback | runtime / [SUITE: CUR] |
-| INV-CUR-009 | Window CLOSED → `GET /admin/subscriptions` list omits raw paymentTotalAmount BGN. | §8.1.4 | GET /subscriptions | runtime / [SUITE: CUR] |
-| INV-CUR-010 | Window CLOSED → `GET /admin/subscriptions/export` omits raw payment BGN. | §8.1.4 | GET /subscriptions/export | runtime / [SUITE: CUR] |
-| INV-CUR-011 | Window CLOSED → `GET /admin/subscriptions/user/:userId/history` omits per-sub + summary BGN. | §8.1.4 | GET /subscriptions/user/:userId/history | runtime / [SUITE: CUR] |
-| INV-CUR-012 | Window CLOSED → `GET /admin/payouts` omits raw amount/balanceBefore/balanceAfter AND nested wallet.availableBalance/pendingBalance BGN. *(Run-6 E-H1: nested wallet balances LEAKED — open.)* | §8.1.4 | GET /payouts | runtime / [SUITE: CUR] |
-| INV-CUR-013 | Window CLOSED → `GET /admin/payouts` summary/filteredSummary totals (pending/processing/completed/failedTotal) are gated, not raw BGN. *(Run-6 E-H2: leaked — open.)* | §8.1.4 | GET /payouts | runtime / [SUITE: CUR] |
-| INV-CUR-014 | Window CLOSED → payout mutation responses (`/approve`,`/reject`,`/complete`,`/hold`,`/release`,`/fail`,`/reset-stuck`,`/bulk-approve`) omit raw BGN in echoed amount/balance fields. *(Run-6 E: mutation-response leaks — open.)* | §8.1.4 | PATCH /payouts/:id/* | runtime / [SUITE: CUR] |
-| INV-CUR-015 | Window CLOSED → `GET /admin/finance/invoices` omits raw totalCashbackOwed/turnoverAmount/marginAmount BGN. | §8.1.4 | GET /finance/invoices | runtime / [SUITE: CUR] |
-| INV-CUR-016 | Window CLOSED → `GET /admin/finance/periods` omits raw monthly total BGN. | §8.1.4 | GET /finance/periods | runtime / [SUITE: CUR] |
-| INV-CUR-017 | Window CLOSED → `GET /admin/finance/reports` omits raw BGN across walletTransactions/cashbackInvoices/partnerBreakdown/planBreakdown/payoutBreakdown. | §8.1.4 | GET /finance/reports | runtime / [SUITE: CUR] |
-| INV-CUR-018 | Window CLOSED → `GET /admin/finance/payout-thresholds` omits raw BGN. | §3.7 | GET /finance/payout-thresholds | runtime / [SUITE: CUR] |
-| INV-CUR-019 | Window CLOSED → `GET /admin/transactions` list omits raw amount/balanceBefore/balanceAfter BGN. | §8.1.4 | GET /transactions | runtime / [SUITE: CUR] |
-| INV-CUR-020 | Window CLOSED → `GET /admin/transactions/stats` omits raw totalVolume/totalCashback/totalWithdrawals BGN. | §8.1.4 | GET /transactions/stats | runtime / [SUITE: CUR] |
-| INV-CUR-021 | Window CLOSED → `POST /admin/transactions/adjust` response omits raw amount/balanceBefore/balanceAfter BGN. | §8.1.4 | POST /transactions/adjust | runtime / [SUITE: CUR] |
-| INV-CUR-022 | Window CLOSED → `GET /admin/transactions/business` omits raw amount/margin/cashback/discount/final/netAmount BGN. | §8.1.4 | GET /transactions/business | runtime / [SUITE: CUR] |
-| INV-CUR-023 | Window CLOSED → `GET /admin/transactions/business/stats` omits raw totalVolume/averageValue/totalCashback BGN. | §8.1.4 | GET /transactions/business/stats | runtime / [SUITE: CUR] |
-| INV-CUR-024 | Window CLOSED → `GET /admin/dashboard` finance.display (payoutsDue/partnerReceivables/margin) returns null BGN, not raw scalars; cashback amount blocks (accrued/approved/pending/expiringSoon) gated. | §3.1, §8.1.4 | GET /dashboard | runtime / [SUITE: CUR] |
-| INV-CUR-025 | Window CLOSED → `GET /admin/settings/payout-thresholds` + `/history` omit raw BGN minAmount where rendered. | §3.7 | GET /settings/payout-thresholds | runtime / [SUITE: CUR] |
-| INV-CUR-026 | `GET /admin/settings/currency-display-mode` returns `dual` iff window open, `eur_only` iff closed (the single contract the FE & all gates derive from); PUT to the flag invalidates the display cache immediately. | Clash 12.1 | GET /settings/currency-display-mode; PUT /settings/system | runtime probe |
-| INV-CUR-027 | Window OPEN → both BGN and EUR present (dual) on every money GET (regression guard: gating must not hide BGN while OPEN). | Clash 12.1 | all CUR surfaces | runtime / [SUITE: CUR] |
-| INV-CUR-028 | Window flag missing/garbage → treated as CLOSED (fail-closed), not OPEN. | §8.1.4 | `currencyDisplay.isCurrencyTransitionWindowOpen` | static read + unit test |
+The dual-currency (BGN+EUR) display feature (Clash 12.1 / §3.7 / §8.1.4) has been fully removed now that Bulgaria's BGN→EUR transition window has closed. All monetary amounts are EUR-only (or the pre-feature original scalar), with no `currency_transition_window_open` flag, no `currencyDisplay.ts` module, and no `display`/dual-currency wrapper objects anywhere in the admin surface. The 28 INV-CUR-* rows and the `admin-currency-leak-sweep.test.ts` suite that verified them no longer apply and have been removed along with the feature. See `00-admin-clashes-reference.md` §12.1 for the historical record.
 
 ---
 
@@ -464,7 +434,7 @@ Rule: a malformed/garbage path param MUST yield a clean 4xx (404/400), never a 5
 ## Notes for re-audit agents
 
 - **Independence:** when re-auditing, do NOT import a prior run's verdict or finding text. Use only the row skeleton above to know WHAT to check; reach your own conclusion on each.
-- **Suite first:** run `admin-currency-leak-sweep.test.ts` and `admin-uuid-500-sweep.test.ts`. Green → all `[SUITE: CUR]` and `[SUITE: INPUT]` rows are verified for this run. Red → the specific failing rows are `open`.
+- **Suite first:** run `admin-uuid-500-sweep.test.ts`. Green → all `[SUITE: INPUT]` rows are verified for this run. Red → the specific failing rows are `open`. (The former `admin-currency-leak-sweep.test.ts` / `[SUITE: CUR]` rows were retired 2026-08-10, BC-QA-031.)
 - **Then the non-suite rows:** SM-/ROLE-/AUTH-/CONSENT-/RISK-/HELP-/FIN-/DATA- rows are runtime-probe or executable-test or static-read; check them directly.
 - **New invariants:** if a run discovers a machine-checkable admin invariant not represented here, ADD a row (new ID in the right class) and re-seed the ledger. The audit cannot exit while the matrix is still growing (see exit criteria in the ledger).
-- **Open-at-run-6 markers** above (e.g. INV-CUR-012/013/014, INV-SM-CASH-008, INV-AUTH-002, INV-CONSENT-001/002, INV-HELP-001/002/003) are recorded for grounding only; a fresh run must re-derive the result independently and not assume they are still open.
+- **Open-at-run-6 markers** above (e.g. INV-SM-CASH-008, INV-AUTH-002, INV-CONSENT-001/002, INV-HELP-001/002/003) are recorded for grounding only; a fresh run must re-derive the result independently and not assume they are still open. (INV-CUR-012/013/014 were retired along with the CUR class, 2026-08-10, BC-QA-031.)
