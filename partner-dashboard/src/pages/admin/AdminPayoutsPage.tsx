@@ -4,7 +4,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { useCurrencyDisplay } from '../../contexts/CurrencyDisplayContext';
 import { DataTable, ColumnDef, RowAction } from '../../components/admin/DataTable/DataTable';
 import { formatMoneyByMode } from '../../utils/helpers';
 import {
@@ -570,7 +569,6 @@ const EMPTY_FILTERED_SUMMARY: PayoutsFilteredSummary = {
 
 export default function AdminPayoutsPage() {
   const { language } = useLanguage();
-  const { currencyDisplayMode } = useCurrencyDisplay();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -740,7 +738,7 @@ export default function AdminPayoutsPage() {
     });
 
   const fmtBgn = (n: number) => `${n.toFixed(2)} BGN`;
-  const fmtAmount = (amount: number) => formatMoneyByMode(amount, currencyDisplayMode, language);
+  const fmtAmount = (amount: number) => formatMoneyByMode(amount, 'eur_only', language);
 
   const thresholds = thresholdsData?.data ?? {};
 

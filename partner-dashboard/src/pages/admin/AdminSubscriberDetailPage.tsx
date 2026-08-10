@@ -4,7 +4,6 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { useCurrencyDisplay } from '../../contexts/CurrencyDisplayContext';
 import { formatMoneyByMode } from '../../utils/helpers';
 import {
   adminSubscribersService,
@@ -576,7 +575,6 @@ type CashbackStatus = typeof CASHBACK_STATUSES[number];
 export default function AdminSubscriberDetailPage() {
   const { userId } = useParams<{ userId: string }>();
   const { language } = useLanguage();
-  const { currencyDisplayMode } = useCurrencyDisplay();
   const queryClient = useQueryClient();
   const locale = language === 'bg' ? 'bg-BG' : 'en-GB';
   const lang: 'en' | 'bg' = language === 'bg' ? 'bg' : 'en';
@@ -591,8 +589,8 @@ export default function AdminSubscriberDetailPage() {
   const fmtDateTime = (iso: string) =>
     new Date(iso).toLocaleString(locale, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-  // Format amount using the current currency display mode
-  const fmtAmount = (amount: number) => formatMoneyByMode(amount, currencyDisplayMode, language);
+  // Format amount in EUR-only mode
+  const fmtAmount = (amount: number) => formatMoneyByMode(amount, 'eur_only', language);
 
   /* ── Modal state ── */
   const [showCancelSub, setShowCancelSub]         = useState(false);
