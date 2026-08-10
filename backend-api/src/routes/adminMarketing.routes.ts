@@ -1320,7 +1320,7 @@ router.post('/automations/ensure-defaults', ...WRITE, async (req, res, next) => 
         body: `<h2>Добре дошли обратно!</h2>
 <p>Здравейте,</p>
 <p>Забелязахме, че не сте посещавали партньорите на BoomCard от известно време. Вашият акаунт е активен и кешбекът ви ви чака.</p>
-<p>Открийте нови партньори и оферти в приложението BoomCard — може да изненадате себе си.</p>
+<p>Открийте нови партньори и отстъпки в приложението BoomCard — може да изненадате себе си.</p>
 <p>При въпроси сме насреща на <a href="mailto:office@boomcard.bg">office@boomcard.bg</a>.</p>
 <p>Екипът на BoomCard</p>`,
         bodyEn: `<h2>Welcome back!</h2>

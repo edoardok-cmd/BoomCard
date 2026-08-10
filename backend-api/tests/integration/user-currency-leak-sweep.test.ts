@@ -855,7 +855,7 @@ describe('INV-USER-CUR-003 (offers) — GET /api/offers endpoints must gate BGN 
       data: {
         partnerId: offersPartnerId,
         title: 'Sweep Test Offer',
-        titleBg: 'Тест Оферта',
+        titleBg: 'Тест Отстъпка',
         description: 'Sweep test offer for currency leak detection',
         descriptionBg: 'Тест',
         type: 'DISCOUNT',

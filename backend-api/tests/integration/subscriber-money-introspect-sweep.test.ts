@@ -400,7 +400,7 @@ beforeAll(async () => {
   // 13. Offer (offers/*).
   const offer = await prisma.offer.create({
     data: {
-      partnerId: partner.id, title: 'SubIntrospect Offer', titleBg: 'Оферта',
+      partnerId: partner.id, title: 'SubIntrospect Offer', titleBg: 'Отстъпка',
       description: 'seed', descriptionBg: 'Тест', type: 'DISCOUNT', status: 'ACTIVE',
       discountAmount: 15.0, minPurchase: 20.0, maxDiscount: 10.0,
       startDate: new Date(Date.now() - 24 * 60 * 60 * 1000),

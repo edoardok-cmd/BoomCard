@@ -845,7 +845,7 @@ export class EmailService {
     const features = language === 'bg' ? [
       { icon: '📸', title: 'Сканирайте бележки', desc: 'Просто снимайте бележката си и спечелете незабавен кешбек' },
       { icon: '💳', title: 'Дигитален портфейл', desc: 'Следете спестяванията си и използвайте баланса си в партньорски обекти' },
-      { icon: '🎁', title: 'Ексклузивни оферти', desc: 'Получавайте персонализирани оферти от любимите си места' },
+      { icon: '🎁', title: 'Ексклузивни отстъпки', desc: 'Получавайте персонализирани отстъпки от любимите си места' },
     ] : [
       { icon: '📸', title: 'Scan Receipts', desc: 'Simply snap a photo of your receipt and earn instant cashback' },
       { icon: '💳', title: 'Digital Wallet', desc: 'Track your savings and use your balance at partner venues' },
@@ -1177,7 +1177,7 @@ ${S.copyright.replace('{year}', String(year))}
     const hi = language === 'bg' ? 'Здравейте' : 'Hi';
     const year = new Date().getFullYear();
     const features = language === 'bg'
-      ? '📸 Сканирайте бележки - Просто снимайте бележката си и спечелете незабавен кешбек\n💳 Дигитален портфейл - Следете спестяванията си и използвайте баланса си в партньорски обекти\n🎁 Ексклузивни оферти - Получавайте персонализирани оферти от любимите си места'
+      ? '📸 Сканирайте бележки - Просто снимайте бележката си и спечелете незабавен кешбек\n💳 Дигитален портфейл - Следете спестяванията си и използвайте баланса си в партньорски обекти\n🎁 Ексклузивни отстъпки - Получавайте персонализирани отстъпки от любимите си места'
       : '📸 Scan Receipts - Simply snap a photo of your receipt and earn instant cashback\n💳 Digital Wallet - Track your savings and use your balance at partner venues\n🎁 Exclusive Offers - Get personalized deals from your favorite places';
     const needHelp = language === 'bg'
       ? 'Нужна помощ? Свържете се с нас на office@boomcard.bg'

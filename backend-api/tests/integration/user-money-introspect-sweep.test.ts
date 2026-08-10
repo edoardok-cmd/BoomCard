@@ -391,7 +391,7 @@ beforeAll(async () => {
     data: {
       partnerId: partner.id,
       title: 'IntrospectSweep Offer',
-      titleBg: 'ИнтроспектТест Оферта',
+      titleBg: 'ИнтроспектТест Отстъпка',
       description: 'Sweep test offer for introspect sweep currency leak detection',
       descriptionBg: 'Тест',
       type: 'DISCOUNT',
