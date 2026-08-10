@@ -9,6 +9,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 import { seedPermissions } from '../src/services/permission.service';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -17,7 +19,9 @@ if (!databaseUrl) {
   process.exit(1);
 }
 
-const prisma = new PrismaClient();
+const pool = new Pool({ connectionString: databaseUrl });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
   console.log('🌱 Starting database seed...\n');
@@ -534,4 +538,5 @@ main()
   })
   .finally(async () => {
     await prisma.$disconnect();
+    await pool.end();
   });
