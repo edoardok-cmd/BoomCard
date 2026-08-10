@@ -405,9 +405,9 @@ Rule: a malformed/garbage path param MUST yield a clean 4xx (404/400), never a 5
 | INV-IMPORT-002 | POST /api/admin/bulk-import/ rejects file >50 MB (multer limit); 413 or error message, never 500 | impl | POST /bulk-import | runtime probe (50MB+ file) |
 | INV-IMPORT-003 | POST /api/admin/bulk-import/ rejects unsupported MIME type (allows CSV/XLSX/images only); returns 400 | impl | POST /bulk-import | runtime probe (application/json) |
 | INV-IMPORT-004 | POST /api/admin/bulk-import/ success returns 200 (full) or 207 (partial errors); 207 iff errors.length > 0 | impl | POST /bulk-import | executable test (happy path, error path) |
-| INV-IMPORT-005 | POST /api/admin/bulk-import/ audit-logs admin ID and import kind ('offers') via fire-and-forget notification (non-blocking) | impl | POST /bulk-import | static read (detach + notifyAdminBulkImportComplete) |
+| INV-IMPORT-005 | POST /api/admin/bulk-import/ audit-logs admin ID and import kind ('discounts') via fire-and-forget notification (non-blocking) | impl | POST /bulk-import | static read (detach + notifyAdminBulkImportComplete) |
 | INV-IMPORT-006 | GET /api/admin/bulk-import/template returns XLSX buffer with proper Content-Type header; 200 no params | impl | GET /bulk-import/template | runtime probe |
-| INV-IMPORT-007 | POST /api/admin/bulk-import/partners requires `spreadsheet` field; same multipart guards as offers import (file size, MIME type, field presence) | impl | POST /bulk-import/partners | runtime probe (no field, 50MB+) |
+| INV-IMPORT-007 | POST /api/admin/bulk-import/partners requires `spreadsheet` field; same multipart guards as discount import (file size, MIME type, field presence) | impl | POST /bulk-import/partners | runtime probe (no field, 50MB+) |
 | INV-IMPORT-008 | GET /api/admin/bulk-import/template/partners returns XLSX buffer; 200 no params | impl | GET /bulk-import/template/partners | runtime probe |
 | INV-IMPORT-009 | All 4 bulk-import routes require ADMIN or SUPER_ADMIN; non-admin → 403 | Part 4 impl | all 4 routes | runtime probe (token without admin role) |
 

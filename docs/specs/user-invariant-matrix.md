@@ -17,7 +17,7 @@
 - favorites → `/api/favorites/*`
 - reviews → `/api/reviews/*`
 - payments → `/api/payments/*` (history, methods, subscription)
-- offers → `/api/offers/*` (mostly public/partner-owned; user GET only)
+- discounts → `/api/offers/*` (mostly public/partner-owned; user GET only)
 - loyalty → `/api/loyalty/accounts/me`
 
 ---
@@ -28,7 +28,7 @@ Four sweep tests mechanically cover entire invariant classes for the user surfac
 
 - **`user-cross-scope-sweep.test.ts`** — `[SUITE: XSCOPE]`. Two real subscribers A and B; asserts A cannot read or mutate B's receipts, help tickets, notifications, subscriptions, reviews, wallet, or favorites (403/404, never B's data in a 200 body). Each test has a positive control (owner CAN access) proving the gate is real.
 - **`user-input-500-sweep.test.ts`** — `[SUITE: INPUT]`. For every user route with a `:id`-style path param, sends malformed values (`not-a-uuid`, empty, SQL-ish, overlong) and asserts a clean 4xx, NEVER a 500 / Prisma `P2023`/`22P02`.
-- **`user-auth-gate-sweep.test.ts`** — `[SUITE: AUTH]`. Asserts (a) every user endpoint rejects an unauthenticated request (401), and (b) admin/partner-only sub-routes physically mounted under user routers (`/receipts/admin/all`, `/receipts/v2/admin/*`, `/receipts/v2/bulk-approve|reject`, `/reviews/:id/approve|reject|flag|admin-response`, offers mutations) reject a plain subscriber (403).
+- **`user-auth-gate-sweep.test.ts`** — `[SUITE: AUTH]`. Asserts (a) every user endpoint rejects an unauthenticated request (401), and (b) admin/partner-only sub-routes physically mounted under user routers (`/receipts/admin/all`, `/receipts/v2/admin/*`, `/receipts/v2/bulk-approve|reject`, `/reviews/:id/approve|reject|flag|admin-response`, discount mutations) reject a plain subscriber (403).
 - **`user-currency-leak-sweep.test.ts`** — `[SUITE: CUR]`. With `currency_transition_window_open=false`, asserts no user-facing money response leaks a raw BGN scalar; with the window open, asserts dual BGN+EUR display. Covers the CUR class on wallet/payments/subscription/receipt money fields.
 
 ---
@@ -240,7 +240,7 @@ Four sweep tests mechanically cover entire invariant classes for the user surfac
 |---|---|---|---|
 | INV-USER-AUTH-001 | Every user endpoint rejects unauthenticated requests (401) | AUTH | [SUITE: AUTH] |
 | INV-USER-AUTH-002 | Admin-only sub-routes mounted under user routers (`/receipts/admin/all`, `/receipts/v2/admin/*`, `/receipts/v2/bulk-approve\|reject`, `/reviews/:id/approve\|reject\|admin-response`) reject a plain subscriber (403). NOTE: `/reviews/:id/flag` is a legitimate user action (no admin gate) and is excluded. | AUTH | [SUITE: AUTH] |
-| INV-USER-AUTH-003 | Partner/owner-only mutations under user routers (offers POST/PUT/DELETE, receipts venue-config/templates) reject a plain subscriber (403) | AUTH | [SUITE: AUTH] |
+| INV-USER-AUTH-003 | Partner/owner-only mutations under user routers (discount POST/PUT/DELETE, receipts venue-config/templates) reject a plain subscriber (403) | AUTH | [SUITE: AUTH] |
 
 ---
 
