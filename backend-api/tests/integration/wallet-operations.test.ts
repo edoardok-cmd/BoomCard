@@ -17,6 +17,7 @@ import {
   cleanupTestUser,
   authRequest,
 } from '../helpers/test-utils';
+import { bgnToEur } from '../../src/utils/currency';
 
 describe('Wallet Operations (F04, F05)', () => {
   const createdUserIds: string[] = [];
@@ -94,8 +95,9 @@ describe('Wallet Operations (F04, F05)', () => {
 
   describe('Cashback Credit Operations', () => {
     it('should credit wallet when cashback is earned', async () => {
-      const initialBalance = await walletService.getBalance(userId);
-
+      // walletService.getBalance() converts the BGN-stored balance to EUR
+      // (BC-QA-031 — EUR-only responses); compare against the raw DB row run
+      // through the same helper rather than chaining EUR arithmetic.
       await walletService.credit({
         userId,
         amount: 5,
@@ -105,11 +107,16 @@ describe('Wallet Operations (F04, F05)', () => {
       });
 
       const newBalance = await walletService.getBalance(userId);
-      expect(newBalance.balance).toBe(initialBalance.balance + 5);
+      const walletRow = await prisma.wallet.findUnique({ where: { id: walletId } });
+      expect(newBalance.balance).toBe(bgnToEur(walletRow!.balance));
     });
 
     it('should record transaction with correct balance before/after', async () => {
-      const balanceBefore = (await walletService.getBalance(userId)).balance;
+      // Read the raw (BGN) wallet balance directly — the walletTransaction row
+      // asserted below is a raw DB read too, so both sides must stay in the
+      // same (BGN) unit; only API responses convert to EUR (BC-QA-031).
+      const walletBefore = await prisma.wallet.findUnique({ where: { id: walletId } });
+      const balanceBefore = walletBefore!.balance;
 
       await walletService.credit({
         userId,
@@ -217,8 +224,6 @@ describe('Wallet Operations (F04, F05)', () => {
 
   describe('Concurrent Wallet Operations', () => {
     it('should handle sequential cashback credits without data loss', async () => {
-      const initialBalance = (await walletService.getBalance(userId)).balance;
-
       const amounts = [3, 5, 7];
       // Execute sequentially to avoid race conditions on wallet balance
       for (const amount of amounts) {
@@ -230,9 +235,12 @@ describe('Wallet Operations (F04, F05)', () => {
         });
       }
 
+      // Compare the EUR-converted API figure against the raw (BGN) DB row run
+      // through the same helper, rather than chaining EUR arithmetic
+      // (BC-QA-031 — EUR-only responses).
       const finalBalance = (await walletService.getBalance(userId)).balance;
-      const totalCredited = amounts.reduce((a, b) => a + b, 0);
-      expect(finalBalance).toBe(initialBalance + totalCredited);
+      const walletRow = await prisma.wallet.findUnique({ where: { id: walletId } });
+      expect(finalBalance).toBe(bgnToEur(walletRow!.balance));
     });
   });
 });

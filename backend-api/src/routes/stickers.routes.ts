@@ -15,6 +15,7 @@ import prisma from '../lib/prisma';
 import { validateAmount, validateGPSCoordinates, ValidationError } from '../utils/validation';
 import { checkLivePhoto } from '../utils/exifLivePhoto';
 import { parsePagination } from '../utils/pagination';
+import { bgnToEur } from '../utils/currency';
 
 /**
  * DEFENSE-IN-DEPTH ACCOUNT STATUS GATING (BC-ADMIN-SPEC-REAUDIT-SCANGATE-INACTIVE-1)
@@ -320,16 +321,19 @@ router.post('/scan/:scanId/receipt', authenticate, requireActiveSubscription, up
     });
 
     const { fraudScore: _rfs, fraudReasons: _rfr, specRiskLevel: _rsrl, ipAddress: _rip, userAgent: _rua, deviceFingerprint: _rdf, deviceFingerprintRaw: _rdfr, ocrData: _rod, receiptImageHash: _rrih, cashbackPercent: _rcp, cashbackAmount: _rca, billAmount: _rba, verifiedAmount: _rva, ...safeReceiptScan } = scan as any;
+    // Stored cashback/bill/verified amounts are BGN-denominated — convert to
+    // EUR before returning (BC-QA-031 — EUR-only responses).
+    const cashbackAmountEur = bgnToEur((scan as any).cashbackAmount ?? 0);
     res.json({
       success: true,
       data: {
         ...safeReceiptScan,
-        cashbackAmount: (scan as any).cashbackAmount,
-        billAmount: (scan as any).billAmount,
-        verifiedAmount: (scan as any).verifiedAmount,
+        cashbackAmount: cashbackAmountEur,
+        billAmount: bgnToEur((scan as any).billAmount ?? 0),
+        verifiedAmount: bgnToEur((scan as any).verifiedAmount ?? 0),
       },
       message: scan.status === 'APPROVED'
-        ? `Cashback approved! You earned ${(scan as any).cashbackAmount} BGN`
+        ? `Cashback approved! You earned ${cashbackAmountEur} EUR`
         : scan.status === 'MANUAL_REVIEW'
         ? 'Receipt uploaded. Under review.'
         : 'Receipt uploaded successfully.',
@@ -355,13 +359,15 @@ router.get('/my-scans', authenticate, async (req: Request, res: Response) => {
     const { limit } = parsePagination(req.query, { defaultLimit: 50, maxLimit: 100 });
 
     const scans = await stickerService.getScansByUser(userId, limit);
+    // Stored cashback/bill/verified amounts are BGN-denominated — convert to
+    // EUR before returning (BC-QA-031 — EUR-only responses).
     const safeScans = scans.map((s: any) => {
       const { cashbackAmount, billAmount, verifiedAmount, ...rest } = s;
       return {
         ...rest,
-        cashbackAmount,
-        billAmount,
-        verifiedAmount,
+        cashbackAmount: bgnToEur(cashbackAmount ?? 0),
+        billAmount: bgnToEur(billAmount ?? 0),
+        verifiedAmount: bgnToEur(verifiedAmount ?? 0),
       };
     });
 
@@ -687,13 +693,15 @@ router.get('/venue/:venueId/scans', authenticate, authorize('PARTNER', 'ADMIN', 
 
     const scans = await stickerService.getScansByVenue(venueId, limit);
 
+    // billAmount/verifiedAmount are BGN money fields — convert to EUR before
+    // returning (BC-QA-031 — EUR-only responses).
     const safeScans = scans.map((s: any) => {
       // cashbackAmount/cashbackPercent are @internal business-formula components (spec §11.3, Clash 10.6)
       const { fraudScore: _fs, fraudReasons: _fr, specRiskLevel: _srl, ipAddress: _ip, userAgent: _ua, deviceFingerprint: _df, deviceFingerprintRaw: _dfr, ocrData: _od, receiptImageHash: _rih, cashbackAmount: _ca, cashbackPercent: _cp, billAmount, verifiedAmount, ...rest } = s;
       return {
         ...rest,
-        billAmount,
-        verifiedAmount,
+        billAmount: bgnToEur(billAmount ?? 0),
+        verifiedAmount: bgnToEur(verifiedAmount ?? 0),
       };
     });
 
@@ -726,17 +734,19 @@ router.get('/venue/:venueId/analytics', authenticate, authorize('PARTNER', 'ADMI
 
     const { revenue, cashback, ...restAnalytics } = analytics;
 
+    // revenue.total/average and cashback.total/average are BGN money fields —
+    // convert to EUR before returning (BC-QA-031 — EUR-only responses).
     res.json({
       success: true,
       data: {
         ...restAnalytics,
         revenue: {
-          total: revenue.total,
-          average: revenue.average,
+          total: bgnToEur(revenue.total),
+          average: bgnToEur(revenue.average),
         },
         cashback: {
-          total: cashback.total,
-          average: cashback.average,
+          total: bgnToEur(cashback.total),
+          average: bgnToEur(cashback.average),
         },
       },
     });
@@ -761,7 +771,9 @@ router.get('/venue/:venueId/config', authenticate, authorize('PARTNER', 'ADMIN',
     const rawConfig = await stickerService.getOrCreateVenueConfig(venueId);
     const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
 
-    // Spec §11.3, Clash 10.6: cashback formula components are internal-only
+    // Spec §11.3, Clash 10.6: cashback formula components are internal-only.
+    // minBillAmount is a BGN money field — convert to EUR before returning
+    // (partner only; BC-QA-031 — EUR-only responses).
     const data = isAdmin ? rawConfig : (() => {
       const { cashbackPercent: _c, premiumBonus: _p, platinumBonus: _pl,
               maxCashbackPerScan: _m, autoApproveThreshold: _a,
@@ -769,7 +781,7 @@ router.get('/venue/:venueId/config', authenticate, authorize('PARTNER', 'ADMIN',
               gpsRadiusMeters: _gr, ocrVerificationEnabled: _o, minBillAmount, ...rest } = rawConfig as any;
       return {
         ...rest,
-        minBillAmount,
+        minBillAmount: bgnToEur(minBillAmount ?? 0),
       };
     })();
 
@@ -1055,10 +1067,12 @@ router.post('/admin/approve/:scanId', authenticate, requireActiveAdmin, authoriz
 
     const scan = await stickerService.approveScan(scanId, opts);
 
+    // cashbackAmount is BGN-denominated — convert to EUR for the message
+    // (BC-QA-031 — EUR-only responses/messaging).
     res.json({
       success: true,
       data: scan,
-      message: `Scan approved. ${scan.cashbackAmount} BGN credited to user.`,
+      message: `Scan approved. ${bgnToEur(scan.cashbackAmount ?? 0)} EUR credited to user.`,
     });
   } catch (error: any) {
     res.status(400).json({

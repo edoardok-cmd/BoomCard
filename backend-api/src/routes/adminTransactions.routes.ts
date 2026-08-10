@@ -5,6 +5,7 @@ import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { deriveCashbackEntryStatus } from '../services/adminCashback.service';
 import { parsePagination } from '../utils/pagination';
+import { bgnToEur } from '../utils/currency';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -118,7 +119,17 @@ router.get('/', requirePermission('transactions.read'), async (req, res, next) =
       prisma.walletTransaction.count({ where }),
     ]);
 
-    res.json({ transactions, total, page: pageNum, limit: take });
+    // Stored amount/balanceBefore/balanceAfter are BGN-denominated — convert to
+    // EUR before returning (BC-QA-031 — EUR-only responses).
+    const transactionsEur = transactions.map(tx => ({
+      ...tx,
+      amount: bgnToEur(tx.amount),
+      balanceBefore: bgnToEur(tx.balanceBefore),
+      balanceAfter: bgnToEur(tx.balanceAfter),
+      currency: 'EUR',
+    }));
+
+    res.json({ transactions: transactionsEur, total, page: pageNum, limit: take });
   } catch (error) {
     next(error);
   }
@@ -148,10 +159,12 @@ router.get('/stats', requirePermission('transactions.read'), async (req, res, ne
     const totalCashback = cashbackResult._sum.amount ?? 0;
     const totalWithdrawals = withdrawalResult._sum.amount ?? 0;
 
+    // Stored totals are BGN-denominated — convert to EUR before returning
+    // (BC-QA-031 — EUR-only responses).
     res.json({
-      totalVolume,
-      totalCashback,
-      totalWithdrawals,
+      totalVolume: bgnToEur(totalVolume),
+      totalCashback: bgnToEur(totalCashback),
+      totalWithdrawals: bgnToEur(totalWithdrawals),
     });
   } catch (error) {
     next(error);
@@ -254,7 +267,15 @@ router.post('/adjust', requirePermission('transactions.write'), async (req, res,
     req.auditAction = 'transaction.wallet-adjust';
     req.auditObjectType = 'transaction';
     req.auditObjectId = userId;
-    res.status(201).json(created);
+    // Stored amount/balanceBefore/balanceAfter are BGN-denominated — convert to
+    // EUR before returning (BC-QA-031 — EUR-only responses).
+    res.status(201).json({
+      ...created,
+      amount: bgnToEur(created.amount),
+      balanceBefore: bgnToEur(created.balanceBefore),
+      balanceAfter: bgnToEur(created.balanceAfter),
+      currency: 'EUR',
+    });
   } catch (error) {
     if (validationError) {
       res.status(400).json({ error: validationError });
@@ -580,16 +601,19 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
             partnerType: effectivePartner.partnerType,
           }
         : null;
+      // Stored amount/marginAmount/cashbackAmount/discountAmount/finalAmount/
+      // netAmount are BGN-denominated — convert to EUR before returning
+      // (BC-QA-031 — EUR-only responses).
       return {
         ...rest,
         partner: partnerOut,
         venue: venueOut,
-        amount,
-        marginAmount,
-        cashbackAmount: cashbackAmountResolved,
-        discountAmount,
-        finalAmount,
-        netAmount,
+        amount: bgnToEur(amount),
+        marginAmount: marginAmount != null ? bgnToEur(marginAmount) : marginAmount,
+        cashbackAmount: cashbackAmountResolved != null ? bgnToEur(cashbackAmountResolved) : cashbackAmountResolved,
+        discountAmount: discountAmount != null ? bgnToEur(discountAmount) : discountAmount,
+        finalAmount: finalAmount != null ? bgnToEur(finalAmount) : finalAmount,
+        netAmount: netAmount != null ? bgnToEur(netAmount) : netAmount,
         margin,
         partnerDiscountRate,
         riskScore,
@@ -709,12 +733,14 @@ router.get('/business/stats', requirePermission('transactions.read'), async (req
     const totalCashback =
       (agg._sum.cashbackAmount ?? 0) + (fallbackAgg._sum.cashbackAmount ?? 0);
 
+    // Stored totals are BGN-denominated — convert to EUR before returning
+    // (BC-QA-031 — EUR-only responses).
     res.json({
       count: agg._count._all,
       todayCount,
-      totalVolume,
-      averageValue,
-      totalCashback,
+      totalVolume: bgnToEur(totalVolume),
+      averageValue: bgnToEur(averageValue),
+      totalCashback: bgnToEur(totalCashback),
     });
   } catch (error) {
     next(error);

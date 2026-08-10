@@ -25,6 +25,7 @@ import { getPayoutThresholdBGN } from '../utils/payoutThreshold';
 import { parsePagination } from '../utils/pagination';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
+import { bgnToEur } from '../utils/currency';
 
 const router = Router();
 
@@ -40,7 +41,20 @@ router.get('/stats', requirePermission('cashback.read'), async (_req: AuthReques
   try {
     const stats = await adminCashbackService.getDashboardStats();
 
-    res.json({ success: true, data: stats });
+    // Stored amounts are BGN-denominated — convert to EUR before returning
+    // (BC-QA-031 — EUR-only responses).
+    const statsEur = {
+      totalAccrued: bgnToEur(stats.totalAccrued),
+      totalCleared: bgnToEur(stats.totalCleared),
+      totalPending: bgnToEur(stats.totalPending),
+      expiringTotal: bgnToEur(stats.expiringTotal),
+      totalLocked: bgnToEur(stats.totalLocked),
+      totalPaid: bgnToEur(stats.totalPaid),
+      totalExpired: bgnToEur(stats.totalExpired),
+      totalVoided: bgnToEur(stats.totalVoided),
+    };
+
+    res.json({ success: true, data: statsEur });
   } catch (error: any) {
     logger.error('Failed to fetch cashback stats:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch cashback stats' });
@@ -70,7 +84,14 @@ router.get('/summary', requirePermission('cashback.read'), async (req: AuthReque
       status: status as 'PENDING' | 'PAID' | 'OVERDUE' | undefined,
     });
 
-    res.json({ success: true, data: summary });
+    // totalOwed is BGN-denominated — convert to EUR before returning
+    // (BC-QA-031 — EUR-only responses).
+    const summaryEur = summary.map(entry => ({
+      ...entry,
+      totalOwed: bgnToEur(entry.totalOwed),
+    }));
+
+    res.json({ success: true, data: summaryEur });
   } catch (error: any) {
     logger.error('Failed to fetch cashback summary:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch cashback summary' });
@@ -272,14 +293,16 @@ router.get('/payout-thresholds', requirePermission('cashback.read'), async (_req
       getPayoutThresholdBGN('PREMIUM_WEEKLY'),
       getPayoutThresholdBGN('PREMIUM_MONTHLY'),
     ]);
+    // getPayoutThresholdBGN() returns BGN-denominated thresholds — convert to
+    // EUR before returning (BC-QA-031 — EUR-only responses).
     res.json({
       success: true,
       data: {
-        BASIC: basic,
-        PREMIUM_WEEKLY: premiumWeekly,
-        PREMIUM: premiumMonthly,
+        BASIC: bgnToEur(basic),
+        PREMIUM_WEEKLY: bgnToEur(premiumWeekly),
+        PREMIUM: bgnToEur(premiumMonthly),
         // Backward-compat alias for enum-native consumers (spec key is PREMIUM).
-        PREMIUM_MONTHLY: premiumMonthly,
+        PREMIUM_MONTHLY: bgnToEur(premiumMonthly),
       },
     });
   } catch (error: any) {
@@ -366,7 +389,11 @@ router.get('/entries', requirePermission('cashback.read'), async (req: AuthReque
 
     const result = await getAllCashbackEntries(page, limit, statusFilter, search, dateFrom, dateTo, riskLevelFilter);
 
-    res.json({ success: true, ...result });
+    // entry.amount is BGN-denominated — convert to EUR before returning
+    // (BC-QA-031 — EUR-only responses).
+    const dataEur = result.data.map(entry => ({ ...entry, amount: bgnToEur(entry.amount) }));
+
+    res.json({ success: true, ...result, data: dataEur });
   } catch (error: any) {
     logger.error('Failed to fetch cashback entries:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch cashback entries' });
@@ -385,7 +412,11 @@ router.get('/subscriber/:userId', requirePermission('cashback.read'), async (req
 
     const result = await getSubscriberCashbackEntries(userId, page, limit);
 
-    res.json({ success: true, ...result });
+    // entry.amount is BGN-denominated — convert to EUR before returning
+    // (BC-QA-031 — EUR-only responses).
+    const dataEur = result.data.map(entry => ({ ...entry, amount: bgnToEur(entry.amount) }));
+
+    res.json({ success: true, ...result, data: dataEur });
   } catch (error: any) {
     if (error?.statusCode === 404) {
       return res.status(404).json({ success: false, error: error.message });
@@ -409,7 +440,15 @@ router.get('/:partnerId/:month/receipts', requirePermission('cashback.read'), as
 
     const result = await adminCashbackService.getReceiptsByPartnerMonth({ partnerId, month });
 
-    res.json({ success: true, data: result });
+    // cashbackAmount / totalCashbackOwed are BGN-denominated — convert to EUR
+    // before returning (BC-QA-031 — EUR-only responses).
+    const resultEur = {
+      ...result,
+      receipts: result.receipts.map(r => ({ ...r, cashbackAmount: bgnToEur(r.cashbackAmount) })),
+      totalCashbackOwed: bgnToEur(result.totalCashbackOwed),
+    };
+
+    res.json({ success: true, data: resultEur });
   } catch (error: any) {
     logger.error('Failed to fetch partner receipts:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch partner receipts' });

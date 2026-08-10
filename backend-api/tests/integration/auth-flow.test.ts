@@ -9,6 +9,7 @@ import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { createTestUser, cleanupTestUser, authRequest } from '../helpers/test-utils';
+import { bgnToEur } from '../../src/utils/currency';
 
 describe('Authentication Flow (F01)', () => {
   const createdUserIds: string[] = [];
@@ -586,9 +587,13 @@ describe('Authentication Flow (F01)', () => {
       expect(res.status).toBe(401);
     });
 
-    it('receipts[].totalAmount is a plain numeric EUR-only scalar', async () => {
+    it('receipts[].totalAmount is a plain numeric EUR-only scalar, converted from BGN storage', async () => {
       const { accessToken, user } = await createTestUser({ acceptTerms: true });
       createdUserIds.push(user.id);
+      // totalAmount is stored BGN-denominated (BC-QA-031); the export must
+      // return the converted EUR figure, not the raw BGN scalar — this is the
+      // exact CRITICAL regression class the Step-4 review caught, so this
+      // assertion is the mechanical guard against it recurring.
       const receipt = await prisma.receipt.create({
         data: { userId: user.id, totalAmount: 42.5, status: 'APPROVED' as any, cashbackAmount: 4.25 },
       });
@@ -597,7 +602,8 @@ describe('Authentication Flow (F01)', () => {
         expect(res.status).toBe(200);
         const rec = (res.body.userData.receipts as any[]).find((r: any) => r.id === receipt.id);
         expect(rec).toBeDefined();
-        expect(rec.totalAmount).toBe(42.5);
+        expect(rec.totalAmount).toBe(bgnToEur(42.5));
+        expect(rec.totalAmount).not.toBe(42.5);
       } finally {
         await prisma.receipt.delete({ where: { id: receipt.id } }).catch(() => {});
       }

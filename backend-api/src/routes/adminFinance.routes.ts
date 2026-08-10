@@ -23,8 +23,25 @@ import * as XLSX from 'xlsx';
 import { Prisma, ReportingPeriodStatus, ScanStatus } from '@prisma/client';
 import { adminCashbackService } from '../services/adminCashback.service';
 import { parsePagination } from '../utils/pagination';
+import { bgnToEur } from '../utils/currency';
 
 const router = Router();
+
+// PartnerCashbackPayment monetary fields (totalCashbackOwed, turnoverAmount,
+// marginAmount) are stored BGN-denominated — convert to EUR before a row goes
+// into any API response (BC-QA-031 — EUR-only responses).
+function toEurInvoice<T extends {
+  totalCashbackOwed?: number | null;
+  turnoverAmount?: number | null;
+  marginAmount?: number | null;
+}>(inv: T): T {
+  return {
+    ...inv,
+    ...(inv.totalCashbackOwed != null && { totalCashbackOwed: bgnToEur(inv.totalCashbackOwed) }),
+    ...(inv.turnoverAmount != null && { turnoverAmount: bgnToEur(inv.turnoverAmount) }),
+    ...(inv.marginAmount != null && { marginAmount: bgnToEur(inv.marginAmount) }),
+  };
+}
 
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
 router.use(auditMiddleware);
@@ -99,7 +116,7 @@ router.get(
     const periodStatusByMonth = new Map(reportingPeriods.map(p => [p.month, p.status]));
 
     const enriched = invoices.map(inv => ({
-      ...inv,
+      ...toEurInvoice(inv),
       reportingPeriodStatus: periodStatusByMonth.get(inv.month) ?? null,
     }));
 
@@ -318,7 +335,7 @@ router.post(
     }
 
     const updated = await prisma.partnerCashbackPayment.findUnique({ where: { id } });
-    res.json({ success: true, data: updated, message: 'Invoice marked as paid' });
+    res.json({ success: true, data: updated ? toEurInvoice(updated) : updated, message: 'Invoice marked as paid' });
   })
 );
 
@@ -360,7 +377,7 @@ router.patch(
     }
 
     const updated = await prisma.partnerCashbackPayment.findUnique({ where: { id } });
-    res.json({ success: true, data: updated });
+    res.json({ success: true, data: updated ? toEurInvoice(updated) : updated });
   })
 );
 
@@ -384,7 +401,7 @@ router.patch(
       data: { notes: notes || null },
     });
 
-    res.json({ success: true, data: updated });
+    res.json({ success: true, data: toEurInvoice(updated) });
   })
 );
 
@@ -550,7 +567,11 @@ router.get(
 
     const periods = Array.from(monthMap.values()).sort((a, b) => b.month.localeCompare(a.month));
 
-    res.json({ success: true, data: periods, meta: { year } });
+    // total is a BGN-denominated aggregate — convert to EUR before returning
+    // (BC-QA-031 — EUR-only responses).
+    const periodsEur = periods.map(p => ({ ...p, total: bgnToEur(p.total) }));
+
+    res.json({ success: true, data: periodsEur, meta: { year } });
   })
 );
 
@@ -744,7 +765,9 @@ router.get(
       ),
     ]);
 
-    // Wallet tx map: always include core types so the UI can show 0 placeholders
+    // Wallet tx map: always include core types so the UI can show 0 placeholders.
+    // Stored amounts are BGN-denominated — convert to EUR before returning
+    // (BC-QA-031 — EUR-only responses).
     const CORE_WALLET_TYPES = ['CASHBACK_CREDIT', 'WITHDRAWAL', 'TOP_UP'] as const;
     const txByType: Record<string, Record<string, any>> = {};
     for (const t of CORE_WALLET_TYPES) {
@@ -752,7 +775,7 @@ router.get(
     }
     for (const row of walletStats) {
       const val = row._sum.amount ?? 0;
-      txByType[row.type] = { total: val, count: row._count.id };
+      txByType[row.type] = { total: bgnToEur(val), count: row._count.id };
     }
 
     // Aggregate per-partner breakdown.
@@ -836,12 +859,14 @@ router.get(
       cur.turnover += scan.verifiedAmount ?? scan.billAmount ?? 0;
       planAccum[plan] = cur;
     }
+    // cashback/turnover accumulators are BGN-denominated — convert to EUR
+    // before returning (BC-QA-031 — EUR-only responses).
     const planBreakdown = Object.entries(planAccum)
       .map(([plan, { scanCount, cashback, turnover }]) => ({
         plan,
         scanCount,
-        cashback,
-        turnover,
+        cashback: bgnToEur(cashback),
+        turnover: bgnToEur(turnover),
       }))
       .sort((a, b) => b.cashback - a.cashback);
 
@@ -867,13 +892,21 @@ router.get(
       overdueCount: periodCountMap.get(m)?.overdueCount ?? 0,
     }));
 
-    // Strip internal accumulator field before sending
+    // Strip internal accumulator field before sending. cashback/margin/turnover
+    // are BGN-denominated — convert to EUR before returning (BC-QA-031 —
+    // EUR-only responses).
     const partnerBreakdown = Array.from(partnerMap.values()).map(
-      ({ _seenRates: _ignored, ...rest }) => rest,
+      ({ _seenRates: _ignored, cashback, margin, turnover, ...rest }) => ({
+        ...rest,
+        cashback: bgnToEur(cashback),
+        margin: bgnToEur(margin),
+        turnover: bgnToEur(turnover),
+      }),
     );
 
     // Build payout-by-status breakdown.  Always include the canonical statuses with 0 placeholders
     // so the UI shows a stable row layout even when no payouts exist for that status in the period.
+    // Totals are BGN-denominated — convert to EUR before returning.
     const PAYOUT_STATUSES_DISPLAY = ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'RISK_HOLD'] as const;
     const payoutByStatus: Record<string, Record<string, any>> = {};
     for (const s of PAYOUT_STATUSES_DISPLAY) {
@@ -881,12 +914,12 @@ router.get(
     }
     for (const row of payoutStatusStats) {
       const val = row._sum.amount ?? 0;
-      payoutByStatus[row.status] = { total: val, count: row._count.id };
+      payoutByStatus[row.status] = { total: bgnToEur(val), count: row._count.id };
     }
     const payoutTotal = Object.values(payoutByStatus).reduce((s, v) => s + (v.total ?? 0), 0);
     const payoutCount = Object.values(payoutByStatus).reduce((s, v) => s + v.count, 0);
 
-    // Compute aggregate invoice totals for the cashbackInvoices section
+    // Compute aggregate invoice totals for the cashbackInvoices section (BGN → EUR).
     const invoiceTotalBgn = invoiceTotals._sum.totalCashbackOwed ?? 0;
     const marginTotalBgn = invoiceTotals._sum.marginAmount ?? 0;
     const turnoverTotalBgn = invoiceTotals._sum.turnoverAmount ?? 0;
@@ -897,9 +930,9 @@ router.get(
         period: { from: from.toISOString(), to: to.toISOString() },
         walletTransactions: txByType,
         cashbackInvoices: {
-          total: invoiceTotalBgn,
-          marginTotal: marginTotalBgn,
-          turnoverTotal: turnoverTotalBgn,
+          total: bgnToEur(invoiceTotalBgn),
+          marginTotal: bgnToEur(marginTotalBgn),
+          turnoverTotal: bgnToEur(turnoverTotalBgn),
           count: invoiceTotals._count.id,
         },
         partnerBreakdown,
@@ -941,7 +974,7 @@ router.get(
 
 /**
  * GET /api/admin/finance/payout-thresholds
- * Returns the current minimum payout threshold per subscription plan (BGN).
+ * Returns the current minimum payout threshold per subscription plan (EUR).
  * Used by the payouts page to show admins the threshold that applied to each payout.
  */
 import { getPayoutThresholdBGN } from '../utils/payoutThreshold';
@@ -961,14 +994,16 @@ router.get(
     // so the response shape matches §3.7 and the sibling cashback endpoint exactly.
     // `PREMIUM_MONTHLY` is retained as a backward-compat alias (additive — no key
     // removed) because some enum-native callers reference it.
+    // getPayoutThresholdBGN() returns BGN-denominated thresholds — convert to EUR
+    // before returning (BC-QA-031 — EUR-only responses).
     res.json({
       success: true,
       data: {
-        BASIC: basic,
-        PREMIUM_WEEKLY: light,
-        PREMIUM: premium,
+        BASIC: bgnToEur(basic),
+        PREMIUM_WEEKLY: bgnToEur(light),
+        PREMIUM: bgnToEur(premium),
         // Backward-compat alias for enum-native consumers (spec key is PREMIUM).
-        PREMIUM_MONTHLY: premium,
+        PREMIUM_MONTHLY: bgnToEur(premium),
       },
     });
   })
@@ -1282,17 +1317,19 @@ router.get(
       // Resolve paidBy UUIDs → admin display names for accounting readability.
       const invoiceNameMap = await resolveAdminNames(invoices.map(i => i.paidBy));
 
+      // Stored amounts are BGN-denominated — convert to EUR before export
+      // (BC-QA-031 — EUR-only responses).
       rows = invoices.map(i => ({
         invoiceNumber: i.invoiceNumber ?? '',
         id: i.id,
         partner: i.partner.businessName,
         city: i.partner.city ?? '',
         month: i.month,
-        turnoverAmount: i.turnoverAmount,
+        turnoverAmount: bgnToEur(i.turnoverAmount),
         contractedRate: i.contractedRate ?? '',
-        totalCashbackOwed: i.totalCashbackOwed,
-        marginAmount: i.marginAmount,
-        obligation: Math.round((i.totalCashbackOwed + i.marginAmount) * 100) / 100,
+        totalCashbackOwed: bgnToEur(i.totalCashbackOwed),
+        marginAmount: bgnToEur(i.marginAmount),
+        obligation: bgnToEur(Math.round((i.totalCashbackOwed + i.marginAmount) * 100) / 100),
         status: i.status,
         paidAt: i.paidAt?.toISOString() ?? '',
         paidBy: i.paidBy ? (invoiceNameMap.get(i.paidBy) ?? i.paidBy) : '',
@@ -1339,15 +1376,17 @@ router.get(
       const resolveName = (id: string | null) =>
         id ? (expNameMap.get(id) ?? id) : '';
 
+      // Stored amounts are BGN-denominated — convert to EUR before export
+      // (BC-QA-031 — EUR-only responses).
       rows = periods.map(p => {
         const fin = finByMonth.get(p.month);
         return {
           month: p.month,
           status: p.status,
           partners: fin?.count ?? 0,
-          cashback: fin?.cashback ?? 0,
-          margin: fin?.margin ?? 0,
-          total: fin?.total ?? 0,
+          cashback: bgnToEur(fin?.cashback ?? 0),
+          margin: bgnToEur(fin?.margin ?? 0),
+          total: bgnToEur(fin?.total ?? 0),
           paid: fin?.paid ?? 0,
           pending: fin?.pending ?? 0,
           overdue: fin?.overdue ?? 0,
@@ -1530,6 +1569,8 @@ router.get(
 
       // Section 1 — invoice rows: one row per partner-month (period + partner + cashback + margin + invoice status)
       const INVOICE_STATUS_BG: Record<string, string> = { PENDING: 'Чакащ', PAID: 'Платен', OVERDUE: 'Просрочен' };
+      // Stored amounts are BGN-denominated — convert to EUR before export
+      // (BC-QA-031 — EUR-only responses).
       const invoiceSection = invoiceRows.map(i => ({
         section: 'Фактура',
         period: i.month,
@@ -1537,9 +1578,9 @@ router.get(
         partnerId: i.partnerId,
         plan: '',
         scanCount: '',
-        cashback: i.totalCashbackOwed,
-        margin: i.marginAmount,
-        turnover: i.turnoverAmount,
+        cashback: bgnToEur(i.totalCashbackOwed),
+        margin: bgnToEur(i.marginAmount),
+        turnover: bgnToEur(i.turnoverAmount),
         invoiceStatus: INVOICE_STATUS_BG[i.status] ?? i.status,
         walletType: '',
         walletTotal: '',
@@ -1559,9 +1600,9 @@ router.get(
           partnerId: '',
           plan: PLAN_LABELS_BG[plan] ?? plan,
           scanCount: stats.scanCount,
-          cashback: stats.cashback,
+          cashback: bgnToEur(stats.cashback),
           margin: '',
-          turnover: stats.turnover,
+          turnover: bgnToEur(stats.turnover),
           invoiceStatus: '',
           walletType: '',
           walletTotal: '',
@@ -1602,7 +1643,7 @@ router.get(
         turnover: '',
         invoiceStatus: '',
         walletType: WALLET_TYPE_BG[w.type] ?? w.type,
-        walletTotal: w._sum.amount ?? 0,
+        walletTotal: bgnToEur(w._sum.amount ?? 0),
         walletCount: w._count.id,
       }));
 
@@ -1631,7 +1672,7 @@ router.get(
         turnover: '',
         invoiceStatus: '',
         walletType: PAYOUT_STATUS_BG_REPORT[p.status] ?? p.status,
-        walletTotal: Math.abs(p._sum.amount ?? 0),
+        walletTotal: bgnToEur(Math.abs(p._sum.amount ?? 0)),
         walletCount: p._count.id,
       }));
 
@@ -1699,6 +1740,8 @@ router.get(
         } catch { return ''; }
       };
 
+      // Stored amount is BGN-denominated — convert to EUR before export
+      // (BC-QA-031 — EUR-only responses).
       rows = payoutsExp.map(p => ({
         id: p.id,
         subscriberName: [p.wallet.user.firstName, p.wallet.user.lastName].filter(Boolean).join(' ') || '',
@@ -1706,8 +1749,8 @@ router.get(
         phone: p.wallet.user.phone ?? '',
         iban: p.wallet.payoutIban ?? '',
         beneficiaryName: p.wallet.payoutBeneficiaryName ?? '',
-        amount: Math.abs(p.amount),
-        currency: p.currency,
+        amount: bgnToEur(Math.abs(p.amount)),
+        currency: 'EUR',
         status: PAYOUT_STATUS_BG[p.status] ?? p.status,
         description: p.description ?? '',
         requestedAt: p.createdAt.toISOString(),
@@ -1727,13 +1770,15 @@ router.get(
         OVERDUE: 'Просрочено',
       };
 
+      // totalOwed is BGN-denominated — convert to EUR before export
+      // (BC-QA-031 — EUR-only responses).
       rows = summary.map(s => ({
         partnerId: s.partnerId,
         partnerName: s.partnerName,
         partnerEmail: s.partnerEmail ?? '',
         month: s.month,
         receiptCount: s.receiptCount,
-        totalOwed: s.totalOwed,
+        totalOwed: bgnToEur(s.totalOwed),
         paymentStatus: CB_STATUS_BG[s.paymentStatus] ?? s.paymentStatus,
         paidAt: s.paidAt ?? '',
         notes: s.notes ?? '',
@@ -1760,11 +1805,11 @@ router.get(
       partner: 'Партньор',
       city: 'Град',
       month: 'Месец',
-      turnoverAmount: 'Оборот (лв.)',
+      turnoverAmount: 'Оборот (€)',
       contractedRate: 'Договорена ставка (%)',
-      totalCashbackOwed: 'Кешбек (лв.)',
-      marginAmount: 'Марджин (лв.)',
-      obligation: 'Задължение общо (лв.)',
+      totalCashbackOwed: 'Кешбек (€)',
+      marginAmount: 'Марджин (€)',
+      obligation: 'Задължение общо (€)',
       status: 'Статус',
       paidAt: 'Платено на',
       paidBy: 'Платено от',
@@ -1775,9 +1820,9 @@ router.get(
       month: 'Месец',
       status: 'Статус',
       partners: 'Партньори',
-      cashback: 'Кешбек (лв.)',
-      margin: 'Марджин (лв.)',
-      total: 'Общо задължение (лв.)',
+      cashback: 'Кешбек (€)',
+      margin: 'Марджин (€)',
+      total: 'Общо задължение (€)',
       paid: 'Платено',
       pending: 'Чакащи',
       overdue: 'Просрочени',
@@ -1798,12 +1843,12 @@ router.get(
       partnerId: 'ID на партньор',
       plan: 'Абонатен план',
       scanCount: 'Брой сканирания',
-      cashback: 'Кешбек (лв.)',
-      margin: 'Марджин (лв.)',
-      turnover: 'Оборот (лв.)',
+      cashback: 'Кешбек (€)',
+      margin: 'Марджин (€)',
+      turnover: 'Оборот (€)',
       invoiceStatus: 'Статус на фактура',
       walletType: 'Тип транзакция',
-      walletTotal: 'Общо портфейл (лв.)',
+      walletTotal: 'Общо портфейл (€)',
       walletCount: 'Брой транзакции',
     };
     const PAYOUTS_DISPLAY_HEADERS: Record<string, string> = {
@@ -1813,7 +1858,7 @@ router.get(
       phone: 'Телефон',
       iban: 'IBAN',
       beneficiaryName: 'Получател',
-      amount: 'Сума (лв.)',
+      amount: 'Сума (€)',
       currency: 'Валута',
       status: 'Статус',
       description: 'Бележка',
@@ -1826,7 +1871,7 @@ router.get(
       partnerEmail:  'Имейл',
       month:         'Месец',
       receiptCount:  'Брой сканирания',
-      totalOwed:     'Дължимо (лв.)',
+      totalOwed:     'Дължимо (€)',
       paymentStatus: 'Статус',
       paidAt:        'Платено на',
       notes:         'Бележки',

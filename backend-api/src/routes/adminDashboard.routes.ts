@@ -9,6 +9,7 @@ import { Router, Response } from 'express';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
+import { bgnToEur } from '../utils/currency';
 
 const router = Router();
 
@@ -252,13 +253,15 @@ router.get(
       return {
         status,
         count: row?._count?._all ?? 0,
-        amount,
+        amount: bgnToEur(amount),
       };
     });
 
     const partnerReceivablesAmt = partnerReceivables._sum.totalCashbackOwed ?? 0;
     const marginAmt = totalMargin._sum.marginAmount ?? 0;
 
+    // All figures below are stored BGN-denominated aggregates — convert to EUR
+    // before returning (BC-QA-031 — EUR-only responses).
     res.json({
       success: true,
       data: {
@@ -276,15 +279,15 @@ router.get(
         },
         transactions: {
           todayCount: todayTxCount,
-          todayVolume,
-          todayAvg,
-          totalVolume: totalTxVolume._sum.finalAmount ?? 0,
+          todayVolume: bgnToEur(todayVolume),
+          todayAvg: bgnToEur(todayAvg),
+          totalVolume: bgnToEur(totalTxVolume._sum.finalAmount ?? 0),
         },
         cashback: {
-          accrued: accruedCashback._sum.amount ?? 0,
-          approved: approvedCashback._sum.amount ?? 0,
-          pending: pendingCashback._sum.amount ?? 0,
-          expiringSoon: expiringCashback._sum.amount ?? 0,
+          accrued: bgnToEur(accruedCashback._sum.amount ?? 0),
+          approved: bgnToEur(approvedCashback._sum.amount ?? 0),
+          pending: bgnToEur(pendingCashback._sum.amount ?? 0),
+          expiringSoon: bgnToEur(expiringCashback._sum.amount ?? 0),
           statusBreakdown: cashbackStatusBreakdown,
         },
         partners: {
@@ -293,10 +296,10 @@ router.get(
           locations: activeLocations,
         },
         finance: {
-          payoutsDue,
+          payoutsDue: bgnToEur(payoutsDue),
           payoutsDueCount,
-          partnerReceivables: partnerReceivablesAmt,
-          margin: marginAmt,
+          partnerReceivables: bgnToEur(partnerReceivablesAmt),
+          margin: bgnToEur(marginAmt),
         },
       },
       generatedAt: now.toISOString(),

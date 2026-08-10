@@ -1,6 +1,7 @@
 import { ScanStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { getPayoutThresholdBGN } from '../utils/payoutThreshold';
+import { bgnToEur } from '../utils/currency';
 
 // Spec 3.2: Критични / Оперативни / Информационни
 // Lowercase matches the frontend type and the wire values emitted below so that
@@ -489,7 +490,10 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       title: 'Абонати достигнали праг за изплащане',
       count: walletsAtThreshold,
       link: '/admin/finance/payouts',
-      meta: { threshold: PAYOUT_THRESHOLD },
+      // threshold is a display value (BGN storage → EUR) — the deep-link's
+      // minAmount query param below stays BGN since it filters the raw DB
+      // column, not this displayed figure (BC-QA-031 — EUR-only responses).
+      meta: { threshold: bgnToEur(PAYOUT_THRESHOLD) },
     });
   }
   if (largePendingTx > 0) {
@@ -501,8 +505,10 @@ export async function getAlerts(): Promise<AdminAlertsResult> {
       count: largePendingTx,
       // minAmount mirrors the alert's amount filter so the landing page row count
       // matches the badge — without it the user lands on ALL pending wallet TXs.
+      // Deliberately left in BGN: it filters WalletTransaction.amount directly
+      // (a raw DB column), unlike the display-only meta.threshold below.
       link: `/admin/subscribers/transactions?view=wallet&status=PENDING&minAmount=${LARGE_TX_THRESHOLD}`,
-      meta: { threshold: LARGE_TX_THRESHOLD },
+      meta: { threshold: bgnToEur(LARGE_TX_THRESHOLD) },
     });
   }
 

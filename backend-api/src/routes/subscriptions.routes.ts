@@ -8,6 +8,7 @@ import { prisma } from '../lib/prisma';
 import { payseraService } from '../services/paysera.service';
 import crypto from 'crypto';
 import { logger } from '../utils/logger';
+import { bgnToEur } from '../utils/currency';
 
 const router = Router();
 
@@ -225,13 +226,16 @@ router.get('/history', authenticate, asyncHandler(async (req: AuthRequest, res: 
       },
     });
 
+    // Stored Transaction.amount is BGN-denominated — convert to EUR before
+    // returning (BC-QA-031 — EUR-only responses). The T9 synthetic entry below
+    // is genuinely EUR-native (plan prices) and is deliberately NOT converted.
     const history = transactions.map(t => {
       const meta = t.metadata ? JSON.parse(t.metadata as string) : {};
       return {
         id: t.id,
         date: t.createdAt.toISOString(),
-        amount: t.amount,
-        currency: t.currency,
+        amount: bgnToEur(t.amount),
+        currency: 'EUR',
         status: t.status.toLowerCase(),
         description: t.description,
         orderId: meta.orderId,

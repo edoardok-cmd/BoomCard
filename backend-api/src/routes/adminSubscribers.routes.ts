@@ -12,6 +12,7 @@ import { logger } from '../utils/logger';
 import { getClientIp } from '../utils/requestIp';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
+import { bgnToEur } from '../utils/currency';
 
 const router = Router();
 router.use(auditMiddleware);
@@ -306,10 +307,12 @@ router.get('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermissi
       return {
         ...rest,
         riskOverridden: !!riskOverriddenAt,
+        // Stored wallet amounts are BGN-denominated — convert to EUR before
+        // returning (BC-QA-031 — EUR-only responses).
         wallet: {
-          availableBalance,
-          balance,
-          pendingBalance,
+          availableBalance: bgnToEur(availableBalance),
+          balance: bgnToEur(balance),
+          pendingBalance: bgnToEur(pendingBalance),
         },
       };
     });
@@ -383,10 +386,12 @@ router.get('/export', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePe
       return {
         ...rest,
         riskOverridden: !!riskOverriddenAt,
+        // Stored wallet amounts are BGN-denominated — convert to EUR before
+        // returning (BC-QA-031 — EUR-only responses).
         wallet: {
-          availableBalance,
-          balance,
-          pendingBalance,
+          availableBalance: bgnToEur(availableBalance),
+          balance: bgnToEur(balance),
+          pendingBalance: bgnToEur(pendingBalance),
         },
       };
     });
@@ -486,13 +491,15 @@ router.get('/:userId', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requireP
     const { wallet, ...restUser } = user;
     const { availableBalance = 0, balance = 0, pendingBalance = 0 } = wallet ?? {};
 
-    // Enrich each subscription with a human-readable plan name (PREMIUM_WEEKLY → "Premium Weekly")
+    // Enrich each subscription with a human-readable plan name (PREMIUM_WEEKLY → "Premium Weekly").
+    // Stored wallet amounts are BGN-denominated — convert to EUR before returning
+    // (BC-QA-031 — EUR-only responses).
     const enriched = {
       ...restUser,
       wallet: {
-        availableBalance,
-        balance,
-        pendingBalance,
+        availableBalance: bgnToEur(availableBalance),
+        balance: bgnToEur(balance),
+        pendingBalance: bgnToEur(pendingBalance),
       },
       subscriptions: user.subscriptions.map((s) => ({
         ...s,

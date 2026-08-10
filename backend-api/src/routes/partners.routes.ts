@@ -30,6 +30,7 @@ import { notificationService } from '../services/notification.service';
 import { publicPartnerFilter } from '../services/publicPartnerFilter';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
+import { bgnToEur } from '../utils/currency';
 
 /**
  * Normalize a categories[] payload alongside its main category id.
@@ -464,12 +465,15 @@ router.get(
 
     const roundedSavings = Math.round(totalSavings * 100) / 100;
 
+    // Stored savings amounts are BGN-denominated — convert to EUR before
+    // returning (BC-QA-031 — EUR-only responses). Percentage-change fields
+    // stay unit-independent ratios computed from the raw BGN totals.
     res.json({
       success: true,
       data: {
         period: { days, startDate: currentStart, endDate: now },
         stats: {
-          totalSavings: roundedSavings,
+          totalSavings: bgnToEur(roundedSavings),
           activeCards,
           totalUses,
           avgDiscount,
@@ -482,8 +486,8 @@ router.get(
           // period-comparable metric, so there is no meaningful period delta.
           avgDiscount: 0,
         },
-        timeSeries: timeSeries.map(({ savings, ...rest }) => ({ ...rest, savings })),
-        byVenue: byVenue.map(({ savings, ...rest }) => ({ ...rest, savings })),
+        timeSeries: timeSeries.map(({ savings, ...rest }) => ({ ...rest, savings: bgnToEur(savings) })),
+        byVenue: byVenue.map(({ savings, ...rest }) => ({ ...rest, savings: bgnToEur(savings) })),
       },
     });
   }),
@@ -701,6 +705,8 @@ router.get(
       prisma.stickerScan.count({ where }),
     ]);
 
+    // Stored bill/verified amount is BGN-denominated — convert to EUR before
+    // returning (BC-QA-031 — EUR-only responses).
     const data = scans.map((s) => {
       const rawAmount = s.verifiedAmount ?? s.billAmount;
       return {
@@ -708,7 +714,7 @@ router.get(
         createdAt: s.createdAt,
         venueId: s.venueId,
         venueName: s.venue?.name ?? null,
-        ...(rawAmount != null && { amount: rawAmount }),
+        ...(rawAmount != null && { amount: bgnToEur(rawAmount) }),
         status: s.status,
         transactionId: s.transactionId,
       };
@@ -770,12 +776,14 @@ router.get(
       : [];
     const periodStatusByMonth = new Map(periods.map((p) => [p.month, p.status]));
 
+    // Stored turnoverAmount/totalCashbackOwed are BGN-denominated — convert to
+    // EUR before returning (BC-QA-031 — EUR-only responses).
     const data = payments.map((p) => {
       return {
         month: p.month,
-        turnoverAmount: p.turnoverAmount,
+        turnoverAmount: bgnToEur(p.turnoverAmount ?? 0),
         contractedRate: p.contractedRate,
-        totalCashbackOwed: p.totalCashbackOwed,
+        totalCashbackOwed: bgnToEur(p.totalCashbackOwed ?? 0),
         status: p.status,
         paidAt: p.paidAt,
         invoiceNumber: p.invoiceNumber,
@@ -863,6 +871,8 @@ router.get(
     const roundedRevenue = Math.round(revenue * 100) / 100;
     const roundedExpected = Math.round(expectedAmount * 100) / 100;
 
+    // Stored revenue/expectedAmount are BGN-denominated — convert to EUR
+    // before returning (BC-QA-031 — EUR-only responses).
     res.json({
       success: true,
       data: {
@@ -873,9 +883,9 @@ router.get(
         averageRating: partner.rating,
         totalReviews: partner.reviewCount,
         monthlyRedemptions: monthScans,
-        revenue: roundedRevenue,
+        revenue: bgnToEur(roundedRevenue),
         // BC-PARTNER-PORTAL-SCOPE-B B3 — new §5.3 KPI fields.
-        expectedAmount: roundedExpected,
+        expectedAmount: bgnToEur(roundedExpected),
         totalVisits,
       },
     });

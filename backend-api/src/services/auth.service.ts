@@ -17,6 +17,7 @@ import { writeAudit } from '../middleware/audit.middleware';
 import { findInvalidCategoryEntry } from '../constants/categoryRegistry';
 import { parseVenueCountBucket } from './partnerVenueCountBucket.helper';
 import { detach, detachImmediate } from '../utils/detach';
+import { bgnToEur } from '../utils/currency';
 
 // Translate a Prisma P2002 (unique violation) on the (email, role) index
 // into a user-facing 409. Two concurrent register POSTs with the same
@@ -1317,8 +1318,16 @@ export class AuthService {
       partner_account_status = mapPartnerCanonicalStatus(partner.status);
     }
 
+    // loyaltyAccount.cashbackBalance is BGN-denominated — convert to EUR
+    // before returning (BC-QA-031 — EUR-only responses).
     return {
       ...rest,
+      loyaltyAccount: rest.loyaltyAccount
+        ? {
+            ...rest.loyaltyAccount,
+            cashbackBalance: bgnToEur(rest.loyaltyAccount.cashbackBalance),
+          }
+        : rest.loyaltyAccount,
       twoFactorEnabled: totpEnabledAt !== null,
       ...(partner_account_status ? { partner_account_status } : {}),
     };
@@ -1786,7 +1795,15 @@ export class AuthService {
       select: { payoutIban: true, payoutBeneficiaryName: true },
     }).catch(() => null);
 
-    const userData = user;
+    // receipts[].totalAmount is BGN-denominated — convert to EUR before
+    // returning (BC-QA-031 — EUR-only responses).
+    const userData = {
+      ...user,
+      receipts: user.receipts.map(r => ({
+        ...r,
+        totalAmount: r.totalAmount != null ? bgnToEur(Number(r.totalAmount)) : null,
+      })),
+    };
 
     const exportData = {
       exportDate: new Date().toISOString(),

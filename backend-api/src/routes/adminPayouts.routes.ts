@@ -12,6 +12,7 @@ import { runWithConcurrency } from '../utils/concurrency';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
 import { reasonIndicatesIbanProblem } from '../utils/payoutFailureReason';
+import { bgnToEur } from '../utils/currency';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -80,6 +81,32 @@ function subGateMessage(gate: SubGateResult): string {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+// Stored WalletTransaction/Wallet monetary fields are BGN-denominated;
+// convert to EUR before a payout row goes into any API response
+// (BC-QA-031 — dual-currency display removed, EUR-only responses).
+function toEurPayout<T extends {
+  amount: number;
+  balanceBefore?: number | null;
+  balanceAfter?: number | null;
+  currency?: string;
+  wallet?: { availableBalance?: number; pendingBalance?: number } & Record<string, unknown>;
+}>(payout: T): T {
+  return {
+    ...payout,
+    amount: bgnToEur(payout.amount),
+    ...(payout.balanceBefore != null && { balanceBefore: bgnToEur(payout.balanceBefore) }),
+    ...(payout.balanceAfter != null && { balanceAfter: bgnToEur(payout.balanceAfter) }),
+    ...(payout.currency !== undefined && { currency: 'EUR' }),
+    ...(payout.wallet && {
+      wallet: {
+        ...payout.wallet,
+        ...(payout.wallet.availableBalance !== undefined && { availableBalance: bgnToEur(payout.wallet.availableBalance) }),
+        ...(payout.wallet.pendingBalance !== undefined && { pendingBalance: bgnToEur(payout.wallet.pendingBalance) }),
+      },
+    }),
+  };
+}
 
 // Concurrency cap for /bulk-approve: limits in-flight Paysera Transfer API calls
 // so a large batch does not (a) exhaust the Prisma connection pool, (b) trip
@@ -290,24 +317,33 @@ router.get(
       const completedTotalBgn  = Math.abs(completedTotal._sum.amount  ?? 0);
       const failedTotalBgn     = Math.abs(failedTotal._sum.amount     ?? 0);
 
+      // filteredSummary totals are also BGN-denominated aggregates — convert to EUR.
+      const filteredSummaryEur = {
+        ...filteredSummary,
+        pendingTotal: bgnToEur(filteredSummary.pendingTotal),
+        processingTotal: bgnToEur(filteredSummary.processingTotal),
+        completedTotal: bgnToEur(filteredSummary.completedTotal),
+        failedTotal: bgnToEur(filteredSummary.failedTotal),
+      };
+
       res.json({
-        payouts,
+        payouts: payouts.map(toEurPayout),
         total,
         page: pageNum,
         limit: limitNum,
         summary: {
           pendingCount,
-          pendingTotal: pendingTotalBgn,
+          pendingTotal: bgnToEur(pendingTotalBgn),
           processingCount,
-          processingTotal: processingTotalBgn,
+          processingTotal: bgnToEur(processingTotalBgn),
           completedCount,
-          completedTotal: completedTotalBgn,
+          completedTotal: bgnToEur(completedTotalBgn),
           riskHoldCount,
           failedCount,
-          failedTotal: failedTotalBgn,
+          failedTotal: bgnToEur(failedTotalBgn),
           totalCount,
         },
-        filteredSummary,
+        filteredSummary: filteredSummaryEur,
       });
     } catch (error) {
       next(error);
@@ -466,7 +502,7 @@ router.patch(
               threshold: 0, // n/a for this context
             }), (err) => logger.error(`[approve] no-IBAN notification failed for user ${payout.wallet.userId}:`, err));
           res.status(202).json({
-            ...held,
+            ...(held ? toEurPayout(held) : held),
             message: 'Payout held — user notified to add bank details (IBAN) before retry.',
             reason: 'NO_IBAN_HELD_FOR_UPDATE',
           });
@@ -500,7 +536,7 @@ router.patch(
             where: { id },
             include: { wallet: true },
           });
-          res.json(updated);
+          res.json(updated ? toEurPayout(updated) : updated);
           return;
         }
         updated = await prisma.walletTransaction.findUnique({
@@ -519,7 +555,7 @@ router.patch(
       }
 
       detach(notifySubscriber(id, 'approved'), () => {});
-      res.json(updated);
+      res.json(updated ? toEurPayout(updated) : updated);
     } catch (error) {
       next(error);
     }
@@ -644,7 +680,7 @@ router.patch(
       });
 
       detach(notifySubscriber(id, 'completed'), () => {});
-      res.json(updated);
+      res.json(updated ? toEurPayout(updated) : updated);
     } catch (error) {
       next(error);
     }
@@ -693,7 +729,7 @@ router.patch(
       });
 
       detach(notifySubscriber(id, 'held', reason), () => {});
-      res.json(updated);
+      res.json(updated ? toEurPayout(updated) : updated);
     } catch (error) {
       next(error);
     }
@@ -750,7 +786,7 @@ router.patch(
       });
 
       detach(notifySubscriber(id, 'released'), () => {});
-      res.json(updated);
+      res.json(updated ? toEurPayout(updated) : updated);
     } catch (error) {
       next(error);
     }
@@ -1064,7 +1100,7 @@ router.patch(
         include: { wallet: true },
       });
       logger.warn(`[reset-stuck] Payout ${id} reset PROCESSING → PENDING (no payseraTransferId; admin recovery).`);
-      res.json(updated);
+      res.json(updated ? toEurPayout(updated) : updated);
     } catch (error) {
       next(error);
     }

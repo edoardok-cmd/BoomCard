@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { bgnToEur } from '../utils/currency';
 
 /**
  * Receipt Analytics Service
@@ -64,9 +65,17 @@ class ReceiptAnalyticsService {
     // Calculate top merchants from actual receipts
     const topMerchants = await this.getTopMerchants(userId);
 
+    // Stored cashback/spent amounts are BGN-denominated — convert to EUR
+    // before returning (BC-QA-031 — EUR-only responses).
     return {
       ...analytics,
-      topMerchants,
+      totalCashback: bgnToEur(analytics.totalCashback),
+      totalSpent: bgnToEur(analytics.totalSpent),
+      averageReceiptAmount: bgnToEur(analytics.averageReceiptAmount),
+      topMerchants: topMerchants.map(m => ({
+        ...m,
+        totalSpent: bgnToEur(m.totalSpent),
+      })),
     };
   }
 

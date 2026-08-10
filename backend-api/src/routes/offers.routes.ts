@@ -6,6 +6,7 @@ import { logger } from '../utils/logger';
 import { uploadSingle, validateMagicBytes } from '../middleware/upload.middleware';
 import { imageUploadService } from '../services/imageUpload.service';
 import { parsePagination } from '../utils/pagination';
+import { bgnToEur } from '../utils/currency';
 
 const router = Router();
 
@@ -34,6 +35,19 @@ function mapOffer(offer: any, isAdmin: boolean): any {
   // from the offer itself.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { cashbackPercent: _cp, ...safe } = offer;
+
+  // Gate BGN-denominated money fields through bgnToEur (INV-USER-CUR-003).
+  // Only convert non-null values; null fields remain null (offer may omit them).
+  // (BC-QA-031 — EUR-only responses.)
+  if (safe.discountAmount != null) {
+    safe.discountAmount = bgnToEur(safe.discountAmount);
+  }
+  if (safe.minPurchase != null) {
+    safe.minPurchase = bgnToEur(safe.minPurchase);
+  }
+  if (safe.maxDiscount != null) {
+    safe.maxDiscount = bgnToEur(safe.maxDiscount);
+  }
 
   // Sanitize nested partner.partnerType: strip internal cashbackPercent
   // but keep the customer-facing fields including maxDiscountRate (§14.3).

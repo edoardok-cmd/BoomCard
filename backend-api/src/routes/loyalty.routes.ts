@@ -6,6 +6,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../middleware/error.middleware';
 import prisma from '../lib/prisma';
 import { LOYALTY_TIER_CASHBACK } from '../constants/tiers';
+import { bgnToEur } from '../utils/currency';
 
 const router = Router();
 router.use(authenticate);
@@ -52,10 +53,13 @@ router.get('/accounts/me', asyncHandler(async (req: AuthRequest, res: Response) 
     },
   });
 
+  // cashbackBalance is BGN-denominated — convert to EUR before returning
+  // (BC-QA-031 — EUR-only responses).
   res.json({
     success: true,
     data: {
       ...account,
+      cashbackBalance: bgnToEur(account.cashbackBalance),
       cashbackRate: LOYALTY_TIER_CASHBACK[account.tier],
     },
   });
@@ -119,9 +123,14 @@ router.get('/rewards', asyncHandler(async (req: AuthRequest, res: Response) => {
     orderBy: { pointsCost: 'asc' },
   });
 
+  // cashValue is BGN-denominated — convert to EUR before returning
+  // (BC-QA-031 — EUR-only responses).
   res.json({
     success: true,
-    data: rewards,
+    data: rewards.map(r => ({
+      ...r,
+      cashValue: r.cashValue != null ? bgnToEur(r.cashValue) : null,
+    })),
   });
 }));
 
@@ -168,9 +177,17 @@ router.get('/rewards/redemptions', asyncHandler(async (req: AuthRequest, res: Re
     prisma.rewardRedemption.count({ where: { accountId: account.id } }),
   ]);
 
+  // reward.cashValue is BGN-denominated — convert to EUR before returning
+  // (BC-QA-031 — EUR-only responses).
   res.json({
     success: true,
-    data,
+    data: data.map(d => ({
+      ...d,
+      reward: d.reward ? {
+        ...d.reward,
+        cashValue: d.reward.cashValue != null ? bgnToEur(d.reward.cashValue) : null,
+      } : d.reward,
+    })),
     total,
     page,
     limit,

@@ -3,6 +3,7 @@ import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { walletService } from '../../src/services/wallet.service';
 import { createTestUser } from '../helpers/test-utils';
+import { bgnToEur } from '../../src/utils/currency';
 
 describe('Cashback Flow Integration Tests', () => {
   let authToken: string;
@@ -88,7 +89,7 @@ describe('Cashback Flow Integration Tests', () => {
 
       // Check wallet balance is still 0
       const balanceRes = await walletService.getBalance(userId);
-      expect(balanceRes.balance).toBe(0);
+      expect(balanceRes.balance).toBe(bgnToEur(0));
     });
 
     test('should credit wallet when receipt is approved', async () => {
@@ -111,10 +112,13 @@ describe('Cashback Flow Integration Tests', () => {
         },
       });
 
-      // Check wallet balance
+      // Check wallet balance. walletService.getBalance() converts the BGN-stored
+      // balance to EUR before returning (BC-QA-031 — EUR-only responses); the
+      // underlying prisma.walletTransaction/prisma.wallet rows checked elsewhere
+      // in this file stay BGN (raw DB storage is untouched).
       const balanceRes = await walletService.getBalance(userId);
-      expect(balanceRes.balance).toBe(5);
-      expect(balanceRes.availableBalance).toBe(5);
+      expect(balanceRes.balance).toBe(bgnToEur(5));
+      expect(balanceRes.availableBalance).toBe(bgnToEur(5));
     });
 
     test('should create wallet transaction record', async () => {
@@ -226,8 +230,9 @@ describe('Cashback Flow Integration Tests', () => {
       scanId = scan.id;
 
       // Wallet should still have only 5 BGN from previous receipt test
+      // (getBalance() returns the EUR-converted figure — BC-QA-031).
       const balanceRes = await walletService.getBalance(userId);
-      expect(balanceRes.balance).toBe(5);
+      expect(balanceRes.balance).toBe(bgnToEur(5));
     });
 
     test('should credit wallet when scan is approved', async () => {
@@ -250,9 +255,9 @@ describe('Cashback Flow Integration Tests', () => {
         },
       });
 
-      // Check wallet balance (should be 10 now)
+      // Check wallet balance (should be 10 BGN → EUR-converted by getBalance()).
       const balanceRes = await walletService.getBalance(userId);
-      expect(balanceRes.balance).toBe(10);
+      expect(balanceRes.balance).toBe(bgnToEur(10));
     });
 
     test('should track all wallet transactions', async () => {
@@ -326,9 +331,13 @@ describe('Cashback Flow Integration Tests', () => {
         });
       }
 
-      // Total additional cashback: 0.5 + 1 + 1.5 = 3
+      // Total additional cashback: 0.5 + 1 + 1.5 = 3 BGN. getBalance() returns
+      // the EUR-converted figure, so compare against the raw DB wallet row
+      // converted through the same helper rather than chaining EUR arithmetic
+      // (BC-QA-031 — EUR-only responses).
       const finalBalance = await walletService.getBalance(userId);
-      expect(finalBalance.balance).toBe(initialBalance.balance + 3);
+      const walletRow = await prisma.wallet.findUnique({ where: { id: walletId } });
+      expect(finalBalance.balance).toBe(bgnToEur(walletRow!.balance));
     });
 
     test('should maintain accurate transaction history', async () => {

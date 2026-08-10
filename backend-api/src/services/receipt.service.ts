@@ -20,6 +20,7 @@ import {
 } from '../constants/receipt.constants';
 import { getSystemSettingInt, getSystemSettingFloat } from '../utils/systemSettings';
 import { detach } from '../utils/detach';
+import { bgnToEur } from '../utils/currency';
 
 /**
  * Receipt Item structure (parsed from OCR)
@@ -571,6 +572,8 @@ class ReceiptService {
         ? Math.round((totalAmount / totalReceipts) * 100) / 100
         : 0;
 
+      // Stored totalAmount/averageAmount are BGN-denominated — convert to EUR
+      // before returning (BC-QA-031 — EUR-only responses).
       return {
         success: true,
         data: {
@@ -578,8 +581,8 @@ class ReceiptService {
           validatedReceipts,
           rejectedReceipts,
           pendingReceipts,
-          totalAmount: Math.round(totalAmount * 100) / 100,
-          averageAmount,
+          totalAmount: bgnToEur(Math.round(totalAmount * 100) / 100),
+          averageAmount: bgnToEur(averageAmount),
         },
       };
     } catch (error) {
@@ -672,7 +675,23 @@ class ReceiptService {
       cardId: _cid,
       ...safe
     } = base;
-    return safe;
+    // Stored totalAmount/cashbackAmount/transaction.amount are BGN-denominated —
+    // convert to EUR before returning to non-admin callers (BC-QA-031 —
+    // EUR-only responses).
+    return {
+      ...safe,
+      totalAmount: safe.totalAmount != null ? bgnToEur(safe.totalAmount) : undefined,
+      cashbackAmount: bgnToEur(safe.cashbackAmount ?? 0),
+      ...(safe.transaction && {
+        transaction: {
+          ...safe.transaction,
+          amount: bgnToEur(safe.transaction.amount),
+          ...(safe.transaction.cashbackAmount != null && {
+            cashbackAmount: bgnToEur(safe.transaction.cashbackAmount),
+          }),
+        },
+      }),
+    };
   }
 
   // ============================================

@@ -26,6 +26,7 @@ import { Router, Response } from 'express';
 import { FraudRuleTier, SubscriptionPlan } from '@prisma/client';
 import { invalidatePayoutThresholdCache, getPayoutThresholdBGN } from '../utils/payoutThreshold';
 import { invalidateSystemSettingCache } from '../utils/systemSettings';
+import { bgnToEur } from '../utils/currency';
 import { authenticate, authorize, requirePermission, requireActiveAdmin, AuthRequest } from '../middleware/auth.middleware';
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
@@ -71,7 +72,9 @@ router.get(
       const row = rows[i];
       const bgnAmount = row ? row.minAmount : await getPayoutThresholdBGN(plan);
       current[plan] = {
-        minAmount: bgnAmount,
+        // Stored threshold is BGN-denominated — convert to EUR before returning
+        // (BC-QA-031 — EUR-only responses).
+        minAmount: bgnToEur(bgnAmount),
         notes: row?.notes ?? null,
         updatedAt: row?.createdAt?.toISOString() ?? null,
       };
@@ -100,12 +103,17 @@ router.get(
       : [];
     const adminMap = new Map(admins.map((u) => [u.id, u]));
 
+    // Stored minAmount is BGN-denominated — convert to EUR before returning
+    // (BC-QA-031 — EUR-only responses).
     const data = history.map((r) => {
+      const { minAmount: rawMin, ...rest } = r;
+      const minAmount = bgnToEur(rawMin);
       const storedName = r.createdByName;
-      if (storedName) return { ...r, createdByEmail: null, createdByName: storedName };
+      if (storedName) return { ...rest, minAmount, createdByEmail: null, createdByName: storedName };
       const admin = r.createdBy ? adminMap.get(r.createdBy) : undefined;
       return {
-        ...r,
+        ...rest,
+        minAmount,
         createdByEmail: admin?.email ?? null,
         createdByName: admin ? [admin.firstName, admin.lastName].filter(Boolean).join(' ') || admin.email : null,
       };

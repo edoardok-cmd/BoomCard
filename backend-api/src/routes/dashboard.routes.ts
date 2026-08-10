@@ -4,6 +4,7 @@ import { subscriptionService } from '../services/subscription.service';
 import { walletService } from '../services/wallet.service';
 import { asyncHandler } from '../utils/asyncHandler';
 import { prisma } from '../lib/prisma';
+import { bgnToEur } from '../utils/currency';
 
 const router = Router();
 
@@ -60,11 +61,13 @@ router.get('/me', authenticate, asyncHandler(async (req: AuthRequest, res: Respo
   };
 
   // Map scans to the dashboard "recent transactions" shape (§3.5.1).
+  // Stored bill/verified/cashback amounts are BGN-denominated — convert to EUR
+  // before returning (BC-QA-031 — EUR-only responses).
   const receipts = scans.map((s) => ({
     id: s.id,
     merchantName: s.venue?.name ?? null,
-    totalAmount: s.verifiedAmount ?? s.billAmount ?? 0,
-    cashbackAmount: s.cashbackAmount ?? 0, // INV-RDM-057: authoritative source is StickerScan.cashbackAmount
+    totalAmount: bgnToEur(s.verifiedAmount ?? s.billAmount ?? 0),
+    cashbackAmount: bgnToEur(s.cashbackAmount ?? 0), // INV-RDM-057: authoritative source is StickerScan.cashbackAmount
     status: SCAN_TO_RECEIPT_STATUS[s.status] ?? 'PENDING',
     createdAt: s.createdAt,
   }));

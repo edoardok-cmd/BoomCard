@@ -15,6 +15,7 @@ import { reasonIndicatesIbanProblem } from '../utils/payoutFailureReason';
 import { resolvePayoutEligibility } from './payoutEligibility.service';
 import { RISK_HOLD_FLOOR_SCORE } from './userRisk.service';
 import { validateIBAN, ValidationError } from '../utils/validation';
+import { bgnToEur } from '../utils/currency';
 
 // ── User-facing payout-status masking (Spec §3.2 / §3.7) ─────────────────────
 // Spec §3.7 (line 461): on the SECOND failed payout the record routes to manual
@@ -190,15 +191,17 @@ export class WalletService {
 
     const hasIban = !!wallet.payoutIban && wallet.payoutIban.trim().length > 0;
 
+    // Stored balances are BGN-denominated; convert to EUR before returning
+    // (BC-QA-031 — dual-currency display removed, EUR-only responses).
     const response = {
-      balance: wallet.balance,
-      availableBalance: wallet.availableBalance,
-      pendingBalance: computedPendingBalance,
-      expiringBalance,
-      currency: wallet.currency,
+      balance: bgnToEur(wallet.balance),
+      availableBalance: bgnToEur(wallet.availableBalance),
+      pendingBalance: bgnToEur(computedPendingBalance),
+      expiringBalance: bgnToEur(expiringBalance),
+      currency: 'EUR',
       isLocked: wallet.isLocked,
       lastUpdated: wallet.updatedAt,
-      payoutThreshold: parseFloat(threshold.toFixed(2)),
+      payoutThreshold: bgnToEur(threshold),
       canRequestPayout: !wallet.isLocked
         && wallet.availableBalance >= threshold
         && hasEligibleSubscription
@@ -1503,8 +1506,14 @@ export class WalletService {
           }
         }
         const isEscalated = parsedMeta?.escalatedSecondFailure === true;
+        // Stored amount/balanceBefore/balanceAfter are BGN-denominated; convert
+        // to EUR before returning (BC-QA-031 — EUR-only responses).
         return {
           ...rest,
+          amount: bgnToEur(rest.amount),
+          balanceBefore: bgnToEur(rest.balanceBefore),
+          balanceAfter: bgnToEur(rest.balanceAfter),
+          currency: 'EUR',
           description: isWithdrawal && isEscalated ? null : description,
           metadata: isWithdrawal ? null : metadata,
           voidedReason: (() => {

@@ -105,6 +105,7 @@ jest.mock('../../src/services/imageUpload.service', () => ({
 import express from 'express';
 import request from 'supertest';
 import stickersRouter from '../../src/routes/stickers.routes';
+import { bgnToEur } from '../../src/utils/currency';
 
 const app = express();
 app.use(express.json());
@@ -172,9 +173,11 @@ describe('INV-RDM-050 LEAK: fraudReasons stripped from sticker scan responses', 
     expect(res.body.success).toBe(true);
     // fraudReasons must be absent at the top level (stripped by the route's destructuring)
     expect(res.body.data.fraudReasons).toBeUndefined();
-    // cashbackAmount must still be present (selective strip, not a blank response)
+    // cashbackAmount must still be present (selective strip, not a blank response).
+    // Stored cashbackAmount is BGN-denominated; this route converts to EUR
+    // before returning (BC-QA-031 — EUR-only responses).
     expect(res.body.data.cashbackAmount).toBeDefined();
-    expect(res.body.data.cashbackAmount).toBe(10);
+    expect(res.body.data.cashbackAmount).toBe(bgnToEur(10));
   });
 
   it('[LEAK] INV-RDM-050c: POST /scan/:scanId/receipt duplicate path returns 400 with no scan fields', async () => {

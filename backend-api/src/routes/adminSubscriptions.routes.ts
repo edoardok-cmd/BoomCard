@@ -11,6 +11,7 @@ import { parsePagination } from '../utils/pagination';
 import { emailService } from '../services/email.service';
 import { logger } from '../utils/logger';
 import { detach } from '../utils/detach';
+import { bgnToEur } from '../utils/currency';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://boomcard.bg';
 
@@ -219,7 +220,9 @@ async function enrichSubscriptions(
       userSubscriptionCount: countByUser.get(s.user.id) ?? 1,
       billingCycle: billingCycleFromPeriod(s.currentPeriodStart, s.currentPeriodEnd),
       paymentCount: payments?.count ?? 0,
-      paymentTotalAmount,
+      // Stored payment total is BGN-denominated — convert to EUR before
+      // returning (BC-QA-031 — EUR-only responses).
+      paymentTotalAmount: bgnToEur(paymentTotalAmount),
       lastPaymentAt: payments?.lastPaymentAt ?? null,
     };
   });
@@ -382,14 +385,16 @@ router.get('/user/:userId/history', requirePermission('subscriptions.read'), asy
       }),
     ]);
 
-    // Build a map of subscriptionId -> payments array for quick lookup
-    const paymentsBySubscriptionId = new Map<string | null, typeof subscriptionPayments>();
+    // Build a map of subscriptionId -> payments array for quick lookup.
+    // Stored amount is BGN-denominated — convert to EUR before returning
+    // (BC-QA-031 — EUR-only responses).
+    const paymentsBySubscriptionId = new Map<string | null, Array<Omit<typeof subscriptionPayments[number], 'amount' | 'currency'> & { amount: number; currency: string }>>();
     subscriptionPayments.forEach((payment) => {
       const key = payment.subscriptionId ?? '__unattributed__';
       if (!paymentsBySubscriptionId.has(key)) {
         paymentsBySubscriptionId.set(key, []);
       }
-      paymentsBySubscriptionId.get(key)!.push(payment);
+      paymentsBySubscriptionId.get(key)!.push({ ...payment, amount: bgnToEur(payment.amount), currency: 'EUR' });
     });
 
     const result = subscriptions.map((s) => ({
@@ -413,6 +418,8 @@ router.get('/user/:userId/history', requirePermission('subscriptions.read'), asy
       payments: paymentsBySubscriptionId.get(s.id) ?? [],
     }));
 
+    // Stored total is BGN-denominated — convert to EUR before returning
+    // (BC-QA-031 — EUR-only responses).
     const paymentSummaryTotal = userPaymentAgg._sum.amount ?? 0;
 
     res.json({
@@ -420,7 +427,7 @@ router.get('/user/:userId/history', requirePermission('subscriptions.read'), asy
       subscriptions: result,
       paymentSummary: {
         count: userPaymentAgg._count._all,
-        totalAmount: paymentSummaryTotal,
+        totalAmount: bgnToEur(paymentSummaryTotal),
         lastPaymentAt: userPaymentAgg._max.createdAt,
       },
     });

@@ -51,6 +51,7 @@ import request from 'supertest';
 import express from 'express';
 import dashboardRouter from '../../src/routes/adminDashboard.routes';
 import { prisma } from '../../src/lib/prisma';
+import { bgnToEur } from '../../src/utils/currency';
 
 const app = express();
 app.use(express.json());
@@ -171,15 +172,16 @@ describe('GET /admin/dashboard — spec §3.1 stats', () => {
     });
   });
 
-  it('payoutsDue is the absolute value of the negative WITHDRAWAL sum (WITHDRAWAL amounts stored negative)', async () => {
-    // wallet.service.ts stores WITHDRAWAL amount as -payoutAmount. The dashboard
-    // must surface a positive BGN figure via Math.abs().
+  it('payoutsDue is the absolute value of the negative WITHDRAWAL sum, converted BGN→EUR (WITHDRAWAL amounts stored negative)', async () => {
+    // wallet.service.ts stores WITHDRAWAL amount as -payoutAmount (BGN). The
+    // dashboard surfaces a positive EUR figure via Math.abs() + bgnToEur()
+    // (BC-QA-031 — EUR-only responses).
     m.$queryRaw.mockReset();
     m.$queryRaw
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ cnt: 0n }]);
 
-    // Simulate a total withdrawal sum of -250 (two PENDING withdrawals of 125 each)
+    // Simulate a total withdrawal sum of -250 BGN (two PENDING withdrawals of 125 each)
     m.walletTransaction.aggregate.mockImplementation(({ where }) => {
       if (where?.type === 'WITHDRAWAL' && where?.status?.in) {
         return Promise.resolve({ _sum: { amount: -250 } });
@@ -188,7 +190,7 @@ describe('GET /admin/dashboard — spec §3.1 stats', () => {
     });
 
     const res = await request(app).get('/admin/dashboard').expect(200);
-    expect(res.body.data.finance.payoutsDue).toBe(250);
+    expect(res.body.data.finance.payoutsDue).toBe(bgnToEur(250));
   });
 
   it('todayAvg is 0 (not NaN/Infinity) when there are no transactions today', async () => {
@@ -242,8 +244,9 @@ describe('GET /admin/dashboard — spec §3.1 stats', () => {
 
     const res = await request(app).get('/admin/dashboard').expect(200);
     const { accrued, approved, pending } = res.body.data.cashback;
-    // PAID cashback (25 BGN) must not be counted
-    expect(accrued).toBe(140);
+    // PAID cashback (25 BGN) must not be counted. Stored amounts are BGN;
+    // the response converts to EUR (BC-QA-031 — EUR-only responses).
+    expect(accrued).toBe(bgnToEur(140));
     expect(accrued).toBe(approved + pending);
   });
 

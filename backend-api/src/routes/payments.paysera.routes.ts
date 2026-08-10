@@ -19,6 +19,7 @@ import { z } from 'zod';
 import { paymentRateLimiter } from '../middleware/security.middleware';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
+import { bgnToEur } from '../utils/currency';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production'
   ? (() => { throw new Error('FRONTEND_URL must be set in production'); })()
@@ -561,13 +562,15 @@ router.get(
         });
       }
 
+      // Stored amount is BGN-denominated — convert to EUR before returning
+      // (BC-QA-031 — EUR-only responses).
       res.json({
         success: true,
         data: {
           orderId,
           status: transaction.status.toLowerCase(),
-          amount: transaction.amount,
-          currency: transaction.currency,
+          amount: bgnToEur(transaction.amount),
+          currency: 'EUR',
           createdAt: transaction.createdAt,
         },
       });
@@ -616,13 +619,15 @@ router.get(
         },
       });
 
+      // Stored amount is BGN-denominated — convert to EUR before returning
+      // (BC-QA-031 — EUR-only responses).
       res.json({
         success: true,
         data: transactions.map(t => ({
           id: t.id,
           orderId: t.metadata ? (JSON.parse(t.metadata as string) as any)?.orderId : undefined,
-          amount: t.amount,
-          currency: t.currency,
+          amount: bgnToEur(t.amount),
+          currency: 'EUR',
           status: t.status.toLowerCase(),
           description: t.description,
           createdAt: t.createdAt,
@@ -1437,14 +1442,21 @@ router.post('/verify-redirect', paymentRateLimiter, asyncHandler(async (req: Req
 
   try {
     const result = await payseraService.handleCallback({ data, ss1 });
+    // Paysera can settle a payment in BGN or EUR depending on the order — only
+    // convert the BGN-denominated case; an already-EUR-native amount passes
+    // through unchanged (BC-QA-031 — EUR-only responses).
+    const amountValue = result.amount ? result.amount / 100 : null;
+    const isBgn = result.currency === 'BGN';
 
     res.json({
       success: true,
       data: {
         orderId: result.orderId,
         status: result.status,
-        amount: result.amount ? result.amount / 100 : null,
-        currency: result.currency,
+        amount: amountValue != null
+          ? (isBgn ? bgnToEur(amountValue) : amountValue)
+          : null,
+        currency: isBgn ? 'EUR' : result.currency,
         paymentMethod: result.paymentMethod,
         isSuccess: result.status === 'success',
       },

@@ -38,6 +38,7 @@ import {
   SUSPICIOUS_ACTIVITY_WINDOW_HOURS,
 } from '../../src/services/adminAlerts.service';
 import { invalidatePayoutThresholdCache } from '../../src/utils/payoutThreshold';
+import { bgnToEur } from '../../src/utils/currency';
 
 type AnyMock = jest.Mock;
 const m = prisma as unknown as {
@@ -245,10 +246,13 @@ describe('adminAlerts.service.getAlerts emitted links (B1, B2, B3, B5 fixes)', (
 
   it('large_pending_payouts link bakes minAmount=LARGE_TX_THRESHOLD (HIGH#1 fix)', async () => {
     // Default fallback is 500 when systemSetting.findUnique returns null.
+    // The deep-link's minAmount stays BGN (it filters the raw DB column
+    // directly), but meta.threshold is a display value — BC-QA-031 converts
+    // it to EUR, same as every other admin money field in this response.
     const result = await getAlerts();
     const lpp = result.operational.find((a) => a.id === 'large_pending_payouts');
     expect(lpp?.link).toBe('/admin/subscribers/transactions?view=wallet&status=PENDING&minAmount=500');
-    expect(lpp?.meta).toEqual({ threshold: 500 });
+    expect(lpp?.meta).toEqual({ threshold: bgnToEur(500) });
   });
 
   it('failed_transactions is OPERATIONAL and carries 24h dateFrom in meta (HIGH#2 fix + tier correction)', async () => {
@@ -264,12 +268,15 @@ describe('adminAlerts.service.getAlerts emitted links (B1, B2, B3, B5 fixes)', (
     expect(ageMs).toBeLessThan((FAILED_TX_WINDOW_HOURS + 0.1) * 60 * 60 * 1000);
   });
 
-  it('payout_threshold carries min-plan threshold in meta (MEDIUM#5 fix)', async () => {
+  it('payout_threshold carries min-plan threshold in meta, converted to EUR (MEDIUM#5 fix + BC-QA-031)', async () => {
     // No DB rows → utility falls back to compile-time constants.
-    // Min across plans: PREMIUM_WEEKLY 19.56 < PREMIUM 29.34 < BASIC 39.12.
+    // Min across plans: PREMIUM_WEEKLY 19.56 BGN < PREMIUM 29.34 BGN < BASIC 39.12 BGN.
+    // BC-QA-031 — meta.threshold is a display value: BGN storage converts to
+    // EUR (19.56 BGN → 10.00 EUR) before it reaches the response.
     const result = await getAlerts();
     const pt = result.operational.find((a) => a.id === 'payout_threshold');
-    expect(pt?.meta).toEqual({ threshold: 19.56 });
+    expect(pt?.meta).toEqual({ threshold: bgnToEur(19.56) });
+    expect(pt?.meta?.threshold).toBeCloseTo(10, 2);
     // Title is now static — the threshold is rendered by the frontend from meta.
     expect(pt?.title).toBe('Абонати достигнали праг за изплащане');
   });
@@ -331,10 +338,12 @@ describe('adminAlerts.service.getAlerts emitted links (B1, B2, B3, B5 fixes)', (
       const result = await getAlerts();
       const pt = result.operational.find((a) => a.id === 'payout_threshold');
       const lpp = result.operational.find((a) => a.id === 'large_pending_payouts');
-      // payout_threshold uses min plan threshold (PREMIUM_WEEKLY fallback = 19.56 BGN).
-      expect(pt?.meta).toEqual({ threshold: 19.56 });
-      // large_tx_threshold falls back to 500 when value is empty string.
-      expect(lpp?.meta).toEqual({ threshold: 500 });
+      // payout_threshold uses min plan threshold (PREMIUM_WEEKLY fallback = 19.56 BGN),
+      // converted to EUR for the display meta (BC-QA-031).
+      expect(pt?.meta).toEqual({ threshold: bgnToEur(19.56) });
+      // large_tx_threshold falls back to 500 (BGN) when value is empty string;
+      // meta.threshold is the EUR-converted display value.
+      expect(lpp?.meta).toEqual({ threshold: bgnToEur(500) });
       expect(lpp?.link).toBe('/admin/subscribers/transactions?view=wallet&status=PENDING&minAmount=500');
     } finally {
       m.systemSetting.findUnique.mockReset();

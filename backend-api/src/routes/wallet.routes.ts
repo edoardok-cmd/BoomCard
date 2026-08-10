@@ -8,6 +8,7 @@ import prisma from '../lib/prisma';
 import { WalletTransactionStatus, WalletTransactionType } from '@prisma/client';
 import { parsePagination } from '../utils/pagination';
 import { logger } from '../utils/logger';
+import { bgnToEur } from '../utils/currency';
 
 const router = Router();
 
@@ -171,14 +172,22 @@ router.get('/statistics', asyncHandler(async (req: AuthRequest, res: Response) =
       .filter(s => s.type === WalletTransactionType.PURCHASE)
       .reduce((sum, s) => sum + Math.abs(s._sum.amount || 0), 0);
 
+    // Stored wallet/transaction amounts are BGN-denominated — convert to EUR
+    // before returning (BC-QA-031 — EUR-only responses).
     res.json({
-      totalCashback,
-      totalTopups,
-      totalSpent,
-      currentBalance: wallet.balance,
-      availableBalance: wallet.availableBalance,
-      pendingBalance: wallet.pendingBalance,
-      transactionsByType: stats,
+      totalCashback: bgnToEur(totalCashback),
+      totalTopups: bgnToEur(totalTopups),
+      totalSpent: bgnToEur(totalSpent),
+      currentBalance: bgnToEur(wallet.balance),
+      availableBalance: bgnToEur(wallet.availableBalance),
+      pendingBalance: bgnToEur(wallet.pendingBalance),
+      transactionsByType: stats.map(s => ({
+        ...s,
+        _sum: {
+          amount: s._sum.amount != null ? bgnToEur(s._sum.amount) : null,
+        },
+      })),
+      currency: 'EUR',
     });
   } catch (error: any) {
     logger.error('Error fetching wallet statistics:', error);
