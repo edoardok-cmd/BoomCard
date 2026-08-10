@@ -64,13 +64,28 @@
 -- assumed this recipe). This is a metadata-only operation: it inserts a
 -- row into `_prisma_migrations` marking `0_init` as applied at the current
 -- timestamp; it does not touch any application table and has zero
--- data-loss risk. Do this exactly once per existing database, before the
--- next `prisma migrate deploy` runs against it (a deploy that finds
--- `_prisma_migrations` referencing migration folders that no longer exist
--- on disk — the old dated folders — will otherwise fail to reconcile; the
--- resolve step above replaces that stale history with this single
--- baseline entry going forward). After this one-time resolve, ordinary
--- `prisma migrate deploy` on new future migrations behaves normally.
+-- data-loss risk.
+--
+-- UPDATE (2026-08-10, BC-QA-022 follow-up round): the task-review round
+-- correctly flagged that nothing in the deploy pipeline actually ran the
+-- manual command above before the first post-squash deploy against a real
+-- (un-baselined) database — it would fail with Prisma error P3018
+-- (e.g. `type "UserRole" already exists`) and block the app from starting.
+-- This is now handled automatically: `backend-api/prisma/auto-baseline.js`
+-- runs at container startup (wired into both `backend-api/Dockerfile`'s CMD
+-- and `backend-api/fly.toml`'s `[processes].app`, immediately before
+-- `prisma migrate deploy`). It inspects `_prisma_migrations` and, if it
+-- detects old pre-squash history rows with no successfully-applied
+-- `0_init` row, runs the exact `prisma migrate resolve --applied 0_init`
+-- command above for you — including recovering a `0_init` row left in a
+-- failed state by a prior crashed attempt via
+-- `prisma migrate resolve --rolled-back 0_init` first. The manual recipe
+-- above is retained here as the documented fallback (and is what the
+-- script logs verbatim if it cannot connect or hits an unexpected error) —
+-- it is no longer something an operator has to remember to run by hand
+-- before the first post-squash deploy. After this one-time resolve
+-- (automatic or manual), ordinary `prisma migrate deploy` on new future
+-- migrations behaves normally.
 --
 -- VERIFICATION PERFORMED (see BC-QA-022 report for full detail)
 -- -----------------------------------------------------------------

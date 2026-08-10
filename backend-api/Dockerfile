@@ -99,5 +99,10 @@ ENV NODE_ENV=production
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the application (resolve any failed no-op migration, then deploy + start)
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate resolve --rolled-back 20260321_simplify_partner_tiers 2>&1 || true && node_modules/.bin/prisma migrate deploy && node dist/server.js"]
+# Start the application:
+#   1. resolve failed no-op migrations left over from pre-squash history (existing idiom)
+#   2. BC-QA-022 follow-up: auto-baseline an un-baselined existing database against the
+#      squashed 0_init migration before a real deploy runs (see prisma/auto-baseline.js
+#      header comment for full detail) — never fails the chain itself
+#   3. deploy + start
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate resolve --rolled-back 20260321_simplify_partner_tiers 2>&1 || true && node prisma/auto-baseline.js && node_modules/.bin/prisma migrate deploy && node dist/server.js"]
