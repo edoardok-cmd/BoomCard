@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/globals';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
-import app from '../../src/server';
+import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { ActivationLinkReason, PartnerStatus, UserStatus } from '@prisma/client';
 import { activationLinkService } from '../../src/services/activationLink.service';
@@ -185,9 +185,9 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
         password: 'short', // Too short, fails policy
       });
 
-      // Assert: Should throw PASSWORD_TOO_SHORT error
+      // Assert: Should throw AUTH_PASSWORD_POLICY error
       await expect(consumePromise).rejects.toMatchObject({
-        code: 'PASSWORD_TOO_SHORT',
+        code: 'AUTH_PASSWORD_POLICY',
       });
 
       // Verify the token was NOT consumed
@@ -242,7 +242,7 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
         await expect(
           activationLinkService.consume(link.token, { password: weakPassword })
         ).rejects.toMatchObject({
-          code: 'PASSWORD_TOO_SHORT',
+          code: 'AUTH_PASSWORD_POLICY',
         });
 
         // Verify token not consumed

@@ -300,6 +300,9 @@ describe('Authentication Flow (F01)', () => {
       expect(second.status).toBe(409);
       expect(second.body.error).toBe('A partner account with this email already exists');
       expect(second.body.details?.code).toBe('AUTH_PARTNER_ACCOUNT_EXISTS');
+      // BC-QA-033 — also assert the top-level `code` mirror (error.middleware.ts)
+      // that BC-QA-004's frontend getLocalizedErrorMessage() actually reads.
+      expect(second.body.code).toBe('AUTH_PARTNER_ACCOUNT_EXISTS');
     });
 
     it('should create a Partner record for partner-account registrations', async () => {
@@ -387,11 +390,11 @@ describe('Authentication Flow (F01)', () => {
       }
     });
 
-    async function createPaidPendingSubscription(emailPrefix: string) {
+    async function createPaidPendingSubscription(emailPrefix: string, emailOverride?: string) {
       const token = crypto.randomBytes(32).toString('hex');
       const pending = await prisma.pendingSubscription.create({
         data: {
-          email: `${emailPrefix}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}@boomcard.bg`,
+          email: emailOverride || `${emailPrefix}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}@boomcard.bg`,
           planId: completeProfilePlanId,
           billingPeriod: 'monthly',
           language: 'en',
@@ -444,6 +447,33 @@ describe('Authentication Flow (F01)', () => {
         expect(userB?.phone).toMatch(/^unset-/);
       },
     );
+
+    it(
+      'should reject completion with AUTH_COMPLETE_PROFILE_EMAIL_EXISTS when the email already has a USER account (BC-QA-033)',
+      async () => {
+        // Arrange: a full USER account already exists for this email...
+        const { email: existingEmail, user: existingUser } = await createTestUser();
+        createdUserIds.push(existingUser.id);
+
+        // ...and a separately-paid PendingSubscription is completing with the
+        // SAME email (e.g. the customer paid again, or a race with another
+        // signup using the same address).
+        const { token } = await createPaidPendingSubscription('complete-profile-dup', existingEmail);
+
+        const res = await request(app)
+          .post('/api/auth/complete-profile')
+          .send({ token, password: 'SecurePass123!', firstName: 'Dup', lastName: 'Email', lang: 'en' });
+
+        expect(res.status).toBe(409);
+        expect(res.body.success).toBe(false);
+        // BC-QA-029 renamed this from 'USER_ALREADY_EXISTS' to match BC-QA-004's
+        // frontend error-code map key; BC-QA-033 adds the first regression test
+        // for this HTTP-level code path (auth.routes.ts's complete-profile
+        // transaction catch — see the `_userAlreadyExists` branch).
+        expect(res.body.code).toBe('AUTH_COMPLETE_PROFILE_EMAIL_EXISTS');
+        expect(res.body.message).toContain('already exists');
+      },
+    );
   });
 
   // ─── Login ────────────────────────────────────────────────────
@@ -484,6 +514,9 @@ describe('Authentication Flow (F01)', () => {
       // non-existent-email case below), so error shape can't be used to
       // enumerate which part of the check failed.
       expect(res.body.details?.code).toBe('AUTH_INVALID_CREDENTIALS');
+      // BC-QA-033 — also assert the top-level `code` mirror (error.middleware.ts)
+      // that BC-QA-004's frontend getLocalizedErrorMessage() actually reads.
+      expect(res.body.code).toBe('AUTH_INVALID_CREDENTIALS');
     });
 
     it('should reject login with non-existent email', async () => {
@@ -493,6 +526,7 @@ describe('Authentication Flow (F01)', () => {
 
       expect(res.status).toBe(401);
       expect(res.body.details?.code).toBe('AUTH_INVALID_CREDENTIALS');
+      expect(res.body.code).toBe('AUTH_INVALID_CREDENTIALS');
     });
 
     it('should reject login without email or password', async () => {
@@ -758,6 +792,22 @@ describe('Authentication Flow (F01)', () => {
         .send({ currentPassword: 'WrongCurrent!', newPassword: 'NewSecure456!' });
 
       expect(res.status).toBe(401);
+    });
+  });
+
+  describe('POST /api/auth/reset-password — AUTH_PASSWORD_POLICY (BC-QA-033)', () => {
+    it('rejects a weak newPassword with the top-level AUTH_PASSWORD_POLICY code', async () => {
+      // The password-policy check runs before any OTP/email lookup (see
+      // auth.routes.ts), so a syntactically-present but unverified
+      // email/otp is enough to reach it — no DB fixture required.
+      const res = await request(app)
+        .post('/api/auth/reset-password')
+        .send({ email: 'nobody@boomcard.bg', otp: '123456', newPassword: 'weak' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Validation Error');
+      expect(res.body.message).toMatch(/password/i);
+      expect(res.body.code).toBe('AUTH_PASSWORD_POLICY');
     });
   });
 
@@ -1128,6 +1178,9 @@ describe('Authentication Flow (F01)', () => {
       expect(second.status).toBe(429);
       expect(second.body.error).toBe('Please wait 5 minutes before requesting another code');
       expect(second.body.details?.code).toBe('AUTH_TOO_MANY_ATTEMPTS');
+      // BC-QA-033 — also assert the top-level `code` mirror (error.middleware.ts)
+      // that BC-QA-004's frontend getLocalizedErrorMessage() actually reads.
+      expect(second.body.code).toBe('AUTH_TOO_MANY_ATTEMPTS');
     });
   });
 });

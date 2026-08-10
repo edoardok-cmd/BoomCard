@@ -302,7 +302,11 @@ router.post(
     // DB hit for obviously-invalid requests.
     const passwordError = validatePasswordPolicy(password);
     if (passwordError) {
-      return res.status(400).json({ success: false, error: passwordError });
+      // BC-QA-033 — top-level `code` alongside the existing `{success:false,
+      // error}` shape (same convention as the ActivationLinkError catch
+      // below), making this response consumable by BC-QA-004's
+      // getLocalizedErrorMessage() once a caller wires it up (see BC-QA-040).
+      return res.status(400).json({ success: false, error: passwordError, code: 'AUTH_PASSWORD_POLICY' });
     }
     try {
       const result = await consumeActivationToken(token, { password });
@@ -780,7 +784,11 @@ router.post(
     // reset path cannot set a weaker password than /auth/register or change-password.
     const passwordError = validatePasswordPolicy(newPassword);
     if (passwordError) {
-      return res.status(400).json({ error: 'Validation Error', message: passwordError });
+      // BC-QA-033 — top-level `code` alongside the existing `{error, message}`
+      // shape (same convention already used by the ZodError branch in
+      // error.middleware.ts), making this response consumable by BC-QA-004's
+      // getLocalizedErrorMessage() once a caller wires it up (see BC-QA-040).
+      return res.status(400).json({ error: 'Validation Error', message: passwordError, code: 'AUTH_PASSWORD_POLICY' });
     }
 
     const result = await AuthService.resetPassword(email, otp, newPassword);
