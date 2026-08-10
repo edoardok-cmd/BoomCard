@@ -437,7 +437,7 @@ const GuestDivider = styled.div`
 const CheckoutPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const location = useLocation();
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const { isAuthenticated } = useAuth();
   // Clash 12.1 / §8.1 rule 4 — single source of truth for monetary display.
   // Plan prices come from the API in EUR; the util takes a BGN basis, so amounts
@@ -472,7 +472,7 @@ const CheckoutPage: React.FC = () => {
   useEffect(() => {
     const fetchPlan = async () => {
       if (!planId && !planCode) {
-        setError(language === 'bg' ? 'Не е избран план' : 'No plan selected');
+        setError(t('checkoutPage.noPlanSelected'));
         setLoading(false);
         return;
       }
@@ -494,7 +494,7 @@ const CheckoutPage: React.FC = () => {
         setPlan(fetchedPlan);
       } catch (err) {
         console.error('Error fetching plan:', err);
-        setError(language === 'bg' ? 'Грешка при зареждане на плана' : 'Error loading plan');
+        setError(t('checkoutPage.errorLoadingPlan'));
       } finally {
         setLoading(false);
       }
@@ -548,11 +548,11 @@ const CheckoutPage: React.FC = () => {
   const getPeriodLabel = () => {
     switch (billingPeriod) {
       case 'weekly':
-        return language === 'bg' ? '/седмица' : '/week';
+        return t('checkoutPage.perWeek');
       case 'yearly':
-        return language === 'bg' ? '/година' : '/year';
+        return t('checkoutPage.perYear');
       default:
-        return language === 'bg' ? '/месец' : '/month';
+        return t('checkoutPage.perMonth');
     }
   };
 
@@ -580,7 +580,7 @@ const CheckoutPage: React.FC = () => {
       window.location.href = paymentResult.paymentUrl;
     } catch (err) {
       console.error('Payment error:', err);
-      setError(language === 'bg' ? 'Грешка при обработка на плащането' : 'Error processing payment');
+      setError(t('checkoutPage.errorProcessingPayment'));
       setIsProcessing(false);
     }
   };
@@ -588,13 +588,13 @@ const CheckoutPage: React.FC = () => {
   const validateGuestForm = (): boolean => {
     const errors: Record<string, string> = {};
     if (!guestEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail)) {
-      errors.email = language === 'bg' ? 'Въведете валиден имейл' : 'Enter a valid email';
+      errors.email = t('checkoutPage.enterValidEmail');
     }
     if (!guestFirstName.trim()) {
-      errors.firstName = language === 'bg' ? 'Задължително поле' : 'Required';
+      errors.firstName = t('checkoutPage.requiredField');
     }
     if (!guestLastName.trim()) {
-      errors.lastName = language === 'bg' ? 'Задължително поле' : 'Required';
+      errors.lastName = t('checkoutPage.requiredField');
     }
     setGuestErrors(errors);
     return Object.keys(errors).length === 0;
@@ -630,10 +630,10 @@ const CheckoutPage: React.FC = () => {
           setEmailConflictCode(code);
         } else {
           const msg = err?.response?.data?.message;
-          setError(msg || (language === 'bg' ? 'Заявката не може да бъде изпълнена. Опитайте отново.' : 'This request could not be completed. Please try again.'));
+          setError(msg || t('checkoutPage.requestFailedRetry'));
         }
       } else {
-        setError(language === 'bg' ? 'Грешка при обработка на плащането' : 'Error processing payment');
+        setError(t('checkoutPage.errorProcessingPayment'));
       }
       setIsProcessing(false);
     }
@@ -645,7 +645,7 @@ const CheckoutPage: React.FC = () => {
         <CheckoutContainer>
           <LoadingContainer>
             <LoadingSpinner />
-            <p>{language === 'bg' ? 'Зареждане...' : 'Loading...'}</p>
+            <p>{t('checkoutPage.loading')}</p>
           </LoadingContainer>
         </CheckoutContainer>
       </PageContainer>
@@ -658,10 +658,10 @@ const CheckoutPage: React.FC = () => {
         <CheckoutContainer>
           <BackLink to="/#subscription-plans">
             <ArrowLeft size={18} />
-            {language === 'bg' ? 'Обратно към плановете' : 'Back to plans'}
+            {t('checkoutPage.backToPlans')}
           </BackLink>
           <ErrorMessage>
-            {error || (language === 'bg' ? 'Планът не е намерен' : 'Plan not found')}
+            {error || t('checkoutPage.planNotFound')}
           </ErrorMessage>
         </CheckoutContainer>
       </PageContainer>
@@ -675,7 +675,7 @@ const CheckoutPage: React.FC = () => {
       <CheckoutContainer>
         <BackLink to="/#subscription-plans">
           <ArrowLeft size={18} />
-          {language === 'bg' ? 'Обратно към плановете' : 'Back to plans'}
+          {t('checkoutPage.backToPlans')}
         </BackLink>
 
         <CheckoutGrid>
@@ -686,12 +686,10 @@ const CheckoutPage: React.FC = () => {
                  back to the plans instead of a payable "Pay €0.00" button. */
               <>
                 <UnavailableNotice>
-                  {language === 'bg'
-                    ? 'Този план не предлага избрания период на плащане. Моля, изберете друг план или период.'
-                    : 'This plan is not available for the selected billing period. Please choose a different plan or period.'}
+                  {t('checkoutPage.billingPeriodUnavailable')}
                 </UnavailableNotice>
                 <BackToPlansButton to="/#subscription-plans">
-                  {language === 'bg' ? 'Обратно към плановете' : 'Back to plans'}
+                  {t('checkoutPage.backToPlans')}
                 </BackToPlansButton>
               </>
             ) : !isAuthenticated ? (
@@ -699,31 +697,31 @@ const CheckoutPage: React.FC = () => {
                 <GuestForm>
                   <GuestRow>
                     <GuestField>
-                      <GuestLabel>{language === 'bg' ? 'Име' : 'First name'} *</GuestLabel>
+                      <GuestLabel>{t('checkoutPage.firstNameLabel')} *</GuestLabel>
                       <GuestInput
                         type="text"
                         value={guestFirstName}
                         onChange={e => setGuestFirstName(e.target.value)}
                         $hasError={!!guestErrors.firstName}
-                        placeholder={language === 'bg' ? 'Иван' : 'John'}
+                        placeholder={t('checkoutPage.firstNamePlaceholder')}
                       />
                       {guestErrors.firstName && <FieldError>{guestErrors.firstName}</FieldError>}
                     </GuestField>
                     <GuestField>
-                      <GuestLabel>{language === 'bg' ? 'Фамилия' : 'Last name'} *</GuestLabel>
+                      <GuestLabel>{t('checkoutPage.lastNameLabel')} *</GuestLabel>
                       <GuestInput
                         type="text"
                         value={guestLastName}
                         onChange={e => setGuestLastName(e.target.value)}
                         $hasError={!!guestErrors.lastName}
-                        placeholder={language === 'bg' ? 'Иванов' : 'Doe'}
+                        placeholder={t('checkoutPage.lastNamePlaceholder')}
                       />
                       {guestErrors.lastName && <FieldError>{guestErrors.lastName}</FieldError>}
                     </GuestField>
                   </GuestRow>
 
                   <GuestField>
-                    <GuestLabel>{language === 'bg' ? 'Имейл адрес' : 'Email address'} *</GuestLabel>
+                    <GuestLabel>{t('checkoutPage.emailAddressLabel')} *</GuestLabel>
                     <GuestInput
                       type="email"
                       value={guestEmail}
@@ -735,7 +733,7 @@ const CheckoutPage: React.FC = () => {
                   </GuestField>
 
                   <GuestField>
-                    <GuestLabel>{language === 'bg' ? 'Телефон (по избор)' : 'Phone (optional)'}</GuestLabel>
+                    <GuestLabel>{t('checkoutPage.phoneOptionalLabel')}</GuestLabel>
                     <GuestInput
                       type="tel"
                       value={guestPhone}
@@ -748,17 +746,19 @@ const CheckoutPage: React.FC = () => {
                 {emailConflictCode && (
                   <div style={{ padding: '0.875rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', color: '#dc2626', lineHeight: 1.6 }}>
                     {emailConflictCode === 'EMAIL_ALREADY_HAS_ACTIVE_PLAN' ? (
-                      language === 'bg'
-                        ? <>{' Имате активен абонамент за този имейл. '}<Link to="/login" style={{ color: 'inherit', fontWeight: 600 }}>Влезте в акаунта си</Link>{' за да го управлявате.'}</>
-                        : <>You already have an active subscription for this email.{' '}<Link to="/login" style={{ color: 'inherit', fontWeight: 600 }}>Sign in</Link>{' to manage it.'}</>
+                      <>
+                        {' '}{t('checkoutPage.emailConflictActivePlanPrefix')}{' '}
+                        <Link to="/login" style={{ color: 'inherit', fontWeight: 600 }}>{t('checkoutPage.emailConflictActivePlanLinkText')}</Link>
+                        {' '}{t('checkoutPage.emailConflictActivePlanSuffix')}
+                      </>
                     ) : emailConflictCode === 'CHECKOUT_ALREADY_IN_PROGRESS' ? (
-                      language === 'bg'
-                        ? 'Плащане за този имейл вече е в процес. Моля, изчакайте малко и опитайте отново.'
-                        : 'A checkout is already in progress for this email. Please wait a moment and try again.'
+                      t('checkoutPage.emailConflictInProgress')
                     ) : (
-                      language === 'bg'
-                        ? <>{' Акаунт с този имейл вече съществува. '}<Link to="/login" style={{ color: 'inherit', fontWeight: 600 }}>Влезте</Link>{' за да се абонирате.'}</>
-                        : <>An account with this email already exists.{' '}<Link to="/login" style={{ color: 'inherit', fontWeight: 600 }}>Sign in</Link>{' to subscribe.'}</>
+                      <>
+                        {' '}{t('checkoutPage.emailConflictExistsPrefix')}{' '}
+                        <Link to="/login" style={{ color: 'inherit', fontWeight: 600 }}>{t('checkoutPage.emailConflictExistsLinkText')}</Link>
+                        {' '}{t('checkoutPage.emailConflictExistsSuffix')}
+                      </>
                     )}
                   </div>
                 )}
@@ -773,20 +773,18 @@ const CheckoutPage: React.FC = () => {
                   {isProcessing ? (
                     <>
                       <LoadingSpinner style={{ width: '1rem', height: '1rem', marginRight: '0.5rem' }} />
-                      {language === 'bg' ? 'Пренасочване...' : 'Redirecting...'}
+                      {t('checkoutPage.redirecting')}
                     </>
                   ) : (
-                    language === 'bg'
-                      ? `Плати ${formattedPrice} ${getPeriodLabel()}`
-                      : `Pay ${formattedPrice} ${getPeriodLabel()}`
+                    `${t('checkoutPage.pay')} ${formattedPrice} ${getPeriodLabel()}`
                   )}
                 </Button>
 
-                <GuestDivider>{language === 'bg' ? 'или' : 'or'}</GuestDivider>
+                <GuestDivider>{t('checkoutPage.or')}</GuestDivider>
 
                 <div style={{ textAlign: 'center' }}>
                   <LoginPromptText style={{ marginBottom: 0 }}>
-                    {language === 'bg' ? 'Вече имате акаунт?' : 'Already have an account?'}{' '}
+                    {t('checkoutPage.alreadyHaveAccount')}{' '}
                     {/* M1 fix: LoginPage redirects via `location.state.from`, NOT a
                         `redirect` query param. Pass the in-progress checkout URL
                         (pathname + the original planId/planCode/billing search
@@ -797,7 +795,7 @@ const CheckoutPage: React.FC = () => {
                       state={{ from: { pathname: location.pathname, search: location.search } }}
                       style={{ color: 'var(--color-primary)', fontWeight: 600 }}
                     >
-                      {language === 'bg' ? 'Вход' : 'Log in'}
+                      {t('checkoutPage.logIn')}
                     </Link>
                   </LoginPromptText>
                 </div>
@@ -816,12 +814,10 @@ const CheckoutPage: React.FC = () => {
                   {isProcessing ? (
                     <>
                       <LoadingSpinner style={{ width: '1rem', height: '1rem', marginRight: '0.5rem' }} />
-                      {language === 'bg' ? 'Пренасочване...' : 'Redirecting...'}
+                      {t('checkoutPage.redirecting')}
                     </>
                   ) : (
-                    language === 'bg'
-                      ? `Плати ${formattedPrice} ${getPeriodLabel()}`
-                      : `Pay ${formattedPrice} ${getPeriodLabel()}`
+                    `${t('checkoutPage.pay')} ${formattedPrice} ${getPeriodLabel()}`
                   )}
                 </Button>
               </>
@@ -829,15 +825,13 @@ const CheckoutPage: React.FC = () => {
 
             <SecureNote>
               <Lock size={14} />
-              {language === 'bg'
-                ? 'Ще бъдете пренасочени към избраната банка за сигурно плащане'
-                : 'You will be redirected to the selected bank for secure payment'}
+              {t('checkoutPage.secureRedirectNote')}
             </SecureNote>
           </PaymentSection>
 
           <OrderSummary>
             <SectionTitle>
-              {language === 'bg' ? 'Обобщение на поръчката' : 'Order Summary'}
+              {t('checkoutPage.orderSummary')}
             </SectionTitle>
 
             <PlanCard $type={plan.cardType}>
@@ -864,14 +858,14 @@ const CheckoutPage: React.FC = () => {
             </PlanCard>
 
             <SummaryRow>
-              <SummaryLabel>{language === 'bg' ? 'План' : 'Plan'}</SummaryLabel>
+              <SummaryLabel>{t('checkoutPage.planLabel')}</SummaryLabel>
               <SummaryValue>
                 {language === 'bg' ? plan.displayNameBg : plan.displayName}
               </SummaryValue>
             </SummaryRow>
 
             <TotalRow>
-              <TotalLabel>{language === 'bg' ? 'Общо' : 'Total'}</TotalLabel>
+              <TotalLabel>{t('checkoutPage.total')}</TotalLabel>
               <div style={{ textAlign: 'right' }}>
                 <TotalValue>{formattedPrice}</TotalValue>
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-tertiary)' }}>

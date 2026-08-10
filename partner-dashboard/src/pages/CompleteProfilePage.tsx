@@ -115,7 +115,7 @@ const AlertBox = styled.div<{ $variant: 'error' | 'info' }>`
 
 const CompleteProfilePage: React.FC = () => {
   const [searchParams] = useSearchParams();
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const token = searchParams.get('token');
 
   // All hooks must be declared before any early returns (Rules of Hooks).
@@ -144,15 +144,13 @@ const CompleteProfilePage: React.FC = () => {
     return (
       <PageContainer>
         <Card>
-          <Title>{language === 'bg' ? 'Невалиден линк' : 'Invalid Link'}</Title>
+          <Title>{t('completeProfilePage.invalidLinkTitle')}</Title>
           <AlertBox $variant="error">
-            {language === 'bg'
-              ? 'Този линк не е валиден. Моля, свържете се с поддръжката.'
-              : 'This link is invalid. Please contact support.'}
+            {t('completeProfilePage.invalidLinkMessage')}
           </AlertBox>
           <Link to="/login">
             <Button variant="secondary" size="large" fullWidth>
-              {language === 'bg' ? 'Към вход' : 'Go to Login'}
+              {t('completeProfilePage.goToLogin')}
             </Button>
           </Link>
         </Card>
@@ -166,20 +164,18 @@ const CompleteProfilePage: React.FC = () => {
     // changePasswordValidation / complete-profile): min 8 chars + uppercase +
     // lowercase + digit + special character.
     if (password.length < 8) {
-      errs.password = language === 'bg' ? 'Паролата трябва да е поне 8 символа' : 'Password must be at least 8 characters';
+      errs.password = t('auth.passwordMinLength');
     } else {
       const hasLower = /[a-z]/.test(password);
       const hasUpper = /[A-Z]/.test(password);
       const hasNumber = /\d/.test(password);
       const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
       if (!hasLower || !hasUpper || !hasNumber || !hasSpecial) {
-        errs.password = language === 'bg'
-          ? 'Паролата трябва да съдържа главна, малка буква, цифра и специален символ'
-          : 'Password must include an uppercase letter, a lowercase letter, a number, and a special character';
+        errs.password = t('completeProfilePage.passwordComplexity');
       }
     }
     if (password !== confirmPassword) {
-      errs.confirmPassword = language === 'bg' ? 'Паролите не съвпадат' : 'Passwords do not match';
+      errs.confirmPassword = t('auth.passwordsMustMatch');
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -215,7 +211,7 @@ const CompleteProfilePage: React.FC = () => {
       if (err?.response?.status === 409) {
         setEmailConflict(true);
       } else {
-        const msg = err?.response?.data?.message || (language === 'bg' ? 'Нещо се обърка' : 'Something went wrong');
+        const msg = err?.response?.data?.message || t('errors.somethingWentWrong');
         setApiError(msg);
       }
       setIsSubmitting(false);
@@ -226,11 +222,9 @@ const CompleteProfilePage: React.FC = () => {
     return (
       <PageContainer>
         <Card>
-          <Title>{language === 'bg' ? 'Акаунтът е създаден!' : 'Account Created!'}</Title>
+          <Title>{t('completeProfilePage.accountCreatedTitle')}</Title>
           <Subtitle>
-            {language === 'bg'
-              ? 'Твоят BoomCard акаунт е готов. Влез от мобилното приложение, за да използваш абонамента си.'
-              : 'Your BoomCard account is ready. Sign in from the mobile app to use your subscription.'}
+            {t('completeProfilePage.accountCreatedMessage')}
           </Subtitle>
           <Button
             variant="primary"
@@ -238,7 +232,7 @@ const CompleteProfilePage: React.FC = () => {
             fullWidth
             onClick={() => { window.location.href = 'https://mobile.boomcard.bg'; }}
           >
-            {language === 'bg' ? 'Отиди към BoomCard' : 'Go to BoomCard'}
+            {t('completeProfilePage.goToBoomCard')}
           </Button>
         </Card>
       </PageContainer>
@@ -248,20 +242,16 @@ const CompleteProfilePage: React.FC = () => {
   return (
     <PageContainer>
       <Card>
-        <Title>{language === 'bg' ? 'Задай парола' : 'Set Your Password'}</Title>
+        <Title>{t('completeProfilePage.setPasswordTitle')}</Title>
         <Subtitle>
-          {language === 'bg'
-            ? 'Избери парола за твоя BoomCard акаунт'
-            : 'Choose a password for your BoomCard account'}
+          {t('completeProfilePage.setPasswordSubtitle')}
         </Subtitle>
 
         {emailConflict && (
           <AlertBox $variant="error">
-            {language === 'bg'
-              ? 'Акаунт с този имейл вече съществува. '
-              : 'An account with this email already exists. '}
+            {t('completeProfilePage.emailConflictPrefix')}{' '}
             <Link to="/login" style={{ color: 'inherit', fontWeight: 600 }}>
-              {language === 'bg' ? 'Влезте тук' : 'Sign in here'}
+              {t('completeProfilePage.emailConflictLinkText')}
             </Link>
           </AlertBox>
         )}
@@ -271,21 +261,21 @@ const CompleteProfilePage: React.FC = () => {
 
         <form onSubmit={handleSubmit}>
           <Field>
-            <Label>{language === 'bg' ? 'Парола' : 'Password'}</Label>
+            <Label>{t('auth.password')}</Label>
             <Input
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               $hasError={!!errors.password}
               minLength={8}
-              placeholder={language === 'bg' ? 'Поне 8 символа, главна, малка, цифра, символ' : 'Min 8 chars, upper, lower, number, symbol'}
+              placeholder={t('completeProfilePage.passwordPlaceholder')}
               autoComplete="new-password"
             />
             {errors.password && <ErrorText>{errors.password}</ErrorText>}
           </Field>
 
           <Field>
-            <Label>{language === 'bg' ? 'Потвърди паролата' : 'Confirm Password'}</Label>
+            <Label>{t('auth.confirmPassword')}</Label>
             <Input
               type="password"
               value={confirmPassword}
@@ -304,9 +294,7 @@ const CompleteProfilePage: React.FC = () => {
                 checked={marketingConsentEmail}
                 onChange={e => setMarketingConsentEmail(e.target.checked)}
               />
-              {language === 'bg'
-                ? 'Съгласявам се да получавам маркетингови имейли от BoomCard (по избор)'
-                : 'I agree to receive marketing emails from BoomCard (optional)'}
+              {t('completeProfilePage.marketingConsentEmail')}
             </ConsentRow>
             <ConsentRow>
               <input
@@ -314,9 +302,7 @@ const CompleteProfilePage: React.FC = () => {
                 checked={marketingConsentPhone}
                 onChange={e => setMarketingConsentPhone(e.target.checked)}
               />
-              {language === 'bg'
-                ? 'Съгласявам се да получавам маркетингови съобщения по телефон от BoomCard (по избор)'
-                : 'I agree to receive marketing messages by phone from BoomCard (optional)'}
+              {t('completeProfilePage.marketingConsentPhone')}
             </ConsentRow>
           </ConsentSection>
 
@@ -329,8 +315,8 @@ const CompleteProfilePage: React.FC = () => {
             disabled={isSubmitting}
           >
             {isSubmitting
-              ? (language === 'bg' ? 'Запазване...' : 'Saving...')
-              : (language === 'bg' ? 'Активирай акаунта' : 'Activate Account')}
+              ? t('completeProfilePage.saving')
+              : t('completeProfilePage.activateAccount')}
           </Button>
           </div>
         </form>

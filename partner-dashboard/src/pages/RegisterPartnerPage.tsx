@@ -434,9 +434,7 @@ const RegisterPartnerPage: React.FC = () => {
   // Validate coordinates: both present and within geographic bounds.
   const validateCoordinates = (coords: Coordinates | null): string | undefined => {
     if (!coords) {
-      return language === 'bg'
-        ? 'Намерете обекта на картата (натиснете „Намери на картата“)'
-        : 'Please locate the venue on the map (press "Find on map")';
+      return t('partnerRegistration.locateVenueOnMap');
     }
     const { latitude, longitude } = coords;
     if (
@@ -445,7 +443,7 @@ const RegisterPartnerPage: React.FC = () => {
       latitude < -90 || latitude > 90 ||
       longitude < -180 || longitude > 180
     ) {
-      return language === 'bg' ? 'Невалидни координати' : 'Invalid coordinates';
+      return t('partnerRegistration.invalidCoordinates');
     }
     return undefined;
   };
@@ -543,22 +541,22 @@ const RegisterPartnerPage: React.FC = () => {
 
       case 'requestObjectCount':
         if (!value) {
-          return language === 'bg' ? 'Изберете брой обекти' : 'Please select the number of venues';
+          return t('partnerRegistration.selectObjectCountRequired');
         }
         if (!(ALLOWED_OBJECT_COUNTS as readonly string[]).includes(strVal)) {
-          return language === 'bg' ? 'Невалидна стойност' : 'Invalid value';
+          return t('partnerRegistration.invalidValue');
         }
         return undefined;
 
       // Spec §2.3 — Ниво на участие (required)
       case 'participationLevel':
         if (!value) {
-          return language === 'bg' ? 'Изберете ниво на участие' : 'Please select a participation level';
+          return t('partnerRegistration.selectParticipationLevelRequired');
         }
         // LOW fix (review r2x S1): whitelist against canonical values to prevent
         // tampered form submissions from sending arbitrary strings to the backend.
         if (!(ALLOWED_PARTICIPATION_LEVELS as readonly string[]).includes(strVal)) {
-          return language === 'bg' ? 'Невалидна стойност' : 'Invalid value';
+          return t('partnerRegistration.invalidValue');
         }
         return undefined;
 
@@ -569,9 +567,7 @@ const RegisterPartnerPage: React.FC = () => {
       // Spec §2.3 — Privacy Policy is a SEPARATE required consent from Terms
       case 'acceptPrivacy':
         if (!value) {
-          return language === 'bg'
-            ? 'Трябва да приемете Политиката за поверителност'
-            : 'You must accept the Privacy Policy';
+          return t('partnerRegistration.acceptPrivacyRequired');
         }
         return undefined;
 
@@ -630,9 +626,7 @@ const RegisterPartnerPage: React.FC = () => {
     } else if (subcategoriesForCategory.length > 0 && selectedSubcategories.length === 0) {
       // Spec §2.3 — Подкатегория is required when a selected category exposes
       // sub-options.
-      newErrors.businessCategory = language === 'bg'
-        ? 'Изберете поне една подкатегория'
-        : 'Please select at least one subcategory';
+      newErrors.businessCategory = t('partnerRegistration.selectSubcategoryRequired');
     }
 
     // BC-PARTNER-FU1 — venue coordinates are required (offer redemption fails
@@ -957,10 +951,7 @@ const RegisterPartnerPage: React.FC = () => {
                 ))}
               </SubcategoryGroup>
               <SubcategoryHelp>
-                {t('partnerRegistration.businessCategoryHelp') ||
-                  (language === 'bg'
-                    ? 'Изберете една или повече категории.'
-                    : 'Select one or more categories.')}
+                {t('partnerRegistration.businessCategoryHelp')}
               </SubcategoryHelp>
               {touched.businessCategory && errors.businessCategory && (
                 <ErrorMessage
@@ -1084,7 +1075,7 @@ const RegisterPartnerPage: React.FC = () => {
                 redeemable (offer redemption fails closed without lat/long). */}
             <FormGroup>
               <Label as="span">
-                {language === 'bg' ? 'Местоположение на обекта' : 'Venue location'} *
+                {t('partnerRegistration.venueLocation')} *
               </Label>
               <VenueLocationPicker
                 address={formData.address}
@@ -1106,7 +1097,7 @@ const RegisterPartnerPage: React.FC = () => {
             {/* Spec §5.1 v1.1 — Брой обекти / Number of venues */}
             <FormGroup>
               <Label htmlFor="requestObjectCount">
-                {language === 'bg' ? 'Брой обекти' : 'Number of venues'} *
+                {t('partnerRegistration.numberOfVenues')} *
               </Label>
               <Select
                 id="requestObjectCount"
@@ -1118,7 +1109,7 @@ const RegisterPartnerPage: React.FC = () => {
                 disabled={isLoading}
               >
                 <option value="">
-                  {language === 'bg' ? '— Изберете —' : '— Select —'}
+                  {t('partnerRegistration.selectPlaceholder')}
                 </option>
                 <option value="1">1</option>
                 <option value="2-5">2-5</option>
@@ -1146,11 +1137,11 @@ const RegisterPartnerPage: React.FC = () => {
                   <circle cx="12" cy="12" r="1" fill="currentColor"/>
                 </SvgIcon>
               </IconWrapper>
-              {language === 'bg' ? 'Квалификация' : 'Qualification'}
+              {t('partnerRegistration.qualification')}
             </SectionTitle>
             <FormGroup>
               <Label htmlFor="participationLevel">
-                {language === 'bg' ? 'Ниво на участие' : 'Participation level'} *
+                {t('partnerRegistration.participationLevel')} *
               </Label>
               <Select
                 id="participationLevel"
@@ -1161,11 +1152,11 @@ const RegisterPartnerPage: React.FC = () => {
                 $hasError={touched.participationLevel && !!errors.participationLevel}
                 disabled={isLoading}
               >
-                <option value="">{language === 'bg' ? '— Изберете —' : '— Select —'}</option>
+                <option value="">{t('partnerRegistration.selectPlaceholder')}</option>
                 {/* Spec §2.3 canonical Bulgarian labels */}
-                <option value="basic">{language === 'bg' ? 'Базово участие' : 'Basic participation'}</option>
-                <option value="active">{language === 'bg' ? 'Активно участие' : 'Active participation'}</option>
-                <option value="growth">{language === 'bg' ? 'Силен растеж' : 'Strong growth'}</option>
+                <option value="basic">{t('partnerRegistration.basicParticipation')}</option>
+                <option value="active">{t('partnerRegistration.activeParticipation')}</option>
+                <option value="growth">{t('partnerRegistration.strongGrowth')}</option>
               </Select>
               {touched.participationLevel && errors.participationLevel && (
                 <ErrorMessage initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}>
@@ -1184,18 +1175,18 @@ const RegisterPartnerPage: React.FC = () => {
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" fill="none"/>
                 </SvgIcon>
               </IconWrapper>
-              {language === 'bg' ? 'Допълнително' : 'Additional information'}
+              {t('partnerRegistration.additionalInfoSection')}
             </SectionTitle>
             <FormGroup>
               <Label htmlFor="additionalInfo">
-                {language === 'bg' ? 'Допълнителна информация (по избор)' : 'Additional information (optional)'}
+                {t('partnerRegistration.additionalInfoLabel')}
               </Label>
               <Textarea
                 id="additionalInfo"
                 name="additionalInfo"
                 value={formData.additionalInfo}
                 onChange={handleChange}
-                placeholder={language === 'bg' ? 'Допълнителни бележки или контекст...' : 'Additional notes or context...'}
+                placeholder={t('partnerRegistration.additionalInfoPlaceholder')}
                 disabled={isLoading}
               />
             </FormGroup>
@@ -1216,10 +1207,12 @@ const RegisterPartnerPage: React.FC = () => {
                 htmlFor="acceptTerms"
                 $hasError={touched.acceptTerms && !!errors.acceptTerms}
               >
-                {language === 'bg'
-                  ? <><Link to="/terms">Общи условия</Link> — прочетох и приемам *</>
-                  : <>I have read and accept the <Link to="/terms">Terms and Conditions</Link> *</>
-                }
+                {/* BC-QA-004: prefix + <Link> + suffix — BG's empty prefix and EN's
+                    empty-less prefix each naturally produce the correct word order
+                    ("Link, then suffix" for BG vs "prefix, then Link" for EN). */}
+                {t('partnerRegistration.acceptTermsPrefix')}
+                <Link to="/terms">{t('partnerRegistration.termsLinkText')}</Link>
+                {t('partnerRegistration.acceptTermsSuffix')}
               </CheckboxLabel>
             </CheckboxGroup>
             {touched.acceptTerms && errors.acceptTerms && (
@@ -1247,10 +1240,9 @@ const RegisterPartnerPage: React.FC = () => {
                 htmlFor="acceptPrivacy"
                 $hasError={touched.acceptPrivacy && !!errors.acceptPrivacy}
               >
-                {language === 'bg'
-                  ? <><Link to="/privacy">Политика за поверителност</Link> — прочетох и приемам *</>
-                  : <>I have read and accept the <Link to="/privacy">Privacy Policy</Link> *</>
-                }
+                {t('partnerRegistration.acceptPrivacyPrefix')}
+                <Link to="/privacy">{t('partnerRegistration.privacyLinkText')}</Link>
+                {t('partnerRegistration.acceptPrivacySuffix')}
               </CheckboxLabel>
             </CheckboxGroup>
             {touched.acceptPrivacy && errors.acceptPrivacy && (
@@ -1275,9 +1267,7 @@ const RegisterPartnerPage: React.FC = () => {
                 disabled={isLoading}
               />
               <CheckboxLabel htmlFor="marketingConsent">
-                {language === 'bg'
-                  ? 'Съгласявам се да получавам маркетингови съобщения (по избор)'
-                  : 'I agree to receive marketing communications (optional)'}
+                {t('partnerRegistration.marketingConsentLabel')}
               </CheckboxLabel>
             </CheckboxGroup>
           </div>
@@ -1303,9 +1293,7 @@ const RegisterPartnerPage: React.FC = () => {
               </IconWrapper>
               {t('partnerRegistration.note')}
             </strong>{' '}
-            {language === 'bg'
-              ? 'След изпращане на заявката, нашият екип ще се свърже с вас до 2 работни дни. При одобрение и завършен онбординг ще получите имейл с линк за активиране на акаунта и задаване на парола.'
-              : 'After submitting your application, our team will contact you within 2 business days. Once approved and onboarding is complete, you will receive an email with an activation link to set your password.'}
+            {t('partnerRegistration.applicationReviewNote')}
           </InfoBox>
 
           <SubmitButton
