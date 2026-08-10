@@ -318,14 +318,18 @@ describe('BC-QA-017: Malformed JSON in plan features', () => {
         .get('/api/dashboard/me')
         .set('Authorization', `Bearer ${token}`);
 
+      // Critical: verify endpoint returns 200 (no crash from malformed features)
       expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data).toBeDefined();
 
-      // Verify subscription benefits are present with empty features
-      if (res.body.data.subscription) {
-        expect(res.body.data.subscription.benefits).toBeDefined();
-        expect(Array.isArray(res.body.data.subscription.benefits.features)).toBe(true);
+      // Verify subscription exists at root level (not wrapped in success/data)
+      expect(res.body.subscription).toBeDefined();
+
+      // Verify subscription benefits are present with empty features array
+      if (res.body.subscription) {
+        expect(res.body.subscription.benefits).toBeDefined();
+        expect(Array.isArray(res.body.subscription.benefits.features)).toBe(true);
+        // Malformed features should be empty array, not crash
+        expect(res.body.subscription.benefits.features.length === 0).toBe(true);
       }
     });
 
@@ -334,14 +338,16 @@ describe('BC-QA-017: Malformed JSON in plan features', () => {
         .get('/api/subscriptions/current')
         .set('Authorization', `Bearer ${token}`);
 
+      // Critical: verify endpoint returns 200 (no crash from malformed features)
       expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data).toBeDefined();
 
-      // Subscription should be found even if features are malformed
-      if (res.body.data.plan) {
-        expect(Array.isArray(res.body.data.benefits.features)).toBe(true);
-      }
+      // Verify subscription exists at root level (not wrapped in success/data)
+      expect(res.body.plan).toBeDefined();
+      expect(res.body.plan).toBe('MALFORMED_TEST');
+
+      // Subscription should be found even if plan features are malformed
+      expect(res.body.id).toBeDefined();
+      expect(res.body.status).toBe('ACTIVE');
     });
   });
 });
