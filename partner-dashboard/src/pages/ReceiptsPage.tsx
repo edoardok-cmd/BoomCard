@@ -302,17 +302,12 @@ const LoadingSpinner = styled.div`
 
 type Period = '7' | '30' | 'all';
 
-// The backend /wallet/statistics endpoint returns amounts as DualCurrencyAmount
-// objects (bgn/eur pair) not plain numbers — see backend utils/currencyDisplay.ts.
-interface DualCurrencyAmount {
-  bgn: number | null;
-  eur: number;
-  windowOpen: boolean;
-}
-
+// The backend /wallet/statistics endpoint returns availableBalance/pendingBalance
+// as plain EUR numbers — the dual-currency (BGN/EUR) display feature was fully
+// retired (BC-QA-031), so these are no longer {bgn, eur, windowOpen} objects.
 interface CashbackSummaryData {
-  availableBalance: DualCurrencyAmount;
-  pendingBalance: DualCurrencyAmount;
+  availableBalance: number;
+  pendingBalance: number;
 }
 
 export const ReceiptsPage: React.FC = () => {
@@ -404,8 +399,7 @@ export const ReceiptsPage: React.FC = () => {
       const data = await apiService.get<CashbackSummaryData>('/wallet/statistics');
       setCashback(data);
     } catch {
-      const zero: DualCurrencyAmount = { bgn: 0, eur: 0, windowOpen: false };
-      setCashback({ availableBalance: zero, pendingBalance: zero });
+      setCashback({ availableBalance: 0, pendingBalance: 0 });
     }
   };
 
@@ -475,12 +469,8 @@ export const ReceiptsPage: React.FC = () => {
     }
   };
 
-  const formatCashback = (amount: DualCurrencyAmount): string => {
-    const bgnLabel = language === 'bg' ? 'лв' : 'BGN';
-    if (amount.windowOpen && amount.bgn != null) {
-      return `${amount.bgn.toFixed(2)} ${bgnLabel} / €${amount.eur.toFixed(2)}`;
-    }
-    return `€${amount.eur.toFixed(2)}`;
+  const formatCashback = (amount: number): string => {
+    return `€${amount.toFixed(2)}`;
   };
 
   return (
