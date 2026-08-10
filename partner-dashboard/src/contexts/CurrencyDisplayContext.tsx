@@ -59,7 +59,7 @@ export const CurrencyDisplayProvider: React.FC<CurrencyDisplayProviderProps> = (
 
         // Fetch fresh data
         const json = await apiService.get<{ data?: { currencyDisplayMode?: 'dual' | 'eur_only'; windowOpen?: boolean } }>(
-          '/admin/settings/currency-display-mode'
+          '/api/settings/currency-display-mode'
         );
         const data = json.data || {};
 
