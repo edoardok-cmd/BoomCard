@@ -27,6 +27,12 @@ interface VenueLocationPickerProps {
   value: Coordinates | null;
   /** Called whenever coordinates change (geocode result, map click, or drag). */
   onChange: (coords: Coordinates) => void;
+  /**
+   * Called after a reverse-geocode (pin dragged or map clicked) resolves an
+   * address. Lets the parent keep the typed address/city fields in sync with
+   * the pin so the two never silently disagree.
+   */
+  onAddressResolved?: (fields: { address: string; city: string }) => void;
   disabled?: boolean;
 }
 
@@ -35,7 +41,7 @@ const content = {
     findOnMap: 'Find on map',
     searching: 'Searching…',
     instructions:
-      'Enter your address above, then press "Find on map". Click the map or drag the pin to fine-tune the exact location.',
+      'The pin updates automatically shortly after you type your address above (or press "Find on map" right away). Click the map or drag the pin to fine-tune the exact location — the address fields will update to match.',
     notFound: 'Could not find that address. Try adding more detail, or click the map to drop a pin manually.',
     enterAddress: 'Please enter an address and city first.',
     networkError: 'Could not reach the map service. Click the map to drop a pin manually.',
@@ -46,7 +52,7 @@ const content = {
     findOnMap: 'Намери на картата',
     searching: 'Търсене…',
     instructions:
-      'Въведете адреса по-горе и натиснете „Намери на картата“. Кликнете върху картата или преместете маркера, за да настроите точното местоположение.',
+      'Маркерът се обновява автоматично малко след като въведете адреса по-горе (или натиснете „Намери на картата“ веднага). Кликнете върху картата или преместете маркера, за да настроите точното местоположение — полетата с адрес ще се обновят.',
     notFound: 'Адресът не беше намерен. Добавете повече детайли или кликнете върху картата, за да поставите маркер ръчно.',
     enterAddress: 'Първо въведете адрес и град.',
     networkError: 'Картата не е достъпна в момента. Кликнете върху картата, за да поставите маркер ръчно.',
@@ -87,6 +93,7 @@ const VenueLocationPicker: React.FC<VenueLocationPickerProps> = ({
   city,
   value,
   onChange,
+  onAddressResolved,
   disabled,
 }) => {
   const { language } = useLanguage();
@@ -96,22 +103,42 @@ const VenueLocationPicker: React.FC<VenueLocationPickerProps> = ({
   const [message, setMessage] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
 
-  // Debounce guard so rapid clicks on "Find on map" don't spam Nominatim.
+  // Shared rate-limit guard for BOTH forward (search) and reverse (pin →
+  // address) Nominatim calls — one request per second max, per their usage
+  // policy, regardless of which direction triggered it.
   const lastSearchRef = useRef<number>(0);
 
-  const geocode = async () => {
-    const now = Date.now();
-    if (now - lastSearchRef.current < 1000) return; // 1s debounce (Nominatim usage policy)
-    lastSearchRef.current = now;
+  // When we ourselves push a reverse-geocoded address into the parent's
+  // fields, that address change would otherwise immediately re-trigger the
+  // reactive forward-geocode effect below and could snap the pin away from
+  // where the user just dropped it. Set this for exactly one address-change
+  // cycle to skip that auto-geocode.
+  const skipNextAutoGeocodeRef = useRef(false);
 
+  // Debounce timer for reactive (address-typed) geocoding.
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const performGeocode = async (source: 'button' | 'auto') => {
     const query = [address.trim(), city?.trim()].filter(Boolean).join(', ');
     if (!query) {
-      setMessage({ kind: 'error', text: t.enterAddress });
+      if (source === 'button') setMessage({ kind: 'error', text: t.enterAddress });
       return;
     }
+    // Reactive geocoding: don't bother Nominatim over a couple of characters
+    // while the user is still typing.
+    if (source === 'auto' && query.length < 5) return;
+
+    const now = Date.now();
+    if (now - lastSearchRef.current < 1000) {
+      // Within the 1s Nominatim usage-policy window. The reactive path will
+      // naturally retry on the next debounced change; a manual button press
+      // just no-ops rather than queuing extra requests.
+      return;
+    }
+    lastSearchRef.current = now;
 
     setSearching(true);
-    setMessage(null);
+    if (source === 'button') setMessage(null);
     try {
       const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(
         query,
@@ -143,18 +170,77 @@ const VenueLocationPicker: React.FC<VenueLocationPickerProps> = ({
     }
   };
 
+  // Reactively re-geocode whenever the typed address/city change, so the pin
+  // follows what's typed instead of only moving on an explicit button press.
+  useEffect(() => {
+    if (skipNextAutoGeocodeRef.current) {
+      // This change was us writing a reverse-geocoded address back into the
+      // parent — don't immediately re-geocode it, that would fight the pin
+      // the user just placed.
+      skipNextAutoGeocodeRef.current = false;
+      return;
+    }
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      void performGeocode('auto');
+    }, 900);
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address, city]);
+
+  const reverseGeocode = async (coords: Coordinates) => {
+    const now = Date.now();
+    if (now - lastSearchRef.current < 1000) return; // respect shared rate limit
+    lastSearchRef.current = now;
+
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${coords.latitude}&lon=${coords.longitude}`;
+      const res = await fetch(url, {
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: {
+        display_name?: string;
+        address?: Record<string, string>;
+        error?: string;
+      } = await res.json();
+      if (!data || data.error || !onAddressResolved) return;
+
+      const addr = data.address ?? {};
+      const road = [addr.road, addr.house_number].filter(Boolean).join(' ');
+      const cityName = addr.city || addr.town || addr.village || addr.municipality || '';
+      const resolvedAddress = road || data.display_name || '';
+      if (!resolvedAddress && !cityName) return; // nothing usable came back
+
+      skipNextAutoGeocodeRef.current = true;
+      onAddressResolved({
+        address: resolvedAddress || address,
+        city: cityName || city || '',
+      });
+    } catch {
+      // Reverse geocode failing is non-fatal: the coordinates (already set
+      // via onChange) remain the source of truth for the pin. We just can't
+      // sync the text fields this time — no crash, no stale error state.
+    }
+  };
+
   const handleDragEnd = () => {
     const marker = markerRef.current;
     if (marker) {
       const pos = marker.getLatLng();
-      onChange({ latitude: pos.lat, longitude: pos.lng });
+      const coords = { latitude: pos.lat, longitude: pos.lng };
+      onChange(coords);
       setMessage(null); // Clear error when location is set via drag
+      void reverseGeocode(coords);
     }
   };
 
   const handleMapClick = (coords: Coordinates) => {
     onChange(coords);
     setMessage(null); // Clear error when location is set via map click
+    void reverseGeocode(coords);
   };
 
   const center = value ?? SOFIA;
@@ -162,7 +248,11 @@ const VenueLocationPicker: React.FC<VenueLocationPickerProps> = ({
   return (
     <Wrapper>
       <SearchRow>
-        <FindButton type="button" onClick={geocode} disabled={disabled || searching}>
+        <FindButton
+          type="button"
+          onClick={() => void performGeocode('button')}
+          disabled={disabled || searching}
+        >
           {searching ? t.searching : `📍 ${t.findOnMap}`}
         </FindButton>
         {value && (
