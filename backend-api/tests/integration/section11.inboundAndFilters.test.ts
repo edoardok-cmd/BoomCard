@@ -38,6 +38,7 @@ import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { notificationService } from '../../src/services/notification.service';
+import { genTestPhone } from '../helpers/test-utils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -92,7 +93,7 @@ async function createUser(overrides: Partial<{
       passwordHash: hash,
       firstName: overrides.firstName ?? 'Test',
       lastName: 'User',
-      phone: '+359000000000',
+      phone: genTestPhone(),
       role: (overrides.role as any) ?? 'USER',
       status: 'ACTIVE',
       emailVerified: true,
