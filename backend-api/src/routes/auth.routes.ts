@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import multer from 'multer';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
@@ -1475,7 +1476,11 @@ router.post(
               passwordHash,
               firstName: firstName?.trim() || pending.email.split('@')[0],
               lastName: lastName?.trim() || '',
-              phone: phone?.trim() || '', // phone is NOT NULL in database
+              // phone is NOT NULL in database, and `@@unique([phone, role])` (BC-QA-032)
+              // rejects a second literal '' under the same role — use a unique
+              // placeholder (same pattern as bulkImport.service.ts) instead of a
+              // shared empty string when the caller omits phone.
+              phone: phone?.trim() || `unset-${crypto.randomBytes(8).toString('hex')}`,
               role: 'USER',
               status: UserStatus.ACTIVE,
               emailVerified: true,

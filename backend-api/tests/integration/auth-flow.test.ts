@@ -6,6 +6,7 @@
  */
 
 import request from 'supertest';
+import crypto from 'crypto';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { createTestUser, cleanupTestUser, authRequest } from '../helpers/test-utils';
@@ -155,6 +156,121 @@ describe('Authentication Flow (F01)', () => {
       expect(res.body.code).toBe('AUTH_EMAIL_ALREADY_REGISTERED');
     });
 
+    it('should reject a second customer account on the same phone number (BC-QA-032)', async () => {
+      const phone = `+359888${Date.now().toString().slice(-6)}`;
+      const first = await request(app)
+        .post('/api/auth/register')
+        .send({
+          email: `phone-dup-a-${Date.now()}@boomcard.bg`,
+          password: 'SecurePass123!',
+          firstName: 'First',
+          lastName: 'User',
+          phone,
+          acceptTerms: true,
+        });
+      expect(first.status).toBe(201);
+      if (first.body?.data?.user?.id) createdUserIds.push(first.body.data.user.id);
+
+      const second = await request(app)
+        .post('/api/auth/register')
+        .send({
+          email: `phone-dup-b-${Date.now()}@boomcard.bg`,
+          password: 'AnotherPass123!',
+          firstName: 'Second',
+          lastName: 'User',
+          phone,
+          acceptTerms: true,
+        });
+
+      // BC-QA-032 — mirrors the (email, role) uniqueness pattern above:
+      // the DB enforces @@unique([phone, role]), and the service layer's
+      // pre-check (auth.service.ts) surfaces it as a 409 with the stable
+      // AUTH_PHONE_ALREADY_REGISTERED code the BC-QA-004 frontend mapping
+      // table already expects, mirroring both the `details.code` and
+      // top-level `code` shape of the email-duplicate error above.
+      expect(second.status).toBe(409);
+      expect(second.body.error).toBe('An account with this phone number already exists');
+      expect(second.body.details?.code).toBe('AUTH_PHONE_ALREADY_REGISTERED');
+      expect(second.body.code).toBe('AUTH_PHONE_ALREADY_REGISTERED');
+    });
+
+    it('should allow the SAME phone number to register under a different role (BC-QA-032)', async () => {
+      // Proves the constraint is the composite @@unique([phone, role]), not
+      // a bare unique on phone: a USER and a PARTNER account may legally
+      // share one phone number, same as they may share one email.
+      const phone = `+359888${(Date.now() + 1).toString().slice(-6)}`;
+
+      const userRes = await request(app)
+        .post('/api/auth/register')
+        .send({
+          email: `phone-role-user-${Date.now()}@boomcard.bg`,
+          password: 'SecurePass123!',
+          firstName: 'Role',
+          lastName: 'User',
+          phone,
+          acceptTerms: true,
+        });
+      expect(userRes.status).toBe(201);
+      if (userRes.body?.data?.user?.id) createdUserIds.push(userRes.body.data.user.id);
+
+      const partnerRes = await request(app)
+        .post('/api/auth/register')
+        .send({
+          email: `phone-role-partner-${Date.now()}@boomcard.bg`,
+          firstName: 'Role',
+          lastName: 'Partner',
+          phone,
+          acceptTerms: true,
+          acceptPrivacy: true,
+          accountType: 'partner',
+          businessInfo: {
+            businessName: 'Boom Cross-Role Bistro',
+            businessCategory: 'restaurants',
+            participationLevel: 'basic',
+            latitude: 42.6977,
+            longitude: 23.3219,
+            address: '1 Vitosha Blvd',
+            city: 'Sofia',
+          },
+        });
+      expect(partnerRes.status).toBe(201);
+      if (partnerRes.body?.data?.user?.id) createdUserIds.push(partnerRes.body.data.user.id);
+    });
+
+    it('should reject a second partner application on the same phone with AUTH_PHONE_ALREADY_REGISTERED (BC-QA-032)', async () => {
+      const phone = `+359888${(Date.now() + 2).toString().slice(-6)}`;
+      const partnerPayload = {
+        firstName: 'Partner',
+        lastName: 'PhoneDup',
+        phone,
+        acceptTerms: true,
+        acceptPrivacy: true,
+        accountType: 'partner' as const,
+        businessInfo: {
+          businessName: 'Boom Phone-Dup Bistro',
+          businessCategory: 'restaurants',
+          participationLevel: 'basic',
+          latitude: 42.6977,
+          longitude: 23.3219,
+          address: '1 Vitosha Blvd',
+          city: 'Sofia',
+        },
+      };
+
+      const first = await request(app)
+        .post('/api/auth/register')
+        .send({ ...partnerPayload, email: `phone-partner-dup-a-${Date.now()}@boomcard.bg` });
+      expect(first.status).toBe(201);
+      if (first.body?.data?.user?.id) createdUserIds.push(first.body.data.user.id);
+
+      const second = await request(app)
+        .post('/api/auth/register')
+        .send({ ...partnerPayload, email: `phone-partner-dup-b-${Date.now()}@boomcard.bg` });
+      expect(second.status).toBe(409);
+      expect(second.body.error).toBe('A partner account with this phone number already exists');
+      expect(second.body.details?.code).toBe('AUTH_PHONE_ALREADY_REGISTERED');
+    });
+
     it('should reject a second partner application on the same email with AUTH_PARTNER_ACCOUNT_EXISTS', async () => {
       const email = `partner-dup-${Date.now()}@boomcard.bg`;
       const partnerPayload = {
@@ -240,6 +356,94 @@ describe('Authentication Flow (F01)', () => {
 
       expect(res.status).toBe(400);
     });
+  });
+
+  // ─── Complete profile (anonymous checkout post-payment) ────────
+
+  describe('POST /api/auth/complete-profile', () => {
+    let completeProfilePlanId: string;
+
+    beforeAll(async () => {
+      const existingPlan = await prisma.plan.findFirst({ where: { planCode: 'BASIC' } });
+      if (existingPlan) {
+        completeProfilePlanId = existingPlan.id;
+      } else {
+        const plan = await prisma.plan.create({
+          data: {
+            planCode: 'BASIC',
+            displayName: 'Test Complete Profile Plan',
+            displayNameBg: 'Тестов план',
+            isActive: true,
+            hasWeeklyOption: true,
+            hasMonthlyOption: true,
+            hasYearlyOption: true,
+            priceWeeklyEur: 399,
+            priceMonthlyEur: 999,
+            priceYearlyEur: 8999,
+            cashbackRate: 0.05,
+          },
+        });
+        completeProfilePlanId = plan.id;
+      }
+    });
+
+    async function createPaidPendingSubscription(emailPrefix: string) {
+      const token = crypto.randomBytes(32).toString('hex');
+      const pending = await prisma.pendingSubscription.create({
+        data: {
+          email: `${emailPrefix}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}@boomcard.bg`,
+          planId: completeProfilePlanId,
+          billingPeriod: 'monthly',
+          language: 'en',
+          payseraOrderId: `TEST-ORDER-CP-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+          status: 'PAID',
+          token,
+          tokenExpiresAt: new Date(Date.now() + 30 * 60 * 1000),
+          paidAt: new Date(),
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        },
+      });
+      return { token, pending };
+    }
+
+    it(
+      'should allow two omitted-phone completions to both succeed with distinct placeholder phones (BC-QA-032 fix-pinning)',
+      async () => {
+        const { token: tokenA } = await createPaidPendingSubscription('complete-profile-a');
+        const { token: tokenB } = await createPaidPendingSubscription('complete-profile-b');
+
+        const resA = await request(app)
+          .post('/api/auth/complete-profile')
+          .send({ token: tokenA, password: 'SecurePass123!', firstName: 'Alpha', lastName: 'Omitted', lang: 'en' });
+        expect(resA.status).toBe(201);
+        const userAId = resA.body?.data?.user?.id;
+        expect(userAId).toBeTruthy();
+        if (userAId) createdUserIds.push(userAId);
+
+        const resB = await request(app)
+          .post('/api/auth/complete-profile')
+          .send({ token: tokenB, password: 'SecurePass123!', firstName: 'Beta', lastName: 'Omitted', lang: 'en' });
+        // The regression this guards against: a shared '' placeholder for both
+        // omitted-phone users collides on the new @@unique([phone, role])
+        // constraint and would return 409/500 here instead of 201.
+        expect(resB.status).toBe(201);
+        const userBId = resB.body?.data?.user?.id;
+        expect(userBId).toBeTruthy();
+        if (userBId) createdUserIds.push(userBId);
+
+        const [userA, userB] = await Promise.all([
+          prisma.user.findUnique({ where: { id: userAId }, select: { phone: true, role: true } }),
+          prisma.user.findUnique({ where: { id: userBId }, select: { phone: true, role: true } }),
+        ]);
+        expect(userA?.role).toBe('USER');
+        expect(userB?.role).toBe('USER');
+        expect(userA?.phone).toBeTruthy();
+        expect(userB?.phone).toBeTruthy();
+        expect(userA?.phone).not.toBe(userB?.phone);
+        expect(userA?.phone).toMatch(/^unset-/);
+        expect(userB?.phone).toMatch(/^unset-/);
+      },
+    );
   });
 
   // ─── Login ────────────────────────────────────────────────────
