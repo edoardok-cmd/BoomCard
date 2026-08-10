@@ -21,6 +21,16 @@ const PASSWORD_SPECIAL = /[^A-Za-z0-9]/;
  * the password is acceptable, or a human-readable error message otherwise.
  * Use from inline / non-express-validator paths so every endpoint shares one
  * rule. Mirrors the messages used by registerValidation.
+ *
+ * BC-QA-029 note: this return type (`string | null`) is consumed as a plain
+ * message string by callers outside this file's scope (routes/auth.routes.ts,
+ * services/activationLink.service.ts), so it can't be widened to carry a
+ * stable `code` (e.g. AUTH_PASSWORD_POLICY) without touching those callers.
+ * Same constraint applies to the inline express-validator password rules in
+ * registerValidation/changePasswordValidation below — their `.withMessage()`
+ * strings feed validation.middleware.ts's `{ [field]: msg }` error shape,
+ * which has no precedent for carrying a sibling `code`. See the BC-QA-029
+ * report for the coordination note on wiring AUTH_PASSWORD_POLICY.
  */
 export function validatePasswordPolicy(password: unknown): string | null {
   if (typeof password !== 'string') return 'Password must be a string';
