@@ -25,17 +25,83 @@ if (!process.env.DATABASE_URL) {
  * exactly the hook point needed to pin a connection's session-level
  * `search_path` for its whole lifetime -- see `createScratchSchemaClient`
  * below for why that matters and what it's for.
+ *
+ * FAIL-CLOSED ON `onConnect` FAILURE (BC-QA-037 impl-r1 MEDIUM #1): if
+ * `onConnect` (in practice, the `SET search_path` statement below) ever
+ * rejects, this used to only log the error and let the connection be
+ * checked out / returned to the idle pool exactly as if nothing had gone
+ * wrong. Since 'connect' only fires once per NEW physical connection (never
+ * again for that same connection on later checkouts), a `SET search_path`
+ * that fails once but leaves the underlying TCP connection healthy would
+ * silently poison that connection for its *entire remaining lifetime* --
+ * every future query through it runs under Postgres's default
+ * `search_path` (effectively `public`) instead of the intended schema, with
+ * no signal to any caller. That is the exact "isolation is illusory" bug
+ * this file exists to fix, just reintroduced probabilistically. We now
+ * force the pool to discard the connection instead, so a caller either gets
+ * a connection correctly pinned to the target schema, or gets a clear
+ * failure -- never a silent fallback to the wrong schema.
  */
 function buildPool(connectionString: string, onConnect?: (client: PoolClient) => Promise<void>): Pool {
   const pool = new Pool({ connectionString });
   if (onConnect) {
     pool.on('connect', (client) => {
       onConnect(client).catch((err: unknown) => {
-        logger.error('prisma.ts: pool "connect" hook failed', err as Error);
+        logger.error(
+          'prisma.ts: pool "connect" hook failed -- discarding this connection instead of reusing it (fail closed)',
+          err as Error,
+        );
+        discardConnection(pool, client);
       });
     });
   }
   return pool;
+}
+
+/**
+ * Force `pg-pool` to permanently evict a physical connection instead of
+ * ever returning it to the idle pool for reuse.
+ *
+ * `Pool.prototype._remove` is not officially public API (leading
+ * underscore) but it is exactly the mechanism `pg-pool` itself uses
+ * internally to evict a bad connection (see its own `idleListener` /
+ * `_release`): it splices the client out of both `_idle` and `_clients`
+ * and calls `client.end()`. That is deterministic no matter which internal
+ * state the connection is currently in -- genuinely idle, mid-query via
+ * `pool.query()`, or checked out directly via `pool.connect()` for a
+ * manual transaction (`@prisma/adapter-pg`'s transaction path) -- unlike
+ * emitting a synthetic client `'error'` event, whose effect depends
+ * entirely on which listener happens to be attached at that exact moment:
+ * `pg-pool`'s own `idleListener` is only attached while a connection is
+ * genuinely sitting idle (it's removed the instant a connection is
+ * acquired, including for the very first checkout right after 'connect'
+ * fires), and `@prisma/adapter-pg`'s own transaction-path error listener
+ * only logs, it does not discard. Mutating the pool's own bookkeeping
+ * arrays directly sidesteps all of that: once `_remove` has run, the
+ * connection structurally cannot be handed out again by `_pulseQueue`
+ * (it's gone from `_idle`) or counted against the pool's `max` (it's gone
+ * from `_clients`), regardless of which higher-level path was in flight.
+ *
+ * A defensive fallback (plain `client.end()`) covers a future `pg-pool`
+ * version that removes `_remove` entirely -- ending the connection
+ * directly still keeps it out of *this* pool's usable state (a physically
+ * closed connection cannot serve a query), even though it does not
+ * proactively splice pg-pool's internal `_idle`/`_clients` arrays.
+ */
+function discardConnection(pool: Pool, client: PoolClient): void {
+  const poolInternal = pool as unknown as { _remove?: (client: PoolClient) => void };
+  if (typeof poolInternal._remove === 'function') {
+    poolInternal._remove(client);
+    return;
+  }
+  // `PoolClient`'s public type only exposes `release`, not `end` (that's a
+  // `Client`-only method per @types/pg) -- but at runtime a `PoolClient` is
+  // always a real `pg.Client` instance, so `.end()` genuinely exists here.
+  const rawClient = client as unknown as { end: () => Promise<void> };
+  rawClient.end().catch(() => {
+    // Best-effort -- the connection is already considered unusable, and
+    // `.end()` failing here doesn't change that.
+  });
 }
 
 function createPrismaClient(): PrismaClient {
@@ -136,6 +202,13 @@ function assertSafeSchemaName(schemaName: string): void {
  * default-schema test suite must see zero behavioural change when no
  * override is requested (verified in
  * tests/unit/prisma.scratchSchema.test.ts).
+ *
+ * "Exactly like a normal PrismaClient" includes the `withSoftDelete`
+ * extension applied to the default `prisma` singleton below (BC-QA-037
+ * impl-r1 MEDIUM #2): the returned client is wrapped with the same
+ * extension, so `User.findMany`/`findFirst` soft-delete filtering behaves
+ * identically to production instead of silently diverging for anyone who
+ * queries `User` through a scratch client.
  */
 export function createScratchSchemaClient(schemaName: string): PrismaClient {
   assertSafeSchemaName(schemaName);
@@ -162,10 +235,12 @@ export function createScratchSchemaClient(schemaName: string): PrismaClient {
     disposeExternalPool: true,
   });
 
-  return new PrismaClient({
-    adapter,
-    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
-  });
+  return withSoftDelete(
+    new PrismaClient({
+      adapter,
+      log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+    }),
+  );
 }
 
 function withSoftDelete(client: PrismaClient): PrismaClient {
