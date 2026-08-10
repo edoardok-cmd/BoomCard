@@ -29,7 +29,7 @@ export const CurrencyDisplayProvider: React.FC<CurrencyDisplayProviderProps> = (
   const [windowOpen, setWindowOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Once we learn the user is not an admin (403), stop polling — it will always 403.
+  // Stop polling on 403 (server error) or 401 (not authenticated).
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
