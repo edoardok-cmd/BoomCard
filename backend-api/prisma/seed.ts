@@ -61,8 +61,10 @@ async function main() {
   const partnerPasswordHash = await bcrypt.hash('partner123', 10);
 
   const users = await Promise.all([
-    prisma.user.create({
-      data: {
+    prisma.user.upsert({
+      where: { email_role: { email: 'grandhotel@boomcard.bg', role: 'PARTNER' } },
+      update: {},
+      create: {
         email: 'grandhotel@boomcard.bg',
         passwordHash: partnerPasswordHash,
         firstName: 'Grand',
@@ -73,8 +75,10 @@ async function main() {
         emailVerified: true,
       },
     }),
-    prisma.user.create({
-      data: {
+    prisma.user.upsert({
+      where: { email_role: { email: 'winedine@boomcard.bg', role: 'PARTNER' } },
+      update: {},
+      create: {
         email: 'winedine@boomcard.bg',
         passwordHash: partnerPasswordHash,
         firstName: 'Wine',
@@ -85,8 +89,10 @@ async function main() {
         emailVerified: true,
       },
     }),
-    prisma.user.create({
-      data: {
+    prisma.user.upsert({
+      where: { email_role: { email: 'sparetreat@boomcard.bg', role: 'PARTNER' } },
+      update: {},
+      create: {
         email: 'sparetreat@boomcard.bg',
         passwordHash: partnerPasswordHash,
         firstName: 'Spa',
@@ -97,8 +103,10 @@ async function main() {
         emailVerified: true,
       },
     }),
-    prisma.user.create({
-      data: {
+    prisma.user.upsert({
+      where: { email_role: { email: 'skyadventures@boomcard.bg', role: 'PARTNER' } },
+      update: {},
+      create: {
         email: 'skyadventures@boomcard.bg',
         passwordHash: partnerPasswordHash,
         firstName: 'Sky',
@@ -109,8 +117,10 @@ async function main() {
         emailVerified: true,
       },
     }),
-    prisma.user.create({
-      data: {
+    prisma.user.upsert({
+      where: { email_role: { email: 'beachfront@boomcard.bg', role: 'PARTNER' } },
+      update: {},
+      create: {
         email: 'beachfront@boomcard.bg',
         passwordHash: partnerPasswordHash,
         firstName: 'Beachfront',
@@ -121,8 +131,10 @@ async function main() {
         emailVerified: true,
       },
     }),
-    prisma.user.create({
-      data: {
+    prisma.user.upsert({
+      where: { email_role: { email: 'villamelnik@boomcard.bg', role: 'PARTNER' } },
+      update: {},
+      create: {
         email: 'villamelnik@boomcard.bg',
         passwordHash: partnerPasswordHash,
         firstName: 'Villa',
@@ -142,8 +154,10 @@ async function main() {
   console.log('🏢 Creating sample partners...');
 
   const partners = await Promise.all([
-    prisma.partner.create({
-      data: {
+    prisma.partner.upsert({
+      where: { userId: users[0].id },
+      update: {},
+      create: {
         userId: users[0].id,
         businessName: 'Grand Hotel Sofia',
         businessNameBg: 'Гранд Хотел София',
@@ -158,8 +172,10 @@ async function main() {
         email: 'contact@grandhotelsofia.bg',
       },
     }),
-    prisma.partner.create({
-      data: {
+    prisma.partner.upsert({
+      where: { userId: users[1].id },
+      update: {},
+      create: {
         userId: users[1].id,
         businessName: 'Wine & Dine Restaurant',
         businessNameBg: 'Ресторант Wine & Dine',
@@ -174,8 +190,10 @@ async function main() {
         email: 'info@wineanddine.bg',
       },
     }),
-    prisma.partner.create({
-      data: {
+    prisma.partner.upsert({
+      where: { userId: users[2].id },
+      update: {},
+      create: {
         userId: users[2].id,
         businessName: 'Spa Retreat Bansko',
         businessNameBg: 'Спа Ритрийт Банско',
@@ -190,8 +208,10 @@ async function main() {
         email: 'info@sparetreat.bg',
       },
     }),
-    prisma.partner.create({
-      data: {
+    prisma.partner.upsert({
+      where: { userId: users[3].id },
+      update: {},
+      create: {
         userId: users[3].id,
         businessName: 'Sky Adventures',
         businessNameBg: 'Скай Адвенчърс',
@@ -206,8 +226,10 @@ async function main() {
         email: 'contact@skyadventures.bg',
       },
     }),
-    prisma.partner.create({
-      data: {
+    prisma.partner.upsert({
+      where: { userId: users[4].id },
+      update: {},
+      create: {
         userId: users[4].id,
         businessName: 'Beachfront Hotel Varna',
         businessNameBg: 'Крайбрежен Хотел Варна',
@@ -222,8 +244,10 @@ async function main() {
         email: 'info@beachfrontvarna.bg',
       },
     }),
-    prisma.partner.create({
-      data: {
+    prisma.partner.upsert({
+      where: { userId: users[5].id },
+      update: {},
+      create: {
         userId: users[5].id,
         businessName: 'Villa Melnik Winery',
         businessNameBg: 'Вила Мелник Винарна',
@@ -482,6 +506,24 @@ async function main() {
   ]);
 
   console.log(`✅ Created ${plans.length} subscription plans\n`);
+
+  // Verify plan features JSON format
+  console.log('✔️  Validating plan features JSON format...');
+  for (const plan of plans) {
+    try {
+      const features = JSON.parse(plan.features || '[]');
+      const featuresBg = JSON.parse(plan.featuresBg || '[]');
+      if (!Array.isArray(features) || !Array.isArray(featuresBg)) {
+        throw new Error(`Plan ${plan.planCode}: features/featuresBg must be JSON arrays`);
+      }
+      if (features.length === 0) {
+        console.warn(`⚠️  Plan ${plan.planCode}: features array is empty`);
+      }
+    } catch (e) {
+      throw new Error(`Plan ${plan.planCode} features validation failed: ${e.message}`);
+    }
+  }
+  console.log('✅ All plan features validated successfully\n');
 
   // Summary
   console.log('📊 Seed Summary:');
