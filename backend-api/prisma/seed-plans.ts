@@ -28,8 +28,6 @@ if (!databaseUrl) {
   process.exit(1);
 }
 
-console.log('DATABASE_URL found:', databaseUrl.substring(0, 30) + '...');
-
 // Create neon SQL client
 const sql = neon(databaseUrl);
 
