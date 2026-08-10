@@ -118,6 +118,13 @@ router.get(
         : `${frontendBase}/login?emailVerified=true`;
       return res.redirect(dest);
     } catch (err: any) {
+      // BC-QA-029 — this endpoint replies with a 302 redirect, not JSON, so
+      // there's no response body to carry a `code` field at all. The
+      // AUTH_REGISTRATION_TOKEN_INVALID / AUTH_REGISTRATION_TOKEN_EXPIRED
+      // codes AuthService.verifyEmail() throws are therefore inherently
+      // unreachable from this specific entry point (by design of the
+      // redirect flow, not a bug) — only the raw message survives, URL-encoded
+      // into the `error` query param. The POST variant below forwards `code`.
       const msg = encodeURIComponent(err?.message || 'invalid_token');
       return res.redirect(`${frontendBase}/login?error=${msg}`);
     }
@@ -144,7 +151,17 @@ router.post(
       result = await AuthService.verifyEmail(token);
     } catch (err: any) {
       const status = err?.statusCode >= 400 && err?.statusCode < 500 ? err.statusCode : 500;
-      return res.status(status).json({ success: false, error: err?.message || 'Verification failed' });
+      // BC-QA-029 — this handler bypasses error.middleware.ts entirely (it
+      // catches locally so it can respond with { success: false, ... } instead
+      // of the middleware's { error, ... } shape), so it must forward the
+      // AppError's code itself or AUTH_REGISTRATION_TOKEN_INVALID/_EXPIRED
+      // would never reach an HTTP caller. Mirrors error.middleware.ts's
+      // top-level `code` convention.
+      return res.status(status).json({
+        success: false,
+        error: err?.message || 'Verification failed',
+        ...(err?.details?.code && { code: err.details.code }),
+      });
     }
 
     // If the account has 2FA enabled, we cannot issue a session without a TOTP
@@ -1535,7 +1552,13 @@ router.post(
       user = result.user;
     } catch (txErr: any) {
       if ((txErr as any)._userAlreadyExists) {
-        return res.status(409).json({ success: false, code: 'USER_ALREADY_EXISTS', message: 'An account with this email already exists. Please log in.' });
+        // BC-QA-029 — renamed from 'USER_ALREADY_EXISTS' to match the
+        // partner-dashboard's BC-QA-004 error-code map key exactly
+        // (AUTH_COMPLETE_PROFILE_EMAIL_EXISTS). Confirmed no consumer depends
+        // on the old literal: boomcard-mobile's CompleteProfileScreen.tsx
+        // substring-matches `response.error` ("already exists"), never reads
+        // `code`, for this exact throw site.
+        return res.status(409).json({ success: false, code: 'AUTH_COMPLETE_PROFILE_EMAIL_EXISTS', message: 'An account with this email already exists. Please log in.' });
       }
       logger.error('Transaction failed during account creation:', {
         error: txErr.message,

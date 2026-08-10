@@ -294,11 +294,17 @@ export class AuthService {
       select: { id: true },
     });
     if (sameRoleExisting) {
+      // BC-QA-029 — stable `code` alongside the existing raw message so the
+      // partner-dashboard's BC-QA-004 error-code map can localize this without
+      // parsing English text. Message/status are unchanged; `code` is additive
+      // (see AppError's `details` param, same convention as TWO_FACTOR_REQUIRED
+      // etc. below in login()).
       throw new AppError(
         isPartner
           ? 'A partner account with this email already exists'
           : 'An account with this email already exists',
-        409
+        409,
+        { code: isPartner ? 'AUTH_PARTNER_ACCOUNT_EXISTS' : 'AUTH_EMAIL_ALREADY_REGISTERED' }
       );
     }
 
@@ -442,7 +448,9 @@ export class AuthService {
         });
       } catch (err) {
         if (isEmailRoleUniqueViolation(err)) {
-          throw new AppError('A partner account with this email already exists', 409);
+          // BC-QA-029 — same duplicate-partner scenario as the pre-check above,
+          // reached via the unique-constraint race instead. Same code.
+          throw new AppError('A partner account with this email already exists', 409, { code: 'AUTH_PARTNER_ACCOUNT_EXISTS' });
         }
         throw err;
       }
@@ -525,7 +533,9 @@ export class AuthService {
       });
     } catch (err) {
       if (isEmailRoleUniqueViolation(err)) {
-        throw new AppError('An account with this email already exists', 409);
+        // BC-QA-029 — same duplicate-email scenario as the pre-check above,
+        // reached via the unique-constraint race instead. Same code.
+        throw new AppError('An account with this email already exists', 409, { code: 'AUTH_EMAIL_ALREADY_REGISTERED' });
       }
       throw err;
     }
@@ -740,7 +750,9 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new AppError('Invalid or expired verification link', 400);
+      // BC-QA-029 — no user matches the registration-verification token (either
+      // it was never valid or was already consumed/rotated).
+      throw new AppError('Invalid or expired verification link', 400, { code: 'AUTH_REGISTRATION_TOKEN_INVALID' });
     }
 
     const blockedStatuses = ['SUSPENDED', 'ARCHIVED', 'DELETED'];
@@ -763,7 +775,9 @@ export class AuthService {
       };
     }
     if (user.emailVerificationExpiry && user.emailVerificationExpiry < new Date()) {
-      throw new AppError('Verification link has expired. Please contact office@boomcard.bg', 400);
+      // BC-QA-029 — token matched a real user but the registration-verification
+      // window elapsed. Distinct from the "no matching user" branch above.
+      throw new AppError('Verification link has expired. Please contact office@boomcard.bg', 400, { code: 'AUTH_REGISTRATION_TOKEN_EXPIRED' });
     }
 
     await prisma.user.update({
@@ -823,7 +837,11 @@ export class AuthService {
     });
 
     if (candidates.length === 0) {
-      throw new AppError('Invalid email or password', 401);
+      // BC-QA-029 — stable code for every "wrong email/password/role-mismatch"
+      // branch below (login() intentionally returns the identical message +
+      // code for all three so a caller can't distinguish "no such account" from
+      // "wrong password" from "customer app, non-customer role" by error shape).
+      throw new AppError('Invalid email or password', 401, { code: 'AUTH_INVALID_CREDENTIALS' });
     }
 
     const matches: typeof candidates = [];
@@ -837,7 +855,11 @@ export class AuthService {
       detach(prisma.loginHistory.createMany({
         data: candidates.map((c) => ({ userId: c.id, ip, userAgent, success: false, failReason: 'bad_password' })),
       }), (err) => logger.error('loginHistory.createMany failed', { err }));
-      throw new AppError('Invalid email or password', 401);
+      // BC-QA-029 — stable code for every "wrong email/password/role-mismatch"
+      // branch below (login() intentionally returns the identical message +
+      // code for all three so a caller can't distinguish "no such account" from
+      // "wrong password" from "customer app, non-customer role" by error shape).
+      throw new AppError('Invalid email or password', 401, { code: 'AUTH_INVALID_CREDENTIALS' });
     }
 
     // Prefer the account whose role matches the client surface:
@@ -970,7 +992,11 @@ export class AuthService {
     if (clientType === 'mobile' && user.role !== 'USER') {
       logger.warn(`Mobile login rejected for non-USER role: ${user.email} (role=${user.role})`);
       detach(prisma.loginHistory.create({ data: { userId: user.id, ip, userAgent, success: false, failReason: 'role_mismatch' } }), (err) => logger.error('loginHistory.create failed', { err }));
-      throw new AppError('Invalid email or password', 401);
+      // BC-QA-029 — stable code for every "wrong email/password/role-mismatch"
+      // branch below (login() intentionally returns the identical message +
+      // code for all three so a caller can't distinguish "no such account" from
+      // "wrong password" from "customer app, non-customer role" by error shape).
+      throw new AppError('Invalid email or password', 401, { code: 'AUTH_INVALID_CREDENTIALS' });
     }
 
     // TOTP enforcement — only admins/partners can have 2FA enabled, but the
@@ -1400,7 +1426,11 @@ export class AuthService {
       current?.pendingEmailExpiry &&
       current.pendingEmailExpiry.getTime() > Date.now() + TOKEN_TTL_MS - COOLDOWN_MS
     ) {
-      throw new AppError('Please wait 5 minutes before requesting another code', 429);
+      // BC-QA-029 — per-user cooldown / rate-limit rejection. This is the only
+      // 429-status auth.service.ts throw that reaches an authenticated caller
+      // directly (login-attempt throttling is enforced upstream by the
+      // per-IP/per-account authRateLimiter middleware, outside this file).
+      throw new AppError('Please wait 5 minutes before requesting another code', 429, { code: 'AUTH_TOO_MANY_ATTEMPTS' });
     }
 
     const token = crypto.randomBytes(32).toString('hex');

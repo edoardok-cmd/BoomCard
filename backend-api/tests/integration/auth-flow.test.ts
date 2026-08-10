@@ -10,6 +10,7 @@ import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { createTestUser, cleanupTestUser, authRequest } from '../helpers/test-utils';
 import { invalidateCurrencyDisplayCache } from '../../src/utils/currencyDisplay';
+import { AuthService } from '../../src/services/auth.service';
 
 async function setCurrencyWindow(open: boolean) {
   await prisma.systemSetting.upsert({
@@ -132,11 +133,57 @@ describe('Authentication Flow (F01)', () => {
           email,
           password: 'AnotherPass123!',
           firstName: 'Duplicate',
+          // BC-QA-029: lastName is required by registerValidation (auth.validator.ts)
+          // — without it the request 400s at the validator before ever reaching
+          // AuthService.register, which was masking this test (pre-existing gap,
+          // unrelated to this task's `code` additions).
+          lastName: 'User',
           phone: '+359888000222',
           acceptTerms: true,
         });
 
       expect(res.status).toBe(409);
+      // BC-QA-029 — stable `code` alongside the unchanged raw `error` message so
+      // partner-dashboard's BC-QA-004 error-code map can localize this. Follows
+      // the existing AppError(message, status, { code }) convention (see the
+      // TWO_FACTOR_REQUIRED code below), so it lands under `details.code`
+      // *and*, since the round-1 review fix, at the top-level `code` field
+      // that errorMessages.ts's getLocalizedErrorMessage() actually reads
+      // (error.middleware.ts mirrors AppError.details.code to the top level).
+      expect(res.body.error).toBe('An account with this email already exists');
+      expect(res.body.details?.code).toBe('AUTH_EMAIL_ALREADY_REGISTERED');
+      expect(res.body.code).toBe('AUTH_EMAIL_ALREADY_REGISTERED');
+    });
+
+    it('should reject a second partner application on the same email with AUTH_PARTNER_ACCOUNT_EXISTS', async () => {
+      const email = `partner-dup-${Date.now()}@boomcard.bg`;
+      const partnerPayload = {
+        email,
+        firstName: 'Partner',
+        lastName: 'Dup',
+        phone: '+359888000333',
+        acceptTerms: true,
+        acceptPrivacy: true,
+        accountType: 'partner',
+        businessInfo: {
+          businessName: 'Boom Bistro',
+          businessCategory: 'restaurants',
+          participationLevel: 'basic',
+          latitude: 42.6977,
+          longitude: 23.3219,
+          address: '1 Vitosha Blvd',
+          city: 'Sofia',
+        },
+      };
+
+      const first = await request(app).post('/api/auth/register').send(partnerPayload);
+      expect(first.status).toBe(201);
+      if (first.body?.data?.user?.id) createdUserIds.push(first.body.data.user.id);
+
+      const second = await request(app).post('/api/auth/register').send(partnerPayload);
+      expect(second.status).toBe(409);
+      expect(second.body.error).toBe('A partner account with this email already exists');
+      expect(second.body.details?.code).toBe('AUTH_PARTNER_ACCOUNT_EXISTS');
     });
 
     it('should create a Partner record for partner-account registrations', async () => {
@@ -229,6 +276,10 @@ describe('Authentication Flow (F01)', () => {
         .send({ email: testEmail, password: 'WrongPass123!', clientType: 'mobile' });
 
       expect(res.status).toBe(401);
+      // BC-QA-029 — same code for every "wrong credentials" branch (see the
+      // non-existent-email case below), so error shape can't be used to
+      // enumerate which part of the check failed.
+      expect(res.body.details?.code).toBe('AUTH_INVALID_CREDENTIALS');
     });
 
     it('should reject login with non-existent email', async () => {
@@ -237,6 +288,7 @@ describe('Authentication Flow (F01)', () => {
         .send({ email: 'nobody@boomcard.bg', password: 'TestPass123!', clientType: 'mobile' });
 
       expect(res.status).toBe(401);
+      expect(res.body.details?.code).toBe('AUTH_INVALID_CREDENTIALS');
     });
 
     it('should reject login without email or password', async () => {
@@ -762,6 +814,116 @@ describe('Authentication Flow (F01)', () => {
         .post('/api/auth/refresh')
         .send({ refreshToken });
       expect(refreshRes.status).toBe(401);
+    });
+  });
+
+  // ─── BC-QA-029: stable error codes ────────────────────────────
+  //
+  // AuthService.verifyEmail's AppError codes are asserted directly against
+  // the service (statusCode/details.code shape) AND, separately, against the
+  // real POST /api/auth/verify-email HTTP response below — that route catches
+  // the AppError itself and rebuilds the JSON by hand (see auth.routes.ts), so
+  // it needs its own assertion that it forwards `code` rather than relying on
+  // error.middleware.ts (which this route bypasses entirely). The GET route
+  // is a redirect with no JSON body and cannot carry a `code` at all (see the
+  // comment at its catch block in auth.routes.ts) — not covered here.
+  describe('AuthService.verifyEmail error codes', () => {
+    it('throws AUTH_REGISTRATION_TOKEN_INVALID for a token matching no user', async () => {
+      await expect(AuthService.verifyEmail('not-a-real-token')).rejects.toMatchObject({
+        statusCode: 400,
+        details: { code: 'AUTH_REGISTRATION_TOKEN_INVALID' },
+      });
+    });
+
+    it('throws AUTH_REGISTRATION_TOKEN_EXPIRED for an expired token', async () => {
+      const email = `verify-expired-${Date.now()}@boomcard.bg`;
+      const token = `expired-token-${Date.now()}`;
+      const user = await prisma.user.create({
+        data: {
+          email,
+          passwordHash: 'x',
+          firstName: 'Verify',
+          lastName: 'Expired',
+          phone: `+35988${Date.now().toString().slice(-7)}`,
+          role: 'PARTNER',
+          status: 'PENDING_VERIFICATION',
+          emailVerified: false,
+          emailVerificationToken: token,
+          emailVerificationExpiry: new Date(Date.now() - 60 * 1000),
+        },
+        select: { id: true },
+      });
+      createdUserIds.push(user.id);
+
+      await expect(AuthService.verifyEmail(token)).rejects.toMatchObject({
+        statusCode: 400,
+        details: { code: 'AUTH_REGISTRATION_TOKEN_EXPIRED' },
+      });
+    });
+  });
+
+  describe('POST /api/auth/verify-email — forwards `code` in the real HTTP response', () => {
+    it('returns AUTH_REGISTRATION_TOKEN_INVALID in the JSON body for an unknown token', async () => {
+      const res = await request(app)
+        .post('/api/auth/verify-email')
+        .send({ token: 'not-a-real-token' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      // This route catches AuthService.verifyEmail's AppError locally and
+      // rebuilds the JSON body by hand (it never reaches error.middleware.ts),
+      // so this is a regression test for the round-1 review fix that made the
+      // catch block forward err.details.code explicitly.
+      expect(res.body.code).toBe('AUTH_REGISTRATION_TOKEN_INVALID');
+    });
+
+    it('returns AUTH_REGISTRATION_TOKEN_EXPIRED in the JSON body for an expired token', async () => {
+      const email = `verify-expired-http-${Date.now()}@boomcard.bg`;
+      const token = `expired-token-http-${Date.now()}`;
+      const user = await prisma.user.create({
+        data: {
+          email,
+          passwordHash: 'x',
+          firstName: 'Verify',
+          lastName: 'ExpiredHttp',
+          phone: `+35989${Date.now().toString().slice(-7)}`,
+          role: 'PARTNER',
+          status: 'PENDING_VERIFICATION',
+          emailVerified: false,
+          emailVerificationToken: token,
+          emailVerificationExpiry: new Date(Date.now() - 60 * 1000),
+        },
+        select: { id: true },
+      });
+      createdUserIds.push(user.id);
+
+      const res = await request(app)
+        .post('/api/auth/verify-email')
+        .send({ token });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe('AUTH_REGISTRATION_TOKEN_EXPIRED');
+    });
+  });
+
+  describe('POST /api/auth/change-email/request — AUTH_TOO_MANY_ATTEMPTS', () => {
+    it('rejects a second request within the 5-minute cooldown', async () => {
+      const { accessToken, user } = await createTestUser();
+      createdUserIds.push(user.id);
+
+      const first = await authRequest(accessToken)
+        .post('/api/auth/change-email/request')
+        .send({ newEmail: `changed-${Date.now()}@boomcard.bg` });
+      expect(first.status).toBe(200);
+
+      const second = await authRequest(accessToken)
+        .post('/api/auth/change-email/request')
+        .send({ newEmail: `changed-again-${Date.now()}@boomcard.bg` });
+
+      expect(second.status).toBe(429);
+      expect(second.body.error).toBe('Please wait 5 minutes before requesting another code');
+      expect(second.body.details?.code).toBe('AUTH_TOO_MANY_ATTEMPTS');
     });
   });
 });
