@@ -22,6 +22,25 @@ const testId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
 let testPhoneCounter = 0;
 
 /**
+ * BC-QA-039: collision-resistant test phone generator, extracted from
+ * createTestUser's own default below so every test file that constructs a
+ * user (or any other phone-bearing row) directly via prisma.user.create(),
+ * rather than through createTestUser, can share the exact same
+ * (phone, role)-safe pattern instead of reintroducing a hardcoded literal
+ * like '+359000000000' that collides across runs/tests under the
+ * @@unique([phone, role]) constraint (migration 20260810160000).
+ * PHONE_REGEX (auth.validator.ts) requires exactly `+359` followed by 9
+ * digits — see createTestUser's default below for the full rationale on
+ * why pid+timestamp+counter are hashed rather than concatenated.
+ */
+export function genTestPhone(): string {
+  const phoneSeed = `${process.pid}-${Date.now()}-${++testPhoneCounter}`;
+  const phoneHash = crypto.createHash('sha256').update(phoneSeed).digest('hex');
+  const phoneDigits = BigInt(`0x${phoneHash.slice(0, 13)}`).toString().padStart(9, '0').slice(-9);
+  return `+359${phoneDigits}`;
+}
+
+/**
  * Register a test user and return auth tokens + user data
  */
 export async function createTestUser(overrides: {
@@ -53,10 +72,7 @@ export async function createTestUser(overrides: {
   // numbers for their first call in the same millisecond. Hash the full seed
   // instead so every component (pid, timestamp, counter) actually influences
   // every output digit, then take 9 decimal digits from the hash.
-  const phoneSeed = `${process.pid}-${Date.now()}-${++testPhoneCounter}`;
-  const phoneHash = crypto.createHash('sha256').update(phoneSeed).digest('hex');
-  const phoneDigits = BigInt(`0x${phoneHash.slice(0, 13)}`).toString().padStart(9, '0').slice(-9);
-  const phone = overrides.phone || `+359${phoneDigits}`;
+  const phone = overrides.phone || genTestPhone();
 
   const res = await request(app)
     .post('/api/auth/register')
