@@ -421,7 +421,7 @@ async function main() {
       },
     });
     if (!existingOffer) {
-      const offer = await prisma.offer.create({ data: spec });
+      const offer = await prisma.offer.create({ data: spec as any });
       offers.push(offer);
     }
   }
