@@ -256,10 +256,17 @@ describe('adminAlerts.service.getAlerts emitted links (B1, B2, B3, B5 fixes)', (
 
   it('large_pending_payouts link bakes minAmount=LARGE_TX_THRESHOLD (HIGH#1 fix)', async () => {
     // Default fallback is 500 when systemSetting.findUnique returns null.
+    // M7: threshold is wrapped in DualCurrencyAmount { bgn, eur, windowOpen }
     const result = await getAlerts();
     const lpp = result.operational.find((a) => a.id === 'large_pending_payouts');
     expect(lpp?.link).toBe('/admin/subscribers/transactions?view=wallet&status=PENDING&minAmount=500');
-    expect(lpp?.meta).toEqual({ threshold: 500 });
+    expect(lpp?.meta).toEqual({
+      threshold: expect.objectContaining({
+        bgn: 500,
+        eur: expect.any(Number),
+        windowOpen: true,
+      }),
+    });
   });
 
   it('failed_transactions is OPERATIONAL and carries 24h dateFrom in meta (HIGH#2 fix + tier correction)', async () => {
@@ -278,9 +285,16 @@ describe('adminAlerts.service.getAlerts emitted links (B1, B2, B3, B5 fixes)', (
   it('payout_threshold carries min-plan threshold in meta (MEDIUM#5 fix)', async () => {
     // No DB rows → utility falls back to compile-time constants.
     // Min across plans: PREMIUM_WEEKLY 19.56 < PREMIUM 29.34 < BASIC 39.12.
+    // M7: threshold is wrapped in DualCurrencyAmount { bgn, eur, windowOpen }
     const result = await getAlerts();
     const pt = result.operational.find((a) => a.id === 'payout_threshold');
-    expect(pt?.meta).toEqual({ threshold: 19.56 });
+    expect(pt?.meta).toEqual({
+      threshold: expect.objectContaining({
+        bgn: 19.56,
+        eur: expect.any(Number),
+        windowOpen: true,
+      }),
+    });
     // Title is now static — the threshold is rendered by the frontend from meta.
     expect(pt?.title).toBe('Абонати достигнали праг за изплащане');
   });
@@ -343,9 +357,23 @@ describe('adminAlerts.service.getAlerts emitted links (B1, B2, B3, B5 fixes)', (
       const pt = result.operational.find((a) => a.id === 'payout_threshold');
       const lpp = result.operational.find((a) => a.id === 'large_pending_payouts');
       // payout_threshold uses min plan threshold (PREMIUM_WEEKLY fallback = 19.56 BGN).
-      expect(pt?.meta).toEqual({ threshold: 19.56 });
+      // M7: threshold is wrapped in DualCurrencyAmount { bgn, eur, windowOpen }
+      expect(pt?.meta).toEqual({
+        threshold: expect.objectContaining({
+          bgn: 19.56,
+          eur: expect.any(Number),
+          windowOpen: true,
+        }),
+      });
       // large_tx_threshold falls back to 500 when value is empty string.
-      expect(lpp?.meta).toEqual({ threshold: 500 });
+      // M7: threshold is wrapped in DualCurrencyAmount { bgn, eur, windowOpen }
+      expect(lpp?.meta).toEqual({
+        threshold: expect.objectContaining({
+          bgn: 500,
+          eur: expect.any(Number),
+          windowOpen: true,
+        }),
+      });
       expect(lpp?.link).toBe('/admin/subscribers/transactions?view=wallet&status=PENDING&minAmount=500');
     } finally {
       m.systemSetting.findUnique.mockReset();
