@@ -125,7 +125,10 @@ async function login(email: string, password: string) {
   if (res.status !== 200) {
     throw new Error(`Login failed: ${res.status} - ${JSON.stringify(res.body)}`);
   }
-  return res.body.token;
+  // Login response envelope is { success, message, data: { accessToken, ... } }
+  // (src/routes/auth.routes.ts POST /login) — .body.token does not exist
+  // (BC-QA-042 task-r1).
+  return res.body.data.accessToken;
 }
 
 // ─── Shared cleanup state ─────────────────────────────────────────────────────
@@ -264,7 +267,11 @@ describe('TrialPending Cashback Records Mislabeled Fix (BC-ADMIN-SPEC-REAUDIT3-T
 
       // Assert: Entry should be labeled 'TrialPending', not 'Pending'
       expect(res.status).toBe(200);
-      const trialEntry = res.body.data?.entries?.find((e: any) => e.id === entry.id);
+      // Both routes respond { success, data: <entries array>, total, page, limit }
+      // (adminCashback.routes.ts GET /entries and GET /subscriber/:userId both
+      // spread `...result` then overwrite `data` with the mapped array itself) —
+      // .data.entries does not exist (BC-QA-042 task-r1).
+      const trialEntry = (res.body.data || []).find((e: any) => e.id === entry.id);
       expect(trialEntry).toBeDefined();
       expect(trialEntry.status).toBe('TrialPending');
     });
@@ -318,7 +325,7 @@ describe('TrialPending Cashback Records Mislabeled Fix (BC-ADMIN-SPEC-REAUDIT3-T
 
       // Assert: Only TrialPending entry should be returned
       expect(res.status).toBe(200);
-      const entries = res.body.data?.entries || [];
+      const entries = res.body.data || [];
       const returnedTrialEntry = entries.find((e: any) => e.id === trialEntry.id);
       const returnedPendingEntry = entries.find((e: any) => e.id === pendingEntry.id);
 
@@ -375,7 +382,7 @@ describe('TrialPending Cashback Records Mislabeled Fix (BC-ADMIN-SPEC-REAUDIT3-T
 
       // Assert: Only Pending entry should be returned, NOT TrialPending
       expect(res.status).toBe(200);
-      const entries = res.body.data?.entries || [];
+      const entries = res.body.data || [];
       const returnedTrialEntry = entries.find((e: any) => e.id === trialEntry.id);
       const returnedPendingEntry = entries.find((e: any) => e.id === pendingEntry.id);
 
@@ -420,7 +427,7 @@ describe('TrialPending Cashback Records Mislabeled Fix (BC-ADMIN-SPEC-REAUDIT3-T
 
       // Assert: Entry should be labeled 'TrialPending'
       expect(res.status).toBe(200);
-      const entries = res.body.data?.entries || [];
+      const entries = res.body.data || [];
       const trialEntry = entries.find((e: any) => e.id === entry.id);
       expect(trialEntry).toBeDefined();
       expect(trialEntry.status).toBe('TrialPending');
@@ -477,7 +484,7 @@ describe('TrialPending Cashback Records Mislabeled Fix (BC-ADMIN-SPEC-REAUDIT3-T
 
       // Assert: Only TrialPending entry should be returned
       expect(res.status).toBe(200);
-      const entries = res.body.data?.entries || [];
+      const entries = res.body.data || [];
       const returnedTrialEntry = entries.find((e: any) => e.id === trialEntry.id);
       const returnedPendingEntry = entries.find((e: any) => e.id === pendingEntry.id);
 
@@ -534,7 +541,7 @@ describe('TrialPending Cashback Records Mislabeled Fix (BC-ADMIN-SPEC-REAUDIT3-T
 
       // Assert: Only Pending entry should be returned, NOT TrialPending
       expect(res.status).toBe(200);
-      const entries = res.body.data?.entries || [];
+      const entries = res.body.data || [];
       const returnedTrialEntry = entries.find((e: any) => e.id === trialEntry.id);
       const returnedPendingEntry = entries.find((e: any) => e.id === pendingEntry.id);
 

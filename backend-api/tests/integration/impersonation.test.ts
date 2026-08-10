@@ -58,6 +58,39 @@ async function createFixtures(): Promise<Fixtures> {
     },
   });
 
+  // impersonate.partner (and impersonate.user) are OVERRIDE-ONLY permission
+  // keys (src/services/permission.service.ts OVERRIDE_ONLY_KEYS) — granted
+  // per-admin via UserPermissionOverride only, never via a role template. A
+  // plain role: 'ADMIN' user has NO permissions until explicitly granted
+  // (SUPER_ADMIN alone bypasses requirePermission() — see
+  // resolveUserPermissions()/requirePermission() in
+  // src/middleware/auth.middleware.ts). Every test below that impersonates a
+  // PARTNER through `fx.adminId`'s token needs this grant, or POST
+  // /auth/impersonate always 403s regardless of route/business-logic
+  // correctness (BC-QA-042).
+  const impersonatePartnerPermission = await prisma.permission.findUnique({
+    where: { key: 'impersonate.partner' },
+  });
+  if (!impersonatePartnerPermission) {
+    throw new Error('impersonate.partner permission not found — run seed-permissions first');
+  }
+  await prisma.userPermissionOverride.create({
+    data: {
+      userId: admin.id,
+      permissionId: impersonatePartnerPermission.id,
+      allow: true,
+    },
+  });
+  // Deliberately NOT granting impersonate.user to this fixture admin: per
+  // AuthService.impersonate (BC-ADMIN-RBAC-ROLES-019), gating is derived from
+  // the RESOLVED target's role, not which body field the client sent
+  // (targetPartnerUserId is accepted as a generic alias for targetUserId).
+  // There is no separate "target type mismatch" validation — an admin
+  // without impersonate.user simply 403s when the resolved target is a USER.
+  // See the "rejects impersonation of a non-PARTNER user" test below, fixed
+  // to assert that actual (403) behaviour instead of a 400 that this code
+  // path has never produced (BC-QA-042).
+
   const partner = await prisma.user.create({
     data: {
       email: partnerEmail,
@@ -137,6 +170,51 @@ async function loginWeb(email: string, password: string): Promise<{ accessToken:
   return { accessToken: res.body.data.accessToken, refreshToken: res.body.data.refreshToken };
 }
 
+// impersonateRateLimiter (src/middleware/security.middleware.ts) allows only
+// 10 impersonate calls per 15 minutes, keyed per-admin-userId, with no
+// NODE_ENV==='test' skip (unlike several other limiters in that file).
+// fx.adminId is shared across this whole file and is used for POST
+// /auth/impersonate in >10 tests, so tests further down the file exhaust its
+// bucket and get 429 instead of exercising the behaviour under test — a
+// self-starvation pattern structurally identical to the
+// contact-form-help-ticket.test.ts contactRateLimiter finding (BC-QA-042
+// category 5). Silently adding a test-env skip to the route's rate limiter
+// would be a production behaviour change and needs a real decision, so
+// instead (mirroring the pattern the file's own
+// "scopes the revocation to the caller" test already uses) mint a FRESH
+// admin — with its own rate-limit bucket — for tests that don't specifically
+// need fx.adminId's identity.
+async function createFreshImpersonatingAdmin(tag: string): Promise<{ id: string; email: string }> {
+  const email = `imp-admin-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@boomcard.bg`;
+  const hash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+  const admin = await prisma.user.create({
+    data: {
+      email,
+      passwordHash: hash,
+      firstName: 'Imp',
+      lastName: 'FreshAdmin',
+      role: 'ADMIN',
+      status: 'ACTIVE',
+      emailVerified: true,
+      phone: genTestPhone(),
+    },
+  });
+  const impersonatePartnerPermission = await prisma.permission.findUnique({
+    where: { key: 'impersonate.partner' },
+  });
+  if (!impersonatePartnerPermission) {
+    throw new Error('impersonate.partner permission not found — run seed-permissions first');
+  }
+  await prisma.userPermissionOverride.create({
+    data: {
+      userId: admin.id,
+      permissionId: impersonatePartnerPermission.id,
+      allow: true,
+    },
+  });
+  return { id: admin.id, email };
+}
+
 describe('Admin Impersonation', () => {
   let fx: Fixtures;
   const createdUserIds: string[] = [];
@@ -200,7 +278,15 @@ describe('Admin Impersonation', () => {
       expect(res.status).toBe(400);
     });
 
-    it('rejects impersonation of a non-PARTNER user with 400', async () => {
+    it('rejects impersonation of a non-PARTNER user when the caller lacks impersonate.user', async () => {
+      // AuthService.impersonate accepts targetPartnerUserId as a generic
+      // alias for targetUserId and derives the REQUIRED permission from the
+      // resolved target's actual role (PARTNER → impersonate.partner, USER →
+      // impersonate.user) — it has no separate "target type mismatch" 400
+      // validation. fx.adminId only holds impersonate.partner (see
+      // createFixtures), so resolving a USER target here correctly 403s as
+      // a permission denial, not a 400 (BC-QA-042 — the test previously
+      // expected a 400 this code path has never produced).
       const { accessToken } = await loginWeb(fx.adminEmail, ADMIN_PASSWORD);
 
       const res = await request(app)
@@ -208,7 +294,7 @@ describe('Admin Impersonation', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .send({ targetPartnerUserId: fx.regularUserId });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(403);
     });
 
     it('rejects impersonation of a SUSPENDED partner with 403', async () => {
@@ -395,7 +481,12 @@ describe('Admin Impersonation', () => {
     });
 
     it('rejects refresh when acting admin is downgraded from ADMIN to USER role', async () => {
-      const { accessToken } = await loginWeb(fx.adminEmail, ADMIN_PASSWORD);
+      // Fresh admin (own impersonateRateLimiter bucket) — fx.adminId's is
+      // exhausted by this point in the file (BC-QA-042, see
+      // createFreshImpersonatingAdmin's doc comment).
+      const downgradeAdmin = await createFreshImpersonatingAdmin('downgrade');
+      createdUserIds.push(downgradeAdmin.id);
+      const { accessToken } = await loginWeb(downgradeAdmin.email, ADMIN_PASSWORD);
 
       const impRes = await request(app)
         .post('/api/auth/impersonate')
@@ -406,7 +497,7 @@ describe('Admin Impersonation', () => {
 
       // Downgrade admin to USER role (this stamps rolesUpdatedAt)
       await prisma.user.update({
-        where: { id: fx.adminId },
+        where: { id: downgradeAdmin.id },
         data: { role: 'USER' },
       });
 
@@ -416,18 +507,15 @@ describe('Admin Impersonation', () => {
         .send({ refreshToken: impRefreshToken });
 
       expect(refreshRes.status).toBe(401);
-
-      // Restore admin for other tests
-      await prisma.user.update({
-        where: { id: fx.adminId },
-        data: { role: 'ADMIN' },
-      });
     });
   });
 
   describe('/auth/switch-account refuses impersonation tokens', () => {
     it('returns 400 when called with an impersonation session', async () => {
-      const { accessToken } = await loginWeb(fx.adminEmail, ADMIN_PASSWORD);
+      // Fresh admin — see the downgrade test above (BC-QA-042).
+      const switchAdmin = await createFreshImpersonatingAdmin('switch');
+      createdUserIds.push(switchAdmin.id);
+      const { accessToken } = await loginWeb(switchAdmin.email, ADMIN_PASSWORD);
 
       const impRes = await request(app)
         .post('/api/auth/impersonate')
@@ -446,7 +534,11 @@ describe('Admin Impersonation', () => {
 
   describe('Audit logging for impersonation events', () => {
     it('writes audit logs for both start and stop events', async () => {
-      const { accessToken } = await loginWeb(fx.adminEmail, ADMIN_PASSWORD);
+      // Fresh admin — see createFreshImpersonatingAdmin's doc comment
+      // (BC-QA-042).
+      const auditAdmin = await createFreshImpersonatingAdmin('audit');
+      createdUserIds.push(auditAdmin.id);
+      const { accessToken } = await loginWeb(auditAdmin.email, ADMIN_PASSWORD);
 
       const impRes = await request(app)
         .post('/api/auth/impersonate')
@@ -463,7 +555,7 @@ describe('Admin Impersonation', () => {
       // Verify START audit log
       const startAudit = await prisma.auditLog.findFirst({
         where: {
-          actorUserId: fx.adminId,
+          actorUserId: auditAdmin.id,
           action: 'admin.impersonate.start',
           objectId: fx.partnerUserId,
         },
@@ -480,7 +572,7 @@ describe('Admin Impersonation', () => {
       // Verify STOP audit log has matching objectType to START record
       const stopAudit = await prisma.auditLog.findFirst({
         where: {
-          actorUserId: fx.adminId,
+          actorUserId: auditAdmin.id,
           action: 'admin.impersonate.stop',
           objectId: fx.partnerUserId,
         },
@@ -567,13 +659,17 @@ describe('Admin Impersonation', () => {
 
   describe('Admin pre-impersonation refresh token revocation', () => {
     it('revokes the admin refresh token when supplied in the impersonate body', async () => {
+      // Fresh admin — see createFreshImpersonatingAdmin's doc comment
+      // (BC-QA-042).
+      const revokeAdmin = await createFreshImpersonatingAdmin('revoke');
+      createdUserIds.push(revokeAdmin.id);
       const { accessToken, refreshToken: adminRefresh } = await loginWeb(
-        fx.adminEmail,
+        revokeAdmin.email,
         ADMIN_PASSWORD,
       );
 
       const before = await prisma.refreshToken.findMany({
-        where: { userId: fx.adminId },
+        where: { userId: revokeAdmin.id },
         select: { token: true },
       });
       expect(before.some((r) => r.token === adminRefresh)).toBe(true);
@@ -585,7 +681,7 @@ describe('Admin Impersonation', () => {
       expect(impRes.status).toBe(200);
 
       const after = await prisma.refreshToken.findMany({
-        where: { userId: fx.adminId, token: adminRefresh },
+        where: { userId: revokeAdmin.id, token: adminRefresh },
       });
       expect(after.length).toBe(0);
 
@@ -609,8 +705,13 @@ describe('Admin Impersonation', () => {
       const hash = await bcrypt.hash(ADMIN_PASSWORD, 10);
 
       const bystanderEmail = mkEmail('bystander');
-      const callerEmail = mkEmail('caller');
 
+      // Bystander doesn't need impersonate.partner (it never calls
+      // /impersonate itself); caller does — use createFreshImpersonatingAdmin
+      // so it actually has the grant (the inline-created admins here
+      // previously had NO permission override at all, so `caller`'s own
+      // impersonate call always 403'd before this test could exercise the
+      // actual scoping behaviour under test — BC-QA-042).
       const [bystander, caller] = await Promise.all([
         prisma.user.create({
           data: {
@@ -624,23 +725,12 @@ describe('Admin Impersonation', () => {
           phone: genTestPhone(),
         },
         }),
-        prisma.user.create({
-          data: {
-            email: callerEmail,
-            passwordHash: hash,
-            firstName: 'Imp',
-            lastName: 'AdminC',
-            role: 'ADMIN',
-            status: 'ACTIVE',
-            emailVerified: true,
-          phone: genTestPhone(),
-        },
-        }),
+        createFreshImpersonatingAdmin('caller'),
       ]);
       createdUserIds.push(bystander.id, caller.id);
 
       const { refreshToken: bystanderRefresh } = await loginWeb(bystanderEmail, ADMIN_PASSWORD);
-      const { accessToken: callerAccess } = await loginWeb(callerEmail, ADMIN_PASSWORD);
+      const { accessToken: callerAccess } = await loginWeb(caller.email, ADMIN_PASSWORD);
 
       const impRes = await request(app)
         .post('/api/auth/impersonate')
@@ -659,11 +749,15 @@ describe('Admin Impersonation', () => {
 
   describe('Audit write failure handling', () => {
     it('rolls back impersonate start if audit write fails — no token revoked, no impersonation artifact', async () => {
-      const { accessToken, refreshToken: adminRefresh } = await loginWeb(fx.adminEmail, ADMIN_PASSWORD);
+      // Fresh admin — see createFreshImpersonatingAdmin's doc comment
+      // (BC-QA-042).
+      const auditFailAdmin = await createFreshImpersonatingAdmin('audit-fail-start');
+      createdUserIds.push(auditFailAdmin.id);
+      const { accessToken, refreshToken: adminRefresh } = await loginWeb(auditFailAdmin.email, ADMIN_PASSWORD);
 
       // Verify admin refresh token exists before the call
       const tokensBefore = await prisma.refreshToken.findMany({
-        where: { userId: fx.adminId, token: adminRefresh },
+        where: { userId: auditFailAdmin.id, token: adminRefresh },
       });
       expect(tokensBefore).toHaveLength(1);
 
@@ -688,7 +782,7 @@ describe('Admin Impersonation', () => {
 
         // CRITICAL: Verify rollback — admin's refresh token was NOT revoked
         const tokensAfter = await prisma.refreshToken.findMany({
-          where: { userId: fx.adminId, token: adminRefresh },
+          where: { userId: auditFailAdmin.id, token: adminRefresh },
         });
         expect(tokensAfter).toHaveLength(1);
         expect(tokensAfter[0].token).toBe(adminRefresh);
@@ -696,7 +790,7 @@ describe('Admin Impersonation', () => {
         // CRITICAL: Verify no audit log was written
         const auditLogs = await prisma.auditLog.findMany({
           where: {
-            actorUserId: fx.adminId,
+            actorUserId: auditFailAdmin.id,
             action: 'admin.impersonate.start',
             objectId: fx.partnerUserId,
           },
@@ -716,7 +810,11 @@ describe('Admin Impersonation', () => {
     });
 
     it('rolls back stop-impersonate if audit write fails — no token deleted, impersonation session survives', async () => {
-      const { accessToken } = await loginWeb(fx.adminEmail, ADMIN_PASSWORD);
+      // Fresh admin — see createFreshImpersonatingAdmin's doc comment
+      // (BC-QA-042).
+      const stopFailAdmin = await createFreshImpersonatingAdmin('audit-fail-stop');
+      createdUserIds.push(stopFailAdmin.id);
+      const { accessToken } = await loginWeb(stopFailAdmin.email, ADMIN_PASSWORD);
 
       // First, successfully start an impersonation
       const impRes = await request(app)
@@ -762,7 +860,7 @@ describe('Admin Impersonation', () => {
         // CRITICAL: Verify no audit log was written
         const auditLogs = await prisma.auditLog.findMany({
           where: {
-            actorUserId: fx.adminId,
+            actorUserId: stopFailAdmin.id,
             action: 'admin.impersonate.stop',
             objectId: fx.partnerUserId,
           },

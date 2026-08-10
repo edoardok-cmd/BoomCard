@@ -75,7 +75,10 @@ async function createTestFixtures(): Promise<TestFixtures> {
   });
 
   return {
-    superAdminToken: loginRes.body.token,
+    // Login response envelope is { success, message, data: { accessToken, ... } }
+    // (src/routes/auth.routes.ts POST /login) — .body.token does not exist
+    // (BC-QA-042).
+    superAdminToken: loginRes.body.data?.accessToken,
     userId: user.id,
     walletId: wallet.id,
   };
@@ -174,13 +177,34 @@ describe('Admin Transactions Audit Fixes (BC-ADMIN-AUDIT-FIX-007)', () => {
     let userId: string;
 
     beforeEach(async () => {
-      // Create a partner
+      // Create a partner. Partner.userId is a required relation to a User
+      // row (a partner account IS a User with role: 'PARTNER') — the test
+      // previously omitted it entirely, which fails at the Prisma layer
+      // before the route under test is ever reached (BC-QA-042).
+      const partnerUserHash = await bcrypt.hash(PASSWORD, 10);
+      const partnerUser = await prisma.user.create({
+        data: {
+          email: `partner-owner-${Date.now()}@test.com`,
+          passwordHash: partnerUserHash,
+          firstName: 'Partner',
+          lastName: 'Owner',
+          role: 'PARTNER',
+          status: 'ACTIVE',
+          emailVerified: true,
+          phone: genTestPhone(),
+        },
+      });
       const partner = await prisma.partner.create({
         data: {
+          userId: partnerUser.id,
           businessName: `Test Partner ${Date.now()}`,
           email: `partner-${Date.now()}@test.com`,
           status: 'ACTIVE',
           verifiedAt: new Date(),
+          // category is a required Partner field (BC-QA-042 — the test was
+          // missing it entirely, which fails at the Prisma layer before the
+          // route under test is ever reached).
+          category: 'Restaurant',
         },
       });
       partnerId = partner.id;

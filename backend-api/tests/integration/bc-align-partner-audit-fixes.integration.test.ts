@@ -43,7 +43,10 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
     const loginRes = await request(app)
       .post('/api/auth/login')
       .send({ email: adminEmail, password: 'AdminPass123!', clientType: 'web' });
-    adminToken = loginRes.body.data?.token || '';
+    // Login response envelope is { success, message, data: { accessToken, ... } }
+    // (src/routes/auth.routes.ts POST /login) — .data.token does not exist
+    // (BC-QA-042).
+    adminToken = loginRes.body.data?.accessToken || '';
   });
 
   afterAll(async () => {
@@ -71,6 +74,7 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
       data: {
         userId: testUser.id,
         businessName: 'Test Partner Business',
+        category: 'Restaurant',
         status: PartnerStatus.ACTIVE,
         verifiedAt: new Date(),
       },
@@ -79,11 +83,18 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
 
   describe('Fix 1: Pending Changes Approval Field Validation', () => {
     it('should approve ONLY whitelisted fields (description, descriptionBg, amenities, openingHours)', async () => {
-      // Arrange: Set pendingChanges with allowed fields
+      // Arrange: Set pendingChanges with allowed fields. Partner.amenities is
+      // a String? column, not a native array (see POST /partners/:id which
+      // JSON.stringifies amenitiesData before writing) — pendingChanges here
+      // is written directly via Prisma, bypassing that normal write path, so
+      // it must already hold the same on-disk representation a real
+      // partner-facing update would have produced, or POST /:id/approve's
+      // straight passthrough into `prisma.partner.update` 400s on a native
+      // array where a string is expected (BC-QA-042).
       const pendingData = {
         description: 'Updated description',
         descriptionBg: 'Обновено описание',
-        amenities: ['parking', 'wifi'],
+        amenities: JSON.stringify(['parking', 'wifi']),
         openingHours: '09:00-18:00',
       };
 
@@ -110,7 +121,7 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
       });
       expect(updated?.description).toBe('Updated description');
       expect(updated?.descriptionBg).toBe('Обновено описание');
-      expect(updated?.amenities).toEqual(['parking', 'wifi']);
+      expect(updated?.amenities).toBe(JSON.stringify(['parking', 'wifi']));
       expect(updated?.openingHours).toBe('09:00-18:00');
       expect(updated?.pendingChanges).toBeNull();
     });
@@ -250,9 +261,11 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
         const linkAfter = await prisma.activationLink.findUnique({
           where: { token: link.token },
         });
-        expect(linkAfter?.consumedAt).toBeNull(
-          `Token should not be consumed for weak password: ${weakPassword}`
-        );
+        // Jest's .toBeNull() takes no argument — the message here was
+        // silently turned into a matcher-error ("this matcher must not have
+        // an expected argument") on every failure, masking the real
+        // assertion (BC-QA-042).
+        expect(linkAfter?.consumedAt).toBeNull();
       }
     });
   });
@@ -279,6 +292,7 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
         data: {
           userId: pendingUser.id,
           businessName: 'Pending Partner',
+          category: 'Restaurant',
           status: PartnerStatus.PENDING,
           verifiedAt: null, // Not verified
         },
@@ -302,7 +316,7 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
 
       // Assert: Should get "link sent" error message
       expect(res.status).toBe(403);
-      expect(res.body.message).toContain('Активационния линк е изпратен');
+      expect(res.body.error).toContain('Активационния линк е изпратен');
     });
 
     it('should return "awaiting activation" error when NO unconsumed link exists', async () => {
@@ -326,6 +340,7 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
         data: {
           userId: nolinkUser.id,
           businessName: 'NoLink Partner',
+          category: 'Restaurant',
           status: PartnerStatus.PENDING,
           verifiedAt: null, // Not verified
           // No activation link issued
@@ -343,7 +358,7 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
 
       // Assert: Should get generic "awaiting activation" error
       expect(res.status).toBe(403);
-      expect(res.body.message).toContain('очаква активиране');
+      expect(res.body.error).toContain('очаква активиране');
     });
 
     it('should return "link sent" error when link is expired but unconsumed', async () => {
@@ -367,6 +382,7 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
         data: {
           userId: expiredLinkUser.id,
           businessName: 'ExpiredLink Partner',
+          category: 'Restaurant',
           status: PartnerStatus.PENDING,
           verifiedAt: null,
         },
@@ -395,7 +411,7 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
 
       // Assert: Should still get "link sent" message (unconsumed link exists, even if expired)
       expect(res.status).toBe(403);
-      expect(res.body.message).toContain('Активационния линк е изпратен');
+      expect(res.body.error).toContain('Активационния линк е изпратен');
     });
 
     it('should return "awaiting activation" when link was consumed (verifiedAt=null but no unconsumed link)', async () => {
@@ -421,6 +437,7 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
         data: {
           userId: consumedLinkUser.id,
           businessName: 'ConsumedLink Partner',
+          category: 'Restaurant',
           status: PartnerStatus.PENDING,
           verifiedAt: null, // Edge case: verifiedAt is null
         },
@@ -449,7 +466,7 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
 
       // Assert: Should get "awaiting activation" (no UNCONSUMED link)
       expect(res.status).toBe(403);
-      expect(res.body.message).toContain('очаква активиране');
+      expect(res.body.error).toContain('очаква активиране');
     });
   });
 });

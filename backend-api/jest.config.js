@@ -81,4 +81,21 @@ module.exports = {
   clearMocks: true,
   testTimeout: 30000, // 30 seconds for integration tests
   verbose: true,
+  // BC-QA-042 — OOM at full-suite scale. `npx jest tests/integration
+  // --runInBand` (119 files) crashes with "FATAL ERROR: Ineffective
+  // mark-compacts near heap limit" before completing: even with
+  // maxWorkers:1, every file's ts-jest-compiled module graph + the Express
+  // app + Prisma client instance (jest.resetModules() per file, see
+  // tests/setup.ts) accumulates on the single long-lived worker process's
+  // heap across all 119 files with nothing to reclaim it until the process
+  // exits. workerIdleMemoryLimit makes Jest restart that worker once its
+  // RSS crosses the threshold between files (it checks after each test
+  // file, whether or not maxWorkers is 1), giving V8 a clean heap
+  // periodically instead of accumulating for the full run. This is
+  // test-only config; it does not change production behaviour or care
+  // about --runInBand vs default. Still batch large runs (~10-13 files) for
+  // day-to-day use — this raises how big a single run can get before OOMing,
+  // it does not claim to make the full 119-file suite complete in one
+  // process (unverified at that scale; verify before relying on it).
+  workerIdleMemoryLimit: '1GB',
 };

@@ -32,9 +32,10 @@
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import request from 'supertest';
 import bcrypt from 'bcrypt';
-import app from '../../src/server';
+import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { genTestPhone } from '../helpers/test-utils';
+import { invalidateCurrencyDisplayCache } from '../../src/utils/currencyDisplay';
 
 const TEST_ADMIN_EMAIL = `admin-fix012-${Date.now()}@boomcard.bg`;
 const TEST_ADMIN_PASSWORD = 'AdminPass123!';
@@ -122,6 +123,12 @@ describe('BC-ADMIN-AUDIT-FIX-012 — Currency Display Mode Endpoint', () => {
       create: { key: 'currency_transition_window_open', value: 'true' },
       update: { value: 'true' },
     });
+    // isCurrencyTransitionWindowOpen() caches getSystemSettingStr() for 60s;
+    // the cache is normally invalidated by the PUT /system route, but this
+    // test writes the SystemSetting row directly via Prisma, bypassing that
+    // route entirely — invalidate explicitly or the GET below can read a
+    // stale cached value from an earlier test in this file (BC-QA-042).
+    invalidateCurrencyDisplayCache();
 
     const res = await request(app)
       .get('/api/admin/settings/currency-display-mode')
@@ -144,6 +151,8 @@ describe('BC-ADMIN-AUDIT-FIX-012 — Currency Display Mode Endpoint', () => {
       create: { key: 'currency_transition_window_open', value: 'false' },
       update: { value: 'false' },
     });
+    // See the cache-invalidation note above (BC-QA-042).
+    invalidateCurrencyDisplayCache();
 
     const res = await request(app)
       .get('/api/admin/settings/currency-display-mode')
@@ -302,6 +311,19 @@ describe('BC-ADMIN-AUDIT-FIX-012 — Currency Display Mode Endpoint', () => {
     await prisma.systemSettingHistory.deleteMany({
       where: { key: 'currency_transition_window_open' },
     });
+
+    // The route only writes a history row when the value actually CHANGES
+    // (adminSettings.routes.ts PUT /system compares against the pre-write
+    // value). An earlier test in this file already left the setting at
+    // 'true', so PUTting 'true' again below would be a no-op write with no
+    // history row — force a real transition by setting it to 'false' first
+    // (BC-QA-042).
+    await prisma.systemSetting.upsert({
+      where: { key: 'currency_transition_window_open' },
+      create: { key: 'currency_transition_window_open', value: 'false' },
+      update: { value: 'false' },
+    });
+    invalidateCurrencyDisplayCache();
 
     // Make a change
     await request(app)

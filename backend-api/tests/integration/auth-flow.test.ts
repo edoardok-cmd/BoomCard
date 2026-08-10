@@ -30,6 +30,18 @@ describe('Authentication Flow (F01)', () => {
     for (const id of createdUserIds) {
       await cleanupTestUser(id);
     }
+    // BC-QA-042 review round 1 (HIGH): the last of the 3
+    // "receipts[].totalAmount" data-export tests below sets
+    // currency_transition_window_open to 'false' in its own `finally` and
+    // nothing restores it afterward — the setting is a global SystemSetting
+    // row (not scoped to this file's fixtures), so it leaks into whatever
+    // file runs next in the same batch (e.g.
+    // admin-transactions-audit-fixes.test.ts's dual-currency assertions).
+    // Restore the documented default (OPEN/true — currencyDisplay.ts:
+    // "Bulgaria is currently inside the BGN→EUR transition window")
+    // unconditionally at the file boundary, regardless of which of the 3
+    // tests actually ran or how they exited.
+    await setCurrencyWindow(true).catch(() => {});
   });
 
   // ─── Registration ─────────────────────────────────────────────
@@ -69,11 +81,31 @@ describe('Authentication Flow (F01)', () => {
     });
 
     it('should record consent timestamps when acceptTerms is true', async () => {
-      const { user } = await createTestUser({ acceptTerms: true });
-      createdUserIds.push(user.id);
+      // Terms and Privacy are two INDEPENDENT consents (spec §2.3,
+      // AuthService.register) — each timestamp is gated on its own request
+      // flag, not both driven by acceptTerms. createTestUser()
+      // (tests/helpers/test-utils.ts) has no acceptPrivacy override and
+      // never sends it, so privacyAcceptedAt was always null through that
+      // helper — register directly here so both consents are actually
+      // exercised (BC-QA-042).
+      const email = `consent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@boomcard.bg`;
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({
+          email,
+          password: 'TestPass123!',
+          firstName: 'Test',
+          lastName: 'User',
+          phone: genTestPhone(),
+          acceptTerms: true,
+          acceptPrivacy: true,
+        });
+      expect(res.status).toBe(201);
+      const userId = res.body.data.user.id;
+      createdUserIds.push(userId);
 
       const dbUser = await prisma.user.findUnique({
-        where: { id: user.id },
+        where: { id: userId },
         select: {
           termsAcceptedAt: true,
           privacyAcceptedAt: true,
@@ -116,12 +148,29 @@ describe('Authentication Flow (F01)', () => {
           email,
           password: 'AnotherPass123!',
           firstName: 'Duplicate',
+          // lastName is required unconditionally by registerValidation
+          // (auth.validator.ts) — the payload was still missing it even
+          // after this round's other required-field fixes (BC-QA-042
+          // review round 1, HIGH).
+          lastName: 'Partner',
           phone: genTestPhone(),
           acceptTerms: true,
+          // acceptPrivacy, businessInfo.participationLevel, and
+          // businessInfo.{latitude,longitude} are all now required for
+          // accountType:'partner' registrations (AuthService.register /
+          // BC-PARTNER-FU1) — the test's payload predates those additions
+          // and was 400ing before ever reaching the assertions under test
+          // (BC-QA-042).
+          acceptPrivacy: true,
           accountType: 'partner',
           businessInfo: {
             businessName: 'Test Bistro',
             businessCategory: 'restaurants',
+            participationLevel: 'basic',
+            latitude: 42.6977,
+            longitude: 23.3219,
+            address: '1 Vitosha Blvd',
+            city: 'Sofia',
           },
         });
 
@@ -323,12 +372,20 @@ describe('Authentication Flow (F01)', () => {
           lastName: 'Owner',
           phone: genTestPhone(),
           acceptTerms: true,
+          // See the "share the email of an existing customer" test above
+          // for why these fields are required (BC-QA-042).
+          acceptPrivacy: true,
           accountType: 'partner',
           businessInfo: {
             businessName: 'Boom Cafe',
             businessNameBg: 'Бум Кафе',
             businessCategory: 'cafes',
             website: 'https://boom.example',
+            participationLevel: 'basic',
+            latitude: 42.6977,
+            longitude: 23.3219,
+            address: '1 Vitosha Blvd',
+            city: 'Sofia',
           },
         });
 
@@ -579,6 +636,14 @@ describe('Authentication Flow (F01)', () => {
         where: { id: user.id },
         data: { role: 'PARTNER', status: 'ACTIVE' },
       });
+      // AuthService.login 403s role:'PARTNER' logins with no matching
+      // Partner row ("Partner account configuration is incomplete") — the
+      // test only flipped the User.role, never created the Partner record,
+      // so login itself was rejected before the mobile-client-guard code
+      // under test ever ran (BC-QA-042).
+      await prisma.partner.create({
+        data: { userId: user.id, businessName: 'Mobile Guard Test Partner', category: 'Restaurant', status: 'ACTIVE', email, verifiedAt: new Date() },
+      });
 
       const res = await request(app)
         .post('/api/auth/login')
@@ -667,6 +732,11 @@ describe('Authentication Flow (F01)', () => {
         where: { id: user.id },
         data: { role: 'PARTNER', status: 'ACTIVE' },
       });
+      // See the "rejects PARTNER login with clientType=mobile" note above
+      // (BC-QA-042) — a role:'PARTNER' User needs a matching Partner row.
+      await prisma.partner.create({
+        data: { userId: user.id, businessName: 'Mobile Guard Test Partner', category: 'Restaurant', status: 'ACTIVE', email, verifiedAt: new Date() },
+      });
 
       const res = await request(app)
         .post('/api/auth/login')
@@ -684,6 +754,11 @@ describe('Authentication Flow (F01)', () => {
       await prisma.user.update({
         where: { id: user.id },
         data: { role: 'PARTNER', status: 'ACTIVE' },
+      });
+      // See the "rejects PARTNER login with clientType=mobile" note above
+      // (BC-QA-042) — a role:'PARTNER' User needs a matching Partner row.
+      await prisma.partner.create({
+        data: { userId: user.id, businessName: 'Mobile Guard Test Partner', category: 'Restaurant', status: 'ACTIVE', email, verifiedAt: new Date() },
       });
 
       const loginRes = await request(app)
@@ -1007,7 +1082,9 @@ describe('Authentication Flow (F01)', () => {
       const sub = await prisma.subscription.create({
         data: {
           userId: user.id,
-          plan: 'PREMIUM',
+          // SubscriptionPlan enum has no 'PREMIUM' value (only
+          // PREMIUM_WEEKLY | BASIC | PREMIUM_MONTHLY) — BC-QA-042.
+          plan: 'PREMIUM_MONTHLY',
           status: 'ACTIVE',
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),

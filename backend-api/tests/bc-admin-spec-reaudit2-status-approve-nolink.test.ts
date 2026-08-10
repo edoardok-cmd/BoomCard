@@ -33,7 +33,14 @@ jest.mock('../src/services/email.service', () => ({
  */
 function generateTestToken(userId: string, role: string): string {
   const jwt = require('jsonwebtoken');
-  return jwt.sign({ userId, role }, process.env.JWT_SECRET || 'test-secret', {
+  // authenticate() (src/middleware/auth.middleware.ts) does `req.user = decoded`
+  // verbatim and every route reads `req.user!.id` — a payload keyed `userId`
+  // leaves req.user.id undefined. That's harmless for routes whose only use of
+  // the actor id is a detached (fire-and-forget) writeAudit() call, but it 400s
+  // any route that uses it SYNCHRONOUSLY in a required DB write (e.g. POST
+  // /:id/reject's authorId) with a confusing Prisma "relation is missing" error
+  // (BC-QA-042).
+  return jwt.sign({ id: userId, role }, process.env.JWT_SECRET || 'test-secret', {
     expiresIn: '24h',
   });
 }
@@ -64,7 +71,34 @@ describe('BC-ADMIN-SPEC-REAUDIT2-STATUS-APPROVE-NOLINK-2', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    // createTestApp() (tests/setup.ts) returns the plain Express app, not a
+    // listening server — supertest's persistent-server wrapper owns the
+    // actual http.Server and closes it at the file boundary. app.close is
+    // not a function; calling it here was a stale test-infra bug (BC-QA-042).
+    //
+    // BC-QA-042 task-r1 (HIGH): this file's beforeAll creates an ACTIVE
+    // role:'SUPER_ADMIN' fixture (sa-status-approve-*) but this afterAll
+    // never deleted it — the exact same class of bug fixed in
+    // sa-guard-races.test.ts's afterAll. Left behind, that stray ACTIVE
+    // SUPER_ADMIN silently supplies an extra "remaining active" count to
+    // any later file in the same jest process that asserts a "sole ACTIVE
+    // admin" guard scenario (bc-admin-reaudit2-lastsa-revoke-guard.test.ts).
+    if (superAdminId) {
+      await prisma.userAdminRole.deleteMany({ where: { userId: superAdminId } });
+      // This fixture SUPER_ADMIN exercises POST /:id/reject in one of the
+      // tests below, which creates a PartnerRequestNote row with a
+      // non-nullable, non-cascading `authorId` FK — deleting the User
+      // straight away 500s the whole file's afterAll with a
+      // ForeignKeyConstraintViolation (PartnerRequestNote_authorId_fkey),
+      // which aborts jest's suite teardown and, observed in the full
+      // touched-file batch, can leave the fixture behind anyway. Also clear
+      // the (nullable, but still real FK) AuditLog/PartnerStatusChange
+      // actor references this admin's actions wrote.
+      await prisma.partnerRequestNote.deleteMany({ where: { authorId: superAdminId } });
+      await prisma.partnerStatusChange.deleteMany({ where: { changedById: superAdminId } });
+      await prisma.auditLog.deleteMany({ where: { actorUserId: superAdminId } });
+      await prisma.user.deleteMany({ where: { id: superAdminId } });
+    }
     await prisma.$disconnect();
   });
 
@@ -91,13 +125,14 @@ describe('BC-ADMIN-SPEC-REAUDIT2-STATUS-APPROVE-NOLINK-2', () => {
           userId: user.id,
           email: `${user.id}@partner.test`,
           status: 'PENDING',
+          category: 'Restaurant',
           requestStatus: PartnerRequestStatus.NEW,
         },
       });
 
       // Advance from NEW to COMMUNICATION
       let res = await request(app)
-        .patch(`/api/admin/partners/${partner.id}/status`)
+        .patch(`/api/admin/partner-requests/${partner.id}/status`)
         .set('Authorization', `Bearer ${superAdminToken}`)
         .send({ requestStatus: 'COMMUNICATION' });
       expect(res.status).toBe(200);
@@ -105,7 +140,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-STATUS-APPROVE-NOLINK-2', () => {
 
       // Advance from COMMUNICATION to NEGOTIATION
       res = await request(app)
-        .patch(`/api/admin/partners/${partner.id}/status`)
+        .patch(`/api/admin/partner-requests/${partner.id}/status`)
         .set('Authorization', `Bearer ${superAdminToken}`)
         .send({ requestStatus: 'NEGOTIATION' });
       expect(res.status).toBe(200);
@@ -113,7 +148,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-STATUS-APPROVE-NOLINK-2', () => {
 
       // Advance from NEGOTIATION to ONBOARDING
       res = await request(app)
-        .patch(`/api/admin/partners/${partner.id}/status`)
+        .patch(`/api/admin/partner-requests/${partner.id}/status`)
         .set('Authorization', `Bearer ${superAdminToken}`)
         .send({ requestStatus: 'ONBOARDING' });
       expect(res.status).toBe(200);
@@ -142,13 +177,14 @@ describe('BC-ADMIN-SPEC-REAUDIT2-STATUS-APPROVE-NOLINK-2', () => {
           userId: user.id,
           email: `${user.id}@partner.test`,
           status: 'PENDING',
+          category: 'Restaurant',
           requestStatus: PartnerRequestStatus.ONBOARDING,
         },
       });
 
       // Attempt to transition from ONBOARDING to APPROVED via PATCH /status
       const res = await request(app)
-        .patch(`/api/admin/partners/${partner.id}/status`)
+        .patch(`/api/admin/partner-requests/${partner.id}/status`)
         .set('Authorization', `Bearer ${superAdminToken}`)
         .send({ requestStatus: 'APPROVED' });
 
@@ -183,13 +219,14 @@ describe('BC-ADMIN-SPEC-REAUDIT2-STATUS-APPROVE-NOLINK-2', () => {
           userId: user.id,
           email: `${user.id}@partner.test`,
           status: 'PENDING',
+          category: 'Restaurant',
           requestStatus: PartnerRequestStatus.ONBOARDING,
         },
       });
 
       // Approve via POST /:id/approve — should succeed and issue link
       const res = await request(app)
-        .post(`/api/admin/partners/${partner.id}/approve`)
+        .post(`/api/admin/partner-requests/${partner.id}/approve`)
         .set('Authorization', `Bearer ${superAdminToken}`)
         .send({});
 
@@ -230,15 +267,28 @@ describe('BC-ADMIN-SPEC-REAUDIT2-STATUS-APPROVE-NOLINK-2', () => {
           userId: user.id,
           email: `${user.id}@partner.test`,
           status: 'PENDING',
+          category: 'Restaurant',
           requestStatus: PartnerRequestStatus.ONBOARDING,
         },
       });
 
-      // Reject via PATCH /status — should succeed
-      const res = await request(app)
-        .patch(`/api/admin/partners/${partner.id}/status`)
+      // PATCH /:id/status explicitly 400s requestStatus:'REJECTED' and
+      // directs callers to POST /:id/reject instead ("it handles the full
+      // rejection workflow including status flip, audit trail, and link
+      // invalidation") — the test's premise of rejecting via PATCH is stale
+      // relative to that now-dedicated endpoint (BC-QA-042). Assert the
+      // documented redirect, then verify the real reject path.
+      const patchRes = await request(app)
+        .patch(`/api/admin/partner-requests/${partner.id}/status`)
         .set('Authorization', `Bearer ${superAdminToken}`)
         .send({ requestStatus: 'REJECTED' });
+      expect(patchRes.status).toBe(400);
+      expect(patchRes.body.error).toContain('POST /:id/reject');
+
+      const res = await request(app)
+        .post(`/api/admin/partner-requests/${partner.id}/reject`)
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({ reason: 'Does not meet onboarding criteria' });
 
       expect(res.status).toBe(200);
       expect(res.body.partner.requestStatus).toBe('REJECTED');

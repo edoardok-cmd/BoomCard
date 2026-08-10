@@ -80,11 +80,22 @@ async function createTestFixtures(): Promise<TestFixtures> {
     },
   });
 
-  // Assign cashback.write permission to regular admin
-  await prisma.adminPermission.create({
+  // Assign cashback.write permission to regular admin. There is no
+  // `AdminPermission` Prisma model — permissions are granted per-user via
+  // UserPermissionOverride against the Permission table (BC-QA-042; the
+  // AdminPermission call here referenced a model that does not exist in the
+  // schema and threw before ever reaching the route under test).
+  const cashbackWritePermission = await prisma.permission.findUnique({
+    where: { key: 'cashback.write' },
+  });
+  if (!cashbackWritePermission) {
+    throw new Error('cashback.write permission not found — run seed-permissions first');
+  }
+  await prisma.userPermissionOverride.create({
     data: {
       userId: regularAdmin.id,
-      permission: 'cashback.write',
+      permissionId: cashbackWritePermission.id,
+      allow: true,
     },
   });
 
@@ -124,7 +135,6 @@ async function createTestFixtures(): Promise<TestFixtures> {
       userId: user.id,
       plan: 'PREMIUM_WEEKLY',
       status: 'ACTIVE',
-      startDate: new Date(),
       currentPeriodStart: new Date(),
       currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days in future
     },
@@ -136,6 +146,10 @@ async function createTestFixtures(): Promise<TestFixtures> {
       walletId: wallet.id,
       type: 'CASHBACK_CREDIT',
       amount: 50,
+      // balanceBefore/balanceAfter are required WalletTransaction fields —
+      // the test omitted them entirely (BC-QA-042).
+      balanceBefore: 0,
+      balanceAfter: 50,
       status: 'COMPLETED',
       cashbackStatus: 'CLEARED',
       cashbackExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -144,8 +158,11 @@ async function createTestFixtures(): Promise<TestFixtures> {
   });
 
   return {
-    superAdminToken: superAdminLoginRes.body.token,
-    regularAdminToken: regularAdminLoginRes.body.token,
+    // Login response envelope is { success, message, data: { accessToken, ... } }
+    // (src/routes/auth.routes.ts POST /login) — .body.token does not exist
+    // (BC-QA-042).
+    superAdminToken: superAdminLoginRes.body.data?.accessToken,
+    regularAdminToken: regularAdminLoginRes.body.data?.accessToken,
     userId: user.id,
     walletId: wallet.id,
     entryId: entry.id,
@@ -179,7 +196,10 @@ describe('Admin Cashback Audit Fixes (BC-ADMIN-AUDIT-FIX-004)', () => {
       },
     });
     for (const user of adminUsers) {
-      await prisma.adminPermission.deleteMany({ where: { userId: user.id } });
+      // userPermissionOverride rows cascade-delete with the user
+      // (onDelete: Cascade), but clean them up explicitly for clarity/symmetry
+      // with the create above.
+      await prisma.userPermissionOverride.deleteMany({ where: { userId: user.id } });
       await prisma.user.delete({ where: { id: user.id } }).catch(() => {});
     }
     // Cleanup test user
@@ -250,7 +270,6 @@ describe('Admin Cashback Audit Fixes (BC-ADMIN-AUDIT-FIX-004)', () => {
           userId: failedPaymentUser.id,
           plan: 'PREMIUM_WEEKLY',
           status: 'FAILED_PAYMENT',
-          startDate: new Date(),
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() - 1000), // Expired
         },
@@ -263,6 +282,9 @@ describe('Admin Cashback Audit Fixes (BC-ADMIN-AUDIT-FIX-004)', () => {
           walletId: failedWallet.id,
           type: 'CASHBACK_CREDIT',
           amount: 100,
+          // balanceBefore/balanceAfter are required (BC-QA-042).
+          balanceBefore: 0,
+          balanceAfter: 100,
           status: 'COMPLETED',
           cashbackStatus: 'CLEARED',
           cashbackExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -292,7 +314,6 @@ describe('Admin Cashback Audit Fixes (BC-ADMIN-AUDIT-FIX-004)', () => {
           userId: noIbanUser.id,
           plan: 'PREMIUM_WEEKLY',
           status: 'ACTIVE',
-          startDate: new Date(),
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
@@ -305,6 +326,9 @@ describe('Admin Cashback Audit Fixes (BC-ADMIN-AUDIT-FIX-004)', () => {
           walletId: noIbanWallet.id,
           type: 'CASHBACK_CREDIT',
           amount: 100,
+          // balanceBefore/balanceAfter are required (BC-QA-042).
+          balanceBefore: 0,
+          balanceAfter: 100,
           status: 'COMPLETED',
           cashbackStatus: 'CLEARED',
           cashbackExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -320,6 +344,9 @@ describe('Admin Cashback Audit Fixes (BC-ADMIN-AUDIT-FIX-004)', () => {
           walletId: eligibleWallet.id,
           type: 'CASHBACK_CREDIT',
           amount: 75,
+          // balanceBefore/balanceAfter are required (BC-QA-042).
+          balanceBefore: 0,
+          balanceAfter: 75,
           status: 'COMPLETED',
           cashbackStatus: 'CLEARED',
           cashbackExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -406,7 +433,15 @@ describe('Admin Cashback Audit Fixes (BC-ADMIN-AUDIT-FIX-004)', () => {
 
   describe('DEFECT C: Snapshot delete with tolerance window', () => {
     it('should delete snapshot when timestamp matches exactly', async () => {
-      const baseDate = new Date();
+      // The route 409s any targetDate <= now (only future-scheduled snapshots
+      // may be cancelled). `new Date()` with seconds/ms zeroed FLOORS to the
+      // current minute, which is always <= the real "now" the route computes
+      // a moment later — so the exact-match case here was unconditionally
+      // hitting the past-snapshot guard, never actually exercising the
+      // exact-match delete path (BC-QA-042). Use a definite few-minutes-out
+      // future timestamp instead, still with a clean (no sub-second) time so
+      // the "matches exactly" ISO round-trip is genuinely exact.
+      const baseDate = new Date(Date.now() + 5 * 60 * 1000);
       baseDate.setSeconds(0, 0); // Clear seconds and ms for clean time
 
       // Create a rate snapshot

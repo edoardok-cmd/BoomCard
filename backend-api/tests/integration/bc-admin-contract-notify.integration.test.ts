@@ -19,6 +19,7 @@ import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { UserStatus, PartnerStatus } from '@prisma/client';
 import { genTestPhone } from '../helpers/test-utils';
+import { drainDetached } from '../../src/utils/detach';
 
 interface TestContext {
   adminUser: any;
@@ -119,6 +120,14 @@ describe('BC-ADMIN-SPEC-REAUDIT-CONTRACT-NOTIFY: Contract Change Notifications',
       expect(updateRes.body.success).toBe(true);
       expect(updateRes.body.data.discountRate).toBe(newDiscountRate);
 
+      // notifyPartnerContractChange is fired via detach() (fire-and-forget —
+      // src/routes/partners.routes.ts PUT /:id), so it is not guaranteed to
+      // have written the Notification row by the time the PUT response
+      // returns. Await the same detached-work drain tests/setup.ts uses
+      // between tests, or this assertion races the write (BC-QA-042 —
+      // flaky, not deterministically red/green).
+      await drainDetached();
+
       // Assert: notification was created for the partner
       const notifications = await prisma.notification.findMany({
         where: {
@@ -141,7 +150,12 @@ describe('BC-ADMIN-SPEC-REAUDIT-CONTRACT-NOTIFY: Contract Change Notifications',
       // Assert: notification does NOT contain raw percentage values (spec §11.3)
       expect(contractNotif?.message).not.toMatch(/\d+%/);
       expect(contractNotif?.data).toBeDefined();
-      const data = (contractNotif?.data || {}) as Record<string, unknown>;
+      // notification.data is persisted as a JSON string (Notification.data is a
+      // Prisma String column, written via JSON.stringify in
+      // notification.service.ts#createNotification) — parse it rather than
+      // casting the raw string, which always made every property read
+      // `undefined` (BC-QA-042).
+      const data = JSON.parse(contractNotif?.data || '{}') as Record<string, unknown>;
       expect(data.fieldChanged).toBe('commission rate');
     });
 
@@ -247,6 +261,10 @@ describe('BC-ADMIN-SPEC-REAUDIT-CONTRACT-NOTIFY: Contract Change Notifications',
 
       expect(updateRes.status).toBe(200);
 
+      // See the drainDetached() note above the first test in this file
+      // (BC-QA-042) — notifyPartnerContractChange is fire-and-forget.
+      await drainDetached();
+
       // Assert: notification contains business name in message and data
       const notifications = await prisma.notification.findMany({
         where: {
@@ -261,7 +279,8 @@ describe('BC-ADMIN-SPEC-REAUDIT-CONTRACT-NOTIFY: Contract Change Notifications',
       expect(contractNotif).toBeDefined();
       expect(contractNotif?.message).toContain(uniqueName);
 
-      const data = (contractNotif?.data || {}) as Record<string, unknown>;
+      // See the JSON.parse note above — notification.data is a JSON string.
+      const data = JSON.parse(contractNotif?.data || '{}') as Record<string, unknown>;
       expect(data.businessName).toBe(uniqueName);
     });
   });

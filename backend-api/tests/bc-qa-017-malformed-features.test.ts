@@ -107,6 +107,15 @@ describe('BC-QA-017: Malformed JSON in plan features', () => {
         update: {
           features: 'feature1;feature2;feature3',
           featuresBg: 'не_валидна;структура',
+          // BC-QA-042: a prior run's afterAll flips isActive/cashbackRate to
+          // simulate teardown (see below) but the shared MALFORMED_TEST plan
+          // row survives across runs (upsert, not delete). Without resetting
+          // these on the update path too, a rerun inherits the PREVIOUS run's
+          // torn-down state (isActive:false / cashbackRate stale) and every
+          // assertion reading through the live isActive:true lookup silently
+          // sees a different row than intended.
+          isActive: true,
+          cashbackRate: 5,
         },
       });
     });
@@ -124,7 +133,10 @@ describe('BC-QA-017: Malformed JSON in plan features', () => {
           data: { isActive: false },
         });
       }
-      await app.close();
+      // createTestApp() (tests/setup.ts) returns the plain Express app, not
+      // a listening server — supertest's persistent-server wrapper owns the
+      // actual http.Server and closes it at the file boundary. app.close is
+      // not a function; calling it here was a stale test-infra bug (BC-QA-042).
     });
 
     it('should return empty features array when plan features are malformed', async () => {
@@ -151,18 +163,31 @@ describe('BC-QA-017: Malformed JSON in plan features', () => {
     beforeAll(async () => {
       app = await createTestApp();
 
-      // Update the test plan with malformed features
+      // Update the test plan with malformed features. Also reset
+      // isActive/cashbackRate/stickerBonus: the first describe block's own
+      // afterAll deactivates this shared MALFORMED_TEST row (isActive:
+      // false) once its tests finish, and describe blocks in this file run
+      // strictly sequentially — so by the time this beforeAll runs, the row
+      // is already isActive:false and every getCardBenefits() /
+      // getPlanBenefits() lookup (which filters on isActive: true) silently
+      // finds nothing and falls back to 0 (BC-QA-042).
       await prisma.plan.updateMany({
         where: { planCode: 'MALFORMED_TEST' },
         data: {
           features: 'malformed;json;data',
           featuresBg: 'невалидни;данни',
+          isActive: true,
+          cashbackRate: 5,
+          stickerBonus: 10,
         },
       });
     });
 
     afterAll(async () => {
-      await app.close();
+      // createTestApp() (tests/setup.ts) returns the plain Express app, not
+      // a listening server — supertest's persistent-server wrapper owns the
+      // actual http.Server and closes it at the file boundary. app.close is
+      // not a function; calling it here was a stale test-infra bug (BC-QA-042).
     });
 
     it('should return empty features arrays when card plan has malformed data', async () => {
@@ -193,7 +218,10 @@ describe('BC-QA-017: Malformed JSON in plan features', () => {
     });
 
     afterAll(async () => {
-      await app.close();
+      // createTestApp() (tests/setup.ts) returns the plain Express app, not
+      // a listening server — supertest's persistent-server wrapper owns the
+      // actual http.Server and closes it at the file boundary. app.close is
+      // not a function; calling it here was a stale test-infra bug (BC-QA-042).
     });
 
     it('GET /api/plans should tolerate malformed features', async () => {
@@ -248,13 +276,51 @@ describe('BC-QA-017: Malformed JSON in plan features', () => {
   });
 
   describe('Authenticated endpoints should not 500 with malformed plan features', () => {
+    // BC-QA-042 review round 1 (MEDIUM): the original scenario here set
+    // Subscription.plan/Card.type to the literal 'MALFORMED_TEST', but both
+    // are real Prisma enums (SubscriptionPlan / CardType — PREMIUM_WEEKLY |
+    // BASIC | PREMIUM_MONTHLY, and PREMIUM_WEEKLY | BASIC | PREMIUM
+    // respectively) and reject any other string at the DB layer. That
+    // specific reproduction is no longer possible — a subscription/card can
+    // never point at an arbitrary planCode string the way the malformed
+    // fixture assumed.
+    //
+    // The underlying behaviour under test (dashboard/subscription endpoints
+    // must not 500 when the resolved Plan row's features/featuresBg column
+    // holds non-JSON data) is still fully reproducible under the current
+    // schema: subscriptionService.getPlanBenefits()/cardService
+    // .getCardBenefits() resolve a REAL enum plan value (here 'BASIC',
+    // which passes through unchanged — see the dbCode mapping, which only
+    // rewrites PREMIUM_WEEKLY/PREMIUM_MONTHLY) against `prisma.plan
+    // .findFirst({ planCode })`, and that Plan row's features/featuresBg
+    // are plain nullable String columns that can hold arbitrary malformed
+    // content independent of the enum. So: use the real 'BASIC' plan code,
+    // and temporarily corrupt (then exactly restore) the live BASIC Plan
+    // row's features/featuresBg for the duration of this describe block —
+    // scoped to this file's own beforeAll/afterAll boundary, and safe
+    // under maxWorkers:1 (files run strictly sequentially, so no other file
+    // observes the corrupted state).
     let app: any;
     let user: any;
     let token: string;
     let subscription: any;
+    let originalBasicPlan: { features: string | null; featuresBg: string | null } | null = null;
 
     beforeAll(async () => {
       app = await createTestApp();
+
+      const basicPlan = await prisma.plan.findUnique({ where: { planCode: 'BASIC' } });
+      if (!basicPlan) {
+        throw new Error('BASIC plan not found — run seed-plans first');
+      }
+      originalBasicPlan = { features: basicPlan.features, featuresBg: basicPlan.featuresBg };
+      await prisma.plan.update({
+        where: { planCode: 'BASIC' },
+        data: {
+          features: 'feature1;feature2;feature3', // Semicolon-delimited (malformed, not JSON)
+          featuresBg: 'не_валидна;структура',
+        },
+      });
 
       // Create test user
       user = await prisma.user.create({
@@ -270,11 +336,11 @@ describe('BC-QA-017: Malformed JSON in plan features', () => {
         },
       });
 
-      // Create subscription to malformed plan
+      // Create subscription to the (now temporarily malformed-features) BASIC plan
       subscription = await prisma.subscription.create({
         data: {
           userId: user.id,
-          plan: 'MALFORMED_TEST',
+          plan: 'BASIC',
           status: 'ACTIVE',
           stripePriceId: 'price_test_malformed',
           stripeCustomerId: 'cust_test_malformed',
@@ -290,7 +356,7 @@ describe('BC-QA-017: Malformed JSON in plan features', () => {
         data: {
           userId: user.id,
           cardNumber: '1234567890123456',
-          type: 'MALFORMED_TEST',
+          type: 'BASIC',
           status: 'ACTIVE',
           qrCode: 'data:image/png;base64,test',
         },
@@ -311,7 +377,20 @@ describe('BC-QA-017: Malformed JSON in plan features', () => {
         await prisma.card.deleteMany({ where: { userId: user.id } });
         await prisma.user.delete({ where: { id: user.id } });
       }
-      await app.close();
+      // Restore the live BASIC plan's original features/featuresBg exactly.
+      if (originalBasicPlan) {
+        await prisma.plan.update({
+          where: { planCode: 'BASIC' },
+          data: {
+            features: originalBasicPlan.features,
+            featuresBg: originalBasicPlan.featuresBg,
+          },
+        });
+      }
+      // createTestApp() (tests/setup.ts) returns the plain Express app, not
+      // a listening server — supertest's persistent-server wrapper owns the
+      // actual http.Server and closes it at the file boundary. app.close is
+      // not a function; calling it here was a stale test-infra bug (BC-QA-042).
     });
 
     it('GET /api/dashboard/me should NOT 500 with malformed plan features', async () => {
@@ -344,7 +423,7 @@ describe('BC-QA-017: Malformed JSON in plan features', () => {
 
       // Verify subscription exists at root level (not wrapped in success/data)
       expect(res.body.plan).toBeDefined();
-      expect(res.body.plan).toBe('MALFORMED_TEST');
+      expect(res.body.plan).toBe('BASIC');
 
       // Subscription should be found even if plan features are malformed
       expect(res.body.id).toBeDefined();
@@ -354,10 +433,18 @@ describe('BC-QA-017: Malformed JSON in plan features', () => {
 });
 
 // Helper function to generate test tokens
+// BC-QA-042 review round 1: authenticate() (src/middleware/auth.middleware.ts)
+// does `req.user = decoded` verbatim and every downstream route/service
+// reads `req.user!.id` (e.g. WalletService.getOrCreateWallet's
+// `prisma.wallet.upsert({ where: { userId: req.user!.id } })`) — a payload
+// keyed `userId` left req.user.id undefined, 400ing any route that uses it
+// synchronously. The redesigned BASIC-plan scenario above now actually
+// reaches that code path (the previous MALFORMED_TEST-enum crash masked
+// this), so fix the payload key to match.
 function generateTestToken(userId: string, role: string = 'USER'): string {
   const jwt = require('jsonwebtoken');
   return jwt.sign(
-    { userId, role },
+    { id: userId, role },
     process.env.JWT_SECRET || 'test_secret',
     { expiresIn: '1h' }
   );
