@@ -54,6 +54,7 @@ import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { deriveCashbackEntryStatus } from '../../src/services/adminCashback.service';
 import { walletService } from '../../src/services/wallet.service';
+import { genTestPhone } from '../helpers/test-utils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -73,7 +74,7 @@ async function createAdmin(role: 'ADMIN' | 'SUPER_ADMIN' = 'ADMIN') {
       passwordHash: hash,
       firstName: 'Test',
       lastName: 'Admin',
-      phone: '+359000000000',
+      phone: genTestPhone(),
       role,
       status: 'ACTIVE',
       emailVerified: true,
@@ -92,7 +93,7 @@ async function createSubscriber() {
       passwordHash: hash,
       firstName: 'Test',
       lastName: 'Subscriber',
-      phone: '+359000000001',
+      phone: genTestPhone(),
       role: 'USER',
       status: 'ACTIVE',
       emailVerified: true,

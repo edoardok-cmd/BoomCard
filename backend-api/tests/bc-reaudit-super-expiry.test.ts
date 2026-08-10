@@ -11,6 +11,7 @@ import request from 'supertest';
 import { createTestApp } from './setup';
 import { prisma } from '../src/lib/prisma';
 import { AuthRequest } from '../src/middleware/auth.middleware';
+import { genTestPhone } from './helpers/test-utils';
 
 // Mock email service to track calls
 let emailSendCalls: Array<{ to: string; subject: string }> = [];
@@ -46,7 +47,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
         email: 'initiator@test.local',
         firstName: 'Initiator',
         lastName: 'SA',
-        phone: '+359000000000',
+        phone: genTestPhone(),
         passwordHash: 'hashed_password',
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
@@ -61,7 +62,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
         email: 'approver@test.local',
         firstName: 'Approver',
         lastName: 'SA',
-        phone: '+359000000001',
+        phone: genTestPhone(),
         passwordHash: 'hashed_password',
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
@@ -211,7 +212,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
           email: testEmail,
           firstName: 'Second',
           lastName: 'Attempt',
-          phone: '+359000000010',
+          phone: genTestPhone(),
           password: 'TestPassword123!',
           roleKey: 'SUPER_ADMIN',
         });
@@ -245,7 +246,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
           email: testEmail,
           firstName: 'Second',
           lastName: 'Attempt',
-          phone: '+359000000010',
+          phone: genTestPhone(),
           password: 'TestPassword123!',
           roleKey: 'SUPER_ADMIN',
         });
@@ -328,7 +329,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
           email: testEmail,
           firstName: 'Life',
           lastName: 'Cycle',
-          phone: '+359000000011',
+          phone: genTestPhone(),
           password: 'TestPassword123!',
           roleKey: 'SUPER_ADMIN',
         });
@@ -356,7 +357,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
           email: testEmail,
           firstName: 'Life',
           lastName: 'Cycle',
-          phone: '+359000000011',
+          phone: genTestPhone(),
           password: 'TestPassword123!',
           roleKey: 'SUPER_ADMIN',
         });

@@ -22,6 +22,7 @@ import { prisma } from '../src/lib/prisma';
 import { PartnerStatus, PartnerRequestStatus } from '@prisma/client';
 import { issueActivationLink } from '../src/services/partnerActivation.service';
 import { app } from '../src/server';
+import { genTestPhone } from './helpers/test-utils';
 
 jest.mock('../src/services/email.service', () => ({
   emailService: {
@@ -56,7 +57,7 @@ describe('BC-ADMIN-SPEC-REAUDIT3: PATCH /:id/status rejects REJECTED', () => {
         email: `admin-reject-patch-${Date.now()}@test.local`,
         firstName: 'Test',
         lastName: 'Admin',
-        phone: '+359000000000',
+        phone: genTestPhone(),
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
         emailVerified: true,
@@ -77,7 +78,7 @@ describe('BC-ADMIN-SPEC-REAUDIT3: PATCH /:id/status rejects REJECTED', () => {
         email: `partner-patch-reject-${Date.now()}@test.local`,
         firstName: 'Test',
         lastName: 'Partner',
-        phone: '+359000000001',
+        phone: genTestPhone(),
         role: 'PARTNER',
         status: 'ACTIVE',
         emailVerified: true,
@@ -114,7 +115,7 @@ describe('BC-ADMIN-SPEC-REAUDIT3: PATCH /:id/status rejects REJECTED', () => {
         email: `partner-otkazana-${Date.now()}@test.local`,
         firstName: 'Test',
         lastName: 'Partner',
-        phone: '+359000000002',
+        phone: genTestPhone(),
         role: 'PARTNER',
         status: 'ACTIVE',
         emailVerified: true,
@@ -150,7 +151,7 @@ describe('BC-ADMIN-SPEC-REAUDIT3: PATCH /:id/status rejects REJECTED', () => {
         email: `partner-onboarding-reject-${Date.now()}@test.local`,
         firstName: 'Onboarding',
         lastName: 'Partner',
-        phone: '+359000000003',
+        phone: genTestPhone(),
         role: 'PARTNER',
         status: 'ACTIVE',
         emailVerified: true,
@@ -235,7 +236,7 @@ describe('BC-ADMIN-SPEC-REAUDIT3: PATCH /:id/status rejects REJECTED', () => {
         email: `partner-valid-transitions-${Date.now()}@test.local`,
         firstName: 'Valid',
         lastName: 'Partner',
-        phone: '+359000000004',
+        phone: genTestPhone(),
         role: 'PARTNER',
         status: 'ACTIVE',
         emailVerified: true,

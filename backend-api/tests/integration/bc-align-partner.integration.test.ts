@@ -25,6 +25,7 @@ import app from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { issueActivationLink } from '../../src/services/partnerActivation.service';
 import { ACTIVATION_TTL_HOURS } from '../../src/services/partnerActivation.service';
+import { genTestPhone } from '../helpers/test-utils';
 
 // Test fixtures
 const TEST_PARTNER_EMAIL = 'test-partner@boomcard.bg';
@@ -76,7 +77,7 @@ describe('BC-ALIGN-PARTNER: Partner Account Access Rules', () => {
           emailVerified: true,
           firstName: 'Active',
           lastName: 'Partner',
-          phone: '+359000000000',
+          phone: genTestPhone(),
         },
       });
 
@@ -132,7 +133,7 @@ describe('BC-ALIGN-PARTNER: Partner Account Access Rules', () => {
           emailVerified: true,
           firstName: 'Pending',
           lastName: 'Partner',
-          phone: '+359000000001',
+          phone: genTestPhone(),
         },
       });
 

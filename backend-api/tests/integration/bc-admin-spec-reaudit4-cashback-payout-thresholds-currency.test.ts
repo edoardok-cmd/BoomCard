@@ -16,6 +16,7 @@ import jwt from 'jsonwebtoken';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { invalidateSystemSettingCache } from '../../src/utils/systemSettings';
+import { genTestPhone } from '../helpers/test-utils';
 
 jest.mock('../../src/services/email.service', () => ({
   emailService: {
@@ -68,7 +69,7 @@ describe('BC-ADMIN-SPEC-REAUDIT4-PAYOUT-THRESH-BGN-LEAK-1: Cashback payout-thres
         role: 'SUPER_ADMIN',
         emailVerified: true,
         passwordHash: 'unused',
-        phone: '+359000000000',
+        phone: genTestPhone(),
       },
     });
     adminToken = generateTestToken(adminUser.id, 'SUPER_ADMIN');
@@ -222,7 +223,7 @@ describe('BC-ADMIN-SPEC-REAUDIT4-PAYOUT-THRESH-BGN-LEAK-1: Cashback payout-thres
           role: 'ADMIN',
           emailVerified: true,
           passwordHash: 'unused',
-          phone: '+359000000001',
+          phone: genTestPhone(),
         },
       });
       // Track this user for cleanup in afterEach

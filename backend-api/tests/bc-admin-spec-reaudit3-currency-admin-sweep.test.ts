@@ -12,6 +12,7 @@ import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { createTestApp } from './setup';
 import { prisma } from '../src/lib/prisma';
+import { genTestPhone } from './helpers/test-utils';
 
 jest.mock('../src/services/email.service', () => ({
   emailService: {
@@ -73,7 +74,7 @@ describe.skip('BC-ADMIN-SPEC-REAUDIT3-CURRENCY-ADMIN-SWEEP-1: Currency Display F
         email: `admin-sweep-${Date.now()}@test.local`,
         firstName: 'Admin',
         lastName: 'Test',
-        phone: '+359000000000',
+        phone: genTestPhone(),
         passwordHash: 'hashed_password',
         status: 'ACTIVE',
         role: 'SUPER_ADMIN',
@@ -88,7 +89,7 @@ describe.skip('BC-ADMIN-SPEC-REAUDIT3-CURRENCY-ADMIN-SWEEP-1: Currency Display F
         email: `partner-sweep-${Date.now()}@test.local`,
         firstName: 'Partner',
         lastName: 'Owner',
-        phone: '+359000000099',
+        phone: genTestPhone(),
         passwordHash: 'hashed_password',
         status: 'ACTIVE',
         role: 'PARTNER',
@@ -113,7 +114,7 @@ describe.skip('BC-ADMIN-SPEC-REAUDIT3-CURRENCY-ADMIN-SWEEP-1: Currency Display F
         email: `user-sweep-${Date.now()}@test.local`,
         firstName: 'Test',
         lastName: 'User',
-        phone: '+359000000001',
+        phone: genTestPhone(),
         passwordHash: 'hashed_password',
         status: 'ACTIVE',
         emailVerified: true,
@@ -366,7 +367,7 @@ describe.skip('BC-ADMIN-SPEC-REAUDIT3-CURRENCY-ADMIN-SWEEP-1: Currency Display F
           email: `nosub-sweep-${Date.now()}@test.local`,
           firstName: 'NoSub',
           lastName: 'User',
-          phone: '+359000000002',
+          phone: genTestPhone(),
           passwordHash: 'hashed_password',
           status: 'ACTIVE',
           emailVerified: true,

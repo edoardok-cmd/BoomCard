@@ -23,6 +23,7 @@ import request from 'supertest';
 import bcrypt from 'bcrypt';
 import app from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
+import { genTestPhone } from '../helpers/test-utils';
 
 const TEST_ADMIN_EMAIL = `admin-${Date.now()}@boomcard.bg`;
 const TEST_ADMIN_PASSWORD = 'AdminPass123!';
@@ -55,7 +56,7 @@ beforeAll(async () => {
       emailVerified: true,
       firstName: 'Test',
       lastName: 'Admin',
-      phone: '+359000000000',
+      phone: genTestPhone(),
     },
   });
 
@@ -76,7 +77,7 @@ beforeAll(async () => {
       emailVerified: true,
       firstName: 'Active',
       lastName: 'Partner',
-      phone: '+359000000001',
+      phone: genTestPhone(),
     },
   });
 
@@ -101,7 +102,7 @@ beforeAll(async () => {
       emailVerified: true,
       firstName: 'Inactive',
       lastName: 'Partner',
-      phone: '+359000000002',
+      phone: genTestPhone(),
     },
   });
 
@@ -126,7 +127,7 @@ beforeAll(async () => {
       emailVerified: true,
       firstName: 'Suspended',
       lastName: 'Partner',
-      phone: '+359000000003',
+      phone: genTestPhone(),
     },
   });
 

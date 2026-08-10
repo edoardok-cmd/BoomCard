@@ -16,6 +16,7 @@ import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { cleanupTestUser } from '../helpers/test-utils';
+import { genTestPhone } from '../helpers/test-utils';
 
 const ADMIN_PASSWORD = 'AdminPass123!';
 const PARTNER_PASSWORD = 'PartnerPass123!';
@@ -50,7 +51,7 @@ async function createFixtures(): Promise<Fixtures> {
       passwordHash: adminHash,
       firstName: 'Imp',
       lastName: 'Admin',
-      phone: '+359000000000',
+      phone: genTestPhone(),
       role: 'ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
@@ -63,7 +64,7 @@ async function createFixtures(): Promise<Fixtures> {
       passwordHash: partnerHash,
       firstName: 'Imp',
       lastName: 'Partner',
-      phone: '+359000000001',
+      phone: genTestPhone(),
       role: 'PARTNER',
       status: 'ACTIVE',
       emailVerified: true,
@@ -85,7 +86,7 @@ async function createFixtures(): Promise<Fixtures> {
       passwordHash: userHash,
       firstName: 'Imp',
       lastName: 'User',
-      phone: '+359000000002',
+      phone: genTestPhone(),
       role: 'USER',
       status: 'ACTIVE',
       emailVerified: true,
@@ -98,7 +99,7 @@ async function createFixtures(): Promise<Fixtures> {
       passwordHash: partnerHash,
       firstName: 'Susp',
       lastName: 'Partner',
-      phone: '+359000000003',
+      phone: genTestPhone(),
       role: 'PARTNER',
       status: 'SUSPENDED',
       emailVerified: true,
@@ -509,7 +510,7 @@ describe('Admin Impersonation', () => {
           role: 'SUPER_ADMIN',
           status: 'ACTIVE',
           emailVerified: true,
-          phone: '+359000000000',
+          phone: genTestPhone(),
         },
       });
       createdUserIds.push(superAdmin.id);
@@ -620,7 +621,7 @@ describe('Admin Impersonation', () => {
             role: 'ADMIN',
             status: 'ACTIVE',
             emailVerified: true,
-          phone: '+359000000001',
+          phone: genTestPhone(),
         },
         }),
         prisma.user.create({
@@ -632,7 +633,7 @@ describe('Admin Impersonation', () => {
             role: 'ADMIN',
             status: 'ACTIVE',
             emailVerified: true,
-          phone: '+359000000002',
+          phone: genTestPhone(),
         },
         }),
       ]);

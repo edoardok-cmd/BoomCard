@@ -4,6 +4,7 @@ import { createTestUser } from '../helpers/test-utils';
 import request from 'supertest';
 import app from '../../src/app';
 import jwt from 'jsonwebtoken';
+import { genTestPhone } from '../helpers/test-utils';
 
 /**
  * BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1
@@ -30,7 +31,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates ac
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
         emailVerified: true,
-        phone: '+359000000000',
+        phone: genTestPhone(),
         firstName: 'Test',
         lastName: 'User',
       },

@@ -21,6 +21,7 @@ import jwt from 'jsonwebtoken';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { invalidateCurrencyDisplayCache } from '../../src/utils/currencyDisplay';
+import { genTestPhone } from '../helpers/test-utils';
 
 jest.mock('../../src/services/email.service', () => ({
   emailService: {
@@ -81,7 +82,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6-PAYOUTS-BGN-LEAK-1: Payouts currency display ga
         role: 'SUPER_ADMIN',
         emailVerified: true,
         passwordHash: 'unused',
-        phone: '+359000000000',
+        phone: genTestPhone(),
       },
     });
     adminToken = generateTestToken(adminUser.id, 'SUPER_ADMIN');
@@ -106,7 +107,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6-PAYOUTS-BGN-LEAK-1: Payouts currency display ga
               currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
             },
           },
-          phone: '+359000000001',
+          phone: genTestPhone(),
         },
       });
       testUserIds.push(user.id);
@@ -394,7 +395,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6-PAYOUTS-BGN-LEAK-1: Payouts currency display ga
               currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
             },
           },
-          phone: '+359000000002',
+          phone: genTestPhone(),
         },
       });
 

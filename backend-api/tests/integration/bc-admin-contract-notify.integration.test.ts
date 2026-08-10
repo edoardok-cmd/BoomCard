@@ -18,6 +18,7 @@ import bcrypt from 'bcrypt';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { UserStatus, PartnerStatus } from '@prisma/client';
+import { genTestPhone } from '../helpers/test-utils';
 
 interface TestContext {
   adminUser: any;
@@ -49,7 +50,7 @@ beforeAll(async () => {
       emailVerified: true,
       firstName: 'Test',
       lastName: 'Admin',
-      phone: '+359000000000',
+      phone: genTestPhone(),
     },
   });
 
@@ -66,7 +67,7 @@ beforeAll(async () => {
       emailVerified: true,
       firstName: 'Partner',
       lastName: 'Test',
-      phone: '+359000000001',
+      phone: genTestPhone(),
     },
   });
 

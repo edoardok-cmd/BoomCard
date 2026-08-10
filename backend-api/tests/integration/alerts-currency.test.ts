@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { createTestApp } from '../setup';
 import { prisma } from '../../src/lib/prisma';
 import { invalidateCurrencyDisplayCache } from '../../src/utils/currencyDisplay';
+import { genTestPhone } from '../helpers/test-utils';
 
 jest.mock('../../src/services/email.service', () => ({
   emailService: { sendEmail: (_opts: any) => Promise.resolve() },
@@ -39,7 +40,7 @@ describe('GET /api/admin/alerts currency gating', () => {
         role: 'SUPER_ADMIN',
         emailVerified: true,
         passwordHash: 'unused',
-        phone: '+359000000000',
+        phone: genTestPhone(),
       },
     });
 

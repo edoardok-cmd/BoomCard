@@ -14,6 +14,7 @@ import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { ActivationLinkReason, PartnerStatus, UserStatus } from '@prisma/client';
 import { activationLinkService } from '../../src/services/activationLink.service';
+import { genTestPhone } from '../helpers/test-utils';
 
 describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
   let adminToken: string;
@@ -32,7 +33,7 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
         status: UserStatus.ACTIVE,
         firstName: 'Test',
         lastName: 'Admin',
-        phone: '+359000000000',
+        phone: genTestPhone(),
         emailVerified: true,
         emailVerifiedAt: new Date(),
       },
@@ -60,7 +61,7 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
         status: UserStatus.ACTIVE,
         firstName: 'Test',
         lastName: 'Partner',
-        phone: '+359000000001',
+        phone: genTestPhone(),
         emailVerified: true,
         emailVerifiedAt: new Date(),
       },
@@ -268,7 +269,7 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
           status: UserStatus.ACTIVE,
           firstName: 'Pending',
           lastName: 'Partner',
-          phone: '+359000000002',
+          phone: genTestPhone(),
           emailVerified: true,
           emailVerifiedAt: new Date(),
         },
@@ -315,7 +316,7 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
           status: UserStatus.ACTIVE,
           firstName: 'NoLink',
           lastName: 'Partner',
-          phone: '+359000000003',
+          phone: genTestPhone(),
           emailVerified: true,
           emailVerifiedAt: new Date(),
         },
@@ -356,7 +357,7 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
           status: UserStatus.ACTIVE,
           firstName: 'ExpiredLink',
           lastName: 'Partner',
-          phone: '+359000000004',
+          phone: genTestPhone(),
           emailVerified: true,
           emailVerifiedAt: new Date(),
         },
@@ -410,7 +411,7 @@ describe('BC-ALIGN-PARTNER: Audit Round 1 Fixes', () => {
           status: UserStatus.ACTIVE,
           firstName: 'ConsumedLink',
           lastName: 'Partner',
-          phone: '+359000000005',
+          phone: genTestPhone(),
           emailVerified: true,
           emailVerifiedAt: new Date(),
         },

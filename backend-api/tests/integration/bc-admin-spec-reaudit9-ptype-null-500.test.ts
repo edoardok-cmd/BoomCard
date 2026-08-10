@@ -12,6 +12,7 @@ import request from 'supertest';
 import bcrypt from 'bcryptjs';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
+import { genTestPhone } from '../helpers/test-utils';
 
 const TAG = `ptype-null500-${Date.now()}`;
 
@@ -33,7 +34,7 @@ beforeAll(async () => {
       emailVerified: true,
       firstName: 'PType',
       lastName: 'Tester',
-      phone: '+359000000099',
+      phone: genTestPhone(),
     },
   });
 

@@ -16,6 +16,7 @@ import bcrypt from 'bcrypt';
 import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
+import { genTestPhone } from '../helpers/test-utils';
 
 const PASSWORD = 'AdminPass123!';
 
@@ -39,7 +40,7 @@ async function createTestFixtures(): Promise<TestFixtures> {
       role: 'SUPER_ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
-      phone: '+359000000000',
+      phone: genTestPhone(),
     },
   });
 
@@ -60,7 +61,7 @@ async function createTestFixtures(): Promise<TestFixtures> {
       role: 'USER',
       status: 'ACTIVE',
       emailVerified: true,
-      phone: '+359000000001',
+      phone: genTestPhone(),
     },
   });
 
@@ -195,7 +196,7 @@ describe('Admin Transactions Audit Fixes (BC-ADMIN-AUDIT-FIX-007)', () => {
           role: 'USER',
           status: 'ACTIVE',
           emailVerified: true,
-          phone: '+359000000002',
+          phone: genTestPhone(),
         },
       });
       userId = user.id;

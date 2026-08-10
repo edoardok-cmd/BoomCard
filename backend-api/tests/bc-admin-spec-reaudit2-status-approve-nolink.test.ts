@@ -19,6 +19,7 @@ import request from 'supertest';
 import { createTestApp } from './setup';
 import { prisma } from '../src/lib/prisma';
 import { PartnerRequestStatus } from '@prisma/client';
+import { genTestPhone } from './helpers/test-utils';
 
 jest.mock('../src/services/email.service', () => ({
   emailService: {
@@ -51,7 +52,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-STATUS-APPROVE-NOLINK-2', () => {
         email: `sa-status-approve-${Date.now()}@test.local`,
         firstName: 'SA',
         lastName: 'StatusApprove',
-        phone: '+359000000000',
+        phone: genTestPhone(),
         passwordHash: 'hashed_password',
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
@@ -75,7 +76,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-STATUS-APPROVE-NOLINK-2', () => {
           email: `partner-status-approve-${Date.now()}@test.local`,
           firstName: 'Status',
           lastName: 'Approve',
-          phone: '+359000000001',
+          phone: genTestPhone(),
           passwordHash: 'hashed_password',
           role: 'PARTNER',
           status: 'ACTIVE',
@@ -126,7 +127,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-STATUS-APPROVE-NOLINK-2', () => {
           email: `partner-status-approve-block-${Date.now()}@test.local`,
           firstName: 'StatusBlock',
           lastName: 'Test',
-          phone: '+359000000002',
+          phone: genTestPhone(),
           passwordHash: 'hashed_password',
           role: 'PARTNER',
           status: 'ACTIVE',
@@ -167,7 +168,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-STATUS-APPROVE-NOLINK-2', () => {
           email: `partner-approve-link-${Date.now()}@test.local`,
           firstName: 'Approve',
           lastName: 'Link',
-          phone: '+359000000003',
+          phone: genTestPhone(),
           passwordHash: 'hashed_password',
           role: 'PARTNER',
           status: 'ACTIVE',
@@ -214,7 +215,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-STATUS-APPROVE-NOLINK-2', () => {
           email: `partner-onboarding-reject-${Date.now()}@test.local`,
           firstName: 'Onboarding',
           lastName: 'Reject',
-          phone: '+359000000004',
+          phone: genTestPhone(),
           passwordHash: 'hashed_password',
           role: 'PARTNER',
           status: 'ACTIVE',

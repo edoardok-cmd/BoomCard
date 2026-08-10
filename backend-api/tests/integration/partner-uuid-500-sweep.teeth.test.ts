@@ -16,6 +16,7 @@ import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { createTestApp } from '../setup';
 import { prisma } from '../../src/lib/prisma';
+import { genTestPhone } from '../helpers/test-utils';
 
 jest.mock('../../src/services/email.service', () => ({
   emailService: { sendEmail: (_o: any) => Promise.resolve() },
@@ -107,7 +108,7 @@ describe('GREEN: live partner API returns 4xx (never 500) on malformed :param', 
         email: `${RUN_TAG}-p@test.local`,
         firstName: 'Teeth',
         lastName: 'UUID500',
-        phone: '+359000900300',
+        phone: genTestPhone(),
         status: 'ACTIVE',
         role: 'PARTNER',
         emailVerified: true,

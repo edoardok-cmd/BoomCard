@@ -25,6 +25,7 @@ import jwt from 'jsonwebtoken';
 import { app } from '../src/server';
 import { prisma } from '../src/lib/prisma';
 import { AdminRoleKey, UserStatus } from '@prisma/client';
+import { genTestPhone } from './helpers/test-utils';
 
 jest.mock('../src/services/email.service', () => ({
   emailService: {
@@ -104,7 +105,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6-SUPERADMIN-SEEDS-E2E: Seeding and approval flow
         email: `e2e-sa-${suffix}@test.local`,
         firstName: 'E2E',
         lastName: 'SA',
-        phone: '+359000000000',
+        phone: genTestPhone(),
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
         emailVerified: true,
@@ -182,7 +183,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6-SUPERADMIN-SEEDS-E2E: Seeding and approval flow
           email: newAdminEmail,
           firstName: 'E2ENewAdmin',
           lastName: 'Test',
-          phone: '+359000000010',
+          phone: genTestPhone(),
           password: 'E2ETestPassword123!@#',
           roleKey: 'SUPER_ADMIN',
         });
@@ -237,7 +238,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6-SUPERADMIN-SEEDS-E2E: Seeding and approval flow
           email: newAdminEmail,
           firstName: 'E2ESelfApprove',
           lastName: 'Test',
-          phone: '+359000000011',
+          phone: genTestPhone(),
           password: 'E2ETestPassword123!@#',
           roleKey: 'SUPER_ADMIN',
         });
@@ -340,7 +341,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6-SUPERADMIN-SEEDS-E2E: Seeding and approval flow
           email: newAdminEmail,
           firstName: 'E2ENo500',
           lastName: 'Test',
-          phone: '+359000000012',
+          phone: genTestPhone(),
           password: 'E2ETestPassword123!@#',
           roleKey: 'SUPER_ADMIN',
         });

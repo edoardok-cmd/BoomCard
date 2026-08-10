@@ -15,6 +15,7 @@ import request from 'supertest';
 import { createTestApp } from './setup';
 import { prisma } from '../src/lib/prisma';
 import { safeParseJsonArray } from '../src/utils/json';
+import { genTestPhone } from './helpers/test-utils';
 
 describe('BC-QA-017: Malformed JSON in plan features', () => {
   describe('safeParseJsonArray utility', () => {
@@ -74,7 +75,7 @@ describe('BC-QA-017: Malformed JSON in plan features', () => {
           email: `test-qa-017-${Date.now()}@test.local`,
           firstName: 'QA017',
           lastName: 'Test',
-          phone: '+359000000000',
+          phone: genTestPhone(),
           passwordHash: 'hashed_password',
           role: 'USER',
           status: 'ACTIVE',
@@ -261,7 +262,7 @@ describe('BC-QA-017: Malformed JSON in plan features', () => {
           email: `qa-017-auth-${Date.now()}@test.local`,
           firstName: 'Auth',
           lastName: 'Test',
-          phone: '+359111111111',
+          phone: genTestPhone(),
           passwordHash: 'hashed_password',
           role: 'USER',
           status: 'ACTIVE',

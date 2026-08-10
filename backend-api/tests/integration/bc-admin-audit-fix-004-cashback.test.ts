@@ -24,6 +24,7 @@ import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { walletService } from '../../src/services/wallet.service';
+import { genTestPhone } from '../helpers/test-utils';
 
 const PASSWORD = 'AdminPass123!';
 
@@ -49,7 +50,7 @@ async function createTestFixtures(): Promise<TestFixtures> {
       role: 'SUPER_ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
-      phone: '+359000000000',
+      phone: genTestPhone(),
     },
   });
 
@@ -75,7 +76,7 @@ async function createTestFixtures(): Promise<TestFixtures> {
       role: 'ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
-      phone: '+359000000001',
+      phone: genTestPhone(),
     },
   });
 
@@ -110,7 +111,7 @@ async function createTestFixtures(): Promise<TestFixtures> {
       status: 'ACTIVE',
       emailVerified: true,
       iban: 'BG80BCCI00123456789012', // Valid IBAN
-      phone: '+359000000002',
+      phone: genTestPhone(),
     },
   });
 
@@ -238,7 +239,7 @@ describe('Admin Cashback Audit Fixes (BC-ADMIN-AUDIT-FIX-004)', () => {
           status: 'ACTIVE',
           emailVerified: true,
           iban: 'BG80BCCI00123456789012', // Has IBAN
-          phone: '+359000000003',
+          phone: genTestPhone(),
         },
       });
       failedPaymentUserId = failedPaymentUser.id;
@@ -280,7 +281,7 @@ describe('Admin Cashback Audit Fixes (BC-ADMIN-AUDIT-FIX-004)', () => {
           status: 'ACTIVE',
           emailVerified: true,
           // No IBAN
-          phone: '+359000000004',
+          phone: genTestPhone(),
         },
       });
       noIbanUserId = noIbanUser.id;

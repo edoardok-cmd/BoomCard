@@ -13,6 +13,7 @@ import { prisma } from '../src/lib/prisma';
 import { app } from '../src/server';
 import { PartnerStatus, StickerStatus } from '@prisma/client';
 import jwt from 'jsonwebtoken';
+import { genTestPhone } from './helpers/test-utils';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key';
 
@@ -35,7 +36,7 @@ async function createTestUser(email: string, role: string = 'PARTNER') {
       passwordHash: 'hash',
       firstName: role,
       lastName: 'Test',
-      phone: '+359000000000',
+      phone: genTestPhone(),
       role,
       status: 'ACTIVE',
       emailVerified: true,
@@ -129,7 +130,7 @@ describe('Partner Lifecycle Bug Fixes', () => {
         passwordHash: 'hash',
         firstName: 'Super',
         lastName: 'Admin',
-        phone: '+359000000001',
+        phone: genTestPhone(),
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
         emailVerified: true,

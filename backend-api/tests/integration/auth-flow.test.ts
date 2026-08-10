@@ -12,6 +12,7 @@ import { prisma } from '../../src/lib/prisma';
 import { createTestUser, cleanupTestUser, authRequest } from '../helpers/test-utils';
 import { invalidateCurrencyDisplayCache } from '../../src/utils/currencyDisplay';
 import { AuthService } from '../../src/services/auth.service';
+import { genTestPhone } from '../helpers/test-utils';
 
 async function setCurrencyWindow(open: boolean) {
   await prisma.systemSetting.upsert({
@@ -115,7 +116,7 @@ describe('Authentication Flow (F01)', () => {
           email,
           password: 'AnotherPass123!',
           firstName: 'Duplicate',
-          phone: '+359888000111',
+          phone: genTestPhone(),
           acceptTerms: true,
           accountType: 'partner',
           businessInfo: {
@@ -145,7 +146,7 @@ describe('Authentication Flow (F01)', () => {
           // AuthService.register, which was masking this test (pre-existing gap,
           // unrelated to this task's `code` additions).
           lastName: 'User',
-          phone: '+359888000222',
+          phone: genTestPhone(),
           acceptTerms: true,
         });
 
@@ -283,7 +284,7 @@ describe('Authentication Flow (F01)', () => {
         email,
         firstName: 'Partner',
         lastName: 'Dup',
-        phone: '+359888000333',
+        phone: genTestPhone(),
         acceptTerms: true,
         acceptPrivacy: true,
         accountType: 'partner',
@@ -320,7 +321,7 @@ describe('Authentication Flow (F01)', () => {
           password: 'SecurePass123!',
           firstName: 'Partner',
           lastName: 'Owner',
-          phone: '+359888333444',
+          phone: genTestPhone(),
           acceptTerms: true,
           accountType: 'partner',
           businessInfo: {
@@ -361,7 +362,7 @@ describe('Authentication Flow (F01)', () => {
     it('should reject registration with short password', async () => {
       const res = await request(app)
         .post('/api/auth/register')
-        .send({ email: `short-${Date.now()}@test.com`, password: '123', phone: '+359888000999' });
+        .send({ email: `short-${Date.now()}@test.com`, password: '123', phone: genTestPhone() });
 
       expect(res.status).toBe(400);
     });

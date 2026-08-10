@@ -17,6 +17,7 @@ import jwt from 'jsonwebtoken';
 import { createTestApp } from '../setup';
 import { prisma } from '../../src/lib/prisma';
 import { invalidateCurrencyDisplayCache } from '../../src/utils/currencyDisplay';
+import { genTestPhone } from '../helpers/test-utils';
 
 jest.mock('../../src/services/email.service', () => ({
   emailService: { sendEmail: (_o: any) => Promise.resolve() },
@@ -221,7 +222,7 @@ describe('GREEN: live partner API leaks nothing when window CLOSED', () => {
         email: `${RUN_TAG}-p@test.local`,
         firstName: 'Teeth',
         lastName: 'CurLeak',
-        phone: '+359000900200',
+        phone: genTestPhone(),
         status: 'ACTIVE',
         role: 'PARTNER',
         emailVerified: true,
@@ -258,7 +259,7 @@ describe('GREEN: live partner API leaks nothing when window CLOSED', () => {
         email: `${RUN_TAG}-cust@test.local`,
         firstName: 'Cust',
         lastName: 'Omer',
-        phone: '+359000900201',
+        phone: genTestPhone(),
         status: 'ACTIVE',
         emailVerified: true,
         passwordHash: 'unused',

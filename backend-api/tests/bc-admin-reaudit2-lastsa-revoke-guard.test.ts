@@ -12,6 +12,7 @@ import request from 'supertest';
 import { createTestApp } from './setup';
 import { prisma } from '../src/lib/prisma';
 import { AdminRoleKey } from '@prisma/client';
+import { genTestPhone } from './helpers/test-utils';
 
 jest.mock('../src/services/email.service', () => ({
   emailService: {
@@ -44,7 +45,7 @@ describe('BC-ADMIN-REAUDIT2-LASTSA-REVOKE-GUARD-1: Role Revoke Guard Exclude-Tar
         email: 'active-sa@test.local',
         firstName: 'Active',
         lastName: 'SuperAdmin',
-        phone: '+359000000000',
+        phone: genTestPhone(),
         passwordHash: 'hashed_password',
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
@@ -63,7 +64,7 @@ describe('BC-ADMIN-REAUDIT2-LASTSA-REVOKE-GUARD-1: Role Revoke Guard Exclude-Tar
         email: 'inactive-sa@test.local',
         firstName: 'Inactive',
         lastName: 'SuperAdmin',
-        phone: '+359000000001',
+        phone: genTestPhone(),
         passwordHash: 'hashed_password',
         role: 'SUPER_ADMIN',
         status: 'INACTIVE',
@@ -119,7 +120,7 @@ describe('BC-ADMIN-REAUDIT2-LASTSA-REVOKE-GUARD-1: Role Revoke Guard Exclude-Tar
           email: 'sole-active-sa@test.local',
           firstName: 'Sole',
           lastName: 'Active',
-          phone: '+359000000002',
+          phone: genTestPhone(),
           passwordHash: 'hashed_password',
           role: 'SUPER_ADMIN',
           status: 'ACTIVE',
@@ -151,7 +152,7 @@ describe('BC-ADMIN-REAUDIT2-LASTSA-REVOKE-GUARD-1: Role Revoke Guard Exclude-Tar
           email: 'mixed-active-1@test.local',
           firstName: 'Mixed',
           lastName: 'Active1',
-          phone: '+359000000003',
+          phone: genTestPhone(),
           passwordHash: 'hashed_password',
           role: 'SUPER_ADMIN',
           status: 'ACTIVE',
@@ -167,7 +168,7 @@ describe('BC-ADMIN-REAUDIT2-LASTSA-REVOKE-GUARD-1: Role Revoke Guard Exclude-Tar
           email: 'mixed-active-2@test.local',
           firstName: 'Mixed',
           lastName: 'Active2',
-          phone: '+359000000004',
+          phone: genTestPhone(),
           passwordHash: 'hashed_password',
           role: 'SUPER_ADMIN',
           status: 'ACTIVE',
@@ -183,7 +184,7 @@ describe('BC-ADMIN-REAUDIT2-LASTSA-REVOKE-GUARD-1: Role Revoke Guard Exclude-Tar
           email: 'mixed-inactive@test.local',
           firstName: 'Mixed',
           lastName: 'Inactive',
-          phone: '+359000000005',
+          phone: genTestPhone(),
           passwordHash: 'hashed_password',
           role: 'SUPER_ADMIN',
           status: 'INACTIVE',

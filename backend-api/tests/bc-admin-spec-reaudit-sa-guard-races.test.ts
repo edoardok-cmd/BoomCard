@@ -34,6 +34,7 @@ import jwt from 'jsonwebtoken';
 import { createTestApp } from './setup';
 import { prisma } from '../src/lib/prisma';
 import { AdminRoleKey, UserStatus } from '@prisma/client';
+import { genTestPhone } from './helpers/test-utils';
 
 jest.mock('../src/services/email.service', () => ({
   emailService: {
@@ -72,7 +73,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-SA-GUARD-RACES-1: TOCTOU Race Prevention', () =>
             email: `race-defect1-sa1-${Date.now()}@test.local`,
             firstName: 'Race1SA1',
             lastName: 'Test',
-            phone: '+359000000000',
+            phone: genTestPhone(),
             passwordHash: 'hashed_password',
             role: 'SUPER_ADMIN',
             status: 'ACTIVE',
@@ -85,7 +86,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-SA-GUARD-RACES-1: TOCTOU Race Prevention', () =>
             email: `race-defect1-sa2-${Date.now()}@test.local`,
             firstName: 'Race1SA2',
             lastName: 'Test',
-            phone: '+359000000001',
+            phone: genTestPhone(),
             passwordHash: 'hashed_password',
             role: 'SUPER_ADMIN',
             status: 'ACTIVE',
@@ -98,7 +99,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-SA-GUARD-RACES-1: TOCTOU Race Prevention', () =>
             email: `race-defect1-sa3-${Date.now()}@test.local`,
             firstName: 'Race1SA3',
             lastName: 'Test',
-            phone: '+359000000002',
+            phone: genTestPhone(),
             passwordHash: 'hashed_password',
             role: 'SUPER_ADMIN',
             status: 'ACTIVE',
@@ -157,7 +158,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-SA-GUARD-RACES-1: TOCTOU Race Prevention', () =>
             email: `race-defect2-sa1-${Date.now()}@test.local`,
             firstName: 'Race2SA1',
             lastName: 'Test',
-            phone: '+359000000003',
+            phone: genTestPhone(),
             passwordHash: 'hashed_password',
             role: 'SUPER_ADMIN',
             status: 'ACTIVE',
@@ -170,7 +171,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-SA-GUARD-RACES-1: TOCTOU Race Prevention', () =>
             email: `race-defect2-sa2-${Date.now()}@test.local`,
             firstName: 'Race2SA2',
             lastName: 'Test',
-            phone: '+359000000004',
+            phone: genTestPhone(),
             passwordHash: 'hashed_password',
             role: 'SUPER_ADMIN',
             status: 'ACTIVE',
@@ -183,7 +184,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-SA-GUARD-RACES-1: TOCTOU Race Prevention', () =>
             email: `race-defect2-sa3-${Date.now()}@test.local`,
             firstName: 'Race2SA3',
             lastName: 'Test',
-            phone: '+359000000005',
+            phone: genTestPhone(),
             passwordHash: 'hashed_password',
             role: 'SUPER_ADMIN',
             status: 'ACTIVE',
@@ -253,7 +254,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-SA-GUARD-RACES-1: TOCTOU Race Prevention', () =>
           email: `race-existing-sa-${testId}@test.local`,
           firstName: 'ExistingSA',
           lastName: 'Test',
-          phone: '+359000000006',
+          phone: genTestPhone(),
           passwordHash: 'hashed_password',
           role: 'SUPER_ADMIN',
           status: 'ACTIVE',

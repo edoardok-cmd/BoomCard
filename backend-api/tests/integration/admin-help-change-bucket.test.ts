@@ -33,6 +33,7 @@ import bcrypt from 'bcrypt';
 import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
+import { genTestPhone } from '../helpers/test-utils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -71,7 +72,7 @@ async function createAdmin() {
       role: 'SUPER_ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
-      phone: '+359000000000',
+      phone: genTestPhone(),
     },
   });
   userIds.push(user.id);

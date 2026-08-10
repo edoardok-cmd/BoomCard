@@ -43,6 +43,7 @@ import bcrypt from 'bcrypt';
 import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
+import { genTestPhone } from '../helpers/test-utils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -85,7 +86,7 @@ async function createSuperAdmin() {
       lastName: 'SuperAdmin',
       role: 'SUPER_ADMIN',
       isVerified: true,
-      phone: '+359000000000',
+      phone: genTestPhone(),
     },
   });
   userIds.push(user.id);
@@ -104,7 +105,7 @@ async function createAdmin() {
       lastName: 'Admin',
       role: 'ADMIN',
       isVerified: true,
-      phone: '+359000000001',
+      phone: genTestPhone(),
     },
   });
   userIds.push(user.id);
