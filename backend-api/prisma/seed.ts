@@ -3,8 +3,19 @@
  * Populates the database with sample offers for development
  */
 
+import dotenv from 'dotenv';
+
+// Load .env early
+dotenv.config();
+
 import { PrismaClient } from '@prisma/client';
 import { seedPermissions } from '../src/services/permission.service';
+
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+  console.error('DATABASE_URL not found in environment.');
+  process.exit(1);
+}
 
 const prisma = new PrismaClient();
 
@@ -25,13 +36,14 @@ async function main() {
   const adminPasswordHash = await bcrypt.hash('admin123', 10);
 
   const adminUser = await prisma.user.upsert({
-    where: { email: 'admin@boomcard.bg' },
+    where: { email_role: { email: 'admin@boomcard.bg', role: 'SUPER_ADMIN' } },
     update: {},
     create: {
       email: 'admin@boomcard.bg',
       passwordHash: adminPasswordHash,
       firstName: 'Admin',
       lastName: 'User',
+      phone: '+359 2 999 9999',
       role: 'SUPER_ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
@@ -55,6 +67,7 @@ async function main() {
         passwordHash: partnerPasswordHash,
         firstName: 'Grand',
         lastName: 'Hotel',
+        phone: '+359 2 123 4567',
         role: 'PARTNER',
         status: 'ACTIVE',
         emailVerified: true,
@@ -66,6 +79,7 @@ async function main() {
         passwordHash: partnerPasswordHash,
         firstName: 'Wine',
         lastName: 'Dine',
+        phone: '+359 2 234 5678',
         role: 'PARTNER',
         status: 'ACTIVE',
         emailVerified: true,
@@ -77,6 +91,7 @@ async function main() {
         passwordHash: partnerPasswordHash,
         firstName: 'Spa',
         lastName: 'Retreat',
+        phone: '+359 749 123456',
         role: 'PARTNER',
         status: 'ACTIVE',
         emailVerified: true,
@@ -88,6 +103,7 @@ async function main() {
         passwordHash: partnerPasswordHash,
         firstName: 'Sky',
         lastName: 'Adventures',
+        phone: '+359 888 123456',
         role: 'PARTNER',
         status: 'ACTIVE',
         emailVerified: true,
@@ -99,6 +115,7 @@ async function main() {
         passwordHash: partnerPasswordHash,
         firstName: 'Beachfront',
         lastName: 'Hotel',
+        phone: '+359 52 123456',
         role: 'PARTNER',
         status: 'ACTIVE',
         emailVerified: true,
@@ -110,6 +127,7 @@ async function main() {
         passwordHash: partnerPasswordHash,
         firstName: 'Villa',
         lastName: 'Melnik',
+        phone: '+359 743 123456',
         role: 'PARTNER',
         status: 'ACTIVE',
         emailVerified: true,
@@ -132,7 +150,6 @@ async function main() {
         category: 'Hotels',
         description: 'Luxury hotel in the heart of Sofia',
         descriptionBg: 'Луксозен хотел в сърцето на София',
-        tier: 'PREMIUM',
         status: 'ACTIVE',
         rating: 4.8,
         reviewCount: 156,
@@ -149,7 +166,6 @@ async function main() {
         category: 'Restaurants',
         description: 'Fine dining with premium wine selection',
         descriptionBg: 'Изискана кухня с премиум винена селекция',
-        tier: 'PREMIUM',
         status: 'ACTIVE',
         rating: 4.7,
         reviewCount: 234,
@@ -166,7 +182,6 @@ async function main() {
         category: 'Spa',
         description: 'Premium spa and wellness center',
         descriptionBg: 'Премиум спа и уелнес център',
-        tier: 'STANDARD',
         status: 'ACTIVE',
         rating: 4.9,
         reviewCount: 89,
@@ -183,7 +198,6 @@ async function main() {
         category: 'Experiences',
         description: 'Paragliding and extreme sports',
         descriptionBg: 'Парапланеризъм и екстремни спортове',
-        tier: 'STANDARD',
         status: 'ACTIVE',
         rating: 4.8,
         reviewCount: 167,
@@ -200,7 +214,6 @@ async function main() {
         category: 'Hotels',
         description: 'Luxury beachfront accommodation',
         descriptionBg: 'Луксозно крайбрежно настаняване',
-        tier: 'PREMIUM',
         status: 'ACTIVE',
         rating: 4.6,
         reviewCount: 203,
@@ -217,7 +230,6 @@ async function main() {
         category: 'Wineries',
         description: 'Premium Bulgarian wines and tastings',
         descriptionBg: 'Премиум български вина и дегустации',
-        tier: 'PREMIUM',
         status: 'ACTIVE',
         rating: 4.9,
         reviewCount: 178,
@@ -402,12 +414,82 @@ async function main() {
 
   console.log(`✅ Created ${offers.length} offers\n`);
 
+  // Create sample subscription plans
+  console.log('📋 Creating subscription plans...');
+
+  const plans = await Promise.all([
+    prisma.plan.upsert({
+      where: { planCode: 'BASIC' },
+      update: {},
+      create: {
+        planCode: 'BASIC',
+        displayName: 'Basic',
+        displayNameBg: 'Основен',
+        priceMonthlyEur: 0,
+        priceYearlyEur: 0,
+        cashbackRate: 2.0,
+        stickerBonus: 0,
+        features: JSON.stringify(['Cashback rewards', 'Receipt verification', 'Basic support']),
+        featuresBg: JSON.stringify(['Кешбек награди', 'Верификация на касови бележки', 'Основна поддръжка']),
+        cardType: 'silver',
+        hasMonthlyOption: true,
+        hasYearlyOption: true,
+        isActive: true,
+        displayOrder: 1,
+      },
+    }),
+    prisma.plan.upsert({
+      where: { planCode: 'PREMIUM_MONTHLY' },
+      update: {},
+      create: {
+        planCode: 'PREMIUM_MONTHLY',
+        displayName: 'Premium',
+        displayNameBg: 'Премиум',
+        priceMonthlyEur: 999, // 9.99 EUR in cents
+        priceYearlyEur: 9990, // 99.90 EUR in cents (10% discount)
+        cashbackRate: 5.0,
+        stickerBonus: 1.0,
+        features: JSON.stringify(['Enhanced cashback', 'Priority support', 'Exclusive offers', 'Monthly bonus']),
+        featuresBg: JSON.stringify(['Подобрен кешбек', 'Приоритетна поддръжка', 'Екскулузивни оферти', 'Месечен бонус']),
+        cardType: 'silver',
+        isFeatured: true,
+        hasMonthlyOption: true,
+        hasYearlyOption: true,
+        yearlyDiscountPct: 17,
+        isActive: true,
+        displayOrder: 2,
+      },
+    }),
+    prisma.plan.upsert({
+      where: { planCode: 'PREMIUM_WEEKLY' },
+      update: {},
+      create: {
+        planCode: 'PREMIUM_WEEKLY',
+        displayName: 'Premium Weekly',
+        displayNameBg: 'Премиум Седмичен',
+        priceWeeklyEur: 299, // 2.99 EUR in cents
+        priceYearlyEur: 15180, // 151.80 EUR annually
+        cashbackRate: 5.0,
+        stickerBonus: 1.0,
+        features: JSON.stringify(['Enhanced cashback', 'Priority support', 'Weekly exclusive deals']),
+        featuresBg: JSON.stringify(['Подобрен кешбек', 'Приоритетна поддръжка', 'Седмични екскулузивни оферти']),
+        cardType: 'silver',
+        hasWeeklyOption: true,
+        isActive: true,
+        displayOrder: 3,
+      },
+    }),
+  ]);
+
+  console.log(`✅ Created ${plans.length} subscription plans\n`);
+
   // Summary
   console.log('📊 Seed Summary:');
   console.log(`   Admin Users: 1`);
   console.log(`   Partner Users: ${users.length}`);
   console.log(`   Partners: ${partners.length}`);
   console.log(`   Offers: ${offers.length}`);
+  console.log(`   Subscription Plans: ${plans.length}`);
   console.log('\n✅ Database seeded successfully!\n');
   console.log('🔐 Admin Login:');
   console.log(`   Email: admin@boomcard.bg`);
