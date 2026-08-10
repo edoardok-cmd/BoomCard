@@ -429,13 +429,13 @@ const PromotionsPage: React.FC = () => {
   useEffect(() => {
     updateSEO({
       title: language === 'bg'
-        ? 'Промоции и Специални Оферти | BoomCard'
+        ? 'Отстъпки и Специални Отстъпки | BoomCard'
         : 'Promotions and Special Offers | BoomCard',
       description: language === 'bg'
-        ? 'Разгледайте най-добрите промоции и ексклузивни оферти с вашата BoomCard карта за намаления. Топ изживявания на специални цени!'
+        ? 'Разгледайте най-добрите отстъпки и ексклузивни отстъпки с вашата BoomCard карта за намаления. Топ изживявания на специални цени!'
         : 'Browse the best promotions and exclusive offers with your BoomCard discount card. Top experiences at special prices!',
       keywords: language === 'bg'
-        ? ['промоции', 'специални оферти', 'отстъпки', 'ексклузивни промоции', 'промоции ресторанти', 'промоции хотели', 'карта за намаления']
+        ? ['отстъпки', 'специални отстъпки', 'отстъпки', 'ексклузивни отстъпки', 'отстъпки ресторанти', 'отстъпки хотели', 'карта за намаления']
         : ['promotions', 'special offers', 'discounts', 'exclusive promotions', 'restaurant promotions', 'hotel promotions', 'discount card'],
       language: language,
       url: window.location.href,
@@ -497,10 +497,10 @@ const PromotionsPage: React.FC = () => {
       upcoming: 'Предстоящи',
       expired: 'Изтекли',
       filters: 'Филтри',
-      emptyTitle: 'Няма намерени оферти',
-      emptyText: 'Проверете отново скоро за нови вълнуващи оферти!',
-      browseOffers: 'Разгледай Всички Оферти',
-      premiumOnlyNote: 'Някои оферти са достъпни само с Premium.',
+      emptyTitle: 'Няма намерени отстъпки',
+      emptyText: 'Проверете отново скоро за нови вълнуващи отстъпки!',
+      browseOffers: 'Разгледай Всички Отстъпки',
+      premiumOnlyNote: 'Някои отстъпки са достъпни само с Premium.',
       selectedOffers: 'Подбрани предложения',
       heroCta: 'Вземете Вашата BoomCard',
       // Възстановяване на сума Section
@@ -568,19 +568,19 @@ const PromotionsPage: React.FC = () => {
             <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
               {isLoading
                 ? (language === 'bg' ? 'Зареждане...' : 'Loading...')
-                : `${entities.length} ${language === 'bg' ? 'оферти' : 'offers'}`}
+                : `${entities.length} ${language === 'bg' ? 'отстъпки' : 'offers'}`}
             </div>
           </SectionHeader>
 
           <OffersGrid>
             {isLoading && (
               <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
-                {language === 'bg' ? 'Зареждане на оферти...' : 'Loading offers...'}
+                {language === 'bg' ? 'Зареждане на отстъпки...' : 'Loading offers...'}
               </div>
             )}
             {!isLoading && entities.length === 0 && (
               <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
-                {language === 'bg' ? 'Няма налични оферти.' : 'No offers available yet.'}
+                {language === 'bg' ? 'Няма налични отстъпки.' : 'No offers available yet.'}
               </div>
             )}
             {[...entities].sort((a, b) => (b.discount?.percent ?? 0) - (a.discount?.percent ?? 0)).map((entity, index) => (

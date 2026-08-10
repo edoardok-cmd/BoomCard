@@ -475,7 +475,7 @@ export const phase5TranslationsBG = {
 
     // Видове транзакции
     booking: 'Резервация',
-    offerRedemption: 'Активиране на оферта',
+    offerRedemption: 'Активиране на отстъпка',
     subscription: 'Абонамент',
     refund: 'Връщане',
     payout: 'Изплащане',

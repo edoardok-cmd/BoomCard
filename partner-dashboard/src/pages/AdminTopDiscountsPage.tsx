@@ -744,7 +744,7 @@ export default function AdminTopDiscountsPage() {
     mutationFn: (id: string) => offersService.deleteOffer(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-top-discounts'] });
-      toast.success(language === 'bg' ? 'Офертата е изтрита' : 'Offer deleted');
+      toast.success(language === 'bg' ? 'Отстъпката е изтрита' : 'Offer deleted');
     },
     onError: () => toast.error('Failed to delete offer'),
   });
@@ -960,7 +960,7 @@ export default function AdminTopDiscountsPage() {
             <Title>⭐ Топ Отстъпки</Title>
             <Subtitle>
               {language === 'bg'
-                ? 'Управлявайте featured оферти — всички полета и снимка са задължителни.'
+                ? 'Управлявайте featured отстъпки — всички полета и снимка са задължителни.'
                 : 'Manage featured "Top Discounts" — all fields and image are required.'}
             </Subtitle>
           </div>
@@ -971,7 +971,7 @@ export default function AdminTopDiscountsPage() {
       {/* Filters */}
       <FiltersBar>
         <SearchInput
-          placeholder={language === 'bg' ? 'Търси оферти…' : 'Search offers…'}
+          placeholder={language === 'bg' ? 'Търси отстъпки…' : 'Search offers…'}
           value={filterSearch}
           onChange={e => setFilterSearch(e.target.value)}
         />
@@ -1024,7 +1024,7 @@ export default function AdminTopDiscountsPage() {
             ref={(el) => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < offers.length; }}
             onChange={toggleSelectAll}
           />
-          <span>{language === 'bg' ? 'Оферта' : 'Offer'}</span>
+          <span>{language === 'bg' ? 'Отстъпка' : 'Offer'}</span>
           <span>{language === 'bg' ? 'Партньор' : 'Partner'}</span>
           <span>{language === 'bg' ? 'Отстъпка' : 'Discount'}</span>
           <span>{language === 'bg' ? 'Статус' : 'Status'}</span>
@@ -1168,7 +1168,7 @@ export default function AdminTopDiscountsPage() {
                   <Textarea
                     value={form.descriptionBg}
                     onChange={e => { setForm(f => ({ ...f, descriptionBg: e.target.value })); setFormErrors(prev => ({ ...prev, descriptionBg: undefined })); }}
-                    placeholder="Опишете офертата на български"
+                    placeholder="Опишете отстъпката на български"
                     $error={!!formErrors.descriptionBg}
                   />
                   {formErrors.descriptionBg && <ErrorMsg>{formErrors.descriptionBg}</ErrorMsg>}
@@ -1215,7 +1215,7 @@ export default function AdminTopDiscountsPage() {
                 </FormField>
 
                 {/* Discount & order */}
-                <SectionDivider>{language === 'bg' ? 'Детайли на офертата' : 'Offer Details'}</SectionDivider>
+                <SectionDivider>{language === 'bg' ? 'Детайли на отстъпката' : 'Offer Details'}</SectionDivider>
 
                 <FormField>
                   <Label>{language === 'bg' ? 'Отстъпка %' : 'Discount %'}<Req>*</Req></Label>

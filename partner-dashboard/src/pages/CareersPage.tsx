@@ -177,7 +177,7 @@ const CareersPage: React.FC = () => {
           transition={{ duration: 0.6, delay: 0.1 }}
         >
           {language === 'bg'
-            ? 'Помогнете ни да изградим бъдещето на дигиталните оферти'
+            ? 'Помогнете ни да изградим бъдещето на дигиталните отстъпки'
             : 'Help us build the future of digital offers'}
         </Subtitle>
       </HeroSection>

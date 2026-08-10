@@ -77,7 +77,7 @@ const HistoryDate = styled.span`font-size: 0.75rem; color: ${palette.textSubtle}
 
 const VALIDITY_KEY_LABELS: Record<string, string> = {
   cashback_expiry_days: 'Кешбек (дни)',
-  offer_validity_days:  'Оферта (дни)',
+  offer_validity_days:  'Отстъпка (дни)',
 };
 
 const DEFAULT_CASHBACK_EXPIRY_DAYS = 60;
@@ -143,7 +143,7 @@ export default function AdminSettingsValidityPage() {
       return;
     }
     if (!Number.isInteger(of) || of < 1 || of > 3650) {
-      toast.error('Валидност на оферта трябва да е цяло число между 1 и 3650');
+      toast.error('Валидност на отстъпка трябва да е цяло число между 1 и 3650');
       return;
     }
     saveMutation.mutate({
@@ -160,13 +160,13 @@ export default function AdminSettingsValidityPage() {
       <PageHeader>
         <Eyebrow>Настройки</Eyebrow>
         <PageTitle>Валидност</PageTitle>
-        <PageSubtitle>Конфигурирайте колко дни кешбекът и офертите остават валидни.</PageSubtitle>
+        <PageSubtitle>Конфигурирайте колко дни кешбекът и отстъпките остават валидни.</PageSubtitle>
       </PageHeader>
 
       <Grid>
         <Card>
           <InfoBox>
-            Промените важат само за новоспечелен кешбек и нови оферти — съществуващите записи не се влияят с обратна сила.
+            Промените важат само за новоспечелен кешбек и нови отстъпки — съществуващите записи не се влияят с обратна сила.
           </InfoBox>
           <CardTitle>Настройки за изтичане</CardTitle>
           <CardSubtitle>Всяко запазване е версионирано с преди и след.</CardSubtitle>
@@ -191,14 +191,14 @@ export default function AdminSettingsValidityPage() {
                 </FieldHint>
               </div>
               <div>
-                <FieldLabel>Валидност на оферта (дни)</FieldLabel>
+                <FieldLabel>Валидност на отстъпка (дни)</FieldLabel>
                 <NumberInput
                   type="number" min="1" max="3650"
                   value={offerDays}
                   onChange={(e) => setOfferDays(e.target.value)}
                 />
                 <FieldHint>
-                  Стандартен прозорец на валидност за нови партньорски оферти. Системно подразбиране: {DEFAULT_OFFER_VALIDITY_DAYS}.
+                  Стандартен прозорец на валидност за нови партньорски отстъпки. Системно подразбиране: {DEFAULT_OFFER_VALIDITY_DAYS}.
                   {Number(offerDays) !== DEFAULT_OFFER_VALIDITY_DAYS && (
                     <ResetLink type="button" onClick={() => setOfferDays(String(DEFAULT_OFFER_VALIDITY_DAYS))}>
                       Възстанови по подразбиране

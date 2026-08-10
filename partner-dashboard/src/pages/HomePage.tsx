@@ -688,13 +688,13 @@ const HomePage: React.FC = () => {
   useEffect(() => {
     updateSEO({
       title: language === 'bg'
-        ? 'BOOM Card - Промоции, Изживявания, Карта за Намаления'
+        ? 'BOOM Card - Отстъпки, Изживявания, Карта за Намаления'
         : 'BOOM Card - Promotions, Experiences, Discount Card',
       description: language === 'bg'
-        ? 'Открийте ексклузивни оферти и топ изживявания с вашата BOOM Card карта за намаления. Подарете си незабравими преживявания!'
+        ? 'Открийте ексклузивни отстъпки и топ изживявания с вашата BOOM Card карта за намаления. Подарете си незабравими преживявания!'
         : 'Discover exclusive offers and top experiences with your BOOM Card discount card. Gift yourself unforgettable experiences!',
       keywords: language === 'bg'
-        ? ['промоции', 'изживявания', 'карта за намаления', 'ексклузивни оферти', 'подарък', 'топ изживявания', 'отстъпки', 'България', 'София', 'Пловдив', 'Варна']
+        ? ['отстъпки', 'изживявания', 'карта за намаления', 'ексклузивни отстъпки', 'подарък', 'топ изживявания', 'отстъпки', 'България', 'София', 'Пловдив', 'Варна']
         : ['promotions', 'experiences', 'discount card', 'exclusive offers', 'gift', 'top experiences', 'discounts', 'Bulgaria', 'Sofia', 'Plovdiv', 'Varna'],
       language: language,
       url: window.location.href,
@@ -708,26 +708,26 @@ const HomePage: React.FC = () => {
     generateHowToSchema({
       name: language === 'bg' ? 'Как работи BOOM Card' : 'How BOOM Card Works',
       description: language === 'bg'
-        ? 'Научете как да използвате вашата BOOM Card карта за достъп до ексклузивни промоции и изживявания'
+        ? 'Научете как да използвате вашата BOOM Card карта за достъп до ексклузивни отстъпки и изживявания'
         : 'Learn how to use your BOOM Card to access exclusive promotions and experiences',
       totalTime: 'PT3M',
       steps: [
         {
           name: language === 'bg' ? 'Регистрирайте се' : 'Sign Up',
           text: language === 'bg'
-            ? 'Създайте вашия безплатен BOOM Card акаунт за достъп до хиляди оферти'
+            ? 'Създайте вашия безплатен BOOM Card акаунт за достъп до хиляди отстъпки'
             : 'Create your free BOOM Card account to access thousands of offers',
         },
         {
-          name: language === 'bg' ? 'Разгледайте Офертите' : 'Browse Offers',
+          name: language === 'bg' ? 'Разгледайте Отстъпките' : 'Browse Offers',
           text: language === 'bg'
-            ? 'Открийте ексклузивни промоции от ресторанти, хотели и други партньори'
+            ? 'Открийте ексклузивни отстъпки от ресторанти, хотели и други партньори'
             : 'Discover exclusive promotions from restaurants, hotels, and other partners',
         },
         {
           name: language === 'bg' ? 'Използвайте Картата' : 'Use Your Card',
           text: language === 'bg'
-            ? 'Покажете вашата дигитална карта за получаване на отстъпки и специални оферти'
+            ? 'Покажете вашата дигитална карта за получаване на отстъпки и специални отстъпки'
             : 'Show your digital card to receive discounts and special offers',
         },
       ],
@@ -738,7 +738,7 @@ const HomePage: React.FC = () => {
       {
         question: language === 'bg' ? 'Какво е BOOM Card?' : 'What is BOOM Card?',
         answer: language === 'bg'
-          ? 'BOOM Card е карта за намаления, която ви дава достъп до ексклузивни промоции и топ изживявания в цяла България.'
+          ? 'BOOM Card е карта за намаления, която ви дава достъп до ексклузивни отстъпки и топ изживявания в цяла България.'
           : 'BOOM Card is a discount card that gives you access to exclusive promotions and top experiences across Bulgaria.',
       },
       {
@@ -1221,7 +1221,7 @@ const HomePage: React.FC = () => {
                     photo: 'https://randomuser.me/api/portraits/women/38.jpg',
                     rating: 5,
                     comment: language === 'bg'
-                      ? 'Премиум планът е страхотен. Получавам достъп до ексклузивни оферти.'
+                      ? 'Премиум планът е страхотен. Получавам достъп до ексклузивни отстъпки.'
                       : 'The Premium plan is great. I get access to exclusive offers.'
                   },
                   {
@@ -1411,7 +1411,7 @@ const HomePage: React.FC = () => {
               {
                 q: language === 'bg' ? 'Какво е BOOM Card?' : 'What is BOOM Card?',
                 a: language === 'bg'
-                  ? 'BOOM Card е карта за намаления, която ви дава достъп до ексклузивни промоции и топ изживявания в цяла България — ресторанти, хотели, СПА центрове и още.'
+                  ? 'BOOM Card е карта за намаления, която ви дава достъп до ексклузивни отстъпки и топ изживявания в цяла България — ресторанти, хотели, СПА центрове и още.'
                   : 'BOOM Card is a discount card that gives you access to exclusive promotions and top experiences across Bulgaria — restaurants, hotels, spas, and more.',
               },
               {

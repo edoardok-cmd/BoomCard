@@ -279,7 +279,7 @@ const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
       clearFilters: 'Clear Filters',
     },
     bg: {
-      searchPlaceholder: 'Търсене на оферти, места, партньори...',
+      searchPlaceholder: 'Търсене на отстъпки, места, партньори...',
       category: 'Категория',
       allCategories: 'Всички Категории',
       city: 'Град',

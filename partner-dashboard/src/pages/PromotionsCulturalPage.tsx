@@ -9,7 +9,7 @@ const PromotionsCulturalPage: React.FC = () => {
   return (
     <GenericPage
       titleEn="Cultural & Romantic Promotions"
-      titleBg="Културни и Романтични Промоции"
+      titleBg="Културни и Романтични Отстъпки"
       subtitleEn="Enriching experiences including cultural tours, romantic getaways, family activities, and educational workshops"
       subtitleBg="Обогатяващи изживявания включващи културни турове, романтични пътувания, семейни дейности и образователни работилници"
       entities={entities}

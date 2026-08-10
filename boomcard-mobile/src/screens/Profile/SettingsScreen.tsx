@@ -530,8 +530,8 @@ const SettingsScreen = ({ navigation }: any) => {
   // can be turned off; mandatory categories (systemAnnouncements) are always on.
   // Toggling a category updates BOTH channels (push + email) for that category.
   const OPTIONAL_CATEGORIES: { key: string; labelKey: string; fallback: string }[] = [
-    { key: 'newOffers',   labelKey: 'settings.catNewOffers',   fallback: 'Нови оферти' },
-    { key: 'promotions',  labelKey: 'settings.catPromotions',  fallback: 'Промоции' },
+    { key: 'newOffers',   labelKey: 'settings.catNewOffers',   fallback: 'Нови отстъпки' },
+    { key: 'promotions',  labelKey: 'settings.catPromotions',  fallback: 'Отстъпки' },
     { key: 'reviews',     labelKey: 'settings.catReviews',     fallback: 'Отзиви' },
   ];
 

@@ -220,9 +220,9 @@ const FeaturesPage: React.FC = () => {
       titleEn: 'Location Intelligence',
       titleBg: 'Локационна интелигентност',
       descEn: 'Advanced geolocation features to connect customers with nearby offers in real-time.',
-      descBg: 'Усъвършенствани геолокационни функции за свързване на клиенти с близки оферти в реално време.',
+      descBg: 'Усъвършенствани геолокационни функции за свързване на клиенти с близки отстъпки в реално време.',
       features: [
-        { en: 'GPS-based offer discovery', bg: 'Откриване на оферти чрез GPS' },
+        { en: 'GPS-based offer discovery', bg: 'Откриване на отстъпки чрез GPS' },
         { en: 'Radius-based targeting', bg: 'Таргетиране по радиус' },
         { en: 'Map view integration', bg: 'Интеграция с карти' },
         { en: 'Location-based notifications', bg: 'Известия по местоположение' },
@@ -276,7 +276,7 @@ const FeaturesPage: React.FC = () => {
       titleEn: 'QR Code Integration',
       titleBg: 'QR код интеграция',
       descEn: 'Generate and manage QR codes for contactless offer redemption.',
-      descBg: 'Генерирайте и управлявайте QR кодове за безконтактно изкупуване на оферти.',
+      descBg: 'Генерирайте и управлявайте QR кодове за безконтактно изкупуване на отстъпки.',
       features: [
         { en: 'Dynamic QR codes', bg: 'Динамични QR кодове' },
         { en: 'Scan to redeem', bg: 'Сканирайте за изкупуване' },

@@ -116,7 +116,7 @@ const FomoBanner: React.FC<FomoBannerProps> = ({ language = 'bg' }) => {
       clickHint: '→ View Plans',
     },
     bg: {
-      text: 'В момента тече промоция – пуснати са ',
+      text: 'В момента тече отстъпка – пуснати са ',
       highlight: '300 BOOM Card абонамента',
       suffix: ' на промоционална цена. След изчерпване цената ще бъде увеличена.',
       clickHint: '→ Виж плановете',

@@ -66,15 +66,15 @@ const content = {
     },
   },
   bg: {
-    title: 'Моите Оферти',
-    createNew: 'Създай Нова Оферта',
-    allOffers: 'Всички Оферти',
+    title: 'Моите Отстъпки',
+    createNew: 'Създай Нова Отстъпка',
+    allOffers: 'Всички Отстъпки',
     active: 'Активни',
     inactive: 'Неактивни',
     expiredFilter: 'Изтекли',
-    search: 'Търсене на оферти...',
-    noOffers: 'Няма намерени оферти',
-    createFirst: 'Създайте първата си оферта за да започнете',
+    search: 'Търсене на отстъпки...',
+    noOffers: 'Няма намерени отстъпки',
+    createFirst: 'Създайте първата си отстъпка за да започнете',
     edit: 'Редактирай',
     delete: 'Изтрий',
     activate: 'Активирай',
@@ -82,10 +82,10 @@ const content = {
     redemptions: 'Използвания',
     validUntil: 'Валидна до',
     expired: 'Изтекла',
-    confirmDelete: 'Сигурни ли сте, че искате да изтриете тази оферта?',
-    deleted: 'Офертата е изтрита успешно',
-    activated: 'Офертата е активирана успешно',
-    deactivated: 'Офертата е деактивирана успешно',
+    confirmDelete: 'Сигурни ли сте, че искате да изтриете тази отстъпка?',
+    deleted: 'Отстъпката е изтрита успешно',
+    activated: 'Отстъпката е активирана успешно',
+    deactivated: 'Отстъпката е деактивирана успешно',
     categories: {
       restaurants: 'Ресторанти',
       hotels: 'Хотели',
@@ -249,7 +249,7 @@ const MyOffersPage: React.FC = () => {
             </SpecBlockTitle>
             <SpecBlockDesc>
               {language === 'bg'
-                ? 'Управлението на оферти е в очакване на продуктова спецификация (spec §8a). Свържете се с продуктовия екип преди активиране.'
+                ? 'Управлението на отстъпки е в очакване на продуктова спецификация (spec §8a). Свържете се с продуктовия екип преди активиране.'
                 : 'This feature is pending product specification (spec §8a). Contact the product team before enabling.'}
             </SpecBlockDesc>
           </div>

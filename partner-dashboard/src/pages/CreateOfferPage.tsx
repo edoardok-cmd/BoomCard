@@ -65,17 +65,17 @@ const content = {
     },
   },
   bg: {
-    title: 'Създаване на Нова Оферта',
+    title: 'Създаване на Нова Отстъпка',
     step1: 'Основна Информация',
     step2: 'Детайли и Снимки',
     step3: 'Условия и Преглед',
-    offerTitle: 'Заглавие на Офертата',
+    offerTitle: 'Заглавие на Отстъпката',
     offerTitlePlaceholder: 'напр., 20% Отстъпка на Всички Основни Ястия',
     category: 'Категория',
     selectCategory: 'Изберете категория',
     discount: 'Процент Отстъпка',
     description: 'Описание',
-    descriptionPlaceholder: 'Опишете офертата си подробно...',
+    descriptionPlaceholder: 'Опишете отстъпката си подробно...',
     validFrom: 'Валидна От',
     validUntil: 'Валидна До',
     maxRedemptions: 'Макс. Използвания',
@@ -88,11 +88,11 @@ const content = {
     preview: 'Преглед',
     back: 'Назад',
     next: 'Напред',
-    submit: 'Създай Оферта',
+    submit: 'Създай Отстъпка',
     cancel: 'Отказ',
     required: 'Това поле е задължително',
     invalidDate: 'Крайната дата трябва да е след началната',
-    success: 'Офертата е създадена успешно!',
+    success: 'Отстъпката е създадена успешно!',
     error: 'Неуспешно създаване. Моля опитайте отново.',
     categories: {
       restaurants: 'Ресторанти',
@@ -618,7 +618,7 @@ const CreateOfferPage: React.FC = () => {
             </SpecBlockTitle>
             <SpecBlockDesc>
               {language === 'bg'
-                ? 'Управлението на оферти е в очакване на продуктова спецификация (spec §8a). Свържете се с продуктовия екип преди активиране.'
+                ? 'Управлението на отстъпки е в очакване на продуктова спецификация (spec §8a). Свържете се с продуктовия екип преди активиране.'
                 : 'This feature is pending product specification (spec §8a). Contact the product team before enabling.'}
             </SpecBlockDesc>
           </div>

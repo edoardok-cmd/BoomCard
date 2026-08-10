@@ -9,9 +9,9 @@ const LocationsPlovdivPage: React.FC = () => {
   return (
     <GenericPage
       titleEn={`Plovdiv (${entities.length} Offers)`}
-      titleBg={`Пловдив (${entities.length} Оферти)`}
+      titleBg={`Пловдив (${entities.length} Отстъпки)`}
       subtitleEn="Experience Bulgaria's cultural capital with exclusive venue offers"
-      subtitleBg="Изживейте културната столица на България с ексклузивни оферти"
+      subtitleBg="Изживейте културната столица на България с ексклузивни отстъпки"
       entities={entities}
       isLoading={isLoading}
     />

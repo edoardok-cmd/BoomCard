@@ -63,7 +63,7 @@ const LocationsCitiesPage: React.FC = () => {
       titleEn="Browse by City"
       titleBg="Разгледай по Град"
       subtitleEn="Find the best offers and venues in major Bulgarian cities"
-      subtitleBg="Намерете най-добрите оферти и места в големите български градове"
+      subtitleBg="Намерете най-добрите отстъпки и места в големите български градове"
     >
       <CitiesGrid>
         {cities.map((city) => (
@@ -72,7 +72,7 @@ const LocationsCitiesPage: React.FC = () => {
             <CityContent>
               <CityName>{city.name}</CityName>
               <CityStats>
-                {language === 'bg' ? 'Разгледай оферти' : 'Browse offers'}
+                {language === 'bg' ? 'Разгледай отстъпки' : 'Browse offers'}
               </CityStats>
             </CityContent>
           </CityCard>

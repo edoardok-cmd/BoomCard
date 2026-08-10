@@ -174,11 +174,11 @@ export default function OfferDetailScreen() {
       <View style={[styles.stateContainer, { backgroundColor: theme.colors.background }]}>
         <Ionicons name="alert-circle-outline" size={56} color={theme.colors.onSurfaceVariant} />
         <Text style={[styles.stateTitle, { color: theme.colors.onSurface }]}>
-          {t('offers.notFoundTitle', { defaultValue: 'Офертата не е намерена' })}
+          {t('offers.notFoundTitle', { defaultValue: 'Отстъпката не е намерена' })}
         </Text>
         <Text style={[styles.stateText, { color: theme.colors.onSurfaceVariant }]}>
           {t('offers.notFoundDesc', {
-            defaultValue: 'Тази оферта вече не е налична или връзката е изтекла.',
+            defaultValue: 'Тази отстъпка вече не е налична или връзката е изтекла.',
           })}
         </Text>
         <View style={styles.stateButtons}>

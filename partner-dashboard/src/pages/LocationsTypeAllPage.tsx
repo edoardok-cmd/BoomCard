@@ -11,7 +11,7 @@ const LocationsTypeAllPage: React.FC = () => {
       titleEn="All Locations"
       titleBg="Всички Места"
       subtitleEn="Browse all available venues and offers across Bulgaria"
-      subtitleBg="Разгледайте всички налични места и оферти из България"
+      subtitleBg="Разгледайте всички налични места и отстъпки из България"
       entities={entities}
       isLoading={isLoading}
     />

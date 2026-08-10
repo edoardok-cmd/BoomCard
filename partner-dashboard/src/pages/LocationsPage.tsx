@@ -284,7 +284,7 @@ const LocationsPage: React.FC = () => {
       plovdiv: 'Пловдив',
       bansko: 'Банско',
       openNow: 'Отворено Сега',
-      viewOffers: 'Виж Оферти',
+      viewOffers: 'Виж Отстъпки',
       loading: 'Зареждане…',
       error: 'Неуспешно зареждане на локации.',
       retry: 'Опитай отново',

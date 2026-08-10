@@ -708,7 +708,7 @@ const VenueDetailPage: React.FC = () => {
     if (!isAuthenticated) {
       toast.error(
         language === 'bg'
-          ? 'Моля, влезте в профила си, за да активирате офертата'
+          ? 'Моля, влезте в профила си, за да активирате отстъпката'
           : 'Please sign in to activate this offer',
       );
       navigate('/login', { state: { from: { pathname: `/offers/${id}` } } });
@@ -733,7 +733,7 @@ const VenueDetailPage: React.FC = () => {
       } catch {
         toast.error(
           language === 'bg'
-            ? 'Моля, разрешете достъп до местоположение, за да активирате офертата'
+            ? 'Моля, разрешете достъп до местоположение, за да активирате отстъпката'
             : 'Please allow location access to activate this offer',
         );
         setIsActivating(false);
@@ -743,7 +743,7 @@ const VenueDetailPage: React.FC = () => {
       const result = await offersService.activateOffer(id, location);
       if (result.success && result.code) {
         setActivationCode(result.code);
-        toast.success(language === 'bg' ? 'Офертата е активирана!' : 'Offer activated!');
+        toast.success(language === 'bg' ? 'Отстъпката е активирана!' : 'Offer activated!');
       } else {
         toast.error(result.message || (language === 'bg' ? 'Грешка при активиране' : 'Activation failed'));
       }

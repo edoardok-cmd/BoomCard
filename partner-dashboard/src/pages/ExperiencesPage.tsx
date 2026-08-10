@@ -501,10 +501,10 @@ const ExperiencesPage: React.FC = () => {
                     {language === 'bg' ? 'Няма налични изживявания' : 'No experiences available'}
                   </EmptyTitle>
                   <EmptyText>
-                    {language === 'bg' ? 'Разгледайте нашите оферти и локации.' : 'Browse our offers and locations.'}
+                    {language === 'bg' ? 'Разгледайте нашите отстъпки и локации.' : 'Browse our offers and locations.'}
                   </EmptyText>
                   <Button variant="ghost" size="small" onClick={() => navigate('/offers')}>
-                    {language === 'bg' ? 'Разгледай оферти' : 'Browse offers'}
+                    {language === 'bg' ? 'Разгледай отстъпки' : 'Browse offers'}
                   </Button>
                 </EmptyState>
               )}

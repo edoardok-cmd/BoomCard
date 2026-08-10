@@ -16,7 +16,7 @@ export const bg: TranslationKey = {
     searching: 'Търсене...',
     results: 'резултата',
     noResultsFound: 'Няма намерени резултати',
-    searchPlaceholder: 'Търсене на оферти, заведения, категории...',
+    searchPlaceholder: 'Търсене на отстъпки, заведения, категории...',
     filter: 'Филтър',
     filters: 'Филтри',
     apply: 'Приложи',
@@ -64,11 +64,11 @@ export const bg: TranslationKey = {
   // Header & Navigation
   header: {
     nearby: 'Наблизо',
-    nearbyOffers: 'Оферти наблизо',
+    nearbyOffers: 'Отстъпки наблизо',
     favorites: 'Любими',
     profile: 'Профил',
     myCards: 'Моите карти',
-    myOffers: 'Моите Оферти',
+    myOffers: 'Моите Отстъпки',
     analytics: 'Анализи',
     settings: 'Настройки',
     settingsAndNotifications: 'Настройки и известия',
@@ -141,7 +141,7 @@ export const bg: TranslationKey = {
     reportProblem: 'Докладвай проблем',
     mobileApp: 'Мобилно приложение',
     subscriptionPlans: 'Абонаментни планове',
-    offers: 'Оферти',
+    offers: 'Отстъпки',
     partners: 'Партньори',
     partnerNetwork: 'Партньорска мрежа',
     features: 'Функции',
@@ -372,8 +372,8 @@ export const bg: TranslationKey = {
     heroTitleHighlight: 'Пробвай безплатно.',
     heroSubtitle: 'Ексклузивни отстъпки до 20% за ресторанти, хотели, спа центрове и изживявания',
     heroCta: 'Активирай своя Premium – БЕЗПЛАТНО!',
-    browseOffers: 'Разгледай офертите',
-    topOffers: 'ТОП оферти',
+    browseOffers: 'Разгледай отстъпките',
+    topOffers: 'ТОП отстъпки',
     topOffersSubtitle: 'Най-големите отстъпки в момента',
     categories: 'Категории',
     categoriesSubtitle: 'Разгледайте нашите категории заведения и изживявания',
@@ -393,10 +393,10 @@ export const bg: TranslationKey = {
 
     // Final CTA Section
     readyToSave: 'Започни да спестяваш с BOOM Card още днес',
-    readyToSaveDescription: 'Ексклузивни оферти, реални отстъпки и 24 часа Premium – БЕЗПЛАТНО. Нищо за губене. Само за печелене.',
+    readyToSaveDescription: 'Ексклузивни отстъпки, реални отстъпки и 24 часа Premium – БЕЗПЛАТНО. Нищо за губене. Само за печелене.',
     signUpFree: '🔥 Започни с 24 часа Premium – БЕЗПЛАТНО',
     forPartners: 'Стани партньор',
-    viewOffers: 'Разгледай офертите',
+    viewOffers: 'Разгледай отстъпките',
     viewPartners: 'Виж всички партньори',
     finalTagline: 'Една карта. Реални отстъпки. Пълен контрол.',
 
@@ -423,12 +423,12 @@ export const bg: TranslationKey = {
     noStaffInteraction: 'Без персонал',
   },
 
-  // Страница BOOM места (бивша Оферти/Промоции)
+  // Страница BOOM места (бивша Отстъпки/Отстъпки)
   offersPage: {
     // Hero секция - 2.1
     breadcrumb: 'BOOM места',
     title: 'Всички BOOM отстъпки на едно място',
-    subtitle: 'BOOM Card ти дава достъп до ексклузивни оферти с до 20% кешбек, според избрания от теб план.',
+    subtitle: 'BOOM Card ти дава достъп до ексклузивни отстъпки с до 20% кешбек, според избрания от теб план.',
     heroCta: 'Отключи BOOM Card',
     heroTrustLine: 'Безплатен 24-часов пробен период. Без заплащане.',
 
@@ -443,7 +443,7 @@ export const bg: TranslationKey = {
     activeOffers: 'Нови предложения на топ места',
     upToDiscount: 'До 20% кешбек според абонаментния план',
     newOffersRegularly: 'Подбрани предложения',
-    premiumOnlyNote: 'Някои оферти са достъпни само с Premium.',
+    premiumOnlyNote: 'Някои отстъпки са достъпни само с Premium.',
 
     // Възстановяване на сума стъпки
     cashbackTitle: 'Възстановяване на сума с BOOM Card в 3 стъпки',
@@ -458,7 +458,7 @@ export const bg: TranslationKey = {
     selectedOffers: 'Подбрани предложения',
 
     // Филтри
-    topOffers: 'Топ Оферти',
+    topOffers: 'Топ Отстъпки',
     filters: 'Филтри',
     all: 'Всички',
     active: 'Активни',
@@ -540,15 +540,15 @@ export const bg: TranslationKey = {
 
   // My Offers (Partner)
   myOffers: {
-    title: 'Моите Оферти',
-    createNew: 'Създай Нова Оферта',
-    allOffers: 'Всички Оферти',
+    title: 'Моите Отстъпки',
+    createNew: 'Създай Нова Отстъпка',
+    allOffers: 'Всички Отстъпки',
     active: 'Активни',
     inactive: 'Неактивни',
     expired: 'Изтекли',
-    search: 'Търсене на оферти...',
-    noOffers: 'Няма намерени оферти',
-    createFirst: 'Създайте първата си оферта за да започнете',
+    search: 'Търсене на отстъпки...',
+    noOffers: 'Няма намерени отстъпки',
+    createFirst: 'Създайте първата си отстъпка за да започнете',
     edit: 'Редактирай',
     delete: 'Изтрий',
     activate: 'Активирай',
@@ -556,10 +556,10 @@ export const bg: TranslationKey = {
     views: 'Прегледи',
     redemptions: 'Използвания',
     validUntil: 'Валидна до',
-    confirmDelete: 'Сигурни ли сте, че искате да изтриете тази оферта?',
-    deleted: 'Офертата е изтрита успешно',
-    activated: 'Офертата е активирана успешно',
-    deactivated: 'Офертата е деактивирана успешно',
+    confirmDelete: 'Сигурни ли сте, че искате да изтриете тази отстъпка?',
+    deleted: 'Отстъпката е изтрита успешно',
+    activated: 'Отстъпката е активирана успешно',
+    deactivated: 'Отстъпката е деактивирана успешно',
   },
 
   // Categories (MASTER Navigation List)
@@ -627,17 +627,17 @@ export const bg: TranslationKey = {
   // Category Listing
   categoryListing: {
     home: 'Начало',
-    browseExclusiveOffers: 'Разгледайте ексклузивни оферти в',
+    browseExclusiveOffers: 'Разгледайте ексклузивни отстъпки в',
     filters: 'Филтри',
     sortBy: 'Сортирай по',
-    offer: 'оферта',
-    offers: 'оферти',
+    offer: 'отстъпка',
+    offers: 'отстъпки',
     mostRelevant: 'Най-подходящи',
     highestDiscount: 'Най-голяма отстъпка',
     priceLowToHigh: 'Цена: Ниска към висока',
     priceHighToLow: 'Цена: Висока към ниска',
     highestRating: 'Най-висок рейтинг',
-    noOffersFound: 'Няма намерени оферти',
+    noOffersFound: 'Няма намерени отстъпки',
     noOffersDescription: 'Опитайте да промените филтрите или проверете отново по-късно',
   },
 
@@ -653,19 +653,19 @@ export const bg: TranslationKey = {
     smsNotificationsDesc: 'Получавайте съобщения по SMS',
     pushNotifications: 'Push Известия',
     pushNotificationsDesc: 'Получавайте push известия в браузъра',
-    newOffers: 'Нови Оферти',
-    newOffersDesc: 'Бъдете уведомявани за нови оферти и предложения',
+    newOffers: 'Нови Отстъпки',
+    newOffersDesc: 'Бъдете уведомявани за нови отстъпки и предложения',
     weeklyDigest: 'Седмичен Бюлетин',
-    weeklyDigestDesc: 'Получавайте седмично обобщение на новите оферти',
+    weeklyDigestDesc: 'Получавайте седмично обобщение на новите отстъпки',
     accountActivity: 'Активност в Акаунта',
     accountActivityDesc: 'Сигурностни предупреждения и актуализации',
     // Marketing consents (GDPR)
     marketingTitle: 'Маркетингови Предпочитания',
-    marketingDescription: 'Контролирайте как да ви изпращаме промоции и новини',
+    marketingDescription: 'Контролирайте как да ви изпращаме отстъпки и новини',
     emailMarketing: 'Маркетингови имейли',
-    emailMarketingDesc: 'Най-добрите оферти, нови BOOM места и специални предложения',
+    emailMarketingDesc: 'Най-добрите отстъпки, нови BOOM места и специални предложения',
     phoneMarketing: 'Маркетингови SMS / телефон',
-    phoneMarketingDesc: 'Най-добрите оферти, нови BOOM места и специални предложения',
+    phoneMarketingDesc: 'Най-добрите отстъпки, нови BOOM места и специални предложения',
     marketingConsentNote: 'Можете да оттеглите съгласието си по всяко време. Промените влизат в сила в рамките на 24 часа.',
     // Privacy
     privacyTitle: 'Поверителност',
@@ -796,14 +796,14 @@ export const bg: TranslationKey = {
   // Favorites
   favorites: {
     title: 'Моите любими',
-    subtitle: 'Всички ваши запазени оферти на едно място',
-    savedOffers: 'Запазени оферти',
-    offer: 'оферта',
-    offers: 'оферти',
+    subtitle: 'Всички ваши запазени отстъпки на едно място',
+    savedOffers: 'Запазени отстъпки',
+    offer: 'отстъпка',
+    offers: 'отстъпки',
     clearAll: 'Изчисти всички',
     clearAllConfirm: 'Сигурни ли сте, че искате да изтриете всички любими?',
-    noFavorites: 'Нямате запазени оферти',
-    noFavoritesDescription: 'Започнете да запазвате оферти, които ви харесват, за да ги намерите лесно тук по-късно',
+    noFavorites: 'Нямате запазени отстъпки',
+    noFavoritesDescription: 'Започнете да запазвате отстъпки, които ви харесват, за да ги намерите лесно тук по-късно',
     browseOffers: 'Разгледай BOOM места',
     sortRecentlyAdded: 'Най-нови',
     sortHighestDiscount: 'Най-голяма отстъпка',
@@ -817,9 +817,9 @@ export const bg: TranslationKey = {
 
   // Search
   search: {
-    title: 'Открийте перфектната оферта',
-    subtitle: 'Търсете измежду хиляди ексклузивни оферти за ресторанти, хотели и изживявания',
-    placeholder: 'Търсене на оферти, заведения или изживявания...',
+    title: 'Открийте перфектната отстъпка',
+    subtitle: 'Търсете измежду хиляди ексклузивни отстъпки за ресторанти, хотели и изживявания',
+    placeholder: 'Търсене на отстъпки, заведения или изживявания...',
     popularSearches: 'Популярни търсения',
     searchResults: 'Резултати от търсенето',
     resultsFor: 'резултата за',
@@ -851,8 +851,8 @@ export const bg: TranslationKey = {
     title: 'Известия',
     noNotifications: 'Няма известия',
     markAllAsRead: 'Маркирай всички като прочетени',
-    newOffer: 'Нова налична оферта',
-    offerExpiringSoon: 'Офертата изтича скоро',
+    newOffer: 'Нова налична отстъпка',
+    offerExpiringSoon: 'Отстъпката изтича скоро',
     cardActivated: 'Картата е активирана',
   },
 
@@ -915,12 +915,12 @@ export const bg: TranslationKey = {
     // Export types
     exportTransactions: 'Експорт на транзакции',
     exportVenues: 'Експорт на заведения',
-    exportOffers: 'Експорт на оферти',
+    exportOffers: 'Експорт на отстъпки',
     exportAnalytics: 'Експорт на анализи',
     exportUsers: 'Експорт на потребители',
     // Import types
     importVenues: 'Импорт на заведения',
-    importOffers: 'Импорт на оферти',
+    importOffers: 'Импорт на отстъпки',
     importUsers: 'Импорт на потребители',
     importTransactions: 'Импорт на транзакции',
     downloadTemplate: 'Изтегли шаблон',
@@ -1028,7 +1028,7 @@ export const bg: TranslationKey = {
     goBack: 'Назад',
     youMightBeLookingFor: 'Може да търсите',
     browseCategories: 'Разгледай категории',
-    topOffers: 'ТОП оферти',
+    topOffers: 'ТОП отстъпки',
     search: 'Търсене',
     becomePartner: 'Станете партньор',
   },
@@ -1039,18 +1039,18 @@ export const bg: TranslationKey = {
     available: 'Налична',
     reviews: 'отзива',
     partner: 'Партньор:',
-    whatsIncluded: 'Включено в офертата',
+    whatsIncluded: 'Включено в отстъпката',
     location: 'Локация',
     mapIntegration: 'Карта (Google Maps интеграция)',
     youSave: 'Спестявате',
     validUntil: 'Валидна до:',
-    getThisOffer: 'Вземи офертата',
+    getThisOffer: 'Вземи отстъпката',
     share: 'Сподели',
     phone: 'Телефон:',
     email: 'Имейл:',
     website: 'Уебсайт:',
-    offerQRCode: 'QR Код за офертата',
-    scanToRedeem: 'Сканирайте този код, за да използвате офертата',
+    offerQRCode: 'QR Код за отстъпката',
+    scanToRedeem: 'Сканирайте този код, за да използвате отстъпката',
   },
 
   // Partners Page
@@ -1145,13 +1145,13 @@ export const bg: TranslationKey = {
     fromLastMonth: 'от миналия месец',
     avgOrderValue: 'Средна стойност',
     revenueOverTime: 'Приходи по време',
-    offer: 'Оферта',
+    offer: 'Отстъпка',
     venue: 'Заведение',
     redemptions: 'Използвания',
     chartPlaceholder: 'Графиката ще бъде показана тук',
     chartIntegration: 'Интегрирайте с Chart.js, Recharts или D3.js',
     transactionsByCategory: 'Транзакции по категория',
-    topOffers: 'Топ оферти',
+    topOffers: 'Топ отстъпки',
   },
 
   // Billing
@@ -1297,7 +1297,7 @@ export const bg: TranslationKey = {
     advancedAnalytics: 'Разширена аналитика',
     posIntegration: 'POS интеграция',
     prioritySupport: 'Приоритетна поддръжка',
-    customOffers: 'Персонализирани оферти',
+    customOffers: 'Персонализирани отстъпки',
     dataExport: 'Експорт на данни',
     limitedOffers: 'Специални предложения с ограничена наличност',
     premiumCampaigns: 'Достъп до затворени Premium кампании',
@@ -1362,7 +1362,7 @@ export const bg: TranslationKey = {
     monthlyPlanPeriod: '€ / месец',
     monthlyPlanFeature1: 'Всички Premium заведения',
     monthlyPlanFeature2: 'До 20% кешбек',
-    monthlyPlanFeature3: 'Ексклузивни оферти',
+    monthlyPlanFeature3: 'Ексклузивни отстъпки',
     monthlyPlanFeature4: 'Приоритетна поддръжка',
     monthlyPlanFeature5: 'Първи достъп до нови партньори',
     monthlyPlanCta: '🔥 Започни с 24 часа Premium – БЕЗПЛАТНО',
@@ -1372,7 +1372,7 @@ export const bg: TranslationKey = {
     basicPlanTitle: 'BOOM Card BASIC – МЕСЕЧЕН',
     basicPlanPeriod: '€ / месец',
     basicPlanFeature1: 'Достъп до партньорски заведения',
-    basicPlanFeature2: 'Основни оферти',
+    basicPlanFeature2: 'Основни отстъпки',
     basicPlanFeature3: 'До 10% кешбек',
     basicPlanFeature4: 'Управление през приложението',
     basicPlanCta: '👉 Започни с 24 часа Premium – БЕЗПЛАТНО',
@@ -1406,7 +1406,7 @@ export const bg: TranslationKey = {
     review4Text: '„Харесва ми, че не трябва да обяснявам нищо на персонала. Всичко става през приложението."',
 
     review5Name: 'Веселина Р.',
-    review5Text: '„Много полезно за уикенд пътувания. Намерих добри оферти за СПА и заведения."',
+    review5Text: '„Много полезно за уикенд пътувания. Намерих добри отстъпки за СПА и заведения."',
 
     review6Name: 'Николай Т.',
     review6Text: '„Premium планът се изплаща бързо, ако излизаш често. Ползвам го редовно."',
@@ -1467,7 +1467,7 @@ export const bg: TranslationKey = {
 
     // Видове транзакции
     booking: 'Резервация',
-    offerRedemption: 'Активиране на оферта',
+    offerRedemption: 'Активиране на отстъпка',
     subscription: 'Абонамент',
     refund: 'Връщане',
     payout: 'Изплащане',
@@ -2289,7 +2289,7 @@ export const bg: TranslationKey = {
     // Dashboard overview
     dashboardEyebrow: 'Администрация',
     dashboardWelcome: 'Добре дошли',
-    dashboardSubtitle: 'Обзор на платформата — оферти, кешбек и проверки за измами.',
+    dashboardSubtitle: 'Обзор на платформата — отстъпки, кешбек и проверки за измами.',
     dashboardToday: 'Днес',
 
     // Alert feed

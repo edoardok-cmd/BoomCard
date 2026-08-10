@@ -234,7 +234,7 @@ const CookiePreferencesModal: React.FC = () => {
       },
       marketing: {
         title: 'Маркетинг бисквитки',
-        description: 'Използват се за показване на подходящи реклами и промоции.',
+        description: 'Използват се за показване на подходящи реклами и отстъпки.',
       },
       savePreferences: 'Запази настройките',
       acceptAll: 'Приемам всички',

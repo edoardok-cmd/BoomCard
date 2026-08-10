@@ -9,9 +9,9 @@ const LocationsVarnaPage: React.FC = () => {
   return (
     <GenericPage
       titleEn={`Varna (${entities.length} Offers)`}
-      titleBg={`Варна (${entities.length} Оферти)`}
+      titleBg={`Варна (${entities.length} Отстъпки)`}
       subtitleEn="Enjoy the Black Sea coast with amazing beach and dining offers"
-      subtitleBg="Насладете се на Черноморското крайбрежие с невероятни плажни и ресторантски оферти"
+      subtitleBg="Насладете се на Черноморското крайбрежие с невероятни плажни и ресторантски отстъпки"
       entities={entities}
       isLoading={isLoading}
     />

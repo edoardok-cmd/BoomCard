@@ -2043,7 +2043,7 @@ export const Header: React.FC<HeaderProps> = ({
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder={language === 'bg' ? 'Търсете оферти, партньори, локации...' : 'Search offers, partners, locations...'}
+                    placeholder={language === 'bg' ? 'Търсете отстъпки, партньори, локации...' : 'Search offers, partners, locations...'}
                   />
                   <SearchCloseButton
                     type="button"
@@ -2214,7 +2214,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <SocialShareButton
                     url={window.location.href}
                     title="BOOM Card - Live More, Pay Less"
-                    description={language === 'bg' ? 'Открийте невероятни оферти и преживявания с BOOM Card' : 'Discover amazing offers and experiences with BOOM Card'}
+                    description={language === 'bg' ? 'Открийте невероятни отстъпки и преживявания с BOOM Card' : 'Discover amazing offers and experiences with BOOM Card'}
                     buttonText={language === 'bg' ? 'Сподели' : 'Share'}
                     className="w-full"
                   />

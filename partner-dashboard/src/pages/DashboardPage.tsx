@@ -1182,7 +1182,7 @@ const DashboardPage: React.FC = () => {
                         <ActionCardImage $imageUrl="https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=400&h=400&fit=crop" />
                         <CardBody>
                           <div style={{ textAlign: 'center', padding: '2rem 0' }}>
-                            <VenueName>{t('dashboard.manageOffers') || (language === 'bg' ? 'Управление на оферти' : 'Manage Offers')}</VenueName>
+                            <VenueName>{t('dashboard.manageOffers') || (language === 'bg' ? 'Управление на отстъпки' : 'Manage Offers')}</VenueName>
                             <VenueCategory>View, edit, and create new offers</VenueCategory>
                             <div style={{ marginTop: '1rem' }}>
                               <Button variant="primary" size="medium">Go to Offers</Button>

@@ -9,7 +9,7 @@ const LocationsPriceLuxuryPage: React.FC = () => {
   return (
     <GenericPage
       titleEn={`Luxury (782+ BGN / €400+) - ${entities.length} Offers`}
-      titleBg={`Лукс (782+ лв. / €400+) - ${entities.length} Оферти`}
+      titleBg={`Лукс (782+ лв. / €400+) - ${entities.length} Отстъпки`}
       subtitleEn="Exclusive luxury venues for the finest experience"
       subtitleBg="Ексклузивни луксозни места за най-доброто изживяване"
       entities={entities}

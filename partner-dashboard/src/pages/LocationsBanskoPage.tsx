@@ -9,9 +9,9 @@ const LocationsBanskoPage: React.FC = () => {
   return (
     <GenericPage
       titleEn={`Bansko (${entities.length} Offers)`}
-      titleBg={`Банско (${entities.length} Оферти)`}
+      titleBg={`Банско (${entities.length} Отстъпки)`}
       subtitleEn="Bulgaria's premier ski destination with exclusive mountain resort offers"
-      subtitleBg="Най-добрата ски дестинация в България с ексклузивни планински оферти"
+      subtitleBg="Най-добрата ски дестинация в България с ексклузивни планински отстъпки"
       entities={entities}
       isLoading={isLoading}
     />

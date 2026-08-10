@@ -9,7 +9,7 @@ const LocationsPricePremiumPage: React.FC = () => {
   return (
     <GenericPage
       titleEn={`Premium (293-782 BGN / €150-400) - ${entities.length} Offers`}
-      titleBg={`Премиум (293-782 лв. / €150-400) - ${entities.length} Оферти`}
+      titleBg={`Премиум (293-782 лв. / €150-400) - ${entities.length} Отстъпки`}
       subtitleEn="Premium venues for discerning travelers"
       subtitleBg="Премиум места за взискателни пътници"
       entities={entities}

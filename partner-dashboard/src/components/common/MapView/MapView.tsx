@@ -39,7 +39,7 @@ const content = {
     enableLocation: 'Разреши Местоположение',
     locationDenied: 'Достъпът до местоположение е отказан',
     locationError: 'Не може да се намери местоположението',
-    findNearby: 'Намери Близки Оферти',
+    findNearby: 'Намери Близки Отстъпки',
     myLocation: 'Моето Местоположение',
     distance: 'разстояние',
     openNow: 'Отворено Сега',

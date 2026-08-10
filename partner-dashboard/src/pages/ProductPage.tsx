@@ -192,15 +192,15 @@ const ProductPage: React.FC = () => {
       titleEn: 'Mobile-First Experience',
       titleBg: 'Мобилно изживяване',
       descEn: 'Seamless mobile app for both customers and partners. Access offers, redeem rewards, and manage your business on the go.',
-      descBg: 'Безпроблемно мобилно приложение за клиенти и партньори. Достъп до оферти, изкупуване на награди и управление на бизнеса в движение.',
+      descBg: 'Безпроблемно мобилно приложение за клиенти и партньори. Достъп до отстъпки, изкупуване на награди и управление на бизнеса в движение.',
     },
     {
       icon: <MapPin size={28} />,
       color: '#10b981',
       titleEn: 'Location-Based Offers',
-      titleBg: 'Оферти по местоположение',
+      titleBg: 'Отстъпки по местоположение',
       descEn: 'Smart geolocation technology connects customers with nearby deals. Increase foot traffic with location-targeted promotions.',
-      descBg: 'Интелигентна геолокационна технология свързва клиенти с близки оферти. Увеличете трафика с промоции по местоположение.',
+      descBg: 'Интелигентна геолокационна технология свързва клиенти с близки отстъпки. Увеличете трафика с отстъпки по местоположение.',
     },
     {
       icon: <Gift size={28} />,
@@ -224,7 +224,7 @@ const ProductPage: React.FC = () => {
       titleEn: 'Customer Insights',
       titleBg: 'Клиентски анализи',
       descEn: 'Understand your audience with powerful customer analytics. Make data-driven decisions to optimize your offers.',
-      descBg: 'Разберете аудиторията си с мощни клиентски анализи. Вземайте решения на база данни за оптимизиране на офертите.',
+      descBg: 'Разберете аудиторията си с мощни клиентски анализи. Вземайте решения на база данни за оптимизиране на отстъпките.',
     },
     {
       icon: <BarChart3 size={28} />,
@@ -263,7 +263,7 @@ const ProductPage: React.FC = () => {
   const stats = [
     { number: '10K+', labelEn: 'Active Users', labelBg: 'Активни потребители' },
     { number: '500+', labelEn: 'Partner Businesses', labelBg: 'Партньорски бизнеси' },
-    { number: '50K+', labelEn: 'Offers Redeemed', labelBg: 'Изкупени оферти' },
+    { number: '50K+', labelEn: 'Offers Redeemed', labelBg: 'Изкупени отстъпки' },
     { number: '99.9%', labelEn: 'Uptime', labelBg: 'Време на работа' },
   ];
 
@@ -276,7 +276,7 @@ const ProductPage: React.FC = () => {
           transition={{ duration: 0.6 }}
         >
           {language === 'bg'
-            ? 'Платформата за дигитални оферти'
+            ? 'Платформата за дигитални отстъпки'
             : 'The Digital Offers Platform'}
         </HeroTitle>
         <HeroSubtitle
@@ -285,7 +285,7 @@ const ProductPage: React.FC = () => {
           transition={{ duration: 0.6, delay: 0.1 }}
         >
           {language === 'bg'
-            ? 'Свържете вашия бизнес с хиляди клиенти. Увеличете продажбите с умни, базирани на местоположение оферти.'
+            ? 'Свържете вашия бизнес с хиляди клиенти. Увеличете продажбите с умни, базирани на местоположение отстъпки.'
             : 'Connect your business with thousands of customers. Boost sales with smart, location-based offers.'}
         </HeroSubtitle>
         <CTAButtons
