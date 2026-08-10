@@ -406,6 +406,8 @@ async function main() {
     },
   ];
 
+  // Create offers with idempotency via query-before-create pattern
+  // (Offer has no natural unique key for upsert; instead, check existence by partnerId + title composite)
   const offers = [];
   for (const spec of offerSpecs) {
     const existingOffer = await prisma.offer.findFirst({
