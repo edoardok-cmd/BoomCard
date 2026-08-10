@@ -17,7 +17,6 @@ const __dirname = path.dirname(__filename);
 // Only load .env if DATABASE_URL is not already set
 if (!process.env.DATABASE_URL) {
   const envPath = path.join(__dirname, '..', '.env');
-  console.log('Loading .env from:', envPath);
   dotenv.config({ path: envPath });
 }
 
@@ -141,80 +140,86 @@ async function seedPlans() {
   console.log('🌱 Seeding plans...');
 
   for (const plan of plans) {
-    // Use ON CONFLICT for upsert
-    await sql`
-      INSERT INTO plans (
-        id,
-        "planCode",
-        "displayName",
-        "displayNameBg",
-        "priceWeeklyEur",
-        "priceMonthlyEur",
-        "priceYearlyEur",
-        "cashbackRate",
-        "stickerBonus",
-        features,
-        "featuresBg",
-        "cardType",
-        "isFeatured",
-        "badgeText",
-        "badgeTextBg",
-        "displayOrder",
-        "hasWeeklyOption",
-        "hasMonthlyOption",
-        "hasYearlyOption",
-        "yearlyDiscountPct",
-        "isActive",
-        "createdAt",
-        "updatedAt"
-      ) VALUES (
-        gen_random_uuid(),
-        ${plan.planCode},
-        ${plan.displayName},
-        ${plan.displayNameBg},
-        ${plan.priceWeeklyEur},
-        ${plan.priceMonthlyEur},
-        ${plan.priceYearlyEur},
-        ${plan.cashbackRate},
-        ${plan.stickerBonus},
-        ${plan.features},
-        ${plan.featuresBg},
-        ${plan.cardType},
-        ${plan.isFeatured},
-        ${plan.badgeText},
-        ${plan.badgeTextBg},
-        ${plan.displayOrder},
-        ${plan.hasWeeklyOption},
-        ${plan.hasMonthlyOption},
-        ${plan.hasYearlyOption},
-        ${plan.yearlyDiscountPct},
-        true,
-        NOW(),
-        NOW()
-      )
-      ON CONFLICT ("planCode") DO UPDATE SET
-        "displayName" = EXCLUDED."displayName",
-        "displayNameBg" = EXCLUDED."displayNameBg",
-        "priceWeeklyEur" = EXCLUDED."priceWeeklyEur",
-        "priceMonthlyEur" = EXCLUDED."priceMonthlyEur",
-        "priceYearlyEur" = EXCLUDED."priceYearlyEur",
-        "cashbackRate" = EXCLUDED."cashbackRate",
-        "stickerBonus" = EXCLUDED."stickerBonus",
-        features = EXCLUDED.features,
-        "featuresBg" = EXCLUDED."featuresBg",
-        "cardType" = EXCLUDED."cardType",
-        "isFeatured" = EXCLUDED."isFeatured",
-        "badgeText" = EXCLUDED."badgeText",
-        "badgeTextBg" = EXCLUDED."badgeTextBg",
-        "displayOrder" = EXCLUDED."displayOrder",
-        "hasWeeklyOption" = EXCLUDED."hasWeeklyOption",
-        "hasMonthlyOption" = EXCLUDED."hasMonthlyOption",
-        "hasYearlyOption" = EXCLUDED."hasYearlyOption",
-        "yearlyDiscountPct" = EXCLUDED."yearlyDiscountPct",
-        "updatedAt" = NOW()
-    `;
+    try {
+      // Use ON CONFLICT for upsert
+      await sql`
+        INSERT INTO plans (
+          id,
+          "planCode",
+          "displayName",
+          "displayNameBg",
+          "priceWeeklyEur",
+          "priceMonthlyEur",
+          "priceYearlyEur",
+          "cashbackRate",
+          "stickerBonus",
+          features,
+          "featuresBg",
+          "cardType",
+          "isFeatured",
+          "badgeText",
+          "badgeTextBg",
+          "displayOrder",
+          "hasWeeklyOption",
+          "hasMonthlyOption",
+          "hasYearlyOption",
+          "yearlyDiscountPct",
+          "isActive",
+          "createdAt",
+          "updatedAt"
+        ) VALUES (
+          gen_random_uuid(),
+          ${plan.planCode},
+          ${plan.displayName},
+          ${plan.displayNameBg},
+          ${plan.priceWeeklyEur},
+          ${plan.priceMonthlyEur},
+          ${plan.priceYearlyEur},
+          ${plan.cashbackRate},
+          ${plan.stickerBonus},
+          ${plan.features},
+          ${plan.featuresBg},
+          ${plan.cardType},
+          ${plan.isFeatured},
+          ${plan.badgeText},
+          ${plan.badgeTextBg},
+          ${plan.displayOrder},
+          ${plan.hasWeeklyOption},
+          ${plan.hasMonthlyOption},
+          ${plan.hasYearlyOption},
+          ${plan.yearlyDiscountPct},
+          true,
+          NOW(),
+          NOW()
+        )
+        ON CONFLICT ("planCode") DO UPDATE SET
+          "displayName" = EXCLUDED."displayName",
+          "displayNameBg" = EXCLUDED."displayNameBg",
+          "priceWeeklyEur" = EXCLUDED."priceWeeklyEur",
+          "priceMonthlyEur" = EXCLUDED."priceMonthlyEur",
+          "priceYearlyEur" = EXCLUDED."priceYearlyEur",
+          "cashbackRate" = EXCLUDED."cashbackRate",
+          "stickerBonus" = EXCLUDED."stickerBonus",
+          features = EXCLUDED.features,
+          "featuresBg" = EXCLUDED."featuresBg",
+          "cardType" = EXCLUDED."cardType",
+          "isFeatured" = EXCLUDED."isFeatured",
+          "badgeText" = EXCLUDED."badgeText",
+          "badgeTextBg" = EXCLUDED."badgeTextBg",
+          "displayOrder" = EXCLUDED."displayOrder",
+          "hasWeeklyOption" = EXCLUDED."hasWeeklyOption",
+          "hasMonthlyOption" = EXCLUDED."hasMonthlyOption",
+          "hasYearlyOption" = EXCLUDED."hasYearlyOption",
+          "yearlyDiscountPct" = EXCLUDED."yearlyDiscountPct",
+          "updatedAt" = NOW()
+      `;
 
-    console.log(`  ✅ ${plan.planCode}: ${plan.displayName} - €${(plan.priceMonthlyEur || plan.priceWeeklyEur || 0) / 100}/period`);
+      console.log(`  ✅ ${plan.planCode}: ${plan.displayName} - €${(plan.priceMonthlyEur || plan.priceWeeklyEur || 0) / 100}/period`);
+    } catch (err) {
+      const errMessage = err instanceof Error ? err.message : String(err);
+      console.error(`  ❌ ${plan.planCode}: Failed to upsert — ${errMessage}`);
+      // Continue to next plan
+    }
   }
 
   console.log('✨ Plans seeded successfully!');
@@ -223,7 +228,7 @@ async function seedPlans() {
 // Run
 seedPlans()
   .catch((error) => {
-    console.error('❌ Error seeding plans:', error);
+    console.error('❌ Error seeding plans:', error.message);
     process.exit(1);
   });
 
