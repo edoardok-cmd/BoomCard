@@ -202,4 +202,130 @@ describe('BC-QA-037: createScratchSchemaClient gives real runtime-query isolatio
       await prisma.user.deleteMany({ where: { id: marker } }).catch(() => {});
     }
   });
+
+  test('concurrent queries through one scratch client land in the scratch schema without cross-contamination', async () => {
+    const scratchClient = createScratchSchemaClient(schemaName);
+
+    try {
+      // Create multiple users concurrently via Promise.all
+      // Use distinct markers to prevent id collisions
+      const markerBase = `bcqa037-concurrent-${Date.now()}`;
+      const markers = Array.from({ length: 5 }, (_, i) => `${markerBase}-${i}`);
+
+      const results = await Promise.all(
+        markers.map((marker) =>
+          scratchClient.user.create({
+            data: {
+              id: marker,
+              email: `${marker}@example.com`,
+              passwordHash: 'hashed',
+              firstName: 'Concurrent',
+              lastName: 'Test',
+              phone: `+3595${marker.charCodeAt(marker.length - 1)}${Date.now() % 100000}`,
+              role: 'USER',
+              status: 'ACTIVE',
+            },
+          }),
+        ),
+      );
+
+      // Verify all concurrent creates succeeded
+      expect(results).toHaveLength(markers.length);
+      markers.forEach((marker, i) => {
+        expect(results[i].id).toBe(marker);
+      });
+
+      // Verify all landed in the scratch schema, not public
+      for (const marker of markers) {
+        const inScratch = await rawPool.query(`SELECT id FROM "${schemaName}"."User" WHERE id = $1`, [
+          marker,
+        ]);
+        expect(inScratch.rows).toHaveLength(1);
+
+        const inPublic = await rawPool.query('SELECT id FROM "public"."User" WHERE id = $1', [marker]);
+        expect(inPublic.rows).toHaveLength(0);
+      }
+    } finally {
+      await scratchClient.$disconnect();
+    }
+  }, 30000);
+
+  test('BC-QA-037 impl-r1 MEDIUM #2 fix: soft-deleted users are excluded from findMany and findFirst', async () => {
+    const scratchClient = createScratchSchemaClient(schemaName);
+
+    try {
+      // Create two users: one active, one to be soft-deleted
+      const activeMarker = `bcqa037-softdelete-active-${Date.now()}`;
+      const deletedMarker = `bcqa037-softdelete-deleted-${Date.now()}`;
+
+      const activeUser = await scratchClient.user.create({
+        data: {
+          id: activeMarker,
+          email: `${activeMarker}@example.com`,
+          passwordHash: 'hashed',
+          firstName: 'Active',
+          lastName: 'User',
+          phone: `+35950${Date.now()}`,
+          role: 'USER',
+          status: 'ACTIVE',
+        },
+      });
+      expect(activeUser.id).toBe(activeMarker);
+
+      const deletedUser = await scratchClient.user.create({
+        data: {
+          id: deletedMarker,
+          email: `${deletedMarker}@example.com`,
+          passwordHash: 'hashed',
+          firstName: 'Deleted',
+          lastName: 'User',
+          phone: `+35951${Date.now()}`,
+          role: 'USER',
+          status: 'ACTIVE',
+        },
+      });
+      expect(deletedUser.id).toBe(deletedMarker);
+
+      // Soft-delete one user by setting deletedAt
+      const deletedTime = new Date();
+      await scratchClient.user.update({
+        where: { id: deletedMarker },
+        data: { deletedAt: deletedTime },
+      });
+
+      // findMany should exclude soft-deleted users by default
+      const foundMany = await scratchClient.user.findMany({
+        where: {
+          id: {
+            in: [activeMarker, deletedMarker],
+          },
+        },
+        orderBy: { id: 'asc' },
+      });
+      expect(foundMany).toHaveLength(1);
+      expect(foundMany[0].id).toBe(activeMarker);
+      expect(foundMany[0].deletedAt).toBeNull();
+
+      // findFirst should exclude soft-deleted users by default
+      const foundFirst = await scratchClient.user.findFirst({
+        where: { id: deletedMarker },
+      });
+      expect(foundFirst).toBeNull();
+
+      // Explicitly querying for deleted rows (via `deletedAt: { not: null }`)
+      // should return them, proving the withSoftDelete extension respects
+      // explicit deletedAt filters
+      const foundDeletedMany = await scratchClient.user.findMany({
+        where: {
+          id: deletedMarker,
+          deletedAt: { not: null },
+        },
+      });
+      expect(foundDeletedMany).toHaveLength(1);
+      expect(foundDeletedMany[0].id).toBe(deletedMarker);
+      expect(foundDeletedMany[0].deletedAt).not.toBeNull();
+    } finally {
+      await scratchClient.$disconnect();
+    }
+  }, 30000);
 });
