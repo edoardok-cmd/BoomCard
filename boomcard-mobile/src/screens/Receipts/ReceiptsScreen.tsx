@@ -161,7 +161,7 @@ const ReceiptsScreen = ({ navigation }: any) => {
     });
   };
 
-  // AC#5 — single shared dual-currency formatter, no per-screen reimplementation.
+  // AC#5 — single shared EUR formatter, no per-screen reimplementation.
   const formatAmount = (amount: number | undefined) => formatEurAmount(amount || 0);
 
   const s = getStyles(theme, isDarkMode);
