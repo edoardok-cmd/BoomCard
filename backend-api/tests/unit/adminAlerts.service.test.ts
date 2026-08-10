@@ -28,6 +28,7 @@ jest.mock('../../src/lib/prisma', () => {
     $queryRaw: jest.fn(),
   };
   return {
+    __esModule: true,
     prisma: mockPrisma,
     default: mockPrisma,
   };
