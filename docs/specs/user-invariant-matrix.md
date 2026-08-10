@@ -213,13 +213,9 @@ Three sweep tests mechanically cover entire invariant classes for the user surfa
 | INV-USER-DEF-001 | Plus-addressing email routing NOT implemented (deferred v1.3) | STATE | static |
 | INV-USER-DEF-002 | Nearby (Наблизо) feature behaviour matches a documented deferred-decision option (not a half-built leak) | STATE | static |
 
-## CUR — Currency Display (§17)
+## CUR — Currency Display (§17) — RETIRED 2026-08-10, BC-QA-031
 
-| Invariant ID | Description | Class | Suite Coverage |
-|---|---|---|---|
-| INV-USER-CUR-001 | Transition window OPEN → all user money amounts shown in BOTH BGN and EUR | CUR | [SUITE: CUR] |
-| INV-USER-CUR-002 | Transition window CLOSED → BGN hidden, EUR only; no raw BGN scalar leaks | CUR | [SUITE: CUR] |
-| INV-USER-CUR-003 | Rule applies to all monetary amounts (cashback balances, payout amounts, transaction history) | CUR | [SUITE: CUR] |
+The dual-currency (BGN+EUR) display feature (§17) has been fully removed now that Bulgaria's BGN→EUR transition window has closed. All monetary amounts are EUR-only (or the pre-feature original scalar), with no `currency_transition_window_open` flag, no `currencyDisplay.ts` module, and no `display`/dual-currency wrapper objects anywhere in the user surface. The 3 INV-USER-CUR-* rows and the `user-currency-leak-sweep.test.ts` suite that verified them no longer apply and have been removed along with the feature.
 
 ## DI — Data Integrity Atomic Rules (§19) — cross-references
 

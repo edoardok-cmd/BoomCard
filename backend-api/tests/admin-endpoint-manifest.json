@@ -1,6 +1,6 @@
 {
   "generated": "run UPDATE_ENDPOINT_MANIFEST=1 to refresh",
-  "count": 228,
+  "count": 227,
   "routes": [
     {
       "method": "GET",
@@ -861,11 +861,6 @@
       "method": "PATCH",
       "path": "/api/admin/payouts/bulk-approve",
       "coverage": "matrix:INV-FIN-001,INV-FIN-004"
-    },
-    {
-      "method": "GET",
-      "path": "/api/admin/settings/currency-display-mode",
-      "coverage": "matrix:INV-CUR-026"
     },
     {
       "method": "GET",

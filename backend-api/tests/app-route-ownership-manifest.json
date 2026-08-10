@@ -1,8 +1,8 @@
 {
   "generated": "run UPDATE_ROUTE_OWNERSHIP=1 to refresh",
-  "total": 500,
+  "total": 499,
   "byScope": {
-    "admin": 232,
+    "admin": 231,
     "user": 165,
     "partner": 24,
     "redemption": 55,
@@ -868,11 +868,6 @@
     {
       "method": "PATCH",
       "path": "/api/admin/payouts/bulk-approve",
-      "scope": "admin"
-    },
-    {
-      "method": "GET",
-      "path": "/api/admin/settings/currency-display-mode",
       "scope": "admin"
     },
     {

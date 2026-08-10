@@ -179,7 +179,6 @@ router.get('/statistics', asyncHandler(async (req: AuthRequest, res: Response) =
       availableBalance: wallet.availableBalance,
       pendingBalance: wallet.pendingBalance,
       transactionsByType: stats,
-      currency: 'BGN',
     });
   } catch (error: any) {
     logger.error('Error fetching wallet statistics:', error);
