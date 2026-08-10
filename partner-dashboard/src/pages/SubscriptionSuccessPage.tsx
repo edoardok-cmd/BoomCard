@@ -198,7 +198,7 @@ const MAX_TOTAL_TIME = 120000; // 2 minutes before giving up
 
 const SubscriptionSuccessPage: React.FC = () => {
   const location = useLocation();
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
 
   // Extract orderId and Paysera redirect data from URL
   const searchParams = new URLSearchParams(location.search);
@@ -365,34 +365,26 @@ const SubscriptionSuccessPage: React.FC = () => {
   const getTitle = () => {
     switch (status) {
       case 'success':
-        return language === 'bg' ? 'Плащането е успешно!' : 'Payment Successful!';
+        return t('subscriptionSuccessPage.titleSuccess');
       case 'pending':
-        return language === 'bg' ? 'Проверка на плащането...' : 'Verifying Payment...';
+        return t('subscriptionSuccessPage.titlePending');
       case 'error':
-        return language === 'bg' ? 'Нещо се обърка' : 'Something Went Wrong';
+        return t('subscriptionSuccessPage.titleError');
       default:
-        return language === 'bg' ? 'Обработка...' : 'Processing...';
+        return t('subscriptionSuccessPage.titleDefault');
     }
   };
 
   const getSubtitle = () => {
     switch (status) {
       case 'success':
-        return language === 'bg'
-          ? 'Вашият абонамент е активен. Можете да започнете да използвате Premium функциите веднага.'
-          : 'Your subscription is now active. You can start using Premium features right away.';
+        return t('subscriptionSuccessPage.subtitleSuccess');
       case 'pending':
-        return language === 'bg'
-          ? 'Моля, изчакайте докато потвърдим вашето плащане. Това обикновено отнема няколко секунди.'
-          : 'Please wait while we confirm your payment. This usually takes a few seconds.';
+        return t('subscriptionSuccessPage.subtitlePending');
       case 'error':
-        return language === 'bg'
-          ? 'Не успяхме да потвърдим вашето плащане. Моля, свържете се с поддръжката ако проблемът продължава.'
-          : 'We could not confirm your payment. Please contact support if the issue persists.';
+        return t('subscriptionSuccessPage.subtitleError');
       default:
-        return language === 'bg'
-          ? 'Зареждане...'
-          : 'Loading...';
+        return t('subscriptionSuccessPage.subtitleDefault');
     }
   };
 
@@ -413,11 +405,11 @@ const SubscriptionSuccessPage: React.FC = () => {
     if (!period) return '-';
     switch (period) {
       case 'weekly':
-        return language === 'bg' ? 'Седмичен' : 'Weekly';
+        return t('subscriptionSuccessPage.weekly');
       case 'monthly':
-        return language === 'bg' ? 'Месечен' : 'Monthly';
+        return t('subscriptionSuccessPage.monthly');
       case 'yearly':
-        return language === 'bg' ? 'Годишен' : 'Yearly';
+        return t('subscriptionSuccessPage.yearly');
       default:
         return period;
     }
@@ -439,35 +431,33 @@ const SubscriptionSuccessPage: React.FC = () => {
 
           {showTimeoutWarning && (
             <TimeoutWarning>
-              {language === 'bg'
-                ? 'Обработката отнема повече време от очакваното. Вашето плащане може да бъде все още в процес на обработка.'
-                : 'Processing is taking longer than expected. Your payment may still be processing.'}
+              {t('subscriptionSuccessPage.timeoutWarning')}
             </TimeoutWarning>
           )}
 
           {subscription && (
             <SubscriptionDetails>
               <DetailRow>
-                <DetailLabel>{language === 'bg' ? 'План' : 'Plan'}</DetailLabel>
+                <DetailLabel>{t('subscriptionSuccessPage.planLabel')}</DetailLabel>
                 <DetailValue>
                   {language === 'bg' ? subscription.plan.nameBg : subscription.plan.name}
                 </DetailValue>
               </DetailRow>
               <DetailRow>
-                <DetailLabel>{language === 'bg' ? 'Период' : 'Billing Period'}</DetailLabel>
+                <DetailLabel>{t('subscriptionSuccessPage.billingPeriodLabel')}</DetailLabel>
                 <DetailValue>{getBillingPeriodLabel(subscription.billingPeriod)}</DetailValue>
               </DetailRow>
               <DetailRow>
-                <DetailLabel>{language === 'bg' ? 'Статус' : 'Status'}</DetailLabel>
+                <DetailLabel>{t('subscriptionSuccessPage.statusLabel')}</DetailLabel>
                 <StatusBadge $active={subscription.isActive}>
                   {subscription.isActive
-                    ? (language === 'bg' ? 'Активен' : 'Active')
-                    : (language === 'bg' ? 'Обработва се' : 'Processing')}
+                    ? t('subscriptionSuccessPage.statusActive')
+                    : t('subscriptionSuccessPage.statusProcessing')}
                 </StatusBadge>
               </DetailRow>
               {subscription.currentPeriodEnd && subscription.isActive && (
                 <DetailRow>
-                  <DetailLabel>{language === 'bg' ? 'Валиден до' : 'Valid Until'}</DetailLabel>
+                  <DetailLabel>{t('subscriptionSuccessPage.validUntilLabel')}</DetailLabel>
                   <DetailValue>
                     {new Date(subscription.currentPeriodEnd).toLocaleDateString(
                       language === 'bg' ? 'bg-BG' : 'en-US',
@@ -483,18 +473,14 @@ const SubscriptionSuccessPage: React.FC = () => {
             <div style={{ textAlign: 'center', padding: '1.5rem', background: 'rgba(102,126,234,0.08)', borderRadius: '0.75rem', marginBottom: '1rem' }}>
               <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>✉️</div>
               <p style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: '0.4rem', color: 'var(--color-text-primary)' }}>
-                {language === 'bg' ? 'Провери входящата си поща' : 'Check your inbox'}
+                {t('subscriptionSuccessPage.checkInbox')}
               </p>
               <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem', lineHeight: 1.5, margin: 0 }}>
                 {anonymousEmail
-                  ? (language === 'bg'
-                    ? `Изпратихме линк до ${anonymousEmail} за завършване на акаунта ти.`
-                    : `We sent a setup link to ${anonymousEmail}.`)
-                  : (language === 'bg'
-                    ? 'Изпратихме ти имейл с линк за завършване на акаунта.'
-                    : 'We sent you an email with a link to complete your account.')}
+                  ? <>{t('subscriptionSuccessPage.setupLinkSentPrefix')} {anonymousEmail}{t('subscriptionSuccessPage.setupLinkSentSuffix')}</>
+                  : t('subscriptionSuccessPage.setupLinkSentGeneric')}
                 {' '}
-                {language === 'bg' ? 'Линкът е валиден 30 минути.' : 'The link expires in 30 minutes.'}
+                {t('subscriptionSuccessPage.linkExpires')}
               </p>
             </div>
           )}
@@ -503,18 +489,18 @@ const SubscriptionSuccessPage: React.FC = () => {
             {status === 'success' && !isAnonymous ? (
               <Link to="/dashboard">
                 <Button variant="primary" size="large" fullWidth>
-                  {language === 'bg' ? 'Към Профила' : 'Go to Dashboard'}
+                  {t('subscriptionSuccessPage.goToDashboard')}
                 </Button>
               </Link>
             ) : status === 'error' || (showTimeoutWarning && !isPolling) ? (
               <>
                 <RetryButton variant="primary" size="large" onClick={handleRetry}>
                   <RefreshCw size={18} />
-                  {language === 'bg' ? 'Опитай отново' : 'Try Again'}
+                  {t('subscriptionSuccessPage.tryAgain')}
                 </RetryButton>
                 <Link to="/support">
                   <Button variant="secondary" size="large" fullWidth>
-                    {language === 'bg' ? 'Свържи се с поддръжката' : 'Contact Support'}
+                    {t('subscriptionSuccessPage.contactSupport')}
                   </Button>
                 </Link>
               </>
@@ -524,7 +510,7 @@ const SubscriptionSuccessPage: React.FC = () => {
           {isPolling && status !== 'success' && (
             <PollingIndicator>
               <Loader2 />
-              {language === 'bg' ? 'Проверка на статуса...' : 'Checking status...'}
+              {t('subscriptionSuccessPage.checkingStatus')}
             </PollingIndicator>
           )}
         </Card>
