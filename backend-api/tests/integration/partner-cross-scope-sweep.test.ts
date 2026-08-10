@@ -24,6 +24,7 @@ import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { createTestApp } from '../setup';
 import { prisma } from '../../src/lib/prisma';
+import { genTestPhone } from '../helpers/test-utils';
 
 jest.mock('../../src/services/email.service', () => ({ emailService: { sendEmail: (_o: any) => Promise.resolve() } }));
 jest.mock('../../src/services/notification.service', () => ({
@@ -81,12 +82,12 @@ function isPublicSkip(r: EnumeratedRoute): boolean {
 
 // Seed two complete partners; return their fixtures.
 async function seedPartner(tag: string) {
-  const user = await prisma.user.create({ data: { email: `${RUN_TAG}-${tag}@test.local`, firstName: tag, lastName: 'P', phone: `+35900000${tag === 'A' ? '0030' : '0031'}`, status: 'ACTIVE', role: 'PARTNER', emailVerified: true, passwordHash: 'unused' } });
+  const user = await prisma.user.create({ data: { email: `${RUN_TAG}-${tag}@test.local`, firstName: tag, lastName: 'P', phone: genTestPhone(), status: 'ACTIVE', role: 'PARTNER', emailVerified: true, passwordHash: 'unused' } });
   const partner = await prisma.partner.create({ data: { userId: user.id, businessName: `${RUN_TAG}-${tag}-Biz`, category: 'RESTAURANT', status: 'ACTIVE', verifiedAt: new Date() } });
   const venue = await prisma.venue.create({ data: { partnerId: partner.id, name: `${RUN_TAG}-${tag}-Venue`, address: 'A', city: 'Sofia' } });
   const loc = await prisma.stickerLocation.create({ data: { venueId: venue.id, name: 'L', locationNumber: `${RUN_TAG}-${tag}-1` } });
   const sticker = await prisma.sticker.create({ data: { venueId: venue.id, locationId: loc.id, stickerId: `${RUN_TAG}-${tag}-S`, qrCode: `${RUN_TAG}-${tag}-QR`, status: 'ACTIVE' } });
-  const customer = await prisma.user.create({ data: { email: `${RUN_TAG}-${tag}-cust@test.local`, firstName: 'C', lastName: 'U', phone: `+35900000${tag === 'A' ? '0032' : '0033'}`, status: 'ACTIVE', emailVerified: true, passwordHash: 'unused' } });
+  const customer = await prisma.user.create({ data: { email: `${RUN_TAG}-${tag}-cust@test.local`, firstName: 'C', lastName: 'U', phone: genTestPhone(), status: 'ACTIVE', emailVerified: true, passwordHash: 'unused' } });
   const card = await prisma.card.create({ data: { userId: customer.id, cardNumber: `${RUN_TAG}-${tag}-CARD`, qrCode: `${RUN_TAG}-${tag}-CQR` } });
   await prisma.stickerScan.create({ data: { userId: customer.id, cardId: card.id, stickerId: sticker.id, venueId: venue.id, billAmount: 100, verifiedAmount: 100, cashbackAmount: 5, status: 'APPROVED' } });
   await prisma.partnerCashbackPayment.create({ data: { partnerId: partner.id, month: '2026-02', turnoverAmount: 1000, totalCashbackOwed: 50, marginAmount: 20, status: 'PENDING', invoiceNumber: `${RUN_TAG}-${tag}-INV` } });

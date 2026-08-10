@@ -17,6 +17,7 @@ import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { createTestApp } from '../setup';
 import { prisma } from '../../src/lib/prisma';
+import { genTestPhone } from '../helpers/test-utils';
 
 jest.mock('../../src/services/email.service', () => ({
   emailService: { sendEmail: (_o: any) => Promise.resolve() },
@@ -53,7 +54,7 @@ async function seedPartner(tag: string) {
       email: `${RUN_TAG}-${tag}@test.local`,
       firstName: tag,
       lastName: 'Teeth',
-      phone: `+35900090${tag === 'A' ? '100' : '101'}`,
+      phone: genTestPhone(),
       status: 'ACTIVE',
       role: 'PARTNER',
       emailVerified: true,
