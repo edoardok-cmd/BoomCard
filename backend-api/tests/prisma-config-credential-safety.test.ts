@@ -1,5 +1,3 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-
 /**
  * Test suite: Credential Safety in Prisma Config Warning
  *
