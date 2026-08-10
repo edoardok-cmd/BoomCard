@@ -6,12 +6,10 @@ import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import { palette } from '../../styles/adminTheme';
-import { formatMoneyByMode } from '../../utils/helpers';
 import {
   adminCashbackService,
   CashbackEntry,
   CashbackEntryStatus,
-  DualCurrencyAmount,
 } from '../../services/adminCashback.service';
 
 /* ─── i18n ──────────────────────────────────────────────────────────────────── */
@@ -120,7 +118,7 @@ const I18N = {
   csvId:            { en: 'ID',                bg: 'ID' },
   csvSubscriber:    { en: 'Subscriber',        bg: 'Абонат' },
   csvEmail:         { en: 'Email',             bg: 'Имейл' },
-  csvAmount:        { en: 'Amount (BGN)',       bg: 'Сума (лв.)' },
+  csvAmount:        { en: 'Amount (EUR)',       bg: 'Сума (EUR)' },
   csvStatus:        { en: 'Status',            bg: 'Статус' },
   csvExpires:       { en: 'Expires',           bg: 'Изтича' },
   csvPartner:       { en: 'Partner',           bg: 'Партньор' },
@@ -546,14 +544,11 @@ export default function AdminCashbackPage() {
 
   const fmt = (n: number | null | undefined) => fmtMoney(n, locale);
 
-  // Format amount for dialogs — derives display mode from the amount object itself.
-  const fmtAmount = (amount: DualCurrencyAmount) => {
-    const bgn = amount.bgn;
-    if (amount.windowOpen && bgn !== null) {
-      return formatMoneyByMode(bgn, 'dual', language);
-    }
-    return formatMoneyByMode(amount.eur, 'eur_only', language);
-  };
+  // BC-QA-031: the backend now returns plain EUR numbers (dual-currency
+  // display feature removed) — format directly, no {bgn, eur, windowOpen}
+  // wrapper to destructure.
+  const fmtAmount = (amount: number | null | undefined) =>
+    `€${(amount ?? 0).toFixed(2)}`;
 
   const { data: stats } = useQuery({
     queryKey: ['admin-cashback-stats'],
@@ -786,13 +781,13 @@ export default function AdminCashbackPage() {
         </StatCard>
         <StatCard>
           <StatLabel>{T('statExpiring')}</StatLabel>
-          <StatValue $color={stats && stats.expiringTotal.eur > 0 ? palette.danger : palette.text}>
+          <StatValue $color={stats && stats.expiringTotal > 0 ? palette.danger : palette.text}>
             {stats ? fmtAmount(stats.expiringTotal) : '—'}
           </StatValue>
         </StatCard>
         <StatCard>
           <StatLabel>{T('statLocked')}</StatLabel>
-          <StatValue $color={stats && stats.totalLocked.eur > 0 ? palette.amber : palette.text}>
+          <StatValue $color={stats && stats.totalLocked > 0 ? palette.amber : palette.text}>
             {stats ? fmtAmount(stats.totalLocked) : '—'}
           </StatValue>
         </StatCard>
@@ -804,13 +799,13 @@ export default function AdminCashbackPage() {
         </StatCard>
         <StatCard>
           <StatLabel>{T('statExpired')}</StatLabel>
-          <StatValue $color={stats && stats.totalExpired.eur > 0 ? palette.danger : palette.text}>
+          <StatValue $color={stats && stats.totalExpired > 0 ? palette.danger : palette.text}>
             {stats ? fmtAmount(stats.totalExpired) : '—'}
           </StatValue>
         </StatCard>
         <StatCard>
           <StatLabel>{T('statVoided')}</StatLabel>
-          <StatValue $color={stats && stats.totalVoided.eur > 0 ? palette.danger : palette.text}>
+          <StatValue $color={stats && stats.totalVoided > 0 ? palette.danger : palette.text}>
             {stats ? fmtAmount(stats.totalVoided) : '—'}
           </StatValue>
         </StatCard>
@@ -962,7 +957,7 @@ function exportCsv(rows: CashbackEntry[], lang: Lang, locale: string): void {
       escape(r.id),
       escape(`${r.user.firstName ?? ''} ${r.user.lastName ?? ''}`.trim() || r.user.email),
       escape(r.user.email),
-      escape(fmtMoney(r.amount.bgn ?? r.amount.eur, locale)),
+      escape(fmtMoney(r.amount, locale)),
       escape(r.status),
       escape(r.cashbackExpiresAt ? new Date(r.cashbackExpiresAt).toLocaleDateString(locale) : ''),
       escape(r.partner?.businessName ?? r.receipt?.merchantName ?? ''),

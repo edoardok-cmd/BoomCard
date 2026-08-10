@@ -19,15 +19,17 @@ export interface CashbackSummaryEntry {
 }
 
 // Spec §3.1 + §4.4 subscriber-side cashback stats
+// BC-QA-031: backend now returns plain EUR numbers (dual-currency display
+// feature removed) — no more {bgn, eur, windowOpen} wrapper.
 export interface CashbackDashboardStats {
-  totalAccrued: DualCurrencyAmount;    // начислен — all-time sum of cleared credits
-  totalCleared: DualCurrencyAmount;   // одобрен — currently available for payout
-  totalPending: DualCurrencyAmount;   // изчакващ — not yet approved
-  expiringTotal: DualCurrencyAmount;  // изтичащ — cleared but expiring within 14 days
-  totalLocked: DualCurrencyAmount;    // заключен — locked by admin (CANCELLED + ANNULLED/FAILED, not yet paid)
-  totalPaid: DualCurrencyAmount;      // платен — explicitly marked paid by admin via Locked→Paid action
-  totalExpired: DualCurrencyAmount;   // изтекъл — past 60-day rolling expiry, never paid out
-  totalVoided: DualCurrencyAmount;    // анулиран — risk review rejected or admin voided (spec §4.4 v1.1)
+  totalAccrued: number;    // начислен — all-time sum of cleared credits
+  totalCleared: number;   // одобрен — currently available for payout
+  totalPending: number;   // изчакващ — not yet approved
+  expiringTotal: number;  // изтичащ — cleared but expiring within 14 days
+  totalLocked: number;    // заключен — locked by admin (CANCELLED + ANNULLED/FAILED, not yet paid)
+  totalPaid: number;      // платен — explicitly marked paid by admin via Locked→Paid action
+  totalExpired: number;   // изтекъл — past 60-day rolling expiry, never paid out
+  totalVoided: number;    // анулиран — risk review rejected or admin voided (spec §4.4 v1.1)
 }
 
 export interface CashbackRateRow {
@@ -54,6 +56,15 @@ export interface CurrentCashbackRate {
   source: 'db' | 'default';
 }
 
+// NOTE (BC-QA-031): this admin-cashback surface (stats/payout-thresholds/entries) no
+// longer uses DualCurrencyAmount — the backend now returns plain EUR numbers for those
+// endpoints (see CashbackDashboardStats / CashbackEntry.amount / getPayoutThresholds()
+// below). The type is kept exported here only because `DashboardPage.tsx` (a different,
+// partner-side page backed by a different endpoint, `GET /api/dashboard/...`) still
+// imports and uses it for `totalAmount`/`cashbackAmount` — removing the export would
+// break that unrelated file's typecheck. That page has the same-shaped regression
+// (its backing route also now returns plain numbers, not {bgn, eur, windowOpen}) but
+// was out of scope for this fix — flagged separately, not fixed here.
 export interface DualCurrencyAmount {
   /** BGN value — null once the transition window has closed (EUR-only display). */
   bgn: number | null;
@@ -68,7 +79,8 @@ export type CashbackEntryStatus = 'Pending' | 'TrialPending' | 'Cleared' | 'Lock
 
 export interface CashbackEntry {
   id: string;
-  amount: DualCurrencyAmount;
+  // BC-QA-031: backend now returns a plain EUR number (no more {bgn, eur, windowOpen}).
+  amount: number;
   status: CashbackEntryStatus;
   rawStatus: string;
   cashbackExpiresAt: string | null;
@@ -110,9 +122,11 @@ class AdminCashbackService {
     return { data: res.data, total: res.total, page: res.page, limit: res.limit };
   }
 
-  async getPayoutThresholds(): Promise<Record<string, DualCurrencyAmount>> {
-    const res = await apiService.get<{ success: boolean; display: Record<string, DualCurrencyAmount> }>(`${this.base}/payout-thresholds`);
-    return res.display ?? {};
+  // BC-QA-031: backend now returns `{success, data: {BASIC, PREMIUM_WEEKLY, PREMIUM, PREMIUM_MONTHLY}}`
+  // — plain EUR numbers, no more top-level `display` envelope key.
+  async getPayoutThresholds(): Promise<Record<string, number>> {
+    const res = await apiService.get<{ success: boolean; data: Record<string, number> }>(`${this.base}/payout-thresholds`);
+    return res.data ?? {};
   }
 
 

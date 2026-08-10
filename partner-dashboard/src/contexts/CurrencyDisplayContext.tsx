@@ -1,7 +1,21 @@
-import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { apiService } from '../services/api.service';
-import { getAccessToken } from '../lib/auth/session';
+import React, { createContext, useContext, ReactNode } from 'react';
 
+// BC-QA-031: the dual-currency display feature (and its backing endpoint,
+// GET /api/settings/currency-display-mode) was removed from the backend —
+// all amounts are EUR-only now, permanently. This context used to poll that
+// endpoint every 30s for the life of every authenticated session; since the
+// endpoint is gone for good (confirmed 404, not coming back), polling it at
+// all was pure waste (an unbounded per-session network + console-error leak,
+// BC-QA-031 task-r1 finding 3). Rather than special-case a 404 the way a
+// transient error would be handled, the context now just resolves to a fixed
+// eur_only value synchronously, with no network calls and no polling.
+//
+// Kept as a context (rather than deleted outright) so its four existing
+// consumers (AdminTransactionsPage, AdminSubscriptionsPage,
+// AdminSubscriberDetailPage, AdminPayoutsPage) don't need to change —
+// they only read `currencyDisplayMode`, which now always resolves to
+// 'eur_only', the same steady-state value the old fetch fell back to
+// on error/completion anyway.
 interface CurrencyDisplayContextType {
   currencyDisplayMode: 'dual' | 'eur_only';
   windowOpen: boolean;
@@ -15,111 +29,16 @@ interface CurrencyDisplayProviderProps {
   children: ReactNode;
 }
 
-const CACHE_KEY = 'boomcard_currency_display_cache';
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const POLL_INTERVAL_MS = 30 * 1000; // poll more frequently so post-login fetch fires within 30s
-
-interface CacheEntry {
-  data: { currencyDisplayMode: 'dual' | 'eur_only'; windowOpen: boolean };
-  timestamp: number;
-}
+const FIXED_VALUE: CurrencyDisplayContextType = {
+  currencyDisplayMode: 'eur_only',
+  windowOpen: false,
+  isLoading: false,
+  error: null,
+};
 
 export const CurrencyDisplayProvider: React.FC<CurrencyDisplayProviderProps> = ({ children }) => {
-  const [currencyDisplayMode, setCurrencyDisplayMode] = useState<'dual' | 'eur_only'>('eur_only');
-  const [windowOpen, setWindowOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  // Stop polling on 403 (server error) or 401 (not authenticated).
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    const fetchCurrencyDisplayMode = async () => {
-      if (!getAccessToken()) {
-        setError(null);
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        setIsLoading(true);
-        setError(null);
-
-        // Check cache first
-        const cached = localStorage.getItem(CACHE_KEY);
-        if (cached) {
-          const cacheEntry: CacheEntry = JSON.parse(cached);
-          const now = Date.now();
-          if (now - cacheEntry.timestamp < CACHE_TTL_MS) {
-            setCurrencyDisplayMode(cacheEntry.data.currencyDisplayMode);
-            setWindowOpen(cacheEntry.data.windowOpen);
-            setIsLoading(false);
-            return;
-          }
-        }
-
-        // Fetch fresh data
-        const json = await apiService.get<{ data?: { currencyDisplayMode?: 'dual' | 'eur_only'; windowOpen?: boolean } }>(
-          '/api/settings/currency-display-mode'
-        );
-        const data = json.data || {};
-
-        // Update state
-        setCurrencyDisplayMode(data.currencyDisplayMode || 'eur_only');
-        setWindowOpen(data.windowOpen || false);
-
-        // Cache the result
-        const cacheEntry: CacheEntry = {
-          data: {
-            currencyDisplayMode: data.currencyDisplayMode || 'eur_only',
-            windowOpen: data.windowOpen || false,
-          },
-          timestamp: Date.now(),
-        };
-        localStorage.setItem(CACHE_KEY, JSON.stringify(cacheEntry));
-
-        setError(null);
-      } catch (err) {
-        // Axios v0: err.response.status; Axios v1: also exposes err.status directly.
-        const status =
-          (err as { response?: { status?: number } })?.response?.status ??
-          (err as { status?: number })?.status;
-        if (status === 403) {
-          // Non-admin user — this endpoint will always 403; stop polling.
-          if (pollIntervalRef.current !== null) {
-            clearInterval(pollIntervalRef.current);
-            pollIntervalRef.current = null;
-          }
-          return;
-        }
-        if (status === 401) {
-          // Not authenticated yet — silent no-op, keep polling in case they log in.
-          return;
-        }
-        console.error('Error fetching currency display mode:', err);
-        setError(err instanceof Error ? err.message : 'Unknown error');
-        // Fall back to EUR-only on error
-        setCurrencyDisplayMode('eur_only');
-        setWindowOpen(false);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchCurrencyDisplayMode();
-
-    // Poll to sync changes (e.g. admin toggles the flag in another tab).
-    // Stopped early if we learn the user is not an admin (403).
-    pollIntervalRef.current = setInterval(fetchCurrencyDisplayMode, POLL_INTERVAL_MS);
-
-    return () => {
-      if (pollIntervalRef.current !== null) {
-        clearInterval(pollIntervalRef.current);
-      }
-    };
-  }, []);
-
   return (
-    <CurrencyDisplayContext.Provider value={{ currencyDisplayMode, windowOpen, isLoading, error }}>
+    <CurrencyDisplayContext.Provider value={FIXED_VALUE}>
       {children}
     </CurrencyDisplayContext.Provider>
   );
