@@ -148,10 +148,10 @@ describe('adminAlerts.service.getAlerts query shape', () => {
   it('high-risk and medium-risk scan counts are restricted to ACTIVE_SCAN_STATUSES', async () => {
     await getAlerts();
     const highCall = m.stickerScan.count.mock.calls.find(
-      ([arg]) => arg?.where?.fraudScore?.gte === 61,
+      ([arg]) => arg?.where?.specRiskLevel === 'High',
     );
     const medCall = m.stickerScan.count.mock.calls.find(
-      ([arg]) => arg?.where?.fraudScore?.gte === 31 && arg?.where?.fraudScore?.lt === 61,
+      ([arg]) => arg?.where?.specRiskLevel === 'Medium',
     );
     expect(highCall![0].where.status.in).toEqual(
       expect.arrayContaining(['PENDING', 'VALIDATING', 'MANUAL_REVIEW']),
@@ -213,8 +213,8 @@ describe('adminAlerts.service.getAlerts emitted links (B1, B2, B3, B5 fixes)', (
     const high = result.critical.find((a) => a.id === 'risk_transactions');
     // medium_risk_transactions moved to OPERATIONAL — 31-60 needs review, not immediate action
     const med = result.operational.find((a) => a.id === 'medium_risk_transactions');
-    expect(high?.link).toBe('/admin/control/risk?bucket=HIGH_61_PLUS&status=active');
-    expect(med?.link).toBe('/admin/control/risk?bucket=REVIEW_31_60&status=active');
+    expect(high?.link).toBe('/admin/control/risk?bucket=HIGH_51_PLUS&status=active');
+    expect(med?.link).toBe('/admin/finance/reports?focus=medium_risk_transactions');
     expect(high?.tier).toBe('critical');
     expect(med?.tier).toBe('operational');
   });
