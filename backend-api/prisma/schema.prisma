@@ -122,6 +122,11 @@ model User {
   wallet                     Wallet?
 
   @@unique([email, role])
+  // BC-QA-032: mirrors the email-uniqueness shape exactly — the same phone
+  // number may register separately under each role (USER/PARTNER/ADMIN),
+  // but not twice with the same role. Backing migration:
+  // prisma/migrations/20260810160000_add_user_phone_role_unique.
+  @@unique([phone, role])
   @@index([email])
   @@index([role])
   @@index([status])

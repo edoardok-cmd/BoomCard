@@ -393,7 +393,11 @@ export async function importFromSpreadsheet(
           role: 'PARTNER',
           firstName: businessName,
           lastName: 'Partner',
-          phone: '',
+          // BC-QA-032 — a literal '' would collide under the new
+          // (phone, role) unique index once a second phoneless partner is
+          // imported in the same batch; unique placeholder per row, same
+          // idiom as generatedEmail below.
+          phone: `unset-${crypto.randomBytes(8).toString('hex')}`,
         },
         select: { id: true },
       });
@@ -412,7 +416,8 @@ export async function importFromSpreadsheet(
         role: 'PARTNER',
         firstName: businessName,
         lastName: 'Partner',
-        phone: '',
+        // BC-QA-032 — see comment above; avoids a (phone, role) collision.
+        phone: `unset-${crypto.randomBytes(8).toString('hex')}`,
       },
       select: { id: true },
     });
@@ -813,7 +818,8 @@ export async function importPartnersFromSpreadsheet(
             role: 'PARTNER',
             firstName: businessName,
             lastName: 'Partner',
-            phone: '',
+            // BC-QA-032 — see comment above; avoids a (phone, role) collision.
+            phone: `unset-${crypto.randomBytes(8).toString('hex')}`,
           },
           select: { id: true },
         });
@@ -830,7 +836,8 @@ export async function importPartnersFromSpreadsheet(
           role: 'PARTNER',
           firstName: businessName,
           lastName: 'Partner',
-          phone: '',
+          // BC-QA-032 — see comment above; avoids a (phone, role) collision.
+          phone: `unset-${crypto.randomBytes(8).toString('hex')}`,
         },
         select: { id: true },
       });
