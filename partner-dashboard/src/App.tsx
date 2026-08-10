@@ -6,7 +6,6 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { FavoritesProvider } from './contexts/FavoritesContext';
 import { LanguageProvider } from './contexts/LanguageContext';
-import { CurrencyDisplayProvider } from './contexts/CurrencyDisplayContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { CookieConsentProvider } from './contexts/CookieConsentContext';
 import { LocationProvider } from './contexts/LocationContext';
@@ -249,8 +248,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <LanguageProvider>
-          <CurrencyDisplayProvider>
-            <CookieConsentProvider>
+          <CookieConsentProvider>
             <AuthProvider>
               <FavoritesProvider>
                 <LocationProvider>
@@ -857,7 +855,6 @@ function App() {
               </FavoritesProvider>
             </AuthProvider>
               </CookieConsentProvider>
-          </CurrencyDisplayProvider>
         </LanguageProvider>
       </ThemeProvider>
       </QueryClientProvider>

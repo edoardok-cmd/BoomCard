@@ -37,7 +37,6 @@ export default function WalletScreen() {
     isLocked: boolean;
     lastUpdated: string | null;
     payoutThreshold: number;
-    payoutThresholdEUR: number;
     payoutIban: string | null;
     payoutBeneficiaryName: string | null;
   }>({
@@ -49,7 +48,6 @@ export default function WalletScreen() {
     isLocked: false,
     lastUpdated: null,
     payoutThreshold: 0,
-    payoutThresholdEUR: 0,
     payoutIban: null,
     payoutBeneficiaryName: null,
   });

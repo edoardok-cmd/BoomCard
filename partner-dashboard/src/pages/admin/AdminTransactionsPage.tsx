@@ -4,7 +4,6 @@ import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { useCurrencyDisplay } from '../../contexts/CurrencyDisplayContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import { formatMoneyByMode } from '../../utils/helpers';
 import {
@@ -756,7 +755,6 @@ const PAGE_SIZE = 20;
 /* ─── Component ───────────────────────────────────────────────────────────── */
 export default function AdminTransactionsPage() {
   const { language } = useLanguage();
-  const { currencyDisplayMode } = useCurrencyDisplay();
   const lang: Lang = language === 'bg' ? 'bg' : 'en';
   const queryClient = useQueryClient();
   const locale = lang === 'bg' ? 'bg-BG' : 'en-GB';
@@ -1053,8 +1051,8 @@ export default function AdminTransactionsPage() {
   const fmtTime = (iso: string) =>
     new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
 
-  // Format amount using the current currency display mode
-  const fmtAmount = (amount: number) => formatMoneyByMode(amount, currencyDisplayMode, language);
+  // Format amount in EUR-only mode
+  const fmtAmount = (amount: number) => formatMoneyByMode(amount, 'eur_only', language);
 
   // Switch view, scrubbing every filter that is enum-specific to the previous view.
   // Search / dates / minAmount carry over because they have the same semantics in both;
