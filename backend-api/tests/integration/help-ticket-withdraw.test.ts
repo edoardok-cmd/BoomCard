@@ -47,6 +47,7 @@ import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { emailService } from '../../src/services/email.service';
+import { genTestPhone } from '../helpers/test-utils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -69,7 +70,7 @@ async function createUser() {
       role: 'USER',
       status: 'ACTIVE',
       emailVerified: true,
-      phone: '+359000000000',
+      phone: genTestPhone(),
     },
   });
   return user;
@@ -87,14 +88,16 @@ async function createPartner() {
       role: 'PARTNER',
       status: 'ACTIVE',
       emailVerified: true,
-      phone: '+359000000001',
+      phone: genTestPhone(),
     },
   });
   const partner = await prisma.partner.create({
     data: {
       userId: user.id,
       businessName: `Partner ${suffix}`,
+      category: 'Restaurant',
       status: 'ACTIVE',
+      verifiedAt: new Date(),
     },
   });
   return { user, partner };
@@ -112,7 +115,7 @@ async function createAdmin() {
       role: 'ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
-      phone: '+359000000002',
+      phone: genTestPhone(),
     },
   });
   return user;
@@ -121,8 +124,11 @@ async function createAdmin() {
 async function login(email: string, password: string) {
   const res = await request(app)
     .post('/api/auth/login')
-    .send({ email, password });
-  return res.body.token;
+    .send({ email, password, clientType: 'web' });
+  if (res.status !== 200) {
+    throw new Error(`Failed to login: ${res.status} ${JSON.stringify(res.body)}`);
+  }
+  return res.body.data.accessToken;
 }
 
 async function createUserTicket(userId: string) {
@@ -130,7 +136,7 @@ async function createUserTicket(userId: string) {
     data: {
       subject: `Test Ticket ${uid()}`,
       body: 'Test body for withdraw',
-      category: 'SUPPORT',
+      category: 'OTHER',
       userId,
       status: 'OPEN',
       requestType: 'SUPPORT',
@@ -143,7 +149,7 @@ async function createPartnerTicket(userId: string) {
     data: {
       subject: `Test Ticket ${uid()}`,
       body: 'Test body for withdraw',
-      category: 'SUPPORT',
+      category: 'OTHER',
       userId,
       status: 'OPEN',
       requestType: 'SUPPORT',
