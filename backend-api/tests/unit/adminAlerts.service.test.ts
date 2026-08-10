@@ -11,8 +11,8 @@
  *   - the suspicious-activity raw query uses the parameterised IN/LIKE form
  */
 
-jest.mock('../../src/lib/prisma', () => ({
-  prisma: {
+jest.mock('../../src/lib/prisma', () => {
+  const mockPrisma = {
     systemSetting: { findUnique: jest.fn() },
     payoutThreshold: { findFirst: jest.fn() },
     partner: { count: jest.fn() },
@@ -26,8 +26,12 @@ jest.mock('../../src/lib/prisma', () => ({
     walletTransaction: { count: jest.fn() },
     wallet: { count: jest.fn() },
     $queryRaw: jest.fn(),
-  },
-}));
+  };
+  return {
+    prisma: mockPrisma,
+    default: mockPrisma,
+  };
+});
 
 import { prisma } from '../../src/lib/prisma';
 import {
@@ -38,6 +42,7 @@ import {
   SUSPICIOUS_ACTIVITY_WINDOW_HOURS,
 } from '../../src/services/adminAlerts.service';
 import { invalidatePayoutThresholdCache } from '../../src/utils/payoutThreshold';
+import { invalidateSystemSettingCache } from '../../src/utils/systemSettings';
 
 type AnyMock = jest.Mock;
 const m = prisma as unknown as {
@@ -99,6 +104,8 @@ describe('adminAlerts.service.getAlerts query shape', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     invalidatePayoutThresholdCache(); // ensure each test starts with a fresh threshold lookup
+    invalidateSystemSettingCache('currency_transition_window_open');
+    invalidateSystemSettingCache('large_tx_threshold');
     resetAllToZero();
   });
 
@@ -193,6 +200,9 @@ describe('adminAlerts.service.getAlerts query shape', () => {
 describe('adminAlerts.service.getAlerts emitted links (B1, B2, B3, B5 fixes)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    invalidatePayoutThresholdCache();
+    invalidateSystemSettingCache('currency_transition_window_open');
+    invalidateSystemSettingCache('large_tx_threshold');
     resetAllToZero();
     // Force every alert to emit by returning >0 from each query.
     m.partner.count.mockResolvedValue(1);
