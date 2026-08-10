@@ -27,6 +27,12 @@ interface VenueLocationPickerProps {
   value: Coordinates | null;
   /** Called whenever coordinates change (geocode result, map click, or drag). */
   onChange: (coords: Coordinates) => void;
+  /**
+   * Called after a reverse-geocode (pin dragged or map clicked) resolves an
+   * address. Lets the parent keep the typed address/city fields in sync with
+   * the pin so the two never silently disagree.
+   */
+  onAddressResolved?: (fields: { address: string; city: string }) => void;
   disabled?: boolean;
 }
 
@@ -35,23 +41,25 @@ const content = {
     findOnMap: 'Find on map',
     searching: 'Searching…',
     instructions:
-      'Enter your address above, then press "Find on map". Click the map or drag the pin to fine-tune the exact location.',
+      'The pin updates automatically shortly after you type your address above (or press "Find on map" right away). Click the map or drag the pin to fine-tune the exact location — the address fields will update to match.',
     notFound: 'Could not find that address. Try adding more detail, or click the map to drop a pin manually.',
     enterAddress: 'Please enter an address and city first.',
     networkError: 'Could not reach the map service. Click the map to drop a pin manually.',
     resolved: 'Location set',
     coords: 'Coordinates',
+    rateLimited: 'One moment — please wait a second and try again.',
   },
   bg: {
     findOnMap: 'Намери на картата',
     searching: 'Търсене…',
     instructions:
-      'Въведете адреса по-горе и натиснете „Намери на картата“. Кликнете върху картата или преместете маркера, за да настроите точното местоположение.',
+      'Маркерът се обновява автоматично малко след като въведете адреса по-горе (или натиснете „Намери на картата“ веднага). Кликнете върху картата или преместете маркера, за да настроите точното местоположение — полетата с адрес ще се обновят.',
     notFound: 'Адресът не беше намерен. Добавете повече детайли или кликнете върху картата, за да поставите маркер ръчно.',
     enterAddress: 'Първо въведете адрес и град.',
     networkError: 'Картата не е достъпна в момента. Кликнете върху картата, за да поставите маркер ръчно.',
     resolved: 'Местоположението е зададено',
     coords: 'Координати',
+    rateLimited: 'Момент — изчакайте секунда и опитайте отново.',
   },
 };
 
@@ -87,6 +95,7 @@ const VenueLocationPicker: React.FC<VenueLocationPickerProps> = ({
   city,
   value,
   onChange,
+  onAddressResolved,
   disabled,
 }) => {
   const { language } = useLanguage();
@@ -96,22 +105,80 @@ const VenueLocationPicker: React.FC<VenueLocationPickerProps> = ({
   const [message, setMessage] = useState<{ kind: 'info' | 'error'; text: string } | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
 
-  // Debounce guard so rapid clicks on "Find on map" don't spam Nominatim.
+  // Shared rate-limit guard for BOTH forward (search) and reverse (pin →
+  // address) Nominatim calls — one request per second max, per their usage
+  // policy, regardless of which direction triggered it.
   const lastSearchRef = useRef<number>(0);
 
-  const geocode = async () => {
-    const now = Date.now();
-    if (now - lastSearchRef.current < 1000) return; // 1s debounce (Nominatim usage policy)
-    lastSearchRef.current = now;
+  // When we ourselves push a reverse-geocoded address into the parent's
+  // fields, that address change would otherwise immediately re-trigger the
+  // reactive forward-geocode effect below and could snap the pin away from
+  // where the user just dropped it. We record the EXACT value we pushed here
+  // and compare it against the current address/city props (rather than using
+  // a bare boolean flag that assumes the effect will always re-fire): if the
+  // resolved text happens to be identical to what's already typed, the props
+  // never change and a boolean would stay stuck armed forever, silently
+  // swallowing the user's next real edit. Comparing values instead means the
+  // guard only ever suppresses the specific self-write it recorded — the
+  // very next genuine edit (which necessarily differs from the recorded
+  // value, or is a no-op if it doesn't) is never incorrectly skipped.
+  const lastPushedRef = useRef<{ address: string; city: string } | null>(null);
 
+  // Debounce timer for reactive (address-typed) geocoding.
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Skip the very first run of the reactive effect when coordinates are
+  // already populated on mount (e.g. a future edit flow pre-filling a saved
+  // location) — only react to subsequent address/city edits, not the mount
+  // itself.
+  const didMountRef = useRef(false);
+
+  // Mirrors the `disabled` prop into a ref so timer callbacks scheduled by
+  // the reactive effect (below) can read its CURRENT value at fire time
+  // rather than the value captured in the closure when the timer was
+  // scheduled. A form can go from enabled to disabled (submit-in-progress)
+  // during the 900ms debounce window / the shared rate-limit requeue delay,
+  // and a stale closure would fire performGeocode('auto') — and thus
+  // onChange/setCoordinates — mid-submission regardless.
+  const disabledRef = useRef(disabled);
+  useEffect(() => {
+    disabledRef.current = disabled;
+  }, [disabled]);
+
+  const performGeocode = async (source: 'button' | 'auto') => {
     const query = [address.trim(), city?.trim()].filter(Boolean).join(', ');
     if (!query) {
-      setMessage({ kind: 'error', text: t.enterAddress });
+      if (source === 'button') setMessage({ kind: 'error', text: t.enterAddress });
       return;
     }
+    // Reactive geocoding: don't bother Nominatim over a couple of characters
+    // while the user is still typing.
+    if (source === 'auto' && query.length < 5) return;
+
+    const now = Date.now();
+    const elapsed = now - lastSearchRef.current;
+    if (elapsed < 1000) {
+      // Within the 1s Nominatim usage-policy window.
+      if (source === 'button') {
+        // A manual press must not just silently no-op — tell the user why
+        // nothing happened.
+        setMessage({ kind: 'info', text: t.rateLimited });
+      } else {
+        // Don't drop the reactive request on the floor: requeue it to fire
+        // once the rate-limit window clears, in case this was the user's
+        // last edit and there's no next debounced change to retry on.
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = setTimeout(() => {
+          if (disabledRef.current) return;
+          void performGeocode('auto');
+        }, 1000 - elapsed + 50);
+      }
+      return;
+    }
+    lastSearchRef.current = now;
 
     setSearching(true);
-    setMessage(null);
+    if (source === 'button') setMessage(null);
     try {
       const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(
         query,
@@ -143,18 +210,102 @@ const VenueLocationPicker: React.FC<VenueLocationPickerProps> = ({
     }
   };
 
+  // Reactively re-geocode whenever the typed address/city change, so the pin
+  // follows what's typed instead of only moving on an explicit button press.
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      if (value) {
+        // Coordinates already exist on mount (e.g. pre-filled from a saved
+        // location) — don't fire an auto-geocode against them on load, only
+        // react to subsequent edits.
+        return;
+      }
+    }
+    if (
+      lastPushedRef.current &&
+      lastPushedRef.current.address === address &&
+      lastPushedRef.current.city === (city ?? '')
+    ) {
+      // This change (or non-change) matches exactly what we ourselves just
+      // wrote back into the parent via a reverse-geocode — don't immediately
+      // re-geocode it, that would fight the pin the user just placed. Clear
+      // it so it only ever suppresses this one specific value.
+      lastPushedRef.current = null;
+      return;
+    }
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      // Read the CURRENT disabled state, not the value captured when this
+      // timer was scheduled — see disabledRef's own comment above.
+      if (disabledRef.current) return;
+      void performGeocode('auto');
+    }, 900);
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address, city]);
+
+  const reverseGeocode = async (coords: Coordinates) => {
+    const now = Date.now();
+    if (now - lastSearchRef.current < 1000) return; // respect shared rate limit
+    lastSearchRef.current = now;
+
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${coords.latitude}&lon=${coords.longitude}`;
+      const res = await fetch(url, {
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: {
+        display_name?: string;
+        address?: Record<string, string>;
+        error?: string;
+      } = await res.json();
+      if (!data || data.error || !onAddressResolved) return;
+
+      const addr = data.address ?? {};
+      const road = [addr.road, addr.house_number].filter(Boolean).join(' ');
+      const cityName = addr.city || addr.town || addr.village || addr.municipality || '';
+      const resolvedAddress = road || data.display_name || '';
+      if (!resolvedAddress && !cityName) return; // nothing usable came back
+
+      const finalAddress = resolvedAddress || address;
+      const finalCity = cityName || city || '';
+      lastPushedRef.current = { address: finalAddress, city: finalCity };
+      onAddressResolved({ address: finalAddress, city: finalCity });
+    } catch {
+      // Reverse geocode failing is non-fatal: the coordinates (already set
+      // via onChange) remain the source of truth for the pin. We just can't
+      // sync the text fields this time — no crash, no stale error state.
+    }
+  };
+
   const handleDragEnd = () => {
     const marker = markerRef.current;
     if (marker) {
+      // Defense-in-depth against a pending reactive-geocode debounce (or
+      // rate-limit requeue) firing after this manual correction and
+      // silently snapping the pin back — cancel it outright, independent of
+      // whether the reverse-geocode below resolves to text that would have
+      // reset it naturally.
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       const pos = marker.getLatLng();
-      onChange({ latitude: pos.lat, longitude: pos.lng });
+      const coords = { latitude: pos.lat, longitude: pos.lng };
+      onChange(coords);
       setMessage(null); // Clear error when location is set via drag
+      void reverseGeocode(coords);
     }
   };
 
   const handleMapClick = (coords: Coordinates) => {
+    // See comment in handleDragEnd: cancel any pending debounced/requeued
+    // reactive geocode so it can't overwrite this manual placement.
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     onChange(coords);
     setMessage(null); // Clear error when location is set via map click
+    void reverseGeocode(coords);
   };
 
   const center = value ?? SOFIA;
@@ -162,7 +313,11 @@ const VenueLocationPicker: React.FC<VenueLocationPickerProps> = ({
   return (
     <Wrapper>
       <SearchRow>
-        <FindButton type="button" onClick={geocode} disabled={disabled || searching}>
+        <FindButton
+          type="button"
+          onClick={() => void performGeocode('button')}
+          disabled={disabled || searching}
+        >
           {searching ? t.searching : `📍 ${t.findOnMap}`}
         </FindButton>
         {value && (

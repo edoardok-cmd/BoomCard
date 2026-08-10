@@ -455,6 +455,24 @@ const RegisterPartnerPage: React.FC = () => {
     }
   };
 
+  // BC-QA-016 — when the pin is dragged/clicked, VenueLocationPicker reverse
+  // geocodes it and reports the resolved address/city back here so the typed
+  // fields never silently disagree with the pin. Mirrors handleChange's
+  // real-time validation for already-touched fields.
+  const handleAddressResolved = ({ address, city }: { address: string; city: string }) => {
+    setFormData(prev => ({
+      ...prev,
+      ...(address ? { address } : {}),
+      ...(city ? { city } : {}),
+    }));
+    if (touched.address && address) {
+      setErrors(prev => ({ ...prev, address: validateField('address', address) }));
+    }
+    if (touched.city && city) {
+      setErrors(prev => ({ ...prev, city: validateField('city', city) }));
+    }
+  };
+
   // Subcategories aggregate across every selected parent category (preserving
   // selection order), so multi-category partners see all relevant sub-options.
   const subcategoriesForCategory = selectedCategories.flatMap(
@@ -1082,6 +1100,7 @@ const RegisterPartnerPage: React.FC = () => {
                 city={formData.city}
                 value={coordinates}
                 onChange={handleCoordinatesChange}
+                onAddressResolved={handleAddressResolved}
                 disabled={isLoading}
               />
               {touched.coordinates && errors.coordinates && (
