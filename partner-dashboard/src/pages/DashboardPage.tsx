@@ -16,7 +16,6 @@ import { apiService } from '../services/api.service';
 // feature to end-users.
 const OFFER_MANAGEMENT_ENABLED = import.meta.env.VITE_OFFER_MANAGEMENT_ENABLED === 'true';
 import { useCurrencyDisplay, formatWithCurrency } from '../utils/currencyDisplay';
-import type { DualCurrencyAmount } from '../services/adminCashback.service';
 
 const PageContainer = styled.div`
   max-width: 72rem;
@@ -773,10 +772,10 @@ const AutoRenewalText = styled.span`
 interface DashboardReceipt {
   id: string;
   merchantName: string;
-  // Backend /dashboard/me wraps these through toDualCurrency() — they are
-  // DualCurrencyAmount objects, not plain numbers (F2 fix).
-  totalAmount: DualCurrencyAmount;
-  cashbackAmount: DualCurrencyAmount;
+  // Backend /dashboard/me returns these as corrected, EUR-converted plain
+  // numbers (BC-QA-031) — not DualCurrencyAmount wrapper objects.
+  totalAmount: number;
+  cashbackAmount: number;
   status: string;
   createdAt: string;
 }
@@ -1451,9 +1450,7 @@ const DashboardPage: React.FC = () => {
                       {statusLabel(receipt.status)}
                     </StatusBadge>
                     <TransactionAmount>
-                      +{receipt.cashbackAmount.windowOpen && receipt.cashbackAmount.bgn !== null
-                        ? formatWithCurrency(receipt.cashbackAmount.bgn, 'DUAL', language === 'bg' ? 'bg' : 'en')
-                        : `€${receipt.cashbackAmount.eur.toFixed(2)}`}
+                      +€{receipt.cashbackAmount.toFixed(2)}
                     </TransactionAmount>
                   </TransactionRow>
                 ))}
