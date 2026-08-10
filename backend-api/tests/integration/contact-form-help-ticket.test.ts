@@ -41,6 +41,7 @@ import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { emailService } from '../../src/services/email.service';
+import { genTestPhone } from '../helpers/test-utils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -84,7 +85,7 @@ async function createAdmin() {
       role: 'ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
-      phone: '+359000000000',
+      phone: genTestPhone(),
     },
   });
   userIds.push(user.id);
