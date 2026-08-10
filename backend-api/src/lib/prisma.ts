@@ -193,9 +193,16 @@ function assertSafeSchemaName(schemaName: string): void {
  *        // ... use `client` exactly like a normal PrismaClient ...
  *        await client.$disconnect(); // also closes this dedicated pool
  *
+ *   3. Drop the scratch schema when done -- it is never dropped
+ *      automatically, so callers own cleanup (see
+ *      tests/unit/prisma.scratchSchema.test.ts's own `afterAll` for the
+ *      pattern this mirrors):
+ *        DROP SCHEMA IF EXISTS "<scratchName>" CASCADE;
+ *
  * Steps 1 and 2 now target the same schema, so migration state and runtime
  * queries are, for once, actually about the same database object -- closing
- * the isolation gap this task exists to fix.
+ * the isolation gap this task exists to fix. Step 3 is caller-owned cleanup
+ * so repeated test runs don't accumulate orphan schemas in the database.
  *
  * This is a separate, explicit opt-in export rather than a change to
  * `prisma` / `createPrismaClient()` above: production and the existing
