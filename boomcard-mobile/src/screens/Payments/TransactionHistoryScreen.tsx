@@ -9,7 +9,7 @@ import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { Text, Card, List, Chip, SegmentedButtons } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import { walletApi } from '../../api/wallet.api';
-import { formatDualCurrency, formatDateTime } from '../../utils/format';
+import { formatEurAmount, formatDateTime } from '../../utils/format';
 
 export default function TransactionHistoryScreen() {
   const { t, i18n } = useTranslation();
@@ -118,7 +118,7 @@ export default function TransactionHistoryScreen() {
                 ]}
               >
                 {item.amount >= 0 ? '+' : '-'}
-                {formatDualCurrency(Math.abs(item.amount))}
+                {formatEurAmount(Math.abs(item.amount))}
               </Text>
               <Chip
                 mode="outlined"

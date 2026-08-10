@@ -25,7 +25,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../store/AuthContext';
 import { cardApi } from '../../api/card.api';
 import apiClient from '../../api/client';
-import { formatDualCurrency } from '../../utils/format';
+import { formatEurAmount } from '../../utils/format';
 import { ShimmerPlaceholder, FadeInView } from '../../components/loading';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -472,7 +472,7 @@ export default function MyCardScreen() {
               style={styles.cashbackBanner}
             >
               <Text style={[styles.cashbackAmount, { color: isDarkMode ? '#fbbf24' : '#92400e' }]}>
-                {formatDualCurrency(statistics.totalCashbackEarned || 0)}
+                {formatEurAmount(statistics.totalCashbackEarned || 0)}
               </Text>
               <Text style={[styles.cashbackLabel, { color: isDarkMode ? 'rgba(251, 191, 36, 0.7)' : 'rgba(146, 64, 14, 0.7)' }]}>
                 {t('card.totalCashbackEarned')}

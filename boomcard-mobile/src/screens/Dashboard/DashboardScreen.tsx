@@ -19,7 +19,7 @@ import { walletApi } from '../../api/wallet.api';
 import apiClient from '../../api/client';
 import { useFocusEffect } from '@react-navigation/native';
 import { notificationsApi } from '../../api/notifications.api';
-import { formatDualCurrency } from '../../utils/format';
+import { formatEurAmount } from '../../utils/format';
 import { toCanonicalStatus } from '../../utils/receiptStatus';
 import { DashboardSkeleton, AnimatedCounter, FadeInView } from '../../components/loading';
 import type { ReceiptStats, Receipt } from '../../types';
@@ -266,7 +266,7 @@ const DashboardScreen = ({ navigation }: any) => {
             <Text style={s.heroCashbackLabel}>{t('dashboard.totalCashback')}</Text>
             <AnimatedCounter
               targetValue={stats?.totalCashback || cardStats?.totalCashbackEarned || 0}
-              formatFn={formatDualCurrency}
+              formatFn={formatEurAmount}
               style={s.heroCashbackAmount}
             />
           </View>
@@ -287,19 +287,19 @@ const DashboardScreen = ({ navigation }: any) => {
             {walletBalance.availableBalance > 0 && (
               <View style={s.cashbackBreakdownRow}>
                 <Text style={s.cashbackBreakdownLabel}>{t('dashboard.cashbackAvailable', 'Налично')}</Text>
-                <Text style={s.cashbackBreakdownValue}>{formatDualCurrency(walletBalance.availableBalance)}</Text>
+                <Text style={s.cashbackBreakdownValue}>{formatEurAmount(walletBalance.availableBalance)}</Text>
               </View>
             )}
             {walletBalance.pendingBalance > 0 && (
               <View style={s.cashbackBreakdownRow}>
                 <Text style={s.cashbackBreakdownLabel}>{t('dashboard.cashbackPending', 'В преглед')}</Text>
-                <Text style={s.cashbackBreakdownValue}>{formatDualCurrency(walletBalance.pendingBalance)}</Text>
+                <Text style={s.cashbackBreakdownValue}>{formatEurAmount(walletBalance.pendingBalance)}</Text>
               </View>
             )}
             {walletBalance.expiringBalance > 0 && (
               <View style={s.cashbackBreakdownRow}>
                 <Text style={[s.cashbackBreakdownLabel, s.cashbackExpiringLabel]}>{t('dashboard.cashbackExpiring', 'Изтича скоро')}</Text>
-                <Text style={[s.cashbackBreakdownValue, s.cashbackExpiringValue]}>{formatDualCurrency(walletBalance.expiringBalance)}</Text>
+                <Text style={[s.cashbackBreakdownValue, s.cashbackExpiringValue]}>{formatEurAmount(walletBalance.expiringBalance)}</Text>
               </View>
             )}
           </View>
@@ -477,7 +477,7 @@ const DashboardScreen = ({ navigation }: any) => {
           </View>
           <AnimatedCounter
             targetValue={stats?.totalCashback || cardStats?.totalCashbackEarned || 0}
-            formatFn={formatDualCurrency}
+            formatFn={formatEurAmount}
             style={s.statValueGold}
           />
           <Text style={s.statLabel}>{t('dashboard.totalCashback')}</Text>
@@ -572,7 +572,7 @@ const DashboardScreen = ({ navigation }: any) => {
                   {tx.cashbackAmount > 0 && (
                     <View style={s.txCashbackRow}>
                       <Ionicons name="trending-up" size={12} color="#10B981" />
-                      <Text style={s.txCashback}>{formatDualCurrency(tx.cashbackAmount)}</Text>
+                      <Text style={s.txCashback}>{formatEurAmount(tx.cashbackAmount)}</Text>
                     </View>
                   )}
                 </View>

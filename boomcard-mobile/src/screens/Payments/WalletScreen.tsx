@@ -10,7 +10,7 @@ import { Text, Card, Button, List, Chip } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { walletApi } from '../../api/wallet.api';
-import { formatDualCurrency } from '../../utils/format';
+import { formatEurAmount } from '../../utils/format';
 
 const getCashbackExpiryLabel = (item: any, t: any, locale: string): string | null => {
   if (item.type !== 'CASHBACK_CREDIT' || !item.cashbackExpiresAt) return null;
@@ -156,7 +156,7 @@ export default function WalletScreen() {
               {t('wallet.availableBalance')}
             </Text>
             <Text variant="displayMedium" style={styles.balanceAmount}>
-              {formatDualCurrency(balance.availableBalance)}
+              {formatEurAmount(balance.availableBalance)}
             </Text>
 
             {balance.lastUpdated && (
@@ -170,12 +170,12 @@ export default function WalletScreen() {
               <View style={styles.breakdownContainer}>
                 {balance.pendingBalance > 0 && (
                   <Chip icon="clock" mode="outlined" style={styles.breakdownChip}>
-                    {formatDualCurrency(balance.pendingBalance)} · {t('wallet.inReview', 'В преглед')}
+                    {formatEurAmount(balance.pendingBalance)} · {t('wallet.inReview', 'В преглед')}
                   </Chip>
                 )}
                 {lockedBalance > 0 && (
                   <Chip icon="bank-transfer-out" mode="outlined" style={styles.breakdownChip}>
-                    {formatDualCurrency(lockedBalance)} · {t('wallet.sentToPayout', 'В обработка за плащане')}
+                    {formatEurAmount(lockedBalance)} · {t('wallet.sentToPayout', 'В обработка за плащане')}
                   </Chip>
                 )}
               </View>
@@ -185,7 +185,7 @@ export default function WalletScreen() {
             {balance.expiringBalance > 0 && (
               <View style={styles.cashbackValidityRow}>
                 <Text variant="bodySmall" style={styles.expiringText}>
-                  {t('wallet.expiringSoon', { amount: formatDualCurrency(balance.expiringBalance) })}
+                  {t('wallet.expiringSoon', { amount: formatEurAmount(balance.expiringBalance) })}
                 </Text>
                 <Button
                   mode="text"
@@ -228,7 +228,7 @@ export default function WalletScreen() {
                 {balance.isLocked
                   ? t('wallet.walletLocked')
                   : t('wallet.autoPayoutHint', {
-                      amount: formatDualCurrency(balance.payoutThreshold),
+                      amount: formatEurAmount(balance.payoutThreshold),
                       defaultValue: 'Ще получите автоматично изплащане при достигане на {{amount}}.',
                     })}
               </Text>
@@ -240,7 +240,7 @@ export default function WalletScreen() {
                   {t('wallet.totalCashback')}
                 </Text>
                 <Text variant="titleMedium" style={styles.statValue}>
-                  {formatDualCurrency(statistics.totalCashback)}
+                  {formatEurAmount(statistics.totalCashback)}
                 </Text>
               </View>
 
@@ -249,7 +249,7 @@ export default function WalletScreen() {
                   {t('wallet.totalSpent')}
                 </Text>
                 <Text variant="titleMedium" style={styles.statValue}>
-                  {formatDualCurrency(statistics.totalSpent)}
+                  {formatEurAmount(statistics.totalSpent)}
                 </Text>
               </View>
             </View>
@@ -286,7 +286,7 @@ export default function WalletScreen() {
                           ]}
                         >
                           {tx.amount >= 0 ? '+' : '-'}
-                          {formatDualCurrency(Math.abs(tx.amount))}
+                          {formatEurAmount(Math.abs(tx.amount))}
                         </Text>
                         {expiryLabel && (
                           <Text style={styles.txExpiry}>{expiryLabel}</Text>

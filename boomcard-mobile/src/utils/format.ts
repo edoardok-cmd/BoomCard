@@ -24,20 +24,17 @@ export function formatCurrency(amount: number, currency: string = APP_CONFIG.CUR
 }
 
 /**
- * Convert BGN to EUR
+ * Format a plain EUR amount for display.
+ *
+ * All wallet/cashback/receipts amounts are sourced from backend endpoints
+ * (`/wallet/balance`, `/wallet/statistics`, `/wallet/transactions`, receipts)
+ * that return EUR-denominated plain numbers — dual BGN/EUR display was
+ * retired app-wide. This replaces the old `formatDualCurrency()`, which
+ * incorrectly treated its input as still-raw BGN (mislabeling it with a
+ * `лв` suffix and dividing it a second time by `EUR_EXCHANGE_RATE`).
  */
-export function convertBGNtoEUR(amountBGN: number): number {
-  return amountBGN / APP_CONFIG.EUR_EXCHANGE_RATE;
-}
-
-/**
- * Format amount with both BGN and EUR
- */
-export function formatDualCurrency(amountBGN: number): string {
-  const bgnFormatted = formatCurrency(amountBGN, 'BGN');
-  const eurAmount = convertBGNtoEUR(amountBGN);
-  const eurFormatted = formatCurrency(eurAmount, 'EUR');
-  return `${bgnFormatted} / ${eurFormatted}`;
+export function formatEurAmount(amountEUR: number): string {
+  return formatCurrency(amountEUR, 'EUR');
 }
 
 /**

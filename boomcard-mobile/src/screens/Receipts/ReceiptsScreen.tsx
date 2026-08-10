@@ -19,7 +19,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import type { Receipt, ReceiptStats, ReceiptStatus } from '../../types';
 import { useFeatureFlags } from '../../store/MobileConfigContext';
 import { toCanonicalStatus } from '../../utils/receiptStatus';
-import { formatDualCurrency } from '../../utils/format';
+import { formatEurAmount } from '../../utils/format';
 
 // Soft status badge colors matching website design (light bg + dark text)
 const STATUS_CONFIG: Record<string, { bg: string; text: string; icon: keyof typeof Ionicons.glyphMap }> = {
@@ -162,7 +162,7 @@ const ReceiptsScreen = ({ navigation }: any) => {
   };
 
   // AC#5 — single shared dual-currency formatter, no per-screen reimplementation.
-  const formatAmount = (amount: number | undefined) => formatDualCurrency(amount || 0);
+  const formatAmount = (amount: number | undefined) => formatEurAmount(amount || 0);
 
   const s = getStyles(theme, isDarkMode);
 

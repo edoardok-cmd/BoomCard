@@ -12,7 +12,7 @@ import { View, StyleSheet, FlatList, RefreshControl, ScrollView, TouchableOpacit
 import { Text, Card, Chip } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import { walletApi } from '../../api/wallet.api';
-import { formatDualCurrency, formatDateTime } from '../../utils/format';
+import { formatEurAmount, formatDateTime } from '../../utils/format';
 
 // W8 §6.7 — period + status filters forwarded to the backend.
 type PeriodFilter = 'all' | '7d' | '30d';
@@ -177,7 +177,7 @@ export default function CashbackHistoryScreen() {
               ]}
             >
               {isVoided ? '' : '+'}
-              {formatDualCurrency(item.amount)}
+              {formatEurAmount(item.amount)}
             </Text>
             <Chip
               mode="flat"

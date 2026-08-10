@@ -270,7 +270,7 @@ const SyncAnalysisScreen = ({ navigation }: any) => {
     try {
       const balance = await walletApi.getBalance() as any;
       const available: number = balance?.availableBalance ?? balance?.balance ?? 0;
-      const displayValue = `BGN ${available.toFixed(2)}`;
+      const displayValue = `EUR ${available.toFixed(2)}`;
       const record = meta['wallet'];
       const prevValue = record?.lastValue;
       await SyncService.record('wallet', { lastValue: displayValue });

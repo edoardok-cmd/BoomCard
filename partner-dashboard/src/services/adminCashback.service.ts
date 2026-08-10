@@ -56,24 +56,6 @@ export interface CurrentCashbackRate {
   source: 'db' | 'default';
 }
 
-// NOTE (BC-QA-031): this admin-cashback surface (stats/payout-thresholds/entries) no
-// longer uses DualCurrencyAmount — the backend now returns plain EUR numbers for those
-// endpoints (see CashbackDashboardStats / CashbackEntry.amount / getPayoutThresholds()
-// below). The type is kept exported here only because `DashboardPage.tsx` (a different,
-// partner-side page backed by a different endpoint, `GET /api/dashboard/...`) still
-// imports and uses it for `totalAmount`/`cashbackAmount` — removing the export would
-// break that unrelated file's typecheck. That page has the same-shaped regression
-// (its backing route also now returns plain numbers, not {bgn, eur, windowOpen}) but
-// was out of scope for this fix — flagged separately, not fixed here.
-export interface DualCurrencyAmount {
-  /** BGN value — null once the transition window has closed (EUR-only display). */
-  bgn: number | null;
-  /** EUR value — always present. */
-  eur: number;
-  /** Whether the transition window is open (both currencies shown). */
-  windowOpen: boolean;
-}
-
 // Spec §4.4 v1.1 — entry-based cashback with 7 states (TrialPending + Voided added)
 export type CashbackEntryStatus = 'Pending' | 'TrialPending' | 'Cleared' | 'Locked' | 'Paid' | 'Expired' | 'Voided';
 
