@@ -36,6 +36,12 @@ describe('Authentication Flow (F01)', () => {
   describe('POST /api/auth/register', () => {
     it('should register a new user with valid data', async () => {
       const email = `auth-test-${Date.now()}@boomcard.bg`;
+      // BC-QA-036: was a hardcoded literal (`+359888000123`) that permanently
+      // collided with a stale leftover row under the new
+      // @@unique([phone, role]) constraint, causing a 409 on every run.
+      // Use the same collision-resistant per-call pattern the rest of this
+      // file's register tests already use (see the BC-QA-032 tests below).
+      const phone = `+359888${Date.now().toString().slice(-6)}`;
       const res = await request(app)
         .post('/api/auth/register')
         .send({
@@ -43,7 +49,7 @@ describe('Authentication Flow (F01)', () => {
           password: 'SecurePass123!',
           firstName: 'John',
           lastName: 'Doe',
-          phone: '+359888000123',
+          phone,
           acceptTerms: true,
         });
 
