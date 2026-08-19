@@ -1,6 +1,13 @@
 const { Client } = require('pg');
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-const connectionString = "postgresql://neondb_owner:npg_3f1FtdpRDOTH@ep-old-salad-agie89z3-pooler.c-2.eu-central-1.aws.neon.tech/boomcard?sslmode=require";
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  console.error('FATAL: DATABASE_URL environment variable is not set.');
+  process.exit(1);
+}
 
 async function wakeAndHold() {
   const client = new Client({ connectionString });
