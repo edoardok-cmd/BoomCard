@@ -744,9 +744,9 @@ export default function AdminTopDiscountsPage() {
     mutationFn: (id: string) => offersService.deleteOffer(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-top-discounts'] });
-      toast.success(language === 'bg' ? 'Отстъпката е изтрита' : 'Offer deleted');
+      toast.success(language === 'bg' ? 'Отстъпката е изтрита' : 'Discount deleted');
     },
-    onError: () => toast.error('Failed to delete offer'),
+    onError: () => toast.error('Failed to delete discount'),
   });
 
   const bulkDeleteMutation = useMutation({
@@ -971,7 +971,7 @@ export default function AdminTopDiscountsPage() {
       {/* Filters */}
       <FiltersBar>
         <SearchInput
-          placeholder={language === 'bg' ? 'Търси отстъпки…' : 'Search offers…'}
+          placeholder={language === 'bg' ? 'Търси отстъпки…' : 'Search discounts…'}
           value={filterSearch}
           onChange={e => setFilterSearch(e.target.value)}
         />
@@ -1158,7 +1158,7 @@ export default function AdminTopDiscountsPage() {
                   <Textarea
                     value={form.description}
                     onChange={e => { setForm(f => ({ ...f, description: e.target.value })); setFormErrors(prev => ({ ...prev, description: undefined })); }}
-                    placeholder="Describe the offer in English"
+                    placeholder="Describe the discount in English"
                     $error={!!formErrors.description}
                   />
                   {formErrors.description && <ErrorMsg>{formErrors.description}</ErrorMsg>}
@@ -1215,7 +1215,7 @@ export default function AdminTopDiscountsPage() {
                 </FormField>
 
                 {/* Discount & order */}
-                <SectionDivider>{language === 'bg' ? 'Детайли на отстъпката' : 'Offer Details'}</SectionDivider>
+                <SectionDivider>{language === 'bg' ? 'Детайли на отстъпката' : 'Discount Details'}</SectionDivider>
 
                 <FormField>
                   <Label>{language === 'bg' ? 'Отстъпка %' : 'Discount %'}<Req>*</Req></Label>

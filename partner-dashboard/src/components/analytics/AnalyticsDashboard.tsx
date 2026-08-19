@@ -340,7 +340,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = () => {
 
     return offersData.data.slice(0, 5).map((offer, index) => ({
       rank: index + 1,
-      name: offer.title || offer.titleBg || 'Untitled Offer',
+      name: offer.title || offer.titleBg || 'Untitled Discount',
       venue: offer.partnerName || 'Unknown Venue',
       redemptions: offer.redemptionCount || 0,
       revenue: `${((offer.redemptionCount || 0) * (offer.discountedPrice || 0)).toLocaleString()} лв`,

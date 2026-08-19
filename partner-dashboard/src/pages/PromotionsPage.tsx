@@ -430,13 +430,13 @@ const PromotionsPage: React.FC = () => {
     updateSEO({
       title: language === 'bg'
         ? 'Отстъпки и Специални Отстъпки | BoomCard'
-        : 'Promotions and Special Offers | BoomCard',
+        : 'Discounts and Special Discounts | BoomCard',
       description: language === 'bg'
         ? 'Разгледайте най-добрите отстъпки и ексклузивни отстъпки с вашата BoomCard карта за намаления. Топ изживявания на специални цени!'
-        : 'Browse the best promotions and exclusive offers with your BoomCard discount card. Top experiences at special prices!',
+        : 'Browse the best discounts and exclusive discounts with your BoomCard discount card. Top experiences at special prices!',
       keywords: language === 'bg'
-        ? ['отстъпки', 'специални отстъпки', 'отстъпки', 'ексклузивни отстъпки', 'отстъпки ресторанти', 'отстъпки хотели', 'карта за намаления']
-        : ['promotions', 'special offers', 'discounts', 'exclusive promotions', 'restaurant promotions', 'hotel promotions', 'discount card'],
+        ? ['отстъпки', 'специални отстъпки', 'ексклузивни отстъпки', 'отстъпки ресторанти', 'отстъпки хотели', 'карта за намаления']
+        : ['discounts', 'special discounts', 'exclusive discounts', 'restaurant discounts', 'hotel discounts', 'discount card'],
       language: language,
       url: window.location.href,
     });
@@ -460,19 +460,19 @@ const PromotionsPage: React.FC = () => {
     en: {
       title: 'Top Discounts with BOOM Card',
       subtitle: 'Real discounts and exclusive offers from selected top venues in Bulgaria',
-      stat1Label: 'New offers at top venues',
+      stat1Label: 'New discounts at top venues',
       stat2Label: 'cashback based on subscription plan',
-      stat3Label: 'Curated offers',
+      stat3Label: 'Curated discounts',
       all: 'All',
       active: 'Active',
       upcoming: 'Upcoming',
       expired: 'Expired',
       filters: 'Filters',
-      emptyTitle: 'No deals found',
-      emptyText: 'Check back soon for new exciting deals!',
-      browseOffers: 'Browse All Deals',
-      premiumOnlyNote: 'Some offers are available only with Premium.',
-      selectedOffers: 'Curated Offers',
+      emptyTitle: 'No discounts found',
+      emptyText: 'Check back soon for new exciting discounts!',
+      browseOffers: 'Browse All Discounts',
+      premiumOnlyNote: 'Some discounts are available only with Premium.',
+      selectedOffers: 'Curated Discounts',
       heroCta: 'Get Your BoomCard',
       // Money Back Section
       cashbackTitle: 'Money Back with BOOM Card in 3 steps',
@@ -568,19 +568,19 @@ const PromotionsPage: React.FC = () => {
             <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
               {isLoading
                 ? (language === 'bg' ? 'Зареждане...' : 'Loading...')
-                : `${entities.length} ${language === 'bg' ? 'отстъпки' : 'offers'}`}
+                : `${entities.length} ${language === 'bg' ? 'отстъпки' : 'discounts'}`}
             </div>
           </SectionHeader>
 
           <OffersGrid>
             {isLoading && (
               <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
-                {language === 'bg' ? 'Зареждане на отстъпки...' : 'Loading offers...'}
+                {language === 'bg' ? 'Зареждане на отстъпки...' : 'Loading discounts...'}
               </div>
             )}
             {!isLoading && entities.length === 0 && (
               <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
-                {language === 'bg' ? 'Няма налични отстъпки.' : 'No offers available yet.'}
+                {language === 'bg' ? 'Няма налични отстъпки.' : 'No discounts available yet.'}
               </div>
             )}
             {[...entities].sort((a, b) => (b.discount?.percent ?? 0) - (a.discount?.percent ?? 0)).map((entity, index) => (

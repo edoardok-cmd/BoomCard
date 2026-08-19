@@ -10,7 +10,7 @@ const LocationsTypeAllPage: React.FC = () => {
     <GenericPage
       titleEn="All Locations"
       titleBg="Всички Места"
-      subtitleEn="Browse all available venues and offers across Bulgaria"
+      subtitleEn="Browse all available venues and discounts across Bulgaria"
       subtitleBg="Разгледайте всички налични места и отстъпки из България"
       entities={entities}
       isLoading={isLoading}

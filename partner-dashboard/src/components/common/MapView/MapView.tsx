@@ -21,7 +21,7 @@ const content = {
     enableLocation: 'Enable Location',
     locationDenied: 'Location access denied',
     locationError: 'Unable to get your location',
-    findNearby: 'Find Nearby Offers',
+    findNearby: 'Find Nearby Discounts',
     myLocation: 'My Location',
     distance: 'away',
     openNow: 'Open Now',

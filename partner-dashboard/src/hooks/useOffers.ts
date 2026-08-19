@@ -118,10 +118,10 @@ export function useCreateOffer() {
     mutationFn: offersService.createOffer,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['offers'] });
-      toast.success('Offer created successfully!');
+      toast.success('Discount created successfully!');
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to create offer');
+      toast.error(error.message || 'Failed to create discount');
     },
   });
 }
@@ -138,10 +138,10 @@ export function useUpdateOffer() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['offers'] });
       queryClient.invalidateQueries({ queryKey: ['offer', variables.id] });
-      toast.success('Offer updated successfully!');
+      toast.success('Discount updated successfully!');
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to update offer');
+      toast.error(error.message || 'Failed to update discount');
     },
   });
 }
@@ -161,7 +161,7 @@ export function useDeleteOffer() {
       queryClient.invalidateQueries({ queryKey: ['offers'] });
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to delete offer');
+      toast.error(error.message || 'Failed to delete discount');
     },
   });
 }
@@ -178,13 +178,13 @@ export function useRedeemOffer() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['offers'] });
       if (data.success) {
-        toast.success(data.message || 'Offer redeemed successfully!');
+        toast.success(data.message || 'Discount redeemed successfully!');
       } else {
-        toast.error(data.message || 'Failed to redeem offer');
+        toast.error(data.message || 'Failed to redeem discount');
       }
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to redeem offer');
+      toast.error(error.message || 'Failed to redeem discount');
     },
   });
 }
@@ -283,7 +283,7 @@ export function useToggleOfferStatus() {
       queryClient.invalidateQueries({ queryKey: ['offer', variables.id] });
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to update offer status');
+      toast.error(error.message || 'Failed to update discount status');
     },
   });
 }

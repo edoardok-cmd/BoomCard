@@ -34,15 +34,15 @@ const OFFER_MANAGEMENT_ENABLED = import.meta.env.VITE_OFFER_MANAGEMENT_ENABLED =
 
 const content = {
   en: {
-    title: 'My Offers',
-    createNew: 'Create New Offer',
-    allOffers: 'All Offers',
+    title: 'My Discounts',
+    createNew: 'Create New Discount',
+    allOffers: 'All Discounts',
     active: 'Active',
     inactive: 'Inactive',
     expiredFilter: 'Expired',
-    search: 'Search offers...',
-    noOffers: 'No offers found',
-    createFirst: 'Create your first offer to get started',
+    search: 'Search discounts...',
+    noOffers: 'No discounts found',
+    createFirst: 'Create your first discount to get started',
     edit: 'Edit',
     delete: 'Delete',
     activate: 'Activate',
@@ -50,10 +50,10 @@ const content = {
     redemptions: 'Redemptions',
     validUntil: 'Valid until',
     expired: 'Expired',
-    confirmDelete: 'Are you sure you want to delete this offer?',
-    deleted: 'Offer deleted successfully',
-    activated: 'Offer activated successfully',
-    deactivated: 'Offer deactivated successfully',
+    confirmDelete: 'Are you sure you want to delete this discount?',
+    deleted: 'Discount deleted successfully',
+    activated: 'Discount activated successfully',
+    deactivated: 'Discount deactivated successfully',
     categories: {
       restaurants: 'Restaurants',
       hotels: 'Hotels',
@@ -210,7 +210,7 @@ const MyOffersPage: React.FC = () => {
         setActiveMenu(null);
         refetch(); // Refresh the list
       } catch {
-        toast.error('Failed to delete offer');
+        toast.error('Failed to delete discount');
       }
     }
   };
@@ -225,7 +225,7 @@ const MyOffersPage: React.FC = () => {
       setActiveMenu(null);
       refetch(); // Refresh the list
     } catch {
-      toast.error('Failed to update offer status');
+      toast.error('Failed to update discount status');
     }
   };
 

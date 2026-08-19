@@ -192,9 +192,9 @@ export const ClientCTA: React.FC<ClientCTAProps> = ({ className }) => {
   const content = {
     en: {
       title: 'Start Saving with BOOM Card Today',
-      text: 'Join people discovering exclusive deals at the best venues across Bulgaria',
+      text: 'Join people discovering exclusive discounts at the best venues across Bulgaria',
       primaryButton: 'Get Started',
-      secondaryButton: 'Browse Offers',
+      secondaryButton: 'Browse Discounts',
       viewPartnersButton: 'View All Partners',
       partnerButton: 'Become a Partner',
     },

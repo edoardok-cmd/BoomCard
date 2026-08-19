@@ -26,7 +26,7 @@ const VenuesHotelTypesPage: React.FC = () => {
     <GenericPage
       titleEn="Accommodation Types"
       titleBg="Типове Настаняване"
-      subtitleEn="BOOM Card gives you access to exclusive offers with up to 20% cashback, based on your chosen plan."
+      subtitleEn="BOOM Card gives you access to exclusive discounts with up to 20% cashback, based on your chosen plan."
       subtitleBg="BOOM Card ти дава достъп до ексклузивни отстъпки с до 20% кешбек, според избрания от теб план."
       entities={filteredEntities}
       isLoading={isLoading}

@@ -8,7 +8,7 @@ const PromotionsGastronomyPage: React.FC = () => {
 
   return (
     <GenericPage
-      titleEn="Gastronomy Promotions"
+      titleEn="Gastronomy Discounts"
       titleBg="Гастрономични Отстъпки"
       subtitleEn="Culinary experiences including street food tours, wine & dine events, cooking classes, and farm-to-table dining"
       subtitleBg="Кулинарни изживявания включващи турове на улична храна, вино и храна, готварски класове и farm-to-table ресторанти"

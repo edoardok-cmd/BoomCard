@@ -20,13 +20,13 @@ import type { Entity } from '../types/entity.types';
 const content = {
   en: {
     title: 'Nearby',
-    subtitle: 'Discover exclusive deals near you',
+    subtitle: 'Discover exclusive discounts near you',
     tabs: { places: 'Boom Places', experiences: 'Experiences' },
     viewToggle: { map: 'Map View', list: 'List View' },
-    noOffers: 'No nearby offers found',
+    noOffers: 'No nearby discounts found',
     tryWidening: 'Try clearing some filters or enable location.',
     enableLocation: 'Enable location',
-    enableLocationPrompt: 'Enable location to see offers near you',
+    enableLocationPrompt: 'Enable location to see discounts near you',
     yourLocation: 'Using your current location',
     locationDenied: 'Location denied — showing all results',
     results: (n: number) => `${n} results`,

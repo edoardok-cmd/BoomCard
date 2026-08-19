@@ -28,12 +28,12 @@ const DEFAULT_SEO_BG: SEOConfig = {
 };
 
 const DEFAULT_SEO_EN: SEOConfig = {
-  title: 'BoomCard - Promotions, Experiences, Discount Card',
-  description: 'Discover exclusive offers and top experiences with your BoomCard discount card. Gift yourself unforgettable experiences!',
+  title: 'BoomCard - Discounts, Experiences, Discount Card',
+  description: 'Discover exclusive discounts and top experiences with your BoomCard discount card. Gift yourself unforgettable experiences!',
   keywords: [
-    'promotions', 'experiences', 'discount card', 'exclusive offers',
-    'gift', 'top experiences', 'discounts', 'Bulgaria', 'Sofia',
-    'Plovdiv', 'Varna', 'restaurant promotions', 'hotel promotions'
+    'discounts', 'experiences', 'discount card', 'exclusive discounts',
+    'gift', 'top experiences', 'Bulgaria', 'Sofia',
+    'Plovdiv', 'Varna', 'restaurant discounts', 'hotel discounts'
   ],
   image: '/og-image.png',
   type: 'website',

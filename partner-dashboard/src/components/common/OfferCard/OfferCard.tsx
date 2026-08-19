@@ -613,7 +613,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({ entity, className, onBookC
     ? `до ${discountPct}% отстъпка според абонаментния план`
     : `up to ${discountPct}% discount based on subscription plan`;
 
-  const ctaLabel = language === 'bg' ? 'Виж отстъпката' : 'View offer';
+  const ctaLabel = language === 'bg' ? 'Виж отстъпката' : 'View discount';
 
   const handleCardClick = (e: React.MouseEvent) => {
     if (isLocked) { e.preventDefault(); return; }
