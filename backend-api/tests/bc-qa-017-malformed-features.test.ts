@@ -313,7 +313,63 @@ describe('BC-QA-017: Malformed JSON in plan features', () => {
       if (!basicPlan) {
         throw new Error('BASIC plan not found — run seed-plans first');
       }
+
+      // Guard: detect and repair corrupted BASIC plan state from interrupted prior runs.
+      // If a prior run dies before afterAll, the plan's features/featuresBg remain corrupted.
+      // This guard resets to seed defaults if corrupted, then captures the clean state.
+      const isCorrupted =
+        !basicPlan.features ||
+        (typeof basicPlan.features === 'string' &&
+          (() => {
+            try {
+              JSON.parse(basicPlan.features);
+              return false;
+            } catch {
+              return true;
+            }
+          })());
+
+      if (isCorrupted) {
+        const cleanFeatures = JSON.stringify([
+          'Monthly or annual subscription',
+          'Up to 10% cashback',
+          'Cashback via the app',
+          'Access to partner offers',
+          'Standard support',
+        ]);
+        const cleanFeaturesBg = JSON.stringify([
+          'Месечен или годишен абонамент',
+          'До 10% кешбек',
+          'Връщане на пари чрез приложението',
+          'Достъп до партньорски оферти',
+          'Стандартна поддръжка',
+        ]);
+        await prisma.plan.update({
+          where: { planCode: 'BASIC' },
+          data: {
+            features: cleanFeatures,
+            featuresBg: cleanFeaturesBg,
+          },
+        });
+      }
+
       originalBasicPlan = { features: basicPlan.features, featuresBg: basicPlan.featuresBg };
+      if (isCorrupted) {
+        originalBasicPlan.features = JSON.stringify([
+          'Monthly or annual subscription',
+          'Up to 10% cashback',
+          'Cashback via the app',
+          'Access to partner offers',
+          'Standard support',
+        ]);
+        originalBasicPlan.featuresBg = JSON.stringify([
+          'Месечен или годишен абонамент',
+          'До 10% кешбек',
+          'Връщане на пари чрез приложението',
+          'Достъп до партньорски оферти',
+          'Стандартна поддръжка',
+        ]);
+      }
       await prisma.plan.update({
         where: { planCode: 'BASIC' },
         data: {
