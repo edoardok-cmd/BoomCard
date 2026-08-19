@@ -293,13 +293,13 @@ class PushNotificationService {
       case 'new_offer':
         return {
           type: 'new_offer',
-          title: '🎉 New Offer Available!',
+          title: '🎉 New Discount Available!',
           body: `${data.venueName} is offering ${data.discount}% off!`,
           icon: '/icons/offer.png',
           image: data.image as string | undefined,
           data: { offerId: data.offerId, venueId: data.venueId },
           actions: [
-            { action: 'view', title: 'View Offer', icon: '/icons/view.png' },
+            { action: 'view', title: 'View Discount', icon: '/icons/view.png' },
             { action: 'dismiss', title: 'Dismiss', icon: '/icons/dismiss.png' },
           ],
         };
@@ -307,7 +307,7 @@ class PushNotificationService {
       case 'offer_expiring':
         return {
           type: 'offer_expiring',
-          title: '⏰ Offer Expiring Soon!',
+          title: '⏰ Discount Expiring Soon!',
           body: `${data.offerTitle} expires ${data.expiresIn}. Don't miss out!`,
           icon: '/icons/clock.png',
           data: { offerId: data.offerId },

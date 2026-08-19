@@ -250,7 +250,7 @@ const SettingsScreen = ({ navigation }: any) => {
         if (!result.granted) {
           crossPlatformAlert(
             'Permission Denied',
-            'Please enable notifications in your device settings to receive updates about offers and receipts.',
+            'Please enable notifications in your device settings to receive updates about discounts and receipts.',
             [
               { text: 'Cancel', style: 'cancel' },
               {
@@ -279,7 +279,7 @@ const SettingsScreen = ({ navigation }: any) => {
         if (registerResponse.success) {
           crossPlatformAlert(
             'Success',
-            'Push notifications enabled! You will receive updates about offers and receipts.'
+            'Push notifications enabled! You will receive updates about discounts and receipts.'
           );
         } else {
           console.warn('Failed to register token with backend:', registerResponse.error);

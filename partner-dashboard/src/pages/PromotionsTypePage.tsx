@@ -8,9 +8,9 @@ const PromotionsTypePage: React.FC = () => {
 
   return (
     <GenericPage
-      titleEn="Promotions by Type"
+      titleEn="Discounts by Type"
       titleBg="Отстъпки по Тип"
-      subtitleEn="Discover exciting promotions organized by category: Gastronomy, Extreme adventures, Cultural experiences"
+      subtitleEn="Discover exciting discounts organized by category: Gastronomy, Extreme adventures, Cultural experiences"
       subtitleBg="Открийте вълнуващи отстъпки организирани по категория: Гастрономични, Екстремни приключения, Културни изживявания"
       entities={entities}
       isLoading={isLoading}

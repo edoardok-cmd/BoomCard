@@ -8,7 +8,7 @@ const PromotionsExtremePage: React.FC = () => {
 
   return (
     <GenericPage
-      titleEn="Extreme Activity Promotions"
+      titleEn="Extreme Activity Discounts"
       titleBg="Отстъпки за Екстремни Дейности"
       subtitleEn="Adrenaline-pumping adventures including air sports, water activities, mountain expeditions, and winter sports"
       subtitleBg="Приключения пълни с адреналин включващи въздушни спортове, водни дейности, планински експедиции и зимни спортове"

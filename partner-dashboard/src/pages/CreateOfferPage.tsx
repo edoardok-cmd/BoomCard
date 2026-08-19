@@ -24,17 +24,17 @@ const OFFER_MANAGEMENT_ENABLED = import.meta.env.VITE_OFFER_MANAGEMENT_ENABLED =
 
 const content = {
   en: {
-    title: 'Create New Offer',
+    title: 'Create New Discount',
     step1: 'Basic Information',
     step2: 'Details & Images',
     step3: 'Terms & Preview',
-    offerTitle: 'Offer Title',
+    offerTitle: 'Discount Title',
     offerTitlePlaceholder: 'e.g., 20% Off All Main Courses',
     category: 'Category',
     selectCategory: 'Select a category',
     discount: 'Discount Percentage',
     description: 'Description',
-    descriptionPlaceholder: 'Describe your offer in detail...',
+    descriptionPlaceholder: 'Describe your discount in detail...',
     validFrom: 'Valid From',
     validUntil: 'Valid Until',
     maxRedemptions: 'Max Redemptions',
@@ -47,12 +47,12 @@ const content = {
     preview: 'Preview',
     back: 'Back',
     next: 'Next',
-    submit: 'Create Offer',
+    submit: 'Create Discount',
     cancel: 'Cancel',
     required: 'This field is required',
     invalidDate: 'End date must be after start date',
-    success: 'Offer created successfully!',
-    error: 'Failed to create offer. Please try again.',
+    success: 'Discount created successfully!',
+    error: 'Failed to create discount. Please try again.',
     categories: {
       restaurants: 'Restaurants',
       hotels: 'Hotels',
@@ -366,7 +366,7 @@ const CreateOfferPage: React.FC = () => {
           await offersService.uploadOfferImage(offer.id, file);
         } catch {
           // Non-blocking: offer is created; warn about image failure
-          toast.error(language === 'bg' ? 'Снимката не беше качена.' : 'Image upload failed — offer saved without image.');
+          toast.error(language === 'bg' ? 'Снимката не беше качена.' : 'Image upload failed — discount saved without image.');
         }
       }
 
@@ -587,7 +587,7 @@ const CreateOfferPage: React.FC = () => {
         <PreviewTitle>{t.preview}</PreviewTitle>
         <PreviewCard>
           <PreviewHeader>
-            <h3>{formData.title || 'Offer Title'}</h3>
+            <h3>{formData.title || 'Discount Title'}</h3>
             <DiscountBadge>{formData.discount || '0'}% OFF</DiscountBadge>
           </PreviewHeader>
           <PreviewCategory>

@@ -269,7 +269,7 @@ const LocationsPage: React.FC = () => {
       plovdiv: 'Plovdiv',
       bansko: 'Bansko',
       openNow: 'Open Now',
-      viewOffers: 'View Offers',
+      viewOffers: 'View Discounts',
       loading: 'Loading…',
       error: 'Failed to load locations.',
       retry: 'Retry',

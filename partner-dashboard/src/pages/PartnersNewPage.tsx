@@ -10,7 +10,7 @@ const PartnersNewPage: React.FC = () => {
     <GenericPage
       titleEn="New Partners"
       titleBg="Нови Партньори"
-      subtitleEn="Discover freshly joined partners with exclusive welcome offers"
+      subtitleEn="Discover freshly joined partners with exclusive welcome discounts"
       subtitleBg="Открийте новоприсъединени партньори с ексклузивни приветствени отстъпки"
       entities={entities}
       isLoading={isLoading}
