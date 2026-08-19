@@ -656,6 +656,12 @@ model Subscription {
   createdAt                 DateTime           @default(now())
   updatedAt                 DateTime           @updatedAt
   payseraOrderId            String?            @unique
+  // BC-MYPOS-004: provider-neutral replacement join key. paymentProvider is
+  // nullable during the migration window (legacy rows and any consumer not
+  // yet updated by BC-MYPOS-005 leave it unset) — NOT NULL is deferred to a
+  // follow-up once all writers populate it (see migration header comment).
+  paymentProvider           PaymentProvider?
+  providerOrderId           String?
   planId                    String?
   autoRenewal               Boolean            @default(true)
   retryAttempt              Int                @default(0)
@@ -670,6 +676,7 @@ model Subscription {
   planDetails               Plan?              @relation(fields: [planId], references: [id])
   user                      User               @relation(fields: [userId], references: [id])
 
+  @@unique([paymentProvider, providerOrderId], name: "Subscription_paymentProvider_providerOrderId_key")
   @@index([userId])
   @@index([status])
   @@index([plan])
@@ -1611,21 +1618,26 @@ model MarketingAutomation {
 }
 
 model PendingSubscription {
-  id             String                    @id @default(cuid())
-  email          String
-  planId         String
-  payseraOrderId String?                   @unique
-  status         PendingSubscriptionStatus @default(CREATED)
-  token          String?                   @unique
-  tokenExpiresAt DateTime?
-  paidAt         DateTime?
-  completedAt    DateTime?
-  createdAt      DateTime                  @default(now())
-  expiresAt      DateTime
-  billingPeriod  String?
-  language       String?
-  plan           Plan                      @relation(fields: [planId], references: [id])
+  id              String                    @id @default(cuid())
+  email           String
+  planId          String
+  payseraOrderId  String?                   @unique
+  // BC-MYPOS-004: provider-neutral replacement join key, same rationale as
+  // Subscription above — nullable until all writers/BC-MYPOS-005 populate it.
+  paymentProvider PaymentProvider?
+  providerOrderId String?
+  status          PendingSubscriptionStatus @default(CREATED)
+  token           String?                   @unique
+  tokenExpiresAt  DateTime?
+  paidAt          DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime                  @default(now())
+  expiresAt       DateTime
+  billingPeriod   String?
+  language        String?
+  plan            Plan                      @relation(fields: [planId], references: [id])
 
+  @@unique([paymentProvider, providerOrderId], name: "PendingSubscription_paymentProvider_providerOrderId_key")
   @@index([email])
   @@index([status])
   @@index([expiresAt])
@@ -1952,6 +1964,21 @@ enum PaymentMethod {
   WALLET
   BANK_TRANSFER
   CASH
+}
+
+// BC-MYPOS-004: provider-neutral identifier for which payment gateway a
+// Subscription/PendingSubscription's providerOrderId belongs to. STRIPE_LEGACY
+// covers Stripe-originated Subscription rows, which also keep their own
+// dedicated columns (stripeSubscriptionId etc.) as the historical source of
+// truth — migration 20260819120100_backfill_and_constrain_payment_provider
+// backfills paymentProvider='STRIPE_LEGACY'/providerOrderId=stripeSubscriptionId
+// for every Subscription row with a non-null stripeSubscriptionId not already
+// claimed by the Paysera backfill. PendingSubscription has no Stripe-shaped
+// column, so no PendingSubscription row is ever backfilled to STRIPE_LEGACY.
+enum PaymentProvider {
+  PAYSERA
+  MYPOS
+  STRIPE_LEGACY
 }
 
 enum WalletTransactionType {
