@@ -30,7 +30,7 @@ const BAR_LNG = 23.32620;
 const BAR_DISCOUNT_PCT = 15;
 const BAR_STICKER_ID = 'BAR-6SEP-T1';
 
-type PlanCode = 'BASIC' | 'PREMIUM' | 'LIGHT';
+type PlanCode = 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM_MONTHLY';
 
 async function hash(pw: string) {
   return bcrypt.hash(pw, 10);
@@ -41,7 +41,7 @@ async function upsertUser(
   firstName: string,
   lastName: string,
   role: 'USER' | 'ADMIN' | 'SUPER_ADMIN' = 'USER',
-  cardType: 'LIGHT' | 'BASIC' | 'PREMIUM' = 'LIGHT'
+  cardType: 'PREMIUM_WEEKLY' | 'BASIC' | 'PREMIUM' = 'PREMIUM_WEEKLY'
 ) {
   const passwordHash = await hash(PASSWORD);
   const user = await prisma.user.upsert({
@@ -99,9 +99,9 @@ async function ensureSubscription(userId: string, plan: PlanCode, active = true)
 
 async function seedPlans() {
   const plans = [
-    { planCode: 'LIGHT', displayName: 'Premium Weekly', priceWeeklyEur: 699, cashbackRate: 0.20, hasWeeklyOption: true, hasMonthlyOption: false, hasYearlyOption: false },
+    { planCode: 'PREMIUM_WEEKLY', displayName: 'Premium Weekly', priceWeeklyEur: 699, cashbackRate: 0.20, hasWeeklyOption: true, hasMonthlyOption: false, hasYearlyOption: false },
     { planCode: 'BASIC', displayName: 'Basic', priceMonthlyEur: 899, cashbackRate: 0.10, hasMonthlyOption: true, hasYearlyOption: true },
-    { planCode: 'PREMIUM', displayName: 'Premium', priceMonthlyEur: 1399, cashbackRate: 0.20, hasMonthlyOption: true, hasYearlyOption: true, stickerBonus: 0.05 },
+    { planCode: 'PREMIUM_MONTHLY', displayName: 'Premium', priceMonthlyEur: 1399, cashbackRate: 0.20, hasMonthlyOption: true, hasYearlyOption: true, stickerBonus: 0.05 },
   ];
   for (const p of plans) {
     await prisma.plan.upsert({
@@ -153,7 +153,7 @@ async function seedPartnerType() {
 }
 
 async function seedPlanTypeAccess(partnerTypeId: string) {
-  const plans: PlanCode[] = ['BASIC', 'PREMIUM', 'LIGHT'];
+  const plans: PlanCode[] = ['BASIC', 'PREMIUM_MONTHLY', 'PREMIUM_WEEKLY'];
   // adapter-pg quirk with enum compound-unique upsert: drop + recreate instead
   await prisma.planTypeAccess.deleteMany({ where: { partnerTypeId } });
   await prisma.planTypeAccess.createMany({
@@ -354,20 +354,20 @@ async function main() {
   await seedPlanTypeAccess(partnerType.id);
 
   // Test users per plan — Card.type must mirror Subscription.plan because the cashback
-  // engine keys off Card.type (see sticker.service.ts:438). FREE gets LIGHT card by default
+  // engine keys off Card.type (see sticker.service.ts:438). FREE gets PREMIUM_WEEKLY card by default
   // since the schema requires a type, but FREE users have no active subscription.
   const users = {
-    free:    await upsertUser('free@test.local', 'Free', 'User', 'USER', 'LIGHT'),
+    free:    await upsertUser('free@test.local', 'Free', 'User', 'USER', 'PREMIUM_WEEKLY'),
     basic:   await upsertUser('basic@test.local', 'Basic', 'User', 'USER', 'BASIC'),
     premium: await upsertUser('premium@test.local', 'Premium', 'User', 'USER', 'PREMIUM'),
-    light:   await upsertUser('light@test.local', 'Light', 'User', 'USER', 'LIGHT'),
+    light:   await upsertUser('light@test.local', 'Light', 'User', 'USER', 'PREMIUM_WEEKLY'),
     expired: await upsertUser('expired@test.local', 'Expired', 'User', 'USER', 'PREMIUM'),
-    admin:   await upsertUser('admin@test.local', 'Admin', 'User', 'SUPER_ADMIN', 'LIGHT'),
+    admin:   await upsertUser('admin@test.local', 'Admin', 'User', 'SUPER_ADMIN', 'PREMIUM_WEEKLY'),
   };
   await ensureSubscription(users.basic.id, 'BASIC', true);
-  await ensureSubscription(users.premium.id, 'PREMIUM', true);
-  await ensureSubscription(users.light.id, 'LIGHT', true);
-  await ensureSubscription(users.expired.id, 'PREMIUM', false);
+  await ensureSubscription(users.premium.id, 'PREMIUM_MONTHLY', true);
+  await ensureSubscription(users.light.id, 'PREMIUM_WEEKLY', true);
+  await ensureSubscription(users.expired.id, 'PREMIUM_MONTHLY', false);
   console.log('  ✓ users + subscriptions');
 
   // Venues per discount tier
