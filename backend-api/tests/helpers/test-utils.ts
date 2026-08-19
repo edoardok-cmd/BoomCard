@@ -9,6 +9,7 @@ import request from 'supertest';
 import crypto from 'crypto';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
+import { contactRateLimiter } from '../../src/routes/contact.routes';
 
 // Unique suffix to avoid collisions between parallel test runs
 const testId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
@@ -316,4 +317,26 @@ export function authRequest(token: string) {
  */
 export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Reset the contact rate limiter for the test IP.
+ * Supertest uses loopback IPs (127.0.0.1 or ::1) which are shared across all tests,
+ * so the rate limiter's per-IP counter would exhaust after 5 requests. This helper
+ * resets that counter between tests so each test starts with a fresh rate-limit window.
+ *
+ * Call in beforeEach() to reset before each test.
+ */
+export function resetContactRateLimiter(): void {
+  // express-rate-limit v7.5.1 provides a resetKey() method on the middleware
+  // instance to reset the hit count for a specific key (IP address).
+  const limiter = contactRateLimiter as any;
+
+  if (typeof limiter.resetKey === 'function') {
+    // Reset common loopback IP addresses that supertest may use
+    limiter.resetKey('127.0.0.1');
+    limiter.resetKey('::1');
+    limiter.resetKey('::ffff:127.0.0.1');
+    limiter.resetKey('unknown');
+  }
 }
