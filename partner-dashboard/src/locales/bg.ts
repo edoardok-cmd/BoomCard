@@ -1199,6 +1199,8 @@ export const bg: TranslationKey = {
     nextBilling: 'Следващо плащане',
     loading: 'Зареждане на абонамент...',
     noSubscription: 'Не е намерен активен абонамент.',
+    loadFailed: 'Неуспешно зареждане на абонамента ви. Моля, опитайте отново.',
+    retry: 'Опитай отново',
     goToPlans: 'Виж плановете',
     gracePeriodAlert: 'Просрочено плащане',
     gracePeriodMsg: 'Достъпът ви изтича след {days} ден(дни). Обновете метода си на плащане.',
