@@ -8,6 +8,15 @@
  *
  * Runs daily at 06:00 UTC via the scheduler (src/jobs/scheduler.ts).
  * Can also be run as a one-off script: npx tsx src/jobs/paysera-renewal.ts
+ *
+ * BC-MYPOS-002 note: this job never calls PayseraService / the gateway at
+ * all — it is pure time-based Subscription-status bookkeeping (ACTIVE ->
+ * FAILED_PAYMENT / PAUSED -> CANCELLED-or-EXPIRED) driven off
+ * `currentPeriodEnd`, with no createCheckout/verifyAndParseWebhook/
+ * createPayout call anywhere in this file. There is therefore nothing here
+ * to route through the new `PaymentProvider` abstraction
+ * (`../services/payment-provider.ts`); the job is provider-agnostic already,
+ * which is why it's unchanged by this refactor.
  */
 
 import { SubscriptionStatus } from '@prisma/client';

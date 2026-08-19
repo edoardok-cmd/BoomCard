@@ -4,7 +4,7 @@ import prisma from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { CASHBACK_VALIDITY_DAYS, EUR_TO_BGN_RATE } from '../constants/receipt.constants';
 import { getPayoutThresholdBGN } from '../utils/payoutThreshold';
-import { payseraService } from './paysera.service';
+import { paymentProvider } from './payment-provider';
 import { notificationService } from './notification.service';
 import { fireAutomation } from '../lib/automationDispatcher';
 import { getSystemSettingInt } from '../utils/systemSettings';
@@ -758,8 +758,8 @@ export class WalletService {
       throw err;
     }
 
-    // Require beneficiary name when Paysera Transfer API is configured.
-    if (payseraService.isTransferConfigured() && !beneficiaryName) {
+    // Require beneficiary name when the payout provider is configured.
+    if (paymentProvider.isPayoutConfigured() && !beneficiaryName) {
       throw new Error('Please provide the beneficiary name as it appears on your bank account.');
     }
 
@@ -1030,8 +1030,8 @@ export class WalletService {
     const callbackSecret: string | undefined = meta.callbackSecret;
 
     // Capture once — used for both validation and the updateMany payload so we
-    // never call isTransferConfigured() twice with a possible flip in between.
-    const isConfigured = payseraService.isTransferConfigured();
+    // never call isPayoutConfigured() twice with a possible flip in between.
+    const isConfigured = paymentProvider.isPayoutConfigured();
 
     if (isConfigured) {
       if (!callbackSecret) {
@@ -1082,32 +1082,34 @@ export class WalletService {
 
     try {
       // Stable idempotency key: walletId + withdrawalTxId ensures a network-retry
-      // of createTransfer does not create a duplicate bank transfer.
+      // of createPayout does not create a duplicate bank transfer.
       const idempotencyKey = `${walletId}-${walletTransactionId}`;
 
-      const transfer = await payseraService.createTransfer({
+      // onCreated fires between provider-side create and commit — stamping the
+      // provider's payout id BEFORE the commit step (reserve) is preserved
+      // exactly: if commit throws, the outer catch reverses the debit and the
+      // transfer stays pending (never executed).
+      const transfer = await paymentProvider.createPayout({
         amountEUR,
         beneficiaryIban: ibanRaw,
         beneficiaryName,
         purpose: 'BoomCard cashback payout',
         callbackUrl: `${apiBaseUrl}/api/payments/transfer-callback?secret=${callbackSecret}`,
         idempotencyKey,
-      });
-
-      // Stamp transferId BEFORE reserving — if reserve throws, the outer catch
-      // reverses the debit and the transfer stays pending (never executed).
-      await prisma.walletTransaction.update({
-        where: { id: walletTransactionId },
-        data: {
-          metadata: JSON.stringify({
-            ...meta,
-            processingStartedAt: meta.processingStartedAt ?? new Date().toISOString(),
-            payseraTransferId: transfer.id,
-          }),
+        onCreated: async (payoutId) => {
+          await prisma.walletTransaction.update({
+            where: { id: walletTransactionId },
+            data: {
+              metadata: JSON.stringify({
+                ...meta,
+                processingStartedAt: meta.processingStartedAt ?? new Date().toISOString(),
+                payseraTransferId: payoutId,
+              }),
+            },
+          });
         },
       });
 
-      await payseraService.reserveTransfer(transfer.id);
       logger.info(`Paysera transfer ${transfer.id} created & reserved for payout ${walletTransactionId} (user ${userId})`);
       return { amount, currency, transferId: transfer.id };
     } catch (transferError: any) {

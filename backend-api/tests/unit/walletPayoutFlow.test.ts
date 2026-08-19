@@ -408,6 +408,42 @@ describe('§6.1 v1.1 executePayoutTransfer (admin /approve helper)', () => {
     payseraService.isTransferConfigured.mockReturnValue(false);
   });
 
+  it('pins create -> stamp -> reserve ordering: the payoutId is written to the DB (via onCreated) strictly before the transfer is reserved/committed', async () => {
+    // Regression pin for BC-MYPOS-002-task-r1 Finding F1: the ordering invariant
+    // in payment-provider.ts#createPayout (create -> onCreated stamp -> reserve)
+    // was implemented correctly but unpinned — a reviewer swap of the stamp and
+    // reserve calls left the whole suite green. This test fails red under that
+    // swap because it asserts the *relative call order* of the DB write
+    // (prisma.walletTransaction.update, which onCreated performs) against
+    // payseraService.reserveTransfer, using Jest's invocationCallOrder rather
+    // than merely asserting both calls happened.
+    const { payseraService } = jest.requireMock('../../src/services/paysera.service');
+    const { prisma: prismaMock } = jest.requireMock('../../src/lib/prisma');
+    payseraService.isTransferConfigured.mockReturnValue(true);
+
+    await walletService.requestPayout('user-1');
+    const pending = txCreated[0];
+
+    const result = await walletService.executePayoutTransfer(pending.id);
+    expect(result.transferId).toBe('paysera-transfer-1');
+
+    // On this success path, prisma.walletTransaction.update() is invoked
+    // exactly once: the onCreated callback's metadata stamp. (requestPayout
+    // and the PENDING->PROCESSING transition both use updateMany, not update;
+    // the catch-block reversal update() calls don't run when there's no error.)
+    expect(prismaMock.walletTransaction.update).toHaveBeenCalledTimes(1);
+    const [stampedArgs] = prismaMock.walletTransaction.update.mock.calls[0];
+    expect(JSON.parse(stampedArgs.data.metadata).payseraTransferId).toBe('paysera-transfer-1');
+
+    expect(payseraService.reserveTransfer).toHaveBeenCalledTimes(1);
+
+    const stampCallOrder = prismaMock.walletTransaction.update.mock.invocationCallOrder[0];
+    const reserveCallOrder = payseraService.reserveTransfer.mock.invocationCallOrder[0];
+    expect(stampCallOrder).toBeLessThan(reserveCallOrder);
+
+    payseraService.isTransferConfigured.mockReturnValue(false);
+  });
+
   it('reverses balance and creates an ADJUSTMENT with correct sign when Paysera fails', async () => {
     const { payseraService } = jest.requireMock('../../src/services/paysera.service');
     payseraService.isTransferConfigured.mockReturnValue(true);
