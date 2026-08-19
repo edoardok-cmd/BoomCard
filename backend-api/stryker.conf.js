@@ -26,7 +26,10 @@ module.exports = {
   coverageAnalysis: 'perTest',
   // Start with the modules where a surviving mutant = a real money/security risk.
   mutate: [
-    'src/utils/currencyDisplay.ts',
+    // BC-QA-031: was 'src/utils/currencyDisplay.ts' — the dual-currency display
+    // module was deleted with the BGN→EUR transition feature. The surviving
+    // money-risk primitive on that seam is the BGN→EUR conversion itself.
+    'src/utils/currency.ts',
     'src/services/payoutEligibility.service.ts',
     'src/services/wallet.service.ts',
     'src/services/adminCashback.service.ts',

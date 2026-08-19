@@ -400,7 +400,9 @@ router.post('/:id/retry-payment', authenticate, asyncHandler(async (req: AuthReq
   const result = await subscriptionService.retryPayment(id, req.user!.id);
   // toSubUserView: strips stripeSubscriptionId and other internal fields.
   // Integration test omitted — this endpoint is Stripe-only (open invoice required);
-  // see INV-USER-SUB-011 describe block in user-currency-leak-sweep.test.ts.
+  // see INV-USER-SUB-011 describe block in user-internal-field-leak-sweep.test.ts
+  // (BC-QA-031 extracted it there when user-currency-leak-sweep.test.ts was
+  // retired with the dual-currency feature).
   res.json(toSubUserView(result));
 }));
 

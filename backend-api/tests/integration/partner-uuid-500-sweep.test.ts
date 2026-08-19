@@ -20,6 +20,7 @@ import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { createTestApp } from '../setup';
 import { prisma } from '../../src/lib/prisma';
+import { genTestPhone } from '../helpers/test-utils';
 
 jest.mock('../../src/services/email.service', () => ({
   emailService: { sendEmail: (_opts: any) => Promise.resolve() },
@@ -121,7 +122,7 @@ describe('partner-uuid-500-sweep: no partner :param route returns 500 on malform
         email: `${RUN_TAG}-partner@test.local`,
         firstName: 'Sweep',
         lastName: 'Partner',
-        phone: '+359000000010',
+        phone: genTestPhone(),
         status: 'ACTIVE',
         role: 'PARTNER',
         emailVerified: true,

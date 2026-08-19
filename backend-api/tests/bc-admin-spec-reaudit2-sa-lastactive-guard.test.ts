@@ -29,6 +29,7 @@ import jwt from 'jsonwebtoken';
 import { app } from '../src/server';
 import { prisma } from '../src/lib/prisma';
 import { AdminRoleKey } from '@prisma/client';
+import { genTestPhone } from './helpers/test-utils';
 
 jest.mock('../src/services/email.service', () => ({
   emailService: {
@@ -77,7 +78,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-SA-LASTACTIVE-GUARD-1: ACTIVE-only liveness pre
         email: `lastactive-guard-${opts.suffix}@test.local`,
         firstName: opts.name,
         lastName: 'Test',
-        phone: '+359000000000',
+        phone: genTestPhone(),
         role: 'SUPER_ADMIN',
         status,
         emailVerified: true,

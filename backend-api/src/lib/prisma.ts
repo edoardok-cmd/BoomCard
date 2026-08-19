@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import dotenv from 'dotenv';
 import path from 'path';
 import { logger } from '../utils/logger';
@@ -18,13 +18,236 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
+/**
+ * Attach a `connect` handler to a fresh pg.Pool and return it. node-postgres
+ * fires 'connect' exactly once per NEW physical connection the pool opens
+ * (not once per checkout of an already-open, idle connection), which is
+ * exactly the hook point needed to pin a connection's session-level
+ * `search_path` for its whole lifetime -- see `createScratchSchemaClient`
+ * below for why that matters and what it's for.
+ *
+ * FAIL-CLOSED ON `onConnect` FAILURE (BC-QA-037 impl-r1 MEDIUM #1): if
+ * `onConnect` (in practice, the `SET search_path` statement below) ever
+ * rejects, this used to only log the error and let the connection be
+ * checked out / returned to the idle pool exactly as if nothing had gone
+ * wrong. Since 'connect' only fires once per NEW physical connection (never
+ * again for that same connection on later checkouts), a `SET search_path`
+ * that fails once but leaves the underlying TCP connection healthy would
+ * silently poison that connection for its *entire remaining lifetime* --
+ * every future query through it runs under Postgres's default
+ * `search_path` (effectively `public`) instead of the intended schema, with
+ * no signal to any caller. That is the exact "isolation is illusory" bug
+ * this file exists to fix, just reintroduced probabilistically. We now
+ * force the pool to discard the connection instead, so a caller either gets
+ * a connection correctly pinned to the target schema, or gets a clear
+ * failure -- never a silent fallback to the wrong schema.
+ */
+function buildPool(connectionString: string, onConnect?: (client: PoolClient) => Promise<void>): Pool {
+  const pool = new Pool({ connectionString });
+  if (onConnect) {
+    pool.on('connect', (client) => {
+      onConnect(client).catch((err: unknown) => {
+        logger.error(
+          'prisma.ts: pool "connect" hook failed -- discarding this connection instead of reusing it (fail closed)',
+          err as Error,
+        );
+        discardConnection(pool, client);
+      });
+    });
+  }
+  return pool;
+}
+
+/**
+ * Force `pg-pool` to permanently evict a physical connection instead of
+ * ever returning it to the idle pool for reuse.
+ *
+ * `Pool.prototype._remove` is not officially public API (leading
+ * underscore) but it is exactly the mechanism `pg-pool` itself uses
+ * internally to evict a bad connection (see its own `idleListener` /
+ * `_release`): it splices the client out of both `_idle` and `_clients`
+ * and calls `client.end()`. That is deterministic no matter which internal
+ * state the connection is currently in -- genuinely idle, mid-query via
+ * `pool.query()`, or checked out directly via `pool.connect()` for a
+ * manual transaction (`@prisma/adapter-pg`'s transaction path) -- unlike
+ * emitting a synthetic client `'error'` event, whose effect depends
+ * entirely on which listener happens to be attached at that exact moment:
+ * `pg-pool`'s own `idleListener` is only attached while a connection is
+ * genuinely sitting idle (it's removed the instant a connection is
+ * acquired, including for the very first checkout right after 'connect'
+ * fires), and `@prisma/adapter-pg`'s own transaction-path error listener
+ * only logs, it does not discard. Mutating the pool's own bookkeeping
+ * arrays directly sidesteps all of that: once `_remove` has run, the
+ * connection structurally cannot be handed out again by `_pulseQueue`
+ * (it's gone from `_idle`) or counted against the pool's `max` (it's gone
+ * from `_clients`), regardless of which higher-level path was in flight.
+ *
+ * A defensive fallback (plain `client.end()`) covers a future `pg-pool`
+ * version that removes `_remove` entirely -- ending the connection
+ * directly still keeps it out of *this* pool's usable state (a physically
+ * closed connection cannot serve a query), even though it does not
+ * proactively splice pg-pool's internal `_idle`/`_clients` arrays.
+ */
+function discardConnection(pool: Pool, client: PoolClient): void {
+  const poolInternal = pool as unknown as { _remove?: (client: PoolClient) => void };
+  if (typeof poolInternal._remove === 'function') {
+    poolInternal._remove(client);
+    return;
+  }
+  // `PoolClient`'s public type only exposes `release`, not `end` (that's a
+  // `Client`-only method per @types/pg) -- but at runtime a `PoolClient` is
+  // always a real `pg.Client` instance, so `.end()` genuinely exists here.
+  const rawClient = client as unknown as { end: () => Promise<void> };
+  rawClient.end().catch(() => {
+    // Best-effort -- the connection is already considered unusable, and
+    // `.end()` failing here doesn't change that.
+  });
+}
+
 function createPrismaClient(): PrismaClient {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pool = buildPool(process.env.DATABASE_URL as string);
   const adapter = new PrismaPg(pool);
   return new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
   });
+}
+
+/**
+ * A safe, unquoted Postgres identifier: letters, digits, underscore; must not
+ * start with a digit. Deliberately conservative -- this only needs to admit
+ * scratch-schema names our own test tooling generates (e.g.
+ * `bcqa037_scratch_<random>`), not arbitrary external input, and rejecting a
+ * schema name is a much cheaper failure mode here than accidentally building
+ * unsafe SQL out of `SET search_path`, which does not support bind
+ * parameters for identifiers.
+ */
+const SAFE_SCHEMA_NAME = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+function assertSafeSchemaName(schemaName: string): void {
+  if (!SAFE_SCHEMA_NAME.test(schemaName)) {
+    throw new Error(
+      `createScratchSchemaClient: "${schemaName}" is not a safe, unquoted Postgres identifier ` +
+        '(letters/digits/underscore, must not start with a digit).',
+    );
+  }
+}
+
+/**
+ * BC-QA-037 -- genuine scratch-schema isolation for PrismaClient runtime
+ * queries, not just `prisma migrate deploy`.
+ *
+ * CONFIRMED ROOT CAUSE (reproduced with a throwaway jest probe, not guessed):
+ * `prisma` (the default export below) is a process-wide singleton cached on
+ * Node's own `global` object via `globalForPrisma`, specifically so
+ * Next.js-style hot reload doesn't leak a new pg.Pool on every reload. That
+ * caching has a side effect that isn't obvious from `createPrismaClient()`
+ * in isolation: `global` SURVIVES `jest.resetModules()` (resetModules only
+ * clears Node's *require cache* -- it never touches `global`). So once ANY
+ * test file in a given Jest worker has imported this module once (in
+ * practice: `tests/setup.ts`'s own top-level `import { prisma } from
+ * '../src/lib/prisma'`, using the base `.env.test` DATABASE_URL with no
+ * schema override), EVERY later import of `../lib/prisma` in that same
+ * worker -- no matter how many times `jest.resetModules()` runs, and no
+ * matter what `process.env.DATABASE_URL` gets mutated to afterward --
+ * returns that exact same cached PrismaClient, backed by the exact same
+ * pg.Pool, built from whatever DATABASE_URL was current the FIRST time the
+ * module was ever evaluated in that process. Mutating `process.env.DATABASE_URL`
+ * after that point -- whether via Prisma's own `?schema=<name>` convention or
+ * the Postgres `options=-c search_path=<name>` trick -- has ZERO effect on
+ * that already-open pool's physical connections; an existing pg.Pool does
+ * not re-read the connection string on checkout. A probe test confirmed this
+ * exactly: re-requiring this module after `jest.resetModules()` + a
+ * DATABASE_URL override still returned the SAME PrismaClient object
+ * reference, and `SHOW search_path` through it still came back as Postgres's
+ * default `"$user", public` -- not the override.
+ *
+ * That also clears `@prisma/adapter-pg` of suspicion: a throwaway,
+ * never-cached PrismaPg/Pool/PrismaClient stack built directly from a
+ * connection string carrying `options=-c search_path=<x>` returns `SHOW
+ * search_path` = `<x>` through Prisma every time. The adapter does not
+ * reset or otherwise interfere with search_path -- the bug is purely that
+ * the SINGLETON never got rebuilt, not a limitation of the adapter or of
+ * node-postgres.
+ *
+ * FIX SHAPE: this helper never touches the cached singleton. It builds a
+ * brand-new pg.Pool -- outside `globalForPrisma`, so it can never be a stale
+ * reused connection -- and pins EVERY physical connection that pool ever
+ * opens to the target schema via `pool.on('connect', ...)` (see `buildPool`
+ * above), which runs a real `SET search_path` on that connection before
+ * Prisma (or anyone else) gets to use it. That is more robust than relying
+ * solely on the connection-string `options=` trick: it doesn't depend on
+ * exactly how a given Pool/adapter construction path happens to preserve or
+ * drop a startup parameter, because it explicitly re-asserts the setting on
+ * every connection the pool ever opens, every time.
+ *
+ * USAGE CONVENTION for genuine scratch-schema test isolation (both halves
+ * MUST use the same schema name to actually agree with each other):
+ *
+ *   1. Migrate the scratch schema (this already worked before this fix --
+ *      Prisma's own migration CLI has always honored `?schema=`):
+ *        DATABASE_URL="<base>&schema=<scratchName>" npx prisma migrate deploy
+ *
+ *   2. Get a client whose RUNTIME queries also land in that same schema:
+ *        const client = createScratchSchemaClient('<scratchName>');
+ *        // ... use `client` exactly like a normal PrismaClient ...
+ *        await client.$disconnect(); // also closes this dedicated pool
+ *
+ *   3. Drop the scratch schema when done -- it is never dropped
+ *      automatically, so callers own cleanup (see
+ *      tests/unit/prisma.scratchSchema.test.ts's own `afterAll` for the
+ *      pattern this mirrors):
+ *        DROP SCHEMA IF EXISTS "<scratchName>" CASCADE;
+ *
+ * Steps 1 and 2 now target the same schema, so migration state and runtime
+ * queries are, for once, actually about the same database object -- closing
+ * the isolation gap this task exists to fix. Step 3 is caller-owned cleanup
+ * so repeated test runs don't accumulate orphan schemas in the database.
+ *
+ * This is a separate, explicit opt-in export rather than a change to
+ * `prisma` / `createPrismaClient()` above: production and the existing
+ * default-schema test suite must see zero behavioural change when no
+ * override is requested (verified in
+ * tests/unit/prisma.scratchSchema.test.ts).
+ *
+ * "Exactly like a normal PrismaClient" includes the `withSoftDelete`
+ * extension applied to the default `prisma` singleton below (BC-QA-037
+ * impl-r1 MEDIUM #2): the returned client is wrapped with the same
+ * extension, so `User.findMany`/`findFirst` soft-delete filtering behaves
+ * identically to production instead of silently diverging for anyone who
+ * queries `User` through a scratch client.
+ */
+export function createScratchSchemaClient(schemaName: string): PrismaClient {
+  assertSafeSchemaName(schemaName);
+  if (!process.env.DATABASE_URL) {
+    throw new Error('createScratchSchemaClient: DATABASE_URL environment variable is not set.');
+  }
+
+  const pool = buildPool(process.env.DATABASE_URL, async (client) => {
+    // Double-quoted identifier: SAFE_SCHEMA_NAME above already restricts
+    // schemaName to [a-zA-Z0-9_], so no further escaping is needed, but the
+    // quoting is kept for clarity and to match Postgres's own convention.
+    await client.query(`SET search_path TO "${schemaName}", public`);
+  });
+
+  const adapter = new PrismaPg(pool, {
+    // Tell the query compiler which schema it's targeting too, so any
+    // Prisma-generated SQL that ends up schema-qualified explicitly (rather
+    // than relying on session search_path resolution) agrees with the SET
+    // search_path above rather than defaulting to "public".
+    schema: schemaName,
+    // This pool is dedicated to this one client (never shared with the
+    // `prisma` singleton or another scratch client) -- let Prisma close it
+    // on $disconnect() instead of leaking pool connections across tests.
+    disposeExternalPool: true,
+  });
+
+  return withSoftDelete(
+    new PrismaClient({
+      adapter,
+      log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+    }),
+  );
 }
 
 function withSoftDelete(client: PrismaClient): PrismaClient {

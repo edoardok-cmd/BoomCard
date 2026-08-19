@@ -19,6 +19,7 @@ import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { createTestApp } from '../setup';
 import { prisma } from '../../src/lib/prisma';
+import { genTestPhone } from '../helpers/test-utils';
 
 jest.mock('../../src/services/email.service', () => ({
   emailService: { sendEmail: (_opts: any) => Promise.resolve() },
@@ -116,7 +117,7 @@ describe('admin-uuid-500-sweep: no admin :param route returns 500 on malformed/a
         email: `${RUN_TAG}-admin@test.local`,
         firstName: 'Sweep',
         lastName: 'Admin',
-        phone: '+359000000000',
+        phone: genTestPhone(),
         status: 'ACTIVE',
         role: 'SUPER_ADMIN',
         emailVerified: true,

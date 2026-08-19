@@ -154,6 +154,13 @@ export const errorHandler = (
   // can use it directly without drilling into .message.
   res.status(statusCode).json({
     error: message,
+    // BC-QA-029 — additive top-level `code` mirror of `details.code`, when an
+    // AppError carries one. Existing consumers (AuthContext.tsx:741,
+    // api.service.ts:140) read `details.code` and are unaffected; the
+    // partner-dashboard's BC-QA-004 `getLocalizedErrorMessage()` reads the
+    // top-level `code`, which this codebase never emitted before. Both are
+    // now populated from the same source so neither convention breaks.
+    ...(err instanceof AppError && err.details?.code && { code: err.details.code }),
     ...(err instanceof AppError && err.details && { details: err.details }),
     ...(details && { details }),
     // Only attach a stack trace for genuine server faults (5xx), and only in dev.

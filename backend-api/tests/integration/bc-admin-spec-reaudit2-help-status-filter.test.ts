@@ -43,6 +43,7 @@ import bcrypt from 'bcrypt';
 import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
+import { genTestPhone } from '../helpers/test-utils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -84,8 +85,13 @@ async function createSuperAdmin() {
       firstName: 'Test',
       lastName: 'SuperAdmin',
       role: 'SUPER_ADMIN',
-      isVerified: true,
-      phone: '+359000000000',
+      // User has no `isVerified` field — the correct column is
+      // `emailVerified`; `status` also needs an explicit ACTIVE (default is
+      // PENDING_VERIFICATION) to match every other SUPER_ADMIN/ADMIN fixture
+      // in this codebase (BC-QA-042 task-r1).
+      emailVerified: true,
+      status: 'ACTIVE',
+      phone: genTestPhone(),
     },
   });
   userIds.push(user.id);
@@ -103,8 +109,10 @@ async function createAdmin() {
       firstName: 'Test',
       lastName: 'Admin',
       role: 'ADMIN',
-      isVerified: true,
-      phone: '+359000000001',
+      // See createSuperAdmin() above (BC-QA-042 task-r1).
+      emailVerified: true,
+      status: 'ACTIVE',
+      phone: genTestPhone(),
     },
   });
   userIds.push(user.id);
@@ -112,7 +120,7 @@ async function createAdmin() {
   return user;
 }
 
-async function createTicketWithStatus(ownerId: string, status: string) {
+async function createTicketWithStatus(ownerId: string, status: string, assigneeId?: string | null) {
   const ticket = await prisma.helpTicket.create({
     data: {
       subject: `Test ticket status=${status} ${uid()}`,
@@ -123,6 +131,7 @@ async function createTicketWithStatus(ownerId: string, status: string) {
       status: status as any,
       userId: ownerId,
       source: 'WEB',
+      ...(assigneeId !== undefined ? { assigneeId } : {}),
     },
   });
   ticketIds.push(ticket.id);
@@ -131,9 +140,11 @@ async function createTicketWithStatus(ownerId: string, status: string) {
 }
 
 async function loginAs(email: string): Promise<string> {
+  // clientType is required unconditionally by loginValidation
+  // (auth.validator.ts) — without it every login 400s (BC-QA-042 task-r1).
   const res = await request(app)
     .post('/api/auth/login')
-    .send({ email, password: PASSWORD });
+    .send({ email, password: PASSWORD, clientType: 'web' });
   expect(res.body.data.accessToken).toBeDefined();
   return res.body.data.accessToken;
 }
@@ -262,8 +273,18 @@ describe('Admin Help Canonical Status Filter Fix (M8)', () => {
 
   describe('status=In Progress (canonical name)', () => {
     it('returns IN_REVIEW tickets under GET /api/admin/help', async () => {
+      // toRawStatusFilter() (src/services/ticketEmail.service.ts,
+      // BC-ADMIN-SPEC-REAUDIT3-HELP-NEWSTATUS-CLAIM-2) splits OPEN by
+      // assignment: "In Progress" = (OPEN + assigneeId set) OR IN_REVIEW;
+      // an UNASSIGNED OPEN ticket belongs to "New" instead. The test
+      // previously used an unassigned openTicket and expected it under "In
+      // Progress" — stale relative to that (documented, intentional) split
+      // (BC-QA-042 task-r1). Use an assigned OPEN ticket to exercise the
+      // "In Progress" bucket, and keep an unassigned one to prove it's
+      // correctly excluded.
       const inReviewTicket = await createTicketWithStatus(superAdmin.id, 'IN_REVIEW');
-      const openTicket = await createTicketWithStatus(superAdmin.id, 'OPEN');
+      const assignedOpenTicket = await createTicketWithStatus(superAdmin.id, 'OPEN', superAdmin.id);
+      const unassignedOpenTicket = await createTicketWithStatus(superAdmin.id, 'OPEN', null);
       const closedTicket = await createTicketWithStatus(superAdmin.id, 'CLOSED');
 
       // LOW-2 fix: use %20 instead of raw space in URL
@@ -274,7 +295,8 @@ describe('Admin Help Canonical Status Filter Fix (M8)', () => {
 
       const returnedIds = new Set(res.body.tickets.map((t: any) => t.id));
       expect(returnedIds.has(inReviewTicket.id)).toBe(true);
-      expect(returnedIds.has(openTicket.id)).toBe(true);
+      expect(returnedIds.has(assignedOpenTicket.id)).toBe(true);
+      expect(returnedIds.has(unassignedOpenTicket.id)).toBe(false);
       expect(returnedIds.has(closedTicket.id)).toBe(false);
     });
   });
@@ -282,9 +304,15 @@ describe('Admin Help Canonical Status Filter Fix (M8)', () => {
   // ─── New bucket: canonical name should return NEW tickets ─────────────────
 
   describe('status=New (canonical name)', () => {
-    it('returns NEW tickets under GET /api/admin/help and excludes OPEN', async () => {
+    it('returns NEW tickets under GET /api/admin/help, includes unassigned OPEN, excludes assigned OPEN', async () => {
+      // See the "In Progress" note above (BC-QA-042 task-r1) — "New" =
+      // NEW enum OR (OPEN + assigneeId=null); an assigned OPEN ticket
+      // belongs to "In Progress" instead. The test previously asserted an
+      // (unassigned) openTicket was excluded from "New", which is backwards
+      // relative to the current mapping.
       const newTicket = await createTicketWithStatus(superAdmin.id, 'NEW');
-      const openTicket = await createTicketWithStatus(superAdmin.id, 'OPEN');
+      const unassignedOpenTicket = await createTicketWithStatus(superAdmin.id, 'OPEN', null);
+      const assignedOpenTicket = await createTicketWithStatus(superAdmin.id, 'OPEN', superAdmin.id);
 
       const res = await request(app)
         .get('/api/admin/help?status=New&limit=100')
@@ -293,7 +321,8 @@ describe('Admin Help Canonical Status Filter Fix (M8)', () => {
 
       const returnedIds = new Set(res.body.tickets.map((t: any) => t.id));
       expect(returnedIds.has(newTicket.id)).toBe(true);
-      expect(returnedIds.has(openTicket.id)).toBe(false);
+      expect(returnedIds.has(unassignedOpenTicket.id)).toBe(true);
+      expect(returnedIds.has(assignedOpenTicket.id)).toBe(false);
     });
   });
 

@@ -24,6 +24,7 @@
 import request from 'supertest';
 import { createTestApp } from './setup';
 import { prisma } from '../src/lib/prisma';
+import { genTestPhone } from './helpers/test-utils';
 
 jest.mock('../src/services/email.service', () => ({
   emailService: {
@@ -59,7 +60,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
         email: `sa-suspended-gate-${Date.now()}@test.local`,
         firstName: 'SA',
         lastName: 'SuspendedGate',
-        phone: '+359000000000',
+        phone: genTestPhone(),
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
         emailVerified: true,
@@ -76,7 +77,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
         email: `admin-suspended-gate-${Date.now()}@test.local`,
         firstName: 'Admin',
         lastName: 'SuspendedGate',
-        phone: '+359000000001',
+        phone: genTestPhone(),
         role: 'ADMIN',
         status: 'ACTIVE',
         emailVerified: true,
@@ -92,7 +93,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
         email: `suspended-subscriber-${Date.now()}@test.local`,
         firstName: 'Suspended',
         lastName: 'User',
-        phone: '+359000000002',
+        phone: genTestPhone(),
         role: 'USER',
         status: 'SUSPENDED',
         emailVerified: true,
@@ -139,7 +140,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
           email: `suspended-audit-${Date.now()}@test.local`,
           firstName: 'Suspended',
           lastName: 'Audit',
-          phone: '+359000000003',
+          phone: genTestPhone(),
           role: 'USER',
           status: 'SUSPENDED',
           emailVerified: true,
@@ -183,7 +184,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
           email: `normal-user-${Date.now()}@test.local`,
           firstName: 'Normal',
           lastName: 'User',
-          phone: '+359000000004',
+          phone: genTestPhone(),
           role: 'USER',
           status: 'ACTIVE',
           emailVerified: true,
@@ -216,7 +217,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
           email: `deleted-user-${Date.now()}@test.local`,
           firstName: 'Deleted',
           lastName: 'User',
-          phone: '+359000000005',
+          phone: genTestPhone(),
           role: 'USER',
           status: 'DELETED',
           emailVerified: true,
@@ -239,7 +240,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
           email: `archived-user-${Date.now()}@test.local`,
           firstName: 'Archived',
           lastName: 'User',
-          phone: '+359000000006',
+          phone: genTestPhone(),
           role: 'USER',
           status: 'ARCHIVED',
           emailVerified: true,
@@ -264,7 +265,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
           email: `suspended-profile-test-${Date.now()}@test.local`,
           firstName: 'Suspended',
           lastName: 'ProfileTest',
-          phone: '+359000000007',
+          phone: genTestPhone(),
           role: 'USER',
           status: 'SUSPENDED',
           emailVerified: true,

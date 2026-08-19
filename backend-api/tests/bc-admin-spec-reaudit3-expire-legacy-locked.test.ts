@@ -12,6 +12,7 @@ import request from 'supertest';
 import { prisma } from '../src/lib/prisma';
 import { app } from '../src/server';
 import jwt from 'jsonwebtoken';
+import { genTestPhone } from './helpers/test-utils';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key';
 
@@ -39,7 +40,7 @@ describe('BC-ADMIN-SPEC-REAUDIT3-EXPIRE-LEGACY-LOCKED-2', () => {
         passwordHash: 'hash',
         firstName: 'Super',
         lastName: 'Admin',
-        phone: '+359000000000',
+        phone: genTestPhone(),
         status: 'ACTIVE',
         role: 'SUPER_ADMIN',
         emailVerified: true,
@@ -54,7 +55,7 @@ describe('BC-ADMIN-SPEC-REAUDIT3-EXPIRE-LEGACY-LOCKED-2', () => {
         passwordHash: 'hash',
         firstName: 'Test',
         lastName: 'User',
-        phone: '+359000000001',
+        phone: genTestPhone(),
         status: 'ACTIVE',
         emailVerified: true,
       },

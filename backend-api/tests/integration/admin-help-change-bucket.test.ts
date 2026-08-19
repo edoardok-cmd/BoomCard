@@ -33,6 +33,7 @@ import bcrypt from 'bcrypt';
 import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
+import { genTestPhone } from '../helpers/test-utils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -71,7 +72,7 @@ async function createAdmin() {
       role: 'SUPER_ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
-      phone: '+359000000000',
+      phone: genTestPhone(),
     },
   });
   userIds.push(user.id);
@@ -108,9 +109,12 @@ describe('Admin Help CHANGE Bucket Fragmentation Fix', () => {
     // Authenticate as the admin
     const loginRes = await request(app)
       .post('/api/auth/login')
-      .send({ email: adminUser.email, password: PASSWORD });
+      .send({ email: adminUser.email, password: PASSWORD, clientType: 'web' });
 
-    token = loginRes.body.token;
+    // Login response envelope is { success, message, data: { accessToken, ... } }
+    // (src/routes/auth.routes.ts POST /login) — .body.token does not exist
+    // (BC-QA-042).
+    token = loginRes.body.data?.accessToken;
     expect(token).toBeDefined();
   });
 
@@ -171,22 +175,23 @@ describe('Admin Help CHANGE Bucket Fragmentation Fix', () => {
     });
 
     it('should work on GET /api/admin/help (full list, not just mine)', async () => {
-      // Create an admin with help.read.all permission
+      // Create an admin with help.read.all permission. createAdmin() already
+      // mints a role: 'SUPER_ADMIN' user, which requirePermission() bypasses
+      // unconditionally (src/middleware/auth.middleware.ts), so no separate
+      // permission grant is needed. The permission was previously (wrongly)
+      // seeded via `prisma.admin.upsert(...)` against a Prisma model
+      // (`Admin`) that does not exist in the schema — permissions/roles are
+      // now modeled via AdminRole/UserAdminRole and
+      // Permission/UserPermissionOverride, not a single `admin` table
+      // (BC-QA-042).
       const superAdmin = await createAdmin();
-
-      // Seed permission
-      await prisma.admin.upsert({
-        where: { userId: superAdmin.id },
-        update: { permissions: ['help.read.all'] },
-        create: { userId: superAdmin.id, permissions: ['help.read.all'] },
-      });
 
       // Authenticate as super admin
       const superAdminRes = await request(app)
         .post('/api/auth/login')
-        .send({ email: superAdmin.email, password: PASSWORD });
+        .send({ email: superAdmin.email, password: PASSWORD, clientType: 'web' });
 
-      const superToken = superAdminRes.body.token;
+      const superToken = superAdminRes.body.data?.accessToken;
 
       // Create tickets with different admins
       const changeTicket = await createTicketWithType(adminUser.id, 'CHANGE');

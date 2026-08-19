@@ -6,11 +6,39 @@
  */
 
 import request from 'supertest';
+import crypto from 'crypto';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 
 // Unique suffix to avoid collisions between parallel test runs
 const testId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+
+// BC-QA-032: monotonic in-process counter backing the default test phone
+// number below. testId() alone is NOT safe for that purpose — two calls in
+// the same millisecond (common in a tight test loop) can produce a
+// timestamp whose last digits are identical, and the base36 random suffix
+// frequently contributes zero digits, so testId()'s digit-only tail can
+// repeat. A simple incrementing counter can't.
+let testPhoneCounter = 0;
+
+/**
+ * BC-QA-039: collision-resistant test phone generator, extracted from
+ * createTestUser's own default below so every test file that constructs a
+ * user (or any other phone-bearing row) directly via prisma.user.create(),
+ * rather than through createTestUser, can share the exact same
+ * (phone, role)-safe pattern instead of reintroducing a hardcoded literal
+ * like '+359000000000' that collides across runs/tests under the
+ * @@unique([phone, role]) constraint (migration 20260810160000).
+ * PHONE_REGEX (auth.validator.ts) requires exactly `+359` followed by 9
+ * digits — see createTestUser's default below for the full rationale on
+ * why pid+timestamp+counter are hashed rather than concatenated.
+ */
+export function genTestPhone(): string {
+  const phoneSeed = `${process.pid}-${Date.now()}-${++testPhoneCounter}`;
+  const phoneHash = crypto.createHash('sha256').update(phoneSeed).digest('hex');
+  const phoneDigits = BigInt(`0x${phoneHash.slice(0, 13)}`).toString().padStart(9, '0').slice(-9);
+  return `+359${phoneDigits}`;
+}
 
 /**
  * Register a test user and return auth tokens + user data
@@ -25,6 +53,26 @@ export async function createTestUser(overrides: {
 } = {}) {
   const email = overrides.email || `test-${testId()}@boomcard.bg`;
   const password = overrides.password || 'TestPass123!';
+  // BC-QA-032: phone is now unique per (phone, role) at the DB level
+  // (prisma/migrations/20260810160000_add_user_phone_role_unique). This
+  // default used to be a single fixed number shared by every caller that
+  // didn't pass an explicit `phone` override — harmless before the
+  // constraint existed, but it would now make the SECOND such call in any
+  // test run collide on AUTH_PHONE_ALREADY_REGISTERED. Default to a
+  // per-call unique number instead, mirroring how `email` above is already
+  // defaulted uniquely. PHONE_REGEX (auth.validator.ts) requires exactly
+  // `+359` followed by 9 digits: seed with the process start time (stable,
+  // distinguishes parallel test-worker processes) and append the
+  // monotonic counter (distinguishes successive calls within one process,
+  // including same-millisecond calls). BC-QA-032 round 2: a naive
+  // concatenate-then-`.slice(-9)` of these three components always drops
+  // `process.pid` entirely (Date.now() alone is 13 digits, already over the
+  // 9-digit budget), which defeated the whole point of including it — two
+  // different jest worker processes could produce byte-identical phone
+  // numbers for their first call in the same millisecond. Hash the full seed
+  // instead so every component (pid, timestamp, counter) actually influences
+  // every output digit, then take 9 decimal digits from the hash.
+  const phone = overrides.phone || genTestPhone();
 
   const res = await request(app)
     .post('/api/auth/register')
@@ -33,7 +81,7 @@ export async function createTestUser(overrides: {
       password,
       firstName: overrides.firstName || 'Test',
       lastName: overrides.lastName || 'User',
-      phone: overrides.phone || '+359888000000',
+      phone,
       acceptTerms: overrides.acceptTerms ?? true,
     });
 

@@ -33,7 +33,14 @@ export type ActivationErrorCode =
   | 'INVALID_TOKEN'
   | 'TOKEN_EXPIRED'
   | 'TOKEN_USED'
-  | 'PASSWORD_TOO_SHORT'
+  // BC-QA-033: renamed from 'PASSWORD_TOO_SHORT' to the stable AUTH_* code
+  // BC-QA-004's frontend error-code map already keys on for every other
+  // password-policy failure (see auth.validator.ts's validatePasswordPolicy
+  // callers in routes/auth.routes.ts). Keeping a distinct
+  // 'PASSWORD_TOO_SHORT' member here would have been a parallel mechanism
+  // for the exact same failure the other 3 call sites now report as
+  // AUTH_PASSWORD_POLICY.
+  | 'AUTH_PASSWORD_POLICY'
   | 'PASSWORD_REQUIRED';
 
 export class ActivationLinkError extends Error {
@@ -189,7 +196,7 @@ export class ActivationLinkService {
     if (opts.password) {
       const policyError = validatePasswordPolicy(opts.password);
       if (policyError) {
-        throw new ActivationLinkError('PASSWORD_TOO_SHORT', policyError);
+        throw new ActivationLinkError('AUTH_PASSWORD_POLICY', policyError);
       }
     }
 
@@ -317,7 +324,7 @@ export class ActivationLinkService {
         // enforces the SAME policy.
         const policyError = validatePasswordPolicy(opts.password);
         if (policyError) {
-          throw new ActivationLinkError('PASSWORD_TOO_SHORT', policyError);
+          throw new ActivationLinkError('AUTH_PASSWORD_POLICY', policyError);
         }
         const passwordHash = await bcrypt.hash(opts.password, 12);
         await tx.user.update({

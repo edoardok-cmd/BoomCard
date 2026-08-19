@@ -28,6 +28,7 @@ import jwt from 'jsonwebtoken';
 import { app } from '../src/server';
 import { prisma } from '../src/lib/prisma';
 import { AdminRoleKey, UserStatus } from '@prisma/client';
+import { genTestPhone } from './helpers/test-utils';
 
 jest.mock('../src/services/email.service', () => ({
   emailService: {
@@ -82,7 +83,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-SA-APPROVE-INITIATOR-2: Initiator status valida
         email: `sa-approve-initiator-${opts.suffix}@test.local`,
         firstName: opts.name,
         lastName: 'Test',
-        phone: '+359000000000',
+        phone: genTestPhone(),
         role: 'SUPER_ADMIN',
         status,
         emailVerified: true,
@@ -119,7 +120,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-SA-APPROVE-INITIATOR-2: Initiator status valida
         email: opts.email,
         firstName: opts.firstName || 'NewAdmin',
         lastName: opts.lastName || 'Test',
-        phone: '+359000000010',
+        phone: genTestPhone(),
         password: 'TestPassword123!@#',
         roleKey: 'SUPER_ADMIN',
       });

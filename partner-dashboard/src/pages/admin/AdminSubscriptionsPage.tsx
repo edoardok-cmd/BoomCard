@@ -4,7 +4,6 @@ import styled from 'styled-components';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { useCurrencyDisplay } from '../../contexts/CurrencyDisplayContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
 import { formatMoneyByMode } from '../../utils/helpers';
 import {
@@ -574,7 +573,6 @@ const isAutoRenewalEffective = (row: { autoRenewal: boolean; cancelAtPeriodEnd: 
 /* ─── Component ───────────────────────────────────────────────────────────── */
 export default function AdminSubscriptionsPage() {
   const { language } = useLanguage();
-  const { currencyDisplayMode } = useCurrencyDisplay();
   const lang = (language === 'bg' ? 'bg' : 'en') as Lang;
   const queryClient = useQueryClient();
 
@@ -734,8 +732,8 @@ export default function AdminSubscriptionsPage() {
       year: 'numeric',
     });
 
-  // Format amount using the current currency display mode
-  const fmtAmount = (amount: number) => formatMoneyByMode(amount, currencyDisplayMode, language);
+  // Format amount in EUR-only mode
+  const fmtAmount = (amount: number) => formatMoneyByMode(amount, 'eur_only', language);
 
   const planLabel = (p: SubscriptionPlan) => sharedPlanLabel(p, lang);
   const statusLabel = (s: SubscriptionStatus) => sharedSubStatusLabel(s, lang);

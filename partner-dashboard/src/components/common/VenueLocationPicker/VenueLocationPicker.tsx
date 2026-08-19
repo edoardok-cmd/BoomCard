@@ -47,6 +47,7 @@ const content = {
     networkError: 'Could not reach the map service. Click the map to drop a pin manually.',
     resolved: 'Location set',
     coords: 'Coordinates',
+    rateLimited: 'One moment — please wait a second and try again.',
   },
   bg: {
     findOnMap: 'Намери на картата',
@@ -58,6 +59,7 @@ const content = {
     networkError: 'Картата не е достъпна в момента. Кликнете върху картата, за да поставите маркер ръчно.',
     resolved: 'Местоположението е зададено',
     coords: 'Координати',
+    rateLimited: 'Момент — изчакайте секунда и опитайте отново.',
   },
 };
 
@@ -111,12 +113,37 @@ const VenueLocationPicker: React.FC<VenueLocationPickerProps> = ({
   // When we ourselves push a reverse-geocoded address into the parent's
   // fields, that address change would otherwise immediately re-trigger the
   // reactive forward-geocode effect below and could snap the pin away from
-  // where the user just dropped it. Set this for exactly one address-change
-  // cycle to skip that auto-geocode.
-  const skipNextAutoGeocodeRef = useRef(false);
+  // where the user just dropped it. We record the EXACT value we pushed here
+  // and compare it against the current address/city props (rather than using
+  // a bare boolean flag that assumes the effect will always re-fire): if the
+  // resolved text happens to be identical to what's already typed, the props
+  // never change and a boolean would stay stuck armed forever, silently
+  // swallowing the user's next real edit. Comparing values instead means the
+  // guard only ever suppresses the specific self-write it recorded — the
+  // very next genuine edit (which necessarily differs from the recorded
+  // value, or is a no-op if it doesn't) is never incorrectly skipped.
+  const lastPushedRef = useRef<{ address: string; city: string } | null>(null);
 
   // Debounce timer for reactive (address-typed) geocoding.
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Skip the very first run of the reactive effect when coordinates are
+  // already populated on mount (e.g. a future edit flow pre-filling a saved
+  // location) — only react to subsequent address/city edits, not the mount
+  // itself.
+  const didMountRef = useRef(false);
+
+  // Mirrors the `disabled` prop into a ref so timer callbacks scheduled by
+  // the reactive effect (below) can read its CURRENT value at fire time
+  // rather than the value captured in the closure when the timer was
+  // scheduled. A form can go from enabled to disabled (submit-in-progress)
+  // during the 900ms debounce window / the shared rate-limit requeue delay,
+  // and a stale closure would fire performGeocode('auto') — and thus
+  // onChange/setCoordinates — mid-submission regardless.
+  const disabledRef = useRef(disabled);
+  useEffect(() => {
+    disabledRef.current = disabled;
+  }, [disabled]);
 
   const performGeocode = async (source: 'button' | 'auto') => {
     const query = [address.trim(), city?.trim()].filter(Boolean).join(', ');
@@ -129,10 +156,23 @@ const VenueLocationPicker: React.FC<VenueLocationPickerProps> = ({
     if (source === 'auto' && query.length < 5) return;
 
     const now = Date.now();
-    if (now - lastSearchRef.current < 1000) {
-      // Within the 1s Nominatim usage-policy window. The reactive path will
-      // naturally retry on the next debounced change; a manual button press
-      // just no-ops rather than queuing extra requests.
+    const elapsed = now - lastSearchRef.current;
+    if (elapsed < 1000) {
+      // Within the 1s Nominatim usage-policy window.
+      if (source === 'button') {
+        // A manual press must not just silently no-op — tell the user why
+        // nothing happened.
+        setMessage({ kind: 'info', text: t.rateLimited });
+      } else {
+        // Don't drop the reactive request on the floor: requeue it to fire
+        // once the rate-limit window clears, in case this was the user's
+        // last edit and there's no next debounced change to retry on.
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = setTimeout(() => {
+          if (disabledRef.current) return;
+          void performGeocode('auto');
+        }, 1000 - elapsed + 50);
+      }
       return;
     }
     lastSearchRef.current = now;
@@ -173,15 +213,32 @@ const VenueLocationPicker: React.FC<VenueLocationPickerProps> = ({
   // Reactively re-geocode whenever the typed address/city change, so the pin
   // follows what's typed instead of only moving on an explicit button press.
   useEffect(() => {
-    if (skipNextAutoGeocodeRef.current) {
-      // This change was us writing a reverse-geocoded address back into the
-      // parent — don't immediately re-geocode it, that would fight the pin
-      // the user just placed.
-      skipNextAutoGeocodeRef.current = false;
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      if (value) {
+        // Coordinates already exist on mount (e.g. pre-filled from a saved
+        // location) — don't fire an auto-geocode against them on load, only
+        // react to subsequent edits.
+        return;
+      }
+    }
+    if (
+      lastPushedRef.current &&
+      lastPushedRef.current.address === address &&
+      lastPushedRef.current.city === (city ?? '')
+    ) {
+      // This change (or non-change) matches exactly what we ourselves just
+      // wrote back into the parent via a reverse-geocode — don't immediately
+      // re-geocode it, that would fight the pin the user just placed. Clear
+      // it so it only ever suppresses this one specific value.
+      lastPushedRef.current = null;
       return;
     }
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
+      // Read the CURRENT disabled state, not the value captured when this
+      // timer was scheduled — see disabledRef's own comment above.
+      if (disabledRef.current) return;
       void performGeocode('auto');
     }, 900);
     return () => {
@@ -214,11 +271,10 @@ const VenueLocationPicker: React.FC<VenueLocationPickerProps> = ({
       const resolvedAddress = road || data.display_name || '';
       if (!resolvedAddress && !cityName) return; // nothing usable came back
 
-      skipNextAutoGeocodeRef.current = true;
-      onAddressResolved({
-        address: resolvedAddress || address,
-        city: cityName || city || '',
-      });
+      const finalAddress = resolvedAddress || address;
+      const finalCity = cityName || city || '';
+      lastPushedRef.current = { address: finalAddress, city: finalCity };
+      onAddressResolved({ address: finalAddress, city: finalCity });
     } catch {
       // Reverse geocode failing is non-fatal: the coordinates (already set
       // via onChange) remain the source of truth for the pin. We just can't
@@ -229,6 +285,12 @@ const VenueLocationPicker: React.FC<VenueLocationPickerProps> = ({
   const handleDragEnd = () => {
     const marker = markerRef.current;
     if (marker) {
+      // Defense-in-depth against a pending reactive-geocode debounce (or
+      // rate-limit requeue) firing after this manual correction and
+      // silently snapping the pin back — cancel it outright, independent of
+      // whether the reverse-geocode below resolves to text that would have
+      // reset it naturally.
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       const pos = marker.getLatLng();
       const coords = { latitude: pos.lat, longitude: pos.lng };
       onChange(coords);
@@ -238,6 +300,9 @@ const VenueLocationPicker: React.FC<VenueLocationPickerProps> = ({
   };
 
   const handleMapClick = (coords: Coordinates) => {
+    // See comment in handleDragEnd: cancel any pending debounced/requeued
+    // reactive geocode so it can't overwrite this manual placement.
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     onChange(coords);
     setMessage(null); // Clear error when location is set via map click
     void reverseGeocode(coords);

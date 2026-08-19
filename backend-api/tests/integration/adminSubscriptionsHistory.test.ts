@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma } from '../../src/lib/prisma';
 import { SubscriptionStatus, TransactionType, TransactionStatus, SubscriptionPlan } from '@prisma/client';
+import { genTestPhone } from '../helpers/test-utils';
 
 describe('BC-ADMIN-AUDIT-FIX-006: Per-subscription payment history', () => {
   let userId: string;
@@ -27,7 +28,7 @@ describe('BC-ADMIN-AUDIT-FIX-006: Per-subscription payment history', () => {
         role: 'USER',
         status: 'ACTIVE',
         emailVerified: true,
-        phone: '+359000000000',
+        phone: genTestPhone(),
         firstName: 'Test',
         lastName: 'User',
       },

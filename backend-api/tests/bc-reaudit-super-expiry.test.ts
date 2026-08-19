@@ -11,6 +11,7 @@ import request from 'supertest';
 import { createTestApp } from './setup';
 import { prisma } from '../src/lib/prisma';
 import { AuthRequest } from '../src/middleware/auth.middleware';
+import { genTestPhone } from './helpers/test-utils';
 
 // Mock email service to track calls
 let emailSendCalls: Array<{ to: string; subject: string }> = [];
@@ -46,7 +47,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
         email: 'initiator@test.local',
         firstName: 'Initiator',
         lastName: 'SA',
-        phone: '+359000000000',
+        phone: genTestPhone(),
         passwordHash: 'hashed_password',
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
@@ -61,7 +62,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
         email: 'approver@test.local',
         firstName: 'Approver',
         lastName: 'SA',
-        phone: '+359000000001',
+        phone: genTestPhone(),
         passwordHash: 'hashed_password',
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
@@ -76,25 +77,70 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
   });
 
   afterAll(async () => {
-    await app.close();
-    // Clean up test users and their pending requests.
+    // createTestApp() (tests/setup.ts) returns the plain Express app, not a
+    // listening server — supertest's persistent-server wrapper owns the
+    // actual http.Server and closes it at the file boundary. app.close is
+    // not a function; calling it here was a stale test-infra bug (BC-QA-042).
+    // Clean up test users and their pending requests. This previously only
+    // covered the initiator/approver fixtures — every OTHER fixed literal
+    // email this file's individual tests create (newsa@test.local,
+    // liveuser@test.local, lifecycle@test.local, and the User row that
+    // 'should handle full lifecycle...' approves into existence) was left
+    // behind, so the SECOND run of this file hits real uniqueness conflicts
+    // (a stale User already owning 'lifecycle@test.local' 409s the create
+    // step) rather than exercising the scenario under test (BC-QA-042).
+    // BC-QA-042 review round 1 (MEDIUM): this list still only covered 5 of
+    // the ~11 distinct @test.local emails the file's individual tests
+    // create — expired@test.local, pendingall@test.local,
+    // resubmit@test.local, liveblock@test.local, cancellive@test.local, and
+    // cancelexpired@test.local were all missing, so a second run of this
+    // file hits a real unhandled unique-constraint error (PendingSuperAdminRequest.email
+    // is @unique) on whichever of those the previous run left behind.
+    const testLocalEmails = [
+      'initiator@test.local',
+      'approver@test.local',
+      'newsa@test.local',
+      'liveuser@test.local',
+      'expired@test.local',
+      'pendingall@test.local',
+      'resubmit@test.local',
+      'liveblock@test.local',
+      'cancellive@test.local',
+      'cancelexpired@test.local',
+      'lifecycle@test.local',
+    ];
     await prisma.pendingSuperAdminRequest.deleteMany({
-      where: { requestedBy: { email: { in: ['initiator@test.local', 'approver@test.local'] } } },
+      where: {
+        OR: [
+          { requestedBy: { email: { in: testLocalEmails } } },
+          { email: { in: testLocalEmails } },
+        ],
+      },
     });
     await prisma.user.deleteMany({
-      where: { email: { in: ['initiator@test.local', 'approver@test.local'] } },
+      where: { email: { in: testLocalEmails } },
     });
     await prisma.$disconnect();
   });
 
   describe('FINDING 1: Use persisted expiresAt column (not recomputed TTL)', () => {
     it('should reject approval on expired request using persisted expiresAt (not createdAt + TTL)', async () => {
+      // BC-QA-042: every `const request = await prisma.pendingSuperAdminRequest
+      // .create(...)` in this file SHADOWED the top-level `import request from
+      // 'supertest'`, so every subsequent `request(app)` call in the same
+      // scope threw "TypeError: request is not a function" — renamed to
+      // pendingReq throughout.
       // Create a request with expiresAt in the past
-      const request = await prisma.pendingSuperAdminRequest.create({
+      const pendingReq = await prisma.pendingSuperAdminRequest.create({
         data: {
           email: 'newsa@test.local',
           firstName: 'New',
           lastName: 'Super',
+          // POST /pending-super/:id/approve 422s before ever reaching the
+          // expiry check (FINDING 1, under test here) if firstName,
+          // lastName, or phone is missing — the test only set two of the
+          // three (BC-QA-042).
+          phone: genTestPhone(),
           passwordHash: 'hash',
           status: 'PENDING',
           expiresAt: new Date(Date.now() - 1000), // Expired 1 second ago
@@ -104,7 +150,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
 
       // Attempt to approve the expired request
       const res = await request(app)
-        .post(`/api/admin/admins/pending-super/${request.id}/approve`)
+        .post(`/api/admin/admins/pending-super/${pendingReq.id}/approve`)
         .set('Authorization', `Bearer ${superAdminToken}`)
         .send({});
 
@@ -115,7 +161,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
 
     it('should include expiresAt in GET /pending-super list', async () => {
       // Create a live request
-      const request = await prisma.pendingSuperAdminRequest.create({
+      const pendingReq = await prisma.pendingSuperAdminRequest.create({
         data: {
           email: 'liveuser@test.local',
           firstName: 'Live',
@@ -132,7 +178,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
         .set('Authorization', `Bearer ${superAdminToken}`);
 
       expect(res.status).toBe(200);
-      const listedRequest = res.body.requests.find((r: any) => r.id === request.id);
+      const listedRequest = res.body.requests.find((r: any) => r.id === pendingReq.id);
       expect(listedRequest).toBeDefined();
       expect(listedRequest.expiresAt).toBeDefined(); // Should have expiresAt in response
     });
@@ -163,7 +209,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
 
     it('should include live requests in GET /pending-all using persisted expiresAt', async () => {
       // Create a live request
-      const request = await prisma.pendingSuperAdminRequest.create({
+      const pendingReq = await prisma.pendingSuperAdminRequest.create({
         data: {
           email: 'pendingall@test.local',
           firstName: 'Pending',
@@ -180,7 +226,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
         .set('Authorization', `Bearer ${superAdminToken}`);
 
       expect(res.status).toBe(200);
-      const listedRequest = res.body.pendingSuperAdmins.find((r: any) => r.id === request.id);
+      const listedRequest = res.body.pendingSuperAdmins.find((r: any) => r.id === pendingReq.id);
       expect(listedRequest).toBeDefined();
     });
   });
@@ -211,7 +257,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
           email: testEmail,
           firstName: 'Second',
           lastName: 'Attempt',
-          phone: '+359000000010',
+          phone: genTestPhone(),
           password: 'TestPassword123!',
           roleKey: 'SUPER_ADMIN',
         });
@@ -245,7 +291,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
           email: testEmail,
           firstName: 'Second',
           lastName: 'Attempt',
-          phone: '+359000000010',
+          phone: genTestPhone(),
           password: 'TestPassword123!',
           roleKey: 'SUPER_ADMIN',
         });
@@ -260,7 +306,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
       emailSendCalls = [];
 
       // Create a live request
-      const request = await prisma.pendingSuperAdminRequest.create({
+      const pendingReq = await prisma.pendingSuperAdminRequest.create({
         data: {
           email: 'cancellive@test.local',
           firstName: 'Cancel',
@@ -275,7 +321,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
       // Delete (cancel) the request as the initiator
       const appToken = generateTestToken(initiatorId, 'SUPER_ADMIN');
       const res = await request(app)
-        .delete(`/api/admin/admins/pending-super/${request.id}`)
+        .delete(`/api/admin/admins/pending-super/${pendingReq.id}`)
         .set('Authorization', `Bearer ${appToken}`);
 
       expect(res.status).toBe(200);
@@ -289,7 +335,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
       emailSendCalls = [];
 
       // Create an expired request
-      const request = await prisma.pendingSuperAdminRequest.create({
+      const pendingReq = await prisma.pendingSuperAdminRequest.create({
         data: {
           email: 'cancelexpired@test.local',
           firstName: 'Cancel',
@@ -305,7 +351,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
       const appToken = generateTestToken(initiatorId, 'SUPER_ADMIN');
       const countBefore = emailSendCalls.length;
       const res = await request(app)
-        .delete(`/api/admin/admins/pending-super/${request.id}`)
+        .delete(`/api/admin/admins/pending-super/${pendingReq.id}`)
         .set('Authorization', `Bearer ${appToken}`);
 
       expect(res.status).toBe(200);
@@ -328,7 +374,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
           email: testEmail,
           firstName: 'Life',
           lastName: 'Cycle',
-          phone: '+359000000011',
+          phone: genTestPhone(),
           password: 'TestPassword123!',
           roleKey: 'SUPER_ADMIN',
         });
@@ -356,7 +402,7 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
           email: testEmail,
           firstName: 'Life',
           lastName: 'Cycle',
-          phone: '+359000000011',
+          phone: genTestPhone(),
           password: 'TestPassword123!',
           roleKey: 'SUPER_ADMIN',
         });
@@ -374,8 +420,13 @@ describe('BC-REAUDIT-SUPER-EXPIRY-1: Pending Super Admin Expiry Handling', () =>
   });
 });
 
+// BC-QA-042: this was a placeholder (`Bearer_${userId}_${role}`) rather than
+// a real signed JWT — authenticate() (src/middleware/auth.middleware.ts)
+// calls jwt.verify() on it, so every request in this file 401'd before ever
+// reaching the route/business logic under test.
 function generateTestToken(userId: string, role: 'ADMIN' | 'SUPER_ADMIN'): string {
-  // In real tests, generate a proper JWT — this is a placeholder
-  // The actual test setup should provide a token generation utility
-  return `Bearer_${userId}_${role}`;
+  const jwt = require('jsonwebtoken');
+  return jwt.sign({ id: userId, role }, process.env.JWT_SECRET || 'test-secret', {
+    expiresIn: '24h',
+  });
 }

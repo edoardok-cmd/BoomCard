@@ -21,10 +21,11 @@ import { PrismaClient, PartnerStatus, UserStatus } from '@prisma/client';
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from '@jest/globals';
 import request from 'supertest';
 import bcrypt from 'bcrypt';
-import app from '../../src/server';
+import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { issueActivationLink } from '../../src/services/partnerActivation.service';
 import { ACTIVATION_TTL_HOURS } from '../../src/services/partnerActivation.service';
+import { genTestPhone } from '../helpers/test-utils';
 
 // Test fixtures
 const TEST_PARTNER_EMAIL = 'test-partner@boomcard.bg';
@@ -76,7 +77,7 @@ describe('BC-ALIGN-PARTNER: Partner Account Access Rules', () => {
           emailVerified: true,
           firstName: 'Active',
           lastName: 'Partner',
-          phone: '+359000000000',
+          phone: genTestPhone(),
         },
       });
 
@@ -84,6 +85,7 @@ describe('BC-ALIGN-PARTNER: Partner Account Access Rules', () => {
         data: {
           userId: user.id,
           businessName: 'Active Test Partner',
+          category: 'Restaurant',
           status: 'ACTIVE',
           verifiedAt: new Date(),
         },
@@ -128,11 +130,17 @@ describe('BC-ALIGN-PARTNER: Partner Account Access Rules', () => {
           email,
           passwordHash,
           role: 'PARTNER',
-          status: 'ACTIVE', // email is verified
+          // The "under review" (PARTNER_PENDING_REVIEW) message is gated on
+          // User.status === 'PENDING_VERIFICATION' specifically
+          // (AuthService.login), not on emailVerified or the Partner row's
+          // own PENDING status — ACTIVE here (BC-QA-042's predecessor state)
+          // instead fell through to the generic "awaiting activation"
+          // message, since the Partner has no verifiedAt.
+          status: 'PENDING_VERIFICATION',
           emailVerified: true,
           firstName: 'Pending',
           lastName: 'Partner',
-          phone: '+359000000001',
+          phone: genTestPhone(),
         },
       });
 
@@ -141,6 +149,7 @@ describe('BC-ALIGN-PARTNER: Partner Account Access Rules', () => {
         data: {
           userId: user.id,
           businessName: 'Pending Test Partner',
+          category: 'Restaurant',
           status: 'PENDING',
           verifiedAt: null, // Not yet activated
         },
@@ -153,7 +162,12 @@ describe('BC-ALIGN-PARTNER: Partner Account Access Rules', () => {
 
       // Assert: login should fail with 403
       expect(loginRes.status).toBe(403);
-      expect(loginRes.body.message).toContain('преглед'); // Bulgarian: "under review"
+      // Error responses use { error: message }, not { message } —
+      // error.middleware.ts always shapes AppError as `error` (BC-QA-042).
+      // The PARTNER_PENDING_REVIEW message (AuthService.login) is
+      // English-only — there is no Bulgarian variant to assert against.
+      expect(loginRes.body.error).toContain('under review');
+      expect(loginRes.body.code).toBe('PARTNER_PENDING_REVIEW');
 
       // Cleanup
       await prisma.partner.delete({ where: { userId: user.id } });

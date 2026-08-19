@@ -29,6 +29,7 @@ import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { emailService } from '../../src/services/email.service';
+import { genTestPhone } from '../helpers/test-utils';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -66,7 +67,7 @@ async function createFixtures(): Promise<Fixtures> {
       role: 'SUPER_ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
-      phone: '+359000000000',
+      phone: genTestPhone(),
     },
   });
 
@@ -79,7 +80,7 @@ async function createFixtures(): Promise<Fixtures> {
       role: 'PARTNER',
       status: 'ACTIVE',
       emailVerified: true,
-      phone: '+359000000001',
+      phone: genTestPhone(),
     },
   });
 

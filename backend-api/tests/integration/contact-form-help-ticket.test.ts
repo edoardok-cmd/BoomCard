@@ -41,6 +41,7 @@ import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { emailService } from '../../src/services/email.service';
+import { genTestPhone } from '../helpers/test-utils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -84,7 +85,7 @@ async function createAdmin() {
       role: 'ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
-      phone: '+359000000000',
+      phone: genTestPhone(),
     },
   });
   userIds.push(user.id);
@@ -100,7 +101,7 @@ describe('POST /contact form → Help Ticket creation', () => {
 
     const submitterEmail = `contact-form-user-${uid()}@example.com`;
     const res = await request(app)
-      .post('/contact')
+      .post('/api/contact')
       .send({
         name: 'John Doe',
         email: submitterEmail,
@@ -140,7 +141,7 @@ describe('POST /contact form → Help Ticket creation', () => {
 
     const submitterEmail = `contact-reply-${uid()}@example.com`;
     const res = await request(app)
-      .post('/contact')
+      .post('/api/contact')
       .send({
         name: 'Jane Smith',
         email: submitterEmail,
@@ -184,7 +185,7 @@ describe('POST /contact form → Help Ticket creation', () => {
 
     const submitterEmail = `contact-threading-${uid()}@example.com`;
     await request(app)
-      .post('/contact')
+      .post('/api/contact')
       .send({
         name: 'Test User',
         email: submitterEmail,
@@ -224,7 +225,7 @@ describe('POST /contact form → Help Ticket creation', () => {
 
     const submitterEmail = `contact-admin-notify-${uid()}@example.com`;
     await request(app)
-      .post('/contact')
+      .post('/api/contact')
       .send({
         name: 'Admin Notify Test',
         email: submitterEmail,
@@ -262,7 +263,7 @@ describe('POST /contact form → Help Ticket creation', () => {
 
     // Submit two contact forms
     const res1 = await request(app)
-      .post('/contact')
+      .post('/api/contact')
       .send({
         name: 'User One',
         email: submitterEmail1,
@@ -271,7 +272,7 @@ describe('POST /contact form → Help Ticket creation', () => {
       });
 
     const res2 = await request(app)
-      .post('/contact')
+      .post('/api/contact')
       .send({
         name: 'User Two',
         email: submitterEmail2,
@@ -306,7 +307,7 @@ describe('POST /contact form → Help Ticket creation', () => {
     // Test DISPUTE classification
     const disputeEmail = `contact-dispute-${uid()}@example.com`;
     await request(app)
-      .post('/contact')
+      .post('/api/contact')
       .send({
         name: 'Dispute User',
         email: disputeEmail,
@@ -322,7 +323,7 @@ describe('POST /contact form → Help Ticket creation', () => {
     // Test CHANGE classification
     const changeEmail = `contact-change-${uid()}@example.com`;
     await request(app)
-      .post('/contact')
+      .post('/api/contact')
       .send({
         name: 'Change User',
         email: changeEmail,
@@ -338,7 +339,7 @@ describe('POST /contact form → Help Ticket creation', () => {
     // Test SUPPORT (default) classification
     const supportEmail = `contact-support-${uid()}@example.com`;
     await request(app)
-      .post('/contact')
+      .post('/api/contact')
       .send({
         name: 'Support User',
         email: supportEmail,
@@ -361,7 +362,7 @@ describe('POST /contact form → Help Ticket creation', () => {
   it('validates required fields', async () => {
     // Missing name
     const res1 = await request(app)
-      .post('/contact')
+      .post('/api/contact')
       .send({
         email: 'test@example.com',
         message: 'message',
@@ -372,7 +373,7 @@ describe('POST /contact form → Help Ticket creation', () => {
 
     // Missing email
     const res2 = await request(app)
-      .post('/contact')
+      .post('/api/contact')
       .send({
         name: 'Test',
         message: 'message',
@@ -383,7 +384,7 @@ describe('POST /contact form → Help Ticket creation', () => {
 
     // Missing message
     const res3 = await request(app)
-      .post('/contact')
+      .post('/api/contact')
       .send({
         name: 'Test',
         email: 'test@example.com',
@@ -395,7 +396,7 @@ describe('POST /contact form → Help Ticket creation', () => {
 
   it('validates email format', async () => {
     const res = await request(app)
-      .post('/contact')
+      .post('/api/contact')
       .send({
         name: 'Test',
         email: 'not-an-email',
@@ -409,7 +410,7 @@ describe('POST /contact form → Help Ticket creation', () => {
 
   it('respects field length limits', async () => {
     const res = await request(app)
-      .post('/contact')
+      .post('/api/contact')
       .send({
         name: 'x'.repeat(150), // MAX_NAME = 120
         email: 'test@example.com',
@@ -427,7 +428,7 @@ describe('POST /contact form → Help Ticket creation', () => {
 
     const submitterEmail = `contact-external-thread-${uid()}@example.com`;
     await request(app)
-      .post('/contact')
+      .post('/api/contact')
       .send({
         name: 'External Threader',
         email: submitterEmail,
@@ -466,7 +467,7 @@ describe('POST /contact form → Help Ticket creation', () => {
 
     const submitterEmail = `contact-lang-bg-${uid()}@example.com`;
     await request(app)
-      .post('/contact')
+      .post('/api/contact')
       .send({
         name: 'Bulgarian User',
         email: submitterEmail,
@@ -498,7 +499,7 @@ describe('POST /contact form → Help Ticket creation', () => {
 
     const submitterEmail = `contact-lang-en-${uid()}@example.com`;
     await request(app)
-      .post('/contact')
+      .post('/api/contact')
       .send({
         name: 'English User',
         email: submitterEmail,

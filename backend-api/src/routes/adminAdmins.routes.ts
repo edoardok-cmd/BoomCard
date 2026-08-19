@@ -15,6 +15,7 @@ import {
   getPermissionCatalogGrouped,
   resolveUserPermissionBreakdown,
 } from '../services/permission.service';
+import { isPhoneRoleUniqueViolation } from '../services/auth.service';
 
 const router = Router();
 router.use(auditMiddleware);
@@ -726,31 +727,42 @@ router.post('/', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermiss
 
     const passwordHash = await bcrypt.hash(password, 12);
 
-    const user = await prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        firstName: trimmedFirstName,
-        lastName: trimmedLastName,
-        phone: trimmedPhone,
-        role: 'ADMIN',
-        status: 'ACTIVE',
-        emailVerified: true,
-        mustChangePassword: true,
-        adminRoles: {
-          create: { roleId: adminRole.id, grantedById: req.user!.id },
+    let user;
+    try {
+      user = await prisma.user.create({
+        data: {
+          email,
+          passwordHash,
+          firstName: trimmedFirstName,
+          lastName: trimmedLastName,
+          phone: trimmedPhone,
+          role: 'ADMIN',
+          status: 'ACTIVE',
+          emailVerified: true,
+          mustChangePassword: true,
+          adminRoles: {
+            create: { roleId: adminRole.id, grantedById: req.user!.id },
+          },
         },
-      },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        status: true,
-        createdAt: true,
-      },
-    });
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          role: true,
+          status: true,
+          createdAt: true,
+        },
+      });
+    } catch (err) {
+      // BC-QA-032 — the pre-check above only covers email; a phone collision
+      // on the new (phone, role) unique constraint would otherwise fall
+      // through to the generic outer catch as an unlabeled 409.
+      if (isPhoneRoleUniqueViolation(err)) {
+        return res.status(409).json({ error: 'An admin with this phone number already exists', code: 'AUTH_PHONE_ALREADY_REGISTERED' });
+      }
+      throw err;
+    }
 
     req.auditObjectId = user.id;
     res.status(201).json({ ok: true, user });
@@ -890,6 +902,12 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
       // Serializable isolation can trigger conflicts (P2034)
       if (typeof err === 'object' && err !== null && (err as { code?: string }).code === 'P2034') {
         return res.status(409).json({ error: 'Concurrent modification detected — please retry' });
+      }
+      // BC-QA-032 — the pre-check above only covers email; a phone collision
+      // on the new (phone, role) unique constraint would otherwise be
+      // misdiagnosed as an email conflict below. Check phone first.
+      if (isPhoneRoleUniqueViolation(err)) {
+        return res.status(409).json({ error: 'An admin with this phone number already exists', code: 'AUTH_PHONE_ALREADY_REGISTERED' });
       }
       // Email conflict (P2002) — should not happen due to pre-check, but handle gracefully
       const isPrismaConflict = typeof err === 'object' && err !== null && (err as { code?: string }).code === 'P2002';

@@ -34,6 +34,7 @@ import jwt from 'jsonwebtoken';
 import { createTestApp } from './setup';
 import { prisma } from '../src/lib/prisma';
 import { AdminRoleKey, UserStatus } from '@prisma/client';
+import { genTestPhone } from './helpers/test-utils';
 
 jest.mock('../src/services/email.service', () => ({
   emailService: {
@@ -59,7 +60,55 @@ describe('BC-ADMIN-SPEC-REAUDIT-SA-GUARD-RACES-1: TOCTOU Race Prevention', () =>
   });
 
   afterAll(async () => {
-    await app.close();
+    // createTestApp() (tests/setup.ts) returns the plain Express app, not a
+    // listening server — supertest's persistent-server wrapper owns the
+    // actual http.Server and closes it at the file boundary. app.close is
+    // not a function; calling it here was a stale test-infra bug (BC-QA-042).
+    //
+    // BC-QA-042 review round 1 (HIGH): this file previously had NO fixture
+    // cleanup at all beyond prisma.$disconnect(). Every test creates
+    // ACTIVE role:'SUPER_ADMIN' users (race-defect1-*, race-defect2-*,
+    // race-existing-sa-*) and DEFECT 3 can additionally CREATE a brand new
+    // one (race-new-sa1-*/race-new-sa2-* — whichever approval won the
+    // race). Left behind, those stray ACTIVE SUPER_ADMINs silently supply
+    // an extra "remaining active" count to any later file in the same
+    // batch/run that asserts a "sole ACTIVE admin" guard scenario (see
+    // bc-admin-reaudit2-lastsa-revoke-guard.test.ts), defeating that file's
+    // own isolation. This cleanup does NOT touch this file's own
+    // assertions — DEFECT 1/2/3 stay red on the real regression, as
+    // intended; it only deletes the fixture rows afterward.
+    //
+    // All emails this file creates share the '@test.local' domain with one
+    // of these file-unique prefixes, so a prefix-scoped delete is safe and
+    // won't touch fixtures from other files.
+    const emailPrefixes = [
+      'race-defect1-',
+      'race-defect2-',
+      'race-existing-sa-',
+      'race-new-sa1-',
+      'race-new-sa2-',
+    ];
+    const staleUsers = await prisma.user.findMany({
+      where: { OR: emailPrefixes.map((prefix) => ({ email: { startsWith: prefix } })) },
+      select: { id: true },
+    });
+    const staleUserIds = staleUsers.map((u) => u.id);
+    if (staleUserIds.length) {
+      // PendingSuperAdminRequest.requestedBy has no onDelete: Cascade, so
+      // delete those rows (both by requester and by their own email, since
+      // a pending request's own row is keyed on ITS applicant email, not
+      // requestedById) before deleting the Users. UserAdminRole does
+      // cascade on user deletion.
+      await prisma.pendingSuperAdminRequest.deleteMany({
+        where: {
+          OR: [
+            { requestedById: { in: staleUserIds } },
+            ...emailPrefixes.map((prefix) => ({ email: { startsWith: prefix } })),
+          ],
+        },
+      });
+      await prisma.user.deleteMany({ where: { id: { in: staleUserIds } } });
+    }
     await prisma.$disconnect();
   });
 
@@ -72,7 +121,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-SA-GUARD-RACES-1: TOCTOU Race Prevention', () =>
             email: `race-defect1-sa1-${Date.now()}@test.local`,
             firstName: 'Race1SA1',
             lastName: 'Test',
-            phone: '+359000000000',
+            phone: genTestPhone(),
             passwordHash: 'hashed_password',
             role: 'SUPER_ADMIN',
             status: 'ACTIVE',
@@ -85,7 +134,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-SA-GUARD-RACES-1: TOCTOU Race Prevention', () =>
             email: `race-defect1-sa2-${Date.now()}@test.local`,
             firstName: 'Race1SA2',
             lastName: 'Test',
-            phone: '+359000000001',
+            phone: genTestPhone(),
             passwordHash: 'hashed_password',
             role: 'SUPER_ADMIN',
             status: 'ACTIVE',
@@ -98,7 +147,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-SA-GUARD-RACES-1: TOCTOU Race Prevention', () =>
             email: `race-defect1-sa3-${Date.now()}@test.local`,
             firstName: 'Race1SA3',
             lastName: 'Test',
-            phone: '+359000000002',
+            phone: genTestPhone(),
             passwordHash: 'hashed_password',
             role: 'SUPER_ADMIN',
             status: 'ACTIVE',
@@ -157,7 +206,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-SA-GUARD-RACES-1: TOCTOU Race Prevention', () =>
             email: `race-defect2-sa1-${Date.now()}@test.local`,
             firstName: 'Race2SA1',
             lastName: 'Test',
-            phone: '+359000000003',
+            phone: genTestPhone(),
             passwordHash: 'hashed_password',
             role: 'SUPER_ADMIN',
             status: 'ACTIVE',
@@ -170,7 +219,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-SA-GUARD-RACES-1: TOCTOU Race Prevention', () =>
             email: `race-defect2-sa2-${Date.now()}@test.local`,
             firstName: 'Race2SA2',
             lastName: 'Test',
-            phone: '+359000000004',
+            phone: genTestPhone(),
             passwordHash: 'hashed_password',
             role: 'SUPER_ADMIN',
             status: 'ACTIVE',
@@ -183,7 +232,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-SA-GUARD-RACES-1: TOCTOU Race Prevention', () =>
             email: `race-defect2-sa3-${Date.now()}@test.local`,
             firstName: 'Race2SA3',
             lastName: 'Test',
-            phone: '+359000000005',
+            phone: genTestPhone(),
             passwordHash: 'hashed_password',
             role: 'SUPER_ADMIN',
             status: 'ACTIVE',
@@ -253,7 +302,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-SA-GUARD-RACES-1: TOCTOU Race Prevention', () =>
           email: `race-existing-sa-${testId}@test.local`,
           firstName: 'ExistingSA',
           lastName: 'Test',
-          phone: '+359000000006',
+          phone: genTestPhone(),
           passwordHash: 'hashed_password',
           role: 'SUPER_ADMIN',
           status: 'ACTIVE',

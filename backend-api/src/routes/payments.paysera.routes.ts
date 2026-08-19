@@ -7,6 +7,7 @@ import { Router, Response, Request } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { payseraService, PayseraService } from '../services/paysera.service';
+import { paymentProvider } from '../services/payment-provider';
 import { emailService } from '../services/email.service';
 import { cardService } from '../services/card.service';
 import { TransactionType, TransactionStatus, SubscriptionStatus, SubscriptionPlan, UserStatus, WalletTransactionType, WalletTransactionStatus } from '@prisma/client';
@@ -176,7 +177,7 @@ router.post(
       const callbackUrl = `${API_BASE_URL}/api/payments/callback`;
 
       // Create Paysera payment — default to 'wallet' (Paysera account)
-      const payment = await payseraService.createPayment({
+      const payment = await paymentProvider.createCheckout({
         orderId,
         amount: PayseraService.amountToCents(amount),
         currency,
@@ -246,12 +247,12 @@ async function handlePaymentCallback(req: Request, res: Response) {
 
     if (!data || !ss1) {
       logger.warn('Missing data or ss1 in callback');
-      return res.send(payseraService.generateCallbackResponse());
+      return res.send(paymentProvider.getWebhookAckResponse());
     }
 
     try {
       // Handle callback
-      const result = await payseraService.handleCallback({
+      const result = await paymentProvider.verifyAndParseWebhook({
         data,
         ss1,
         ss2,
@@ -281,7 +282,7 @@ async function handlePaymentCallback(req: Request, res: Response) {
 
       if (!transaction) {
         logger.warn(`Transaction not found for order: ${result.orderId}`);
-        return res.send(payseraService.generateCallbackResponse());
+        return res.send(paymentProvider.getWebhookAckResponse());
       }
 
       // Update transaction based on payment status
@@ -297,7 +298,7 @@ async function handlePaymentCallback(req: Request, res: Response) {
         });
         if (alreadyCredited) {
           logger.info(`Top-up callback for ${result.orderId} already credited — skipping`);
-          return res.send(payseraService.generateCallbackResponse());
+          return res.send(paymentProvider.getWebhookAckResponse());
         }
 
         // Credit wallet FIRST — atomically via walletService (lock-safe, correct audit trail).
@@ -516,11 +517,11 @@ async function handlePaymentCallback(req: Request, res: Response) {
       // For 'pending' status (0, 2, 3), we don't update - wait for final callback
 
       // Send "OK" response to Paysera
-      res.send(payseraService.generateCallbackResponse());
+      res.send(paymentProvider.getWebhookAckResponse());
     } catch (error: any) {
       logger.error('Error processing callback:', error);
       // Still send OK to prevent retries
-      res.send(payseraService.generateCallbackResponse());
+      res.send(paymentProvider.getWebhookAckResponse());
     }
 }
 
@@ -562,14 +563,20 @@ router.get(
         });
       }
 
-      // Stored amount is BGN-denominated — convert to EUR before returning
-      // (BC-QA-031 — EUR-only responses).
+      // Transaction.amount is stored in Transaction.currency, which is genuinely
+      // mixed: the schema default is BGN, but POST /api/payments/create stores
+      // whatever currency the caller passed (defaulting to EUR). Convert ONLY the
+      // BGN-denominated case — an already-EUR-native amount passes through
+      // unchanged. (BC-QA-031 — EUR-only responses; same guard as
+      // POST /verify-redirect below.)
       res.json({
         success: true,
         data: {
           orderId,
           status: transaction.status.toLowerCase(),
-          amount: bgnToEur(transaction.amount),
+          amount: transaction.currency === 'BGN'
+            ? bgnToEur(transaction.amount)
+            : transaction.amount,
           currency: 'EUR',
           createdAt: transaction.createdAt,
         },
@@ -619,14 +626,17 @@ router.get(
         },
       });
 
-      // Stored amount is BGN-denominated — convert to EUR before returning
-      // (BC-QA-031 — EUR-only responses).
+      // Transaction.amount is stored in Transaction.currency, which is genuinely
+      // mixed: the schema default is BGN, but POST /api/payments/create stores
+      // whatever currency the caller passed (defaulting to EUR). Convert ONLY the
+      // BGN-denominated rows — already-EUR-native amounts pass through unchanged.
+      // (BC-QA-031 — EUR-only responses; same guard as POST /verify-redirect.)
       res.json({
         success: true,
         data: transactions.map(t => ({
           id: t.id,
           orderId: t.metadata ? (JSON.parse(t.metadata as string) as any)?.orderId : undefined,
-          amount: bgnToEur(t.amount),
+          amount: t.currency === 'BGN' ? bgnToEur(t.amount) : t.amount,
           currency: 'EUR',
           status: t.status.toLowerCase(),
           description: t.description,
@@ -888,7 +898,7 @@ router.post(
     // Create Paysera payment
     // Default to 'wallet' (Paysera account) — skips the payment method selection
     // page entirely, taking the user directly to Paysera wallet login.
-    const payment = await payseraService.createPayment({
+    const payment = await paymentProvider.createCheckout({
       orderId,
       amount: priceInCents,
       currency: 'EUR',
@@ -1076,7 +1086,7 @@ router.post(
     const callbackUrl = `${API_BASE_URL}/api/payments/subscription/callback`;
 
     const customerName = `${firstName} ${lastName}`.trim();
-    const payment = await payseraService.createPayment({
+    const payment = await paymentProvider.createCheckout({
       orderId,
       amount: priceInCents,
       currency: 'EUR',
@@ -1123,12 +1133,12 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
 
     if (!data || !ss1) {
       logger.warn('Missing data or ss1 in subscription callback');
-      return res.send(payseraService.generateCallbackResponse());
+      return res.send(paymentProvider.getWebhookAckResponse());
     }
 
     try {
       // Handle callback and verify signature
-      const result = await payseraService.handleCallback({
+      const result = await paymentProvider.verifyAndParseWebhook({
         data,
         ss1,
         ss2,
@@ -1172,7 +1182,7 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
 
           if (!cardUpdateSub) {
             logger.warn(`Card-update subscription not found for order: ${result.orderId}`);
-            return res.send(payseraService.generateCallbackResponse());
+            return res.send(paymentProvider.getWebhookAckResponse());
           }
 
           if (result.status === 'success') {
@@ -1228,7 +1238,7 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
             logger.warn(`Card update payment ${result.status} for subscription ${cardUpdateSub.id}, order ${result.orderId}`);
           }
 
-          return res.send(payseraService.generateCallbackResponse());
+          return res.send(paymentProvider.getWebhookAckResponse());
         }
 
         // Check if this is an anonymous checkout (PendingSubscription)
@@ -1239,7 +1249,7 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
 
         if (!pending) {
           logger.warn(`Subscription not found for order: ${result.orderId}`);
-          return res.send(payseraService.generateCallbackResponse());
+          return res.send(paymentProvider.getWebhookAckResponse());
         }
 
         if (result.status === 'success') {
@@ -1280,7 +1290,7 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
           logger.warn(`PendingSubscription ${pending.id} marked FAILED (${result.status})`);
         }
 
-        return res.send(payseraService.generateCallbackResponse());
+        return res.send(paymentProvider.getWebhookAckResponse());
       }
 
       if (result.status === 'success') {
@@ -1309,7 +1319,7 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
 
         if (activationResult.count === 0) {
           logger.info(`Subscription ${subscription.id} already activated — skipping`);
-          return res.send(payseraService.generateCallbackResponse());
+          return res.send(paymentProvider.getWebhookAckResponse());
         }
 
         // UPDATE USER STATUS TO ACTIVE
@@ -1412,11 +1422,11 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
       // For 'pending' status (0, 2, 3), we don't update - wait for final callback
 
       // Send "OK" response to Paysera
-      res.send(payseraService.generateCallbackResponse());
+      res.send(paymentProvider.getWebhookAckResponse());
     } catch (error: any) {
       logger.error('Error processing subscription callback:', error);
       // Still send OK to prevent retries
-      res.send(payseraService.generateCallbackResponse());
+      res.send(paymentProvider.getWebhookAckResponse());
     }
 }
 
@@ -1441,7 +1451,7 @@ router.post('/verify-redirect', paymentRateLimiter, asyncHandler(async (req: Req
   }
 
   try {
-    const result = await payseraService.handleCallback({ data, ss1 });
+    const result = await paymentProvider.verifyAndParseWebhook({ data, ss1 });
     // Paysera can settle a payment in BGN or EUR depending on the order — only
     // convert the BGN-denominated case; an already-EUR-native amount passes
     // through unchanged (BC-QA-031 — EUR-only responses).

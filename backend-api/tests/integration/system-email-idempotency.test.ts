@@ -36,6 +36,7 @@ jest.mock('../../src/services/notification.service', () => ({
 import bcrypt from 'bcrypt';
 import { prisma } from '../../src/lib/prisma';
 import { ingestInboundEmail, InboundEmailPayload } from '../../src/services/ticketInbound.service';
+import { genTestPhone } from '../helpers/test-utils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -74,7 +75,7 @@ async function seedAdmin(): Promise<string> {
       passwordHash: await bcrypt.hash('TestPass999!', 10),
       firstName: 'Admin',
       lastName: 'Idem',
-      phone: '+359888000001',
+      phone: genTestPhone(),
       role: 'ADMIN',
       status: 'ACTIVE',
       emailVerified: true,

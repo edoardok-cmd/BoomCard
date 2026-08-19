@@ -21,6 +21,7 @@ import { CashbackEntryStatus, WalletTransactionType } from '@prisma/client';
 import { prisma } from '../../src/lib/prisma';
 import { walletService } from '../../src/services/wallet.service';
 import { markCleared } from '../../src/services/cashbackLifecycle.service';
+import { genTestPhone } from '../helpers/test-utils';
 
 const PASSWORD = 'TestPass123!';
 
@@ -44,7 +45,7 @@ async function createTestFixtures(): Promise<TestFixtures> {
       role: 'USER',
       status: 'ACTIVE',
       emailVerified: true,
-      phone: '+359000000000',
+      phone: genTestPhone(),
     },
   });
 

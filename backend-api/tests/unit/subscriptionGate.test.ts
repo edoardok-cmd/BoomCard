@@ -11,6 +11,7 @@
 import { SubscriptionStatus } from '@prisma/client';
 import { subscriptionAllowsEarning, subscriptionBlockReason, findEligibleSubscription } from '../../src/services/subscriptionGate';
 import prisma from '../../src/lib/prisma';
+import { genTestPhone } from '../helpers/test-utils';
 
 describe('subscriptionGate Module', () => {
   const now = new Date('2026-06-25T12:00:00Z');
@@ -212,7 +213,7 @@ describe('subscriptionGate Module', () => {
           passwordHash: 'hashed_password',
           firstName: 'Test',
           lastName: 'User',
-          phone: '+359000000000',
+          phone: genTestPhone(),
           role: 'USER',
           status: 'ACTIVE',
         },
@@ -276,7 +277,7 @@ describe('subscriptionGate Module', () => {
           passwordHash: 'hashed_password',
           firstName: 'Test',
           lastName: 'User',
-          phone: '+359000000001',
+          phone: genTestPhone(),
           role: 'USER',
           status: 'ACTIVE',
         },
@@ -317,7 +318,7 @@ describe('subscriptionGate Module', () => {
           passwordHash: 'hashed_password',
           firstName: 'Test',
           lastName: 'User',
-          phone: '+359000000002',
+          phone: genTestPhone(),
           role: 'USER',
           status: 'ACTIVE',
         },
@@ -359,7 +360,7 @@ describe('subscriptionGate Module', () => {
           passwordHash: 'hashed_password',
           firstName: 'Test',
           lastName: 'User',
-          phone: '+359000000003',
+          phone: genTestPhone(),
           role: 'USER',
           status: 'ACTIVE',
         },

@@ -8,6 +8,14 @@
  * 2. Base64 encode the string
  * 3. Replace "/" with "_" and "+" with "-" (URL-safe base64)
  * 4. Sign: sign = md5(data + password)
+ *
+ * BC-MYPOS-002: this class is unchanged and remains the single source of
+ * truth for all Paysera-specific behavior (callback verification, status
+ * code mapping, Transfer API MAC auth). It is adapted to the
+ * provider-agnostic `PaymentProvider` interface by the Paysera adapter in
+ * `./payment-provider.ts`, which every route/service/job now calls through
+ * instead of importing `payseraService` directly. See that file's header
+ * comment for why the adapter itself lives there rather than in this file.
  */
 
 import crypto from 'crypto';

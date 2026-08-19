@@ -24,6 +24,7 @@ import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { cleanupTestUser } from '../helpers/test-utils';
+import { genTestPhone } from '../helpers/test-utils';
 
 // ─── wait helper ────────────────────────────────────────────────────────────
 
@@ -51,7 +52,7 @@ async function createAdminFixtures(): Promise<AdminFixtures> {
       passwordHash: hash,
       firstName: 'Super',
       lastName: 'Admin',
-      phone: '+359000000000',
+      phone: genTestPhone(),
       role: 'SUPER_ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
@@ -67,7 +68,7 @@ async function createAdminFixtures(): Promise<AdminFixtures> {
       passwordHash: hash,
       firstName: 'Plain',
       lastName: 'Admin',
-      phone: '+359000000001',
+      phone: genTestPhone(),
       role: 'ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
@@ -81,7 +82,7 @@ async function createAdminFixtures(): Promise<AdminFixtures> {
       passwordHash: hash,
       firstName: 'Dispute',
       lastName: 'Owner',
-      phone: '+359000000002',
+      phone: genTestPhone(),
       role: 'USER',
       status: 'ACTIVE',
       emailVerified: true,

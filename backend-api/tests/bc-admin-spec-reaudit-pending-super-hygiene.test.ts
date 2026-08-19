@@ -3,6 +3,7 @@ import request from 'supertest';
 import { prisma } from '../src/lib/prisma';
 import { app } from '../src/server';
 import jwt from 'jsonwebtoken';
+import { genTestPhone } from './helpers/test-utils';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key';
 const PENDING_SUPER_ADMIN_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours
@@ -48,7 +49,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
         passwordHash: 'hash',
         firstName: 'Super',
         lastName: 'Admin',
-        phone: '+359000000000',
+        phone: genTestPhone(),
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
         emailVerified: true,
@@ -62,7 +63,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
         passwordHash: 'hash',
         firstName: 'Regular',
         lastName: 'Admin',
-        phone: '+359000000001',
+        phone: genTestPhone(),
         role: 'ADMIN',
         status: 'ACTIVE',
         emailVerified: true,
@@ -101,7 +102,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           passwordHash: 'hash',
           firstName: 'Test',
           lastName: 'User',
-          phone: '+359000000002',
+          phone: genTestPhone(),
           role: 'ADMIN',
           status: 'ACTIVE',
           emailVerified: true,
@@ -116,7 +117,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           email: testEmail,
           firstName: 'Test',
           lastName: 'User',
-          phone: '+359000000010',
+          phone: genTestPhone(),
           password: 'SecurePassword123!',
           roleKey: 'SUPER_ADMIN',
         });
@@ -137,7 +138,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           passwordHash: 'hash',
           firstName: 'Super',
           lastName: 'Collision',
-          phone: '+359000000003',
+          phone: genTestPhone(),
           role: 'SUPER_ADMIN',
           status: 'ACTIVE',
           emailVerified: true,
@@ -152,7 +153,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           email: testEmail,
           firstName: 'Test',
           lastName: 'User',
-          phone: '+359000000011',
+          phone: genTestPhone(),
           password: 'SecurePassword123!',
           roleKey: 'SUPER_ADMIN',
         });
@@ -171,7 +172,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           email: pendingEmail,
           firstName: 'Pending',
           lastName: 'User',
-          phone: '+359000000005',
+          phone: genTestPhone(),
           passwordHash: 'hash',
           status: 'PENDING',
           expiresAt: new Date(Date.now() + PENDING_SUPER_ADMIN_TTL_MS),
@@ -186,7 +187,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           passwordHash: 'hash',
           firstName: 'Pending',
           lastName: 'Collision',
-          phone: '+359000000004',
+          phone: genTestPhone(),
           role: 'ADMIN',
           status: 'ACTIVE',
           emailVerified: true,
@@ -218,7 +219,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           email: testEmail,
           firstName: 'NoCollision',
           lastName: 'User',
-          phone: '+359000000012',
+          phone: genTestPhone(),
           password,
           roleKey: 'SUPER_ADMIN',
         });
@@ -262,7 +263,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           email: testEmail,
           firstName: 'First',
           lastName: 'Request',
-          phone: '+359000000013',
+          phone: genTestPhone(),
           password,
           roleKey: 'SUPER_ADMIN',
         });
@@ -277,7 +278,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           email: testEmail,
           firstName: 'Second',
           lastName: 'Request',
-          phone: '+359000000014',
+          phone: genTestPhone(),
           password,
           roleKey: 'SUPER_ADMIN',
         });
@@ -315,7 +316,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           email: testEmail,
           firstName: 'New',
           lastName: 'Request',
-          phone: '+359000000015',
+          phone: genTestPhone(),
           password,
           roleKey: 'SUPER_ADMIN',
         });
@@ -429,7 +430,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-PENDING-SUPER-HYGIENE-2', () => {
           email: testEmail,
           firstName: 'New',
           lastName: 'Request',
-          phone: '+359000000016',
+          phone: genTestPhone(),
           password,
           roleKey: 'SUPER_ADMIN',
         });

@@ -26,6 +26,7 @@ import crypto from 'crypto';
 import { prisma } from '../../src/lib/prisma';
 import { activationLinkService, ActivationLinkError } from '../../src/services/activationLink.service';
 import { UserStatus, PartnerStatus, ActivationLinkReason } from '@prisma/client';
+import { genTestPhone } from '../helpers/test-utils';
 
 const SKIP = !process.env.DATABASE_URL;
 
@@ -46,7 +47,7 @@ async function seedPartner(suffix: string) {
       role: 'PARTNER',
       status: UserStatus.ACTIVE,
       emailVerified: true,
-      phone: '+359000000000',
+      phone: genTestPhone(),
     },
   });
 

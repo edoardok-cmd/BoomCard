@@ -17,6 +17,7 @@
 import { prisma } from '../../src/lib/prisma';
 import { PartnerStatus, StickerStatus } from '@prisma/client';
 import { partnerService } from '../../src/services/partner.service';
+import { genTestPhone } from '../helpers/test-utils';
 
 /**
  * Helper: Create a test partner with venues and stickers.
@@ -32,7 +33,7 @@ async function setupTestPartner(status: PartnerStatus = PartnerStatus.ACTIVE) {
       lastName: 'Partner',
       role: 'PARTNER',
       status: 'ACTIVE',
-      phone: '+359000000000',
+      phone: genTestPhone(),
     },
   });
 
@@ -436,7 +437,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-QR-SYNC-DURABILITY-1 — QR sync atomic durabili
           lastName: 'NoVenues',
           role: 'PARTNER',
           status: 'ACTIVE',
-          phone: '+359000000001',
+          phone: genTestPhone(),
         },
       });
 

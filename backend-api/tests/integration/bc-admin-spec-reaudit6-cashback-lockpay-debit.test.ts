@@ -19,6 +19,7 @@ import { walletService } from '../../src/services/wallet.service';
 import { createTestUser, createTestSubscription } from '../helpers/test-utils';
 import { approveEntry, lockEntry, payEntry } from '../../src/services/adminCashback.service';
 import { CashbackEntryStatus } from '@prisma/client';
+import { genTestPhone } from '../helpers/test-utils';
 
 describe('BC-ADMIN-SPEC-REAUDIT6-CASHBACK-LOCKPAY-DEBIT-1 (H1 Fix)', () => {
   let userAuthToken: string;
@@ -64,7 +65,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6-CASHBACK-LOCKPAY-DEBIT-1 (H1 Fix)', () => {
         emailVerified: true,
         firstName: 'Test',
         lastName: 'Admin',
-        phone: '+359000000000',
+        phone: genTestPhone(),
       },
     });
 

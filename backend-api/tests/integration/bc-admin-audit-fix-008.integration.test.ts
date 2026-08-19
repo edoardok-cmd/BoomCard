@@ -21,8 +21,10 @@ import { PrismaClient, PartnerStatus } from '@prisma/client';
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from '@jest/globals';
 import request from 'supertest';
 import bcrypt from 'bcrypt';
-import app from '../../src/server';
+import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
+import { genTestPhone } from '../helpers/test-utils';
+import { drainDetached } from '../../src/utils/detach';
 
 const TEST_ADMIN_EMAIL = `admin-${Date.now()}@boomcard.bg`;
 const TEST_ADMIN_PASSWORD = 'AdminPass123!';
@@ -55,7 +57,27 @@ beforeAll(async () => {
       emailVerified: true,
       firstName: 'Test',
       lastName: 'Admin',
-      phone: '+359000000000',
+      phone: genTestPhone(),
+    },
+  });
+
+  // Grant partners.requests.write — a plain role:'ADMIN' user has NO
+  // permissions until explicitly granted (permissions come only from
+  // UserAdminRole role assignments or UserPermissionOverride rows; role
+  // strings alone confer nothing — see permission.service.ts
+  // resolveUserPermissions). Both routes under test require this permission
+  // (BC-QA-042 — the test previously never granted it, so every call 403'd).
+  const partnersWritePermission = await prisma.permission.findUnique({
+    where: { key: 'partners.requests.write' },
+  });
+  if (!partnersWritePermission) {
+    throw new Error('partners.requests.write permission not found — run seed-permissions first');
+  }
+  await prisma.userPermissionOverride.create({
+    data: {
+      userId: ctx.adminUser.id,
+      permissionId: partnersWritePermission.id,
+      allow: true,
     },
   });
 
@@ -76,7 +98,7 @@ beforeAll(async () => {
       emailVerified: true,
       firstName: 'Active',
       lastName: 'Partner',
-      phone: '+359000000001',
+      phone: genTestPhone(),
     },
   });
 
@@ -101,7 +123,7 @@ beforeAll(async () => {
       emailVerified: true,
       firstName: 'Inactive',
       lastName: 'Partner',
-      phone: '+359000000002',
+      phone: genTestPhone(),
     },
   });
 
@@ -126,7 +148,7 @@ beforeAll(async () => {
       emailVerified: true,
       firstName: 'Suspended',
       lastName: 'Partner',
-      phone: '+359000000003',
+      phone: genTestPhone(),
     },
   });
 
@@ -166,7 +188,7 @@ describe('BC-ADMIN-AUDIT-FIX-008: Business Category Edit & Visibility Toggle', (
     it('PATCH /:id/category should update category for ACTIVE partner with valid main category', async () => {
       // Act — use valid main category from registry
       const res = await request(app)
-        .patch(`/api/admin/partners/${ctx.activePartner.id}/category`)
+        .patch(`/api/admin/partner-requests/${ctx.activePartner.id}/category`)
         .set('Authorization', `Bearer ${ctx.adminToken}`)
         .send({ category: 'accommodation' });
 
@@ -184,7 +206,7 @@ describe('BC-ADMIN-AUDIT-FIX-008: Business Category Edit & Visibility Toggle', (
     it('PATCH /:id/category should update category for ACTIVE partner with valid subcategory', async () => {
       // Act — use valid subcategory from registry
       const res = await request(app)
-        .patch(`/api/admin/partners/${ctx.activePartner.id}/category`)
+        .patch(`/api/admin/partner-requests/${ctx.activePartner.id}/category`)
         .set('Authorization', `Bearer ${ctx.adminToken}`)
         .send({ category: 'accommodation/hotels' });
 
@@ -202,7 +224,7 @@ describe('BC-ADMIN-AUDIT-FIX-008: Business Category Edit & Visibility Toggle', (
     it('PATCH /:id/category should reject empty category', async () => {
       // Act
       const res = await request(app)
-        .patch(`/api/admin/partners/${ctx.activePartner.id}/category`)
+        .patch(`/api/admin/partner-requests/${ctx.activePartner.id}/category`)
         .set('Authorization', `Bearer ${ctx.adminToken}`)
         .send({ category: '' });
 
@@ -214,7 +236,7 @@ describe('BC-ADMIN-AUDIT-FIX-008: Business Category Edit & Visibility Toggle', (
     it('PATCH /:id/category should reject missing category', async () => {
       // Act
       const res = await request(app)
-        .patch(`/api/admin/partners/${ctx.activePartner.id}/category`)
+        .patch(`/api/admin/partner-requests/${ctx.activePartner.id}/category`)
         .set('Authorization', `Bearer ${ctx.adminToken}`)
         .send({});
 
@@ -226,7 +248,7 @@ describe('BC-ADMIN-AUDIT-FIX-008: Business Category Edit & Visibility Toggle', (
     it('PATCH /:id/category should return 404 for nonexistent partner', async () => {
       // Act
       const res = await request(app)
-        .patch('/api/admin/partners/nonexistent-id/category')
+        .patch('/api/admin/partner-requests/nonexistent-id/category')
         .set('Authorization', `Bearer ${ctx.adminToken}`)
         .send({ category: 'restaurants' });
 
@@ -237,7 +259,7 @@ describe('BC-ADMIN-AUDIT-FIX-008: Business Category Edit & Visibility Toggle', (
     it('PATCH /:id/category should reject invalid category', async () => {
       // Act — use invalid category not in registry
       const res = await request(app)
-        .patch(`/api/admin/partners/${ctx.activePartner.id}/category`)
+        .patch(`/api/admin/partner-requests/${ctx.activePartner.id}/category`)
         .set('Authorization', `Bearer ${ctx.adminToken}`)
         .send({ category: 'invalid-category-xyz' });
 
@@ -256,11 +278,15 @@ describe('BC-ADMIN-AUDIT-FIX-008: Business Category Edit & Visibility Toggle', (
     it('PATCH /:id/category should log audit entry', async () => {
       // Act — use valid category
       const res = await request(app)
-        .patch(`/api/admin/partners/${ctx.activePartner.id}/category`)
+        .patch(`/api/admin/partner-requests/${ctx.activePartner.id}/category`)
         .set('Authorization', `Bearer ${ctx.adminToken}`)
         .send({ category: 'cafes' });
 
       expect(res.status).toBe(200);
+
+      // See the same note on the visibility test below (BC-QA-042 task-r1
+      // MEDIUM) — partner.category.update is also written via detach().
+      await drainDetached();
 
       // Verify audit log entry exists
       const auditEntries = await prisma.auditLog.findMany({
@@ -284,7 +310,7 @@ describe('BC-ADMIN-AUDIT-FIX-008: Business Category Edit & Visibility Toggle', (
     it('PATCH /:id/visibility should work for ACTIVE partner', async () => {
       // Act
       const res = await request(app)
-        .patch(`/api/admin/partners/${ctx.activePartner.id}/visibility`)
+        .patch(`/api/admin/partner-requests/${ctx.activePartner.id}/visibility`)
         .set('Authorization', `Bearer ${ctx.adminToken}`)
         .send({ isVisible: false });
 
@@ -309,7 +335,7 @@ describe('BC-ADMIN-AUDIT-FIX-008: Business Category Edit & Visibility Toggle', (
 
       // Act
       const res = await request(app)
-        .patch(`/api/admin/partners/${ctx.activePartner.id}/visibility`)
+        .patch(`/api/admin/partner-requests/${ctx.activePartner.id}/visibility`)
         .set('Authorization', `Bearer ${ctx.adminToken}`)
         .send({ isVisible: true });
 
@@ -321,14 +347,17 @@ describe('BC-ADMIN-AUDIT-FIX-008: Business Category Edit & Visibility Toggle', (
     it('PATCH /:id/visibility should reject INACTIVE partner', async () => {
       // Act
       const res = await request(app)
-        .patch(`/api/admin/partners/${ctx.inactivePartner.id}/visibility`)
+        .patch(`/api/admin/partner-requests/${ctx.inactivePartner.id}/visibility`)
         .set('Authorization', `Bearer ${ctx.adminToken}`)
         .send({ isVisible: false });
 
       // Assert
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('ACTIVE');
-      expect(res.body.error).toContain('Inactive');
+      // The live route interpolates the raw PartnerStatus enum value
+      // ("INACTIVE"), not a title-cased word — the test's expectation was
+      // stale (BC-QA-042).
+      expect(res.body.error).toContain('INACTIVE');
       expect(res.body.currentStatus).toBe(PartnerStatus.INACTIVE);
 
       // Verify isVisible was NOT changed
@@ -341,14 +370,15 @@ describe('BC-ADMIN-AUDIT-FIX-008: Business Category Edit & Visibility Toggle', (
     it('PATCH /:id/visibility should reject SUSPENDED partner', async () => {
       // Act
       const res = await request(app)
-        .patch(`/api/admin/partners/${ctx.suspendedPartner.id}/visibility`)
+        .patch(`/api/admin/partner-requests/${ctx.suspendedPartner.id}/visibility`)
         .set('Authorization', `Bearer ${ctx.adminToken}`)
         .send({ isVisible: false });
 
       // Assert
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('ACTIVE');
-      expect(res.body.error).toContain('Suspended');
+      // Same rationale as the INACTIVE case above (BC-QA-042).
+      expect(res.body.error).toContain('SUSPENDED');
       expect(res.body.currentStatus).toBe(PartnerStatus.SUSPENDED);
 
       // Verify isVisible was NOT changed
@@ -367,11 +397,23 @@ describe('BC-ADMIN-AUDIT-FIX-008: Business Category Edit & Visibility Toggle', (
 
       // Act
       const res = await request(app)
-        .patch(`/api/admin/partners/${ctx.activePartner.id}/visibility`)
+        .patch(`/api/admin/partner-requests/${ctx.activePartner.id}/visibility`)
         .set('Authorization', `Bearer ${ctx.adminToken}`)
         .send({ isVisible: false });
 
       expect(res.status).toBe(200);
+
+      // partner.visibility.update is written via detach() (fire-and-forget —
+      // src/routes/adminPartners.routes.ts PATCH /:id/visibility), so it is
+      // not guaranteed to have landed by the time the PATCH response
+      // returns. Without awaiting the drain, the immediate `take: 1,
+      // orderBy: desc` query below can race the write and pick up an OLDER
+      // audit row from an earlier test in this file instead (observed
+      // flake under batch/CPU contention: entry.before read {isVisible:
+      // false} — a prior test's row — instead of this test's own {isVisible:
+      // true}). Await the same detached-work drain tests/setup.ts uses
+      // between tests (BC-QA-042 task-r1 MEDIUM).
+      await drainDetached();
 
       // Verify audit log entry exists
       const auditEntries = await prisma.auditLog.findMany({
@@ -393,7 +435,7 @@ describe('BC-ADMIN-AUDIT-FIX-008: Business Category Edit & Visibility Toggle', (
     it('PATCH /:id/visibility should reject with missing isVisible', async () => {
       // Act
       const res = await request(app)
-        .patch(`/api/admin/partners/${ctx.activePartner.id}/visibility`)
+        .patch(`/api/admin/partner-requests/${ctx.activePartner.id}/visibility`)
         .set('Authorization', `Bearer ${ctx.adminToken}`)
         .send({});
 
@@ -405,7 +447,7 @@ describe('BC-ADMIN-AUDIT-FIX-008: Business Category Edit & Visibility Toggle', (
     it('PATCH /:id/visibility should reject with non-boolean isVisible', async () => {
       // Act
       const res = await request(app)
-        .patch(`/api/admin/partners/${ctx.activePartner.id}/visibility`)
+        .patch(`/api/admin/partner-requests/${ctx.activePartner.id}/visibility`)
         .set('Authorization', `Bearer ${ctx.adminToken}`)
         .send({ isVisible: 'true' });
 

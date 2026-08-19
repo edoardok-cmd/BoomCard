@@ -6,6 +6,7 @@ import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { createTestApp } from '../setup';
 import { prisma } from '../../src/lib/prisma';
+import { genTestPhone } from '../helpers/test-utils';
 
 const RUN_TAG = `fraud-bounds-${Date.now()}`;
 
@@ -41,7 +42,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6 — Fraud-bounds SA-only enforcement', () => {
         status: 'ACTIVE',
         passwordHash: 'unused',
         emailVerified: true,
-        phone: '+359000000000',
+        phone: genTestPhone(),
       },
     });
     adminId = admin.id;
@@ -57,7 +58,7 @@ describe('BC-ADMIN-SPEC-REAUDIT6 — Fraud-bounds SA-only enforcement', () => {
         status: 'ACTIVE',
         passwordHash: 'unused',
         emailVerified: true,
-        phone: '+359000000001',
+        phone: genTestPhone(),
       },
     });
     superAdminId = superAdmin.id;

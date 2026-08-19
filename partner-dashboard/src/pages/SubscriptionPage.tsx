@@ -6,7 +6,7 @@ import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, AlertTriangle, CheckCircle, XCircle, CreditCard, Calendar, Clock, ExternalLink } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useCurrentSubscription, useToggleAutoRenewal, useCancelSubscriptionById, useReactivateSubscription, useRetrySubscriptionPayment, useSubscriptionHistory, useRequestTrialRefund, useUpdateSubscriptionPlan, useInitiateCardUpdate } from '../hooks/useBilling';
+import { useCurrentSubscription, useToggleAutoRenewal, useCancelSubscriptionById, useReactivateSubscription, useRetrySubscriptionPayment, useSubscriptionHistory, useRequestTrialRefund, useUpdateSubscriptionPlan, useInitiateCardUpdate, hasActiveSubscription } from '../hooks/useBilling';
 import { Button } from '../components/common/Button/Button';
 import {
   customerSubStatusLabel,
@@ -453,7 +453,14 @@ function formatDate(iso: string | null | undefined, locale?: string): string {
 
 export default function SubscriptionPage() {
   const { t, language } = useLanguage();
-  const { data: subscription, isLoading } = useCurrentSubscription();
+  const { data: currentSubscriptionData, isLoading, isError, refetch } = useCurrentSubscription();
+  // Normalize the { hasSubscription: false, subscription: null } empty-state
+  // shape (a real 200 response, not an error) down to `undefined`, same as a
+  // genuinely-empty result — so every existing `subscription?.foo` usage
+  // below keeps working unchanged. Fetch failures are handled separately via
+  // `isError`, before this normalization ever runs (see the render branches
+  // below) — they must NOT fall through to the "no subscription" UI.
+  const subscription = hasActiveSubscription(currentSubscriptionData) ? currentSubscriptionData : undefined;
   const queryClient = useQueryClient();
   const toggleAutoRenewal = useToggleAutoRenewal();
   const cancelSubscription = useCancelSubscriptionById();
@@ -581,6 +588,39 @@ export default function SubscriptionPage() {
       <PageContainer>
         <Container>
           <LoadingText>{t('subscriptionPage.loading')}</LoadingText>
+        </Container>
+      </PageContainer>
+    );
+  }
+
+  // UXR-3 fix: a failed GET /subscriptions/current must NOT be presented as
+  // "no active subscription" — that misleads a paying subscriber into
+  // thinking their subscription is gone and steers them toward "View Plans"
+  // (i.e. buying again). Show a distinct load-failed message with a retry
+  // action instead, and stop here so the genuinely-empty branch below never
+  // runs for an errored fetch.
+  //
+  // Guarded on `!subscription` (impl-r1 F1): TanStack Query keeps the last
+  // successful `data` around when a later background refetch fails (e.g. the
+  // app's global refetchOnReconnect:true firing after a network blip), so an
+  // unconditional isError check would replace an already-correct, already
+  // -rendered subscription with this error screen. Only show it when there's
+  // no known-good subscription to keep displaying.
+  if (isError && !subscription) {
+    return (
+      <PageContainer>
+        <Container>
+          <Stack>
+            <div style={{ textAlign: 'center' }}>
+              <AlertTriangle size={32} color="#dc2626" style={{ margin: '0 auto 0.75rem' }} />
+              <EmptyText>{t('subscriptionPage.loadFailed')}</EmptyText>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <Button variant="primary" onClick={() => refetch()}>
+                {t('subscriptionPage.retry')}
+              </Button>
+            </div>
+          </Stack>
         </Container>
       </PageContainer>
     );
