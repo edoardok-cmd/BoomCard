@@ -1,0 +1,103 @@
+-- BC-MYPOS-004 (part 1 of 2): Provider-neutral payment references — columns only.
+--
+-- BoomCard is adding a second payment provider (MyPOS) alongside the
+-- existing Paysera integration. "subscriptions"."payseraOrderId" and
+-- "PendingSubscription"."payseraOrderId" are currently the sole unique join
+-- keys between provider callbacks and these rows, hard-coding the schema to
+-- Paysera. This migration introduces a provider-neutral replacement
+-- (paymentProvider + providerOrderId) while leaving the legacy
+-- payseraOrderId columns fully in place and readable — application code
+-- (BC-MYPOS-005) still reads/writes them until BC-MYPOS-012 retires them.
+--
+-- THIS IS PART 1 OF A DELIBERATE TWO-MIGRATION SPLIT
+-- ----------------------------------------------------
+-- This migration was originally shipped as a single file
+-- (20260819120000_add_payment_provider_reference) that also contained the
+-- backfill UPDATE and the two composite UNIQUE constraints. Round-1 review
+-- (BC-MYPOS-004-impl-r1.md, finding F1) empirically proved that shipping
+-- all of that in one `prisma migrate deploy` transaction meant the
+-- ACCESS EXCLUSIVE lock acquired by this file's own ADD COLUMN statements
+-- would have been held — by Postgres's normal hold-until-COMMIT lock
+-- retention — all the way through the backfill UPDATE and the constraint
+-- validation scan, blocking reads and writes against "subscriptions" and
+-- "PendingSubscription" (two tables touched on every renewal/callback cycle
+-- and every checkout-in-progress, respectively) for the ENTIRE migration,
+-- not just during the constraint scan as the original header claimed.
+--
+-- The fix is this split: this file commits and releases its lock on its
+-- own, before the backfill/constraint work (now
+-- 20260819120100_backfill_and_constrain_payment_provider) ever starts. See
+-- that migration's header for the backfill/constraint lock analysis.
+--
+-- SCOPE
+-- -----
+-- Only "subscriptions" (Subscription model) and "PendingSubscription" carry
+-- a payseraOrderId-shaped provider reference in the current schema.
+-- "Transaction" and "WalletTransaction" were checked (grep across
+-- schema.prisma) and use Stripe-specific columns only
+-- (stripePaymentId / stripePaymentIntentId) — no payseraOrderId-shaped
+-- field exists on either, so neither is touched here.
+--
+-- WHAT THIS MIGRATION DOES
+-- -------------------------
+-- 1. Creates the "PaymentProvider" enum (PAYSERA, MYPOS, STRIPE_LEGACY).
+-- 2. Adds nullable "paymentProvider" ("PaymentProvider") and
+--    "providerOrderId" (text) columns to both tables, with no DEFAULT.
+--
+-- LOCK WINDOW (empirically verified against a scratch Postgres instance,
+-- same methodology as BC-MYPOS-004-impl-r1.md's runtime checks)
+-- ------------------------------------------------------------------------
+-- `CREATE TYPE` and a nullable `ADD COLUMN` with no default are each
+-- metadata-only changes on Postgres 11+ (no table rewrite, no full-table
+-- scan). Each `ADD COLUMN` statement does still acquire an ACCESS EXCLUSIVE
+-- lock on its target table — that part of the original header was correct
+-- — but in THIS file that lock is held only for the brief instant this
+-- migration's own four statements take to run, because there is nothing
+-- else left in this transaction: `prisma migrate deploy` (prisma@^7.7.0,
+-- pinned in this repo) wraps this migration.sql in its own single
+-- transaction, separate from 20260819120100's, and the lock is released at
+-- COMMIT immediately after the last ADD COLUMN statement. Verified via
+-- `pg_locks` + a concurrent-session blocking probe against a scratch DB
+-- seeded with existing "subscriptions"/"PendingSubscription" rows: a
+-- concurrent `SELECT count(*)` from a second session was blocked for
+-- sub-100ms (the time to execute this file's 3 DDL statements and commit),
+-- not for the multi-statement duration the original single-file version
+-- would have produced.
+--
+-- ROLLBACK (Prisma does not auto-generate down migrations)
+-- -----------------------------------------------------------
+-- To revert this migration exactly, run the following in a single
+-- transaction against the target database, then remove this migration's
+-- row from the "_prisma_migrations" table (`DELETE FROM
+-- "_prisma_migrations" WHERE migration_name =
+-- '20260819120000_add_payment_provider_columns';`) so `prisma migrate
+-- deploy` will re-apply it if needed. Only run this AFTER also rolling back
+-- 20260819120100_backfill_and_constrain_payment_provider (its constraints
+-- and backfilled data depend on these columns existing) — see that
+-- migration's own header for its rollback block, which must run first.
+--
+--   BEGIN;
+--   ALTER TABLE "subscriptions" DROP COLUMN IF EXISTS "paymentProvider";
+--   ALTER TABLE "subscriptions" DROP COLUMN IF EXISTS "providerOrderId";
+--   ALTER TABLE "PendingSubscription" DROP COLUMN IF EXISTS "paymentProvider";
+--   ALTER TABLE "PendingSubscription" DROP COLUMN IF EXISTS "providerOrderId";
+--   DROP TYPE IF EXISTS "PaymentProvider";
+--   COMMIT;
+--
+-- This is a pure rollback of additive, non-destructive changes: no
+-- pre-existing column (including payseraOrderId) is touched, so no data
+-- loss occurs either way.
+
+-- 1. New enum
+CREATE TYPE "PaymentProvider" AS ENUM ('PAYSERA', 'MYPOS', 'STRIPE_LEGACY');
+
+-- 2. New nullable columns (fast metadata-only change, no table rewrite;
+--    this migration commits immediately after these statements — see
+--    LOCK WINDOW above)
+ALTER TABLE "subscriptions"
+  ADD COLUMN "paymentProvider" "PaymentProvider",
+  ADD COLUMN "providerOrderId" TEXT;
+
+ALTER TABLE "PendingSubscription"
+  ADD COLUMN "paymentProvider" "PaymentProvider",
+  ADD COLUMN "providerOrderId" TEXT;
