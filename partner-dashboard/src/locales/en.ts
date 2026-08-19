@@ -1197,6 +1197,8 @@ export const en = {
     nextBilling: 'Next billing',
     loading: 'Loading subscription...',
     noSubscription: 'No active subscription found.',
+    loadFailed: 'We could not load your subscription. Please try again.',
+    retry: 'Retry',
     goToPlans: 'View Plans',
     gracePeriodAlert: 'Payment Overdue',
     gracePeriodMsg: 'Your access expires in {days} day(s). Update your payment method to keep your subscription active.',

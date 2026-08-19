@@ -10,6 +10,7 @@ import billingService, {
   CreateSubscriptionData,
   UpdateSubscriptionData,
   AddPaymentMethodData,
+  Subscription,
 } from '../services/billing.service';
 import { apiService } from '../services/api.service';
 import { useAuth } from '../contexts/AuthContext';
@@ -46,13 +47,26 @@ export function useUserPlan() {
   });
 }
 
+// GET /subscriptions/current returns HTTP 200 with { hasSubscription: false,
+// subscription: null } when the user genuinely has no active subscription —
+// that is NOT an error. billingService.getCurrentSubscription() is typed as
+// Promise<Subscription> for the common (active) case, but the real response
+// shape on the empty-subscription path is this narrower object instead. Type
+// the query result as the honest union so callers can tell the two apart.
+export type CurrentSubscriptionResult = Subscription | { hasSubscription: false; subscription: null };
+
 /**
- * Hook to get current subscription
+ * Hook to get current subscription.
+ *
+ * Unlike useUserPlan(), this hook does NOT swallow fetch errors into a plain
+ * `null`/empty result — a failed request surfaces via the returned
+ * `isError`/`error`, distinct from a genuinely-empty `data`. Callers must not
+ * treat `isError` the same as "no active subscription" (see SubscriptionPage).
  */
 export function useCurrentSubscription() {
-  return useQuery({
+  return useQuery<CurrentSubscriptionResult>({
     queryKey: ['billing', 'subscription'],
-    queryFn: () => billingService.getCurrentSubscription(),
+    queryFn: () => billingService.getCurrentSubscription() as Promise<CurrentSubscriptionResult>,
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: (failureCount, error) => {
       const status = (error as { response?: { status?: number } })?.response?.status;
@@ -60,6 +74,16 @@ export function useCurrentSubscription() {
       return failureCount < 1;
     },
   });
+}
+
+/**
+ * Type guard: true when the query returned a real active-subscription object
+ * (as opposed to the { hasSubscription: false } empty-state shape).
+ */
+export function hasActiveSubscription(
+  data: CurrentSubscriptionResult | undefined
+): data is Subscription {
+  return !!data && !('hasSubscription' in data && data.hasSubscription === false);
 }
 
 /**
