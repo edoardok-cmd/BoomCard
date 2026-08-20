@@ -225,7 +225,14 @@ type PayoutThresholdsByPlan = Partial<Record<Plan, { minAmount: number; notes: s
 // which seeded the form with roughly double the real threshold.
 const SEED_DEFAULTS: Record<Plan, string> = { BASIC: '20.00', PREMIUM_MONTHLY: '15.00', PREMIUM_WEEKLY: '10.00' };
 
-// Warn and require confirmation when any threshold drops below this floor
+// Warn and require confirmation when any threshold drops below this floor.
+// BC-QA-031: the editor's unit changed from BGN to EUR, so this bare 5 now means
+// 5 EUR (~9.78 BGN) where it previously meant 5 BGN (~2.56 EUR) — i.e. the guard
+// became STRICTER rather than drifting silently in the permissive direction. The
+// numeric value is deliberately left alone: retuning an operator-facing warning
+// threshold is a product decision, not part of the unit fix. The warning strings
+// below render this constant with a € suffix so what is compared and what is
+// displayed cannot disagree again.
 const LOW_THRESHOLD_FLOOR = 5;
 
 export default function AdminSettingsThresholdsPage() {
@@ -319,7 +326,7 @@ export default function AdminSettingsThresholdsPage() {
           <DialogBox>
             <DialogTitle>Много нисък праг</DialogTitle>
             <DialogBody>
-              {lowPlans.map((p) => p.name).join(', ')} {lowPlans.length > 1 ? 'са зададени' : 'е зададен'} под {LOW_THRESHOLD_FLOOR} лв.
+              {lowPlans.map((p) => p.name).join(', ')} {lowPlans.length > 1 ? 'са зададени' : 'е зададен'} под {LOW_THRESHOLD_FLOOR} €.
               Това ще позволи на абонатите да поискат изплащане почти веднага. Сигурни ли сте?
             </DialogBody>
             <DialogActions>
@@ -334,7 +341,7 @@ export default function AdminSettingsThresholdsPage() {
         <Eyebrow>Настройки</Eyebrow>
         <PageTitle>Прагове за изплащане</PageTitle>
         <PageSubtitle>
-          Минимален изчистен кешбек баланс (лв.), необходим за изплащане, по абонаментен план.
+          Минимален изчистен кешбек баланс (€), необходим за изплащане, по абонаментен план.
         </PageSubtitle>
       </PageHeader>
 
@@ -374,28 +381,17 @@ export default function AdminSettingsThresholdsPage() {
                           setAmounts((prev) => ({ ...prev, [plan.key]: e.target.value }))
                         }
                       />
-                      {/* BC-QA-031 — DELIBERATELY still `лв.`, and NOT a missed
-                          relabel. This surface's read and write paths disagree
-                          about units after the branch's backend changes:
+                      {/* BC-QA-031: this editor is EUR end-to-end.
                             • GET  /api/admin/settings/payout-thresholds returns
-                              `minAmount` through bgnToEur()   → EUR
-                            • PUT  /api/admin/settings/payout-thresholds stores
-                              the submitted number verbatim
-                              (`minAmount: Math.round(amount * 100) / 100`) → BGN
-                          The input is seeded from the GET value, so saving an
-                          untouched form already rewrites each threshold at ~51%
-                          of its previous value. Relabelling this to `€` would
-                          make the label lie about the WRITE instead of the READ
-                          and would not fix anything; converting in the frontend
-                          would reintroduce exactly the dual-currency conversion
-                          layer BC-QA-031 deleted. The fix belongs in
-                          adminSettings.routes.ts (accept EUR and convert on the
-                          way in, or stop converting on the way out) — reported
-                          as a caveat on the BC-QA-031 r5-F1 fix pass.
-                          SEED_DEFAULTS above (39.12 / 29.34 / 19.56) are the
-                          BGN seed values, which is the other half of the same
-                          incoherence. */}
-                      <Currency>лв.</Currency>
+                              `minAmount` through bgnToEur()          → EUR
+                            • PUT  /api/admin/settings/payout-thresholds converts
+                              the submitted figure with eurToBgn()    → BGN storage
+                          A previous revision of this comment claimed the `лв.`
+                          label was deliberate because the PUT stored the number
+                          verbatim. That write path no longer exists, so the label
+                          followed the field to €. Storage stays BGN; the unit the
+                          admin types and reads is EUR on both legs. */}
+                      <Currency>€</Currency>
                     </InputRow>
                   </PlanRow>
                 );
@@ -406,7 +402,7 @@ export default function AdminSettingsThresholdsPage() {
           {lowPlans.length > 0 && (
             <WarnBox>
               Внимание: {lowPlans.map((p) => p.name).join(', ')} {lowPlans.length > 1 ? 'са под' : 'е под'} препоръчителния минимум
-              от {LOW_THRESHOLD_FLOOR} лв. Абонатите ще могат да поискат изплащане почти веднага.
+              от {LOW_THRESHOLD_FLOOR} €. Абонатите ще могат да поискат изплащане почти веднага.
             </WarnBox>
           )}
 
@@ -441,9 +437,9 @@ export default function AdminSettingsThresholdsPage() {
                     {/* BC-QA-031: GET /api/admin/settings/payout-thresholds/history
                         runs each stored `minAmount` through bgnToEur() before
                         responding (adminSettings.routes.ts), so every history row
-                        is EUR. This is a read-only render of that converted value.
-                        NOTE: the EDITOR above is deliberately still labelled `лв.` —
-                        see the comment there; its write path is not EUR. */}
+                        is EUR. This is a read-only render of that converted value,
+                        and it agrees with the editor above, which is EUR on both
+                        its read and its write leg. */}
                     <strong style={{ color: palette.text }}>€{row.minAmount}</strong>
                     {row.notes && (
                       <div style={{ fontSize: '0.75rem', color: palette.textSubtle, marginTop: '0.125rem' }}>

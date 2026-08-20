@@ -147,8 +147,13 @@ router.put(
       if (!validPlans.has(plan)) {
         return res.status(400).json({ success: false, error: `Invalid plan: ${plan}. Must be BASIC, PREMIUM_WEEKLY, or PREMIUM_MONTHLY.` });
       }
+      // BC-QA-031: this bound is now applied to a EUR figure. It used to bound the
+      // BGN value directly, so the effective ceiling rose from 10,000 BGN to
+      // 10,000 EUR (~19,558 BGN of stored threshold). The number is deliberately
+      // left as-is — it is a sanity rail, not a business limit, and retuning an
+      // operator-facing cap is a product decision rather than part of the unit fix.
       if (typeof amount !== 'number' || isNaN(amount) || amount < 0 || amount > 10000) {
-        return res.status(400).json({ success: false, error: `minAmount for ${plan} must be a number between 0 and 10000` });
+        return res.status(400).json({ success: false, error: `minAmount for ${plan} must be a number between 0 and 10000 EUR` });
       }
     }
 
@@ -175,7 +180,15 @@ router.put(
     );
 
     invalidatePayoutThresholdCache();
-    res.json({ success: true, data: created, message: 'Payout thresholds saved' });
+    // Echo the rows back in the SAME unit GET returns (EUR). `created` holds the
+    // freshly-persisted BGN rows, so responding with them raw made one path answer
+    // EUR on read and BGN on write-echo — the same asymmetry class the eurToBgn()
+    // call above just closed, one layer up (BC-QA-031 round 7, F5).
+    res.json({
+      success: true,
+      data: created.map((row) => ({ ...row, minAmount: bgnToEur(row.minAmount) })),
+      message: 'Payout thresholds saved',
+    });
   })
 );
 

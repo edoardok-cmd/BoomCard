@@ -160,22 +160,26 @@ describe('GET /business — per-row currency conversion (BC-QA-031)', () => {
     // Legacy row: marginAmount is null, so the route falls back to the runtime
     // formula `(discountRate/100) * tx.amount - cashback` at :543-545. That
     // formula reads the RAW stored amount; only its result is passed through
-    // toEurOrNull(). Pins the order the :604 comment describes.
+    // toEurOrNull(). Pins the ORDER the :604 comment describes.
     //
-    // 10% of 100.00 BGN − 0 cashback = 10.00 BGN margin → 5.11 EUR.
+    // The input is chosen so the two orders round APART. At 100.00 BGN they do
+    // not — derive-then-convert gives 5.11 and convert-then-derive gives 5.113,
+    // which toBeCloseTo(5.11, 2) accepts either way, so the earlier version of
+    // this case asserted a discrimination it did not perform. At 13.00 BGN:
+    //   derive-then-convert:  bgnToEur(0.10 × 13.00) = bgnToEur(1.30) = 0.66
+    //   convert-then-derive:  0.10 × bgnToEur(13.00) = 0.10 × 6.65    = 0.67
+    // a full cent apart, so toBeCloseTo(…, 2) can tell them apart.
+    const AMOUNT_BGN = 13.0;
+    const RATE_PCT = 10;
+
     transactionFindManyMock.mockResolvedValue([
       txRow({
         id: 'tx-legacy-margin',
         currency: 'BGN',
-        amount: 100.0,
+        amount: AMOUNT_BGN,
         marginAmount: null,
         cashbackAmount: 0,
-        partner: {
-          id: 'p1',
-          businessName: 'P',
-          discountRate: 10,
-          partnerType: null,
-        },
+        partner: { id: 'p1', businessName: 'P', discountRate: RATE_PCT, partnerType: null },
       }),
     ]);
     transactionCountMock.mockResolvedValue(1);
@@ -183,10 +187,20 @@ describe('GET /business — per-row currency conversion (BC-QA-031)', () => {
     const res = await request(app).get('/api/admin/transactions/business').expect(200);
     const row = (res.body.data ?? res.body.transactions ?? res.body)[0];
 
-    const rawMargin = Math.round((0.1 * 100.0 - 0) * 100) / 100; // 10.00 BGN
-    expect(row.margin).toBeCloseTo(bgnToEur(rawMargin), 2);
-    expect(row.margin).toBeCloseTo(5.11, 2);
-    // The raw BGN margin must not ship.
+    // Both candidate orders, computed with the SAME helper the route uses, so
+    // the comparison cannot drift on a float assumption of mine.
+    const rawMargin = Math.round((RATE_PCT / 100) * AMOUNT_BGN * 100) / 100; // 1.30 BGN
+    const deriveThenConvert = bgnToEur(rawMargin);
+    const convertThenDerive =
+      Math.round((RATE_PCT / 100) * bgnToEur(AMOUNT_BGN) * 100) / 100;
+
+    // Guard: if a rate/amount change ever collapses the two, this case stops
+    // discriminating and must be re-tuned rather than silently passing.
+    expect(deriveThenConvert).not.toBeCloseTo(convertThenDerive, 2);
+
+    expect(row.margin).toBeCloseTo(deriveThenConvert, 2);
+    expect(row.margin).not.toBeCloseTo(convertThenDerive, 2);
+    // The raw BGN margin must not ship either.
     expect(row.margin).not.toBeCloseTo(rawMargin, 2);
   });
 

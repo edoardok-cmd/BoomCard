@@ -22,7 +22,9 @@ import { LanguageProvider } from '../../contexts/LanguageContext';
  * `stats` fixture below therefore describes `ReceiptStatsResponse` as the
  * frontend type DECLARES it, not as the endpoint actually behaves; at runtime
  * those two fields are `undefined` and `.toFixed(2)` would throw. That is a
- * pre-existing defect independent of currency, reported as a caveat.
+ * pre-existing defect independent of currency, filed as BC-QA-031-FOLLOWUP-4
+ * (ReceiptAnalyticsWidget reads totalAmount and averageAmount from a money-less
+ * stats endpoint).
  *
  * The widget has no mount site (exported from `components/widgets/index.tsx`,
  * imported nowhere), so nothing ships broken today — this test keeps the

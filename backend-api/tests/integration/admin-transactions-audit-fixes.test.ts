@@ -17,6 +17,7 @@ import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import { genTestPhone } from '../helpers/test-utils';
+import { bgnToEur } from '../../src/utils/currency';
 
 const PASSWORD = 'AdminPass123!';
 
@@ -168,7 +169,16 @@ describe('Admin Transactions Audit Fixes (BC-ADMIN-AUDIT-FIX-007)', () => {
       expect(res.status).toBe(201);
       expect(res.body).toHaveProperty('id');
       expect(res.body.type).toBe('ADJUSTMENT');
-      expect(res.body.amount).toBe(50);
+      // BC-QA-031: the request body is stored verbatim on the BGN
+      // WalletTransaction.amount column, and the response converts it — so a
+      // submitted 50 comes back as bgnToEur(50) = 25.56. This assertion used to
+      // read `toBe(50)`, which was the pre-branch contract and had been failing
+      // ever since; it is updated here so the SHIPPED contract has passing
+      // coverage rather than a red line that a reader mistakes for a decision
+      // record. Whether the input should submit EUR instead is the open product
+      // question, not something this assertion should prejudge.
+      expect(res.body.amount).toBeCloseTo(bgnToEur(50), 2);
+      expect(res.body.currency).toBe('EUR');
     });
   });
 

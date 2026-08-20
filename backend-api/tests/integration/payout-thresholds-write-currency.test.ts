@@ -90,6 +90,28 @@ describe('PUT /api/admin/settings/payout-thresholds — write unit (BC-QA-031 A1
     expect(row!.minAmount).not.toBeCloseTo(20.0, 2);
   });
 
+  it("the PUT's own 200 body echoes EUR, the same unit GET answers in", async () => {
+    // BC-QA-031 round 7, F5: the response previously carried `created` — the raw
+    // persisted BGN rows — so one path answered EUR on read and BGN on write-echo.
+    const res = await request(app)
+      .put('/api/admin/settings/payout-thresholds')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ thresholds: { BASIC: 20.0 }, notes: 'F5 echo-unit test' });
+
+    expect(res.status).toBe(200);
+    const echoed = res.body.data.find((r: any) => r.plan === 'BASIC');
+    expect(echoed).toBeDefined();
+
+    // 20.00 EUR in, 20.00 EUR echoed — NOT the 39.12 BGN that was stored.
+    expect(echoed.minAmount).toBeCloseTo(20.0, 2);
+    expect(echoed.minAmount).not.toBeCloseTo(eurToBgn(20.0), 2);
+
+    // ...and storage really is BGN, so the echo is a conversion, not a no-op.
+    const row = await prisma.payoutThreshold.findUnique({ where: { id: echoed.id } });
+    expect(row!.minAmount).toBeCloseTo(39.12, 2);
+    createdThresholdIds.push(echoed.id);
+  });
+
   it('round-trips: GET after PUT returns the same EUR figure that was submitted', async () => {
     const submitted = 15.0;
 

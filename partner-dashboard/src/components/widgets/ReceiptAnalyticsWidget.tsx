@@ -367,8 +367,10 @@ export const ReceiptAnalyticsWidget: React.FC = () => {
             declares them anyway, so the mismatch is invisible to tsc. The
             round-5 comment here named GET /api/receipts/stats
             (`getUserReceiptStats()`, which does convert) — that is a DIFFERENT
-            route on a different router. Reported as a caveat on this pass; the
-            component has no mount site, so nothing ships broken today. */}
+            route on a different router. Filed as BC-QA-031-FOLLOWUP-4
+            (ReceiptAnalyticsWidget reads totalAmount and averageAmount from a
+            money-less stats endpoint); the component has no mount site, so
+            nothing ships broken today. */}
         <StatCard>
           <StatLabel>{content.totalCashback}</StatLabel>
           <StatValue>

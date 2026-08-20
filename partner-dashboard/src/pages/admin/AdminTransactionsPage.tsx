@@ -645,9 +645,18 @@ const T = {
   adjustSearchPh: { bg: 'Търсене по име или имейл…', en: 'Search by name or email…' },
   adjustNoMatch: { bg: 'Няма намерени абонати', en: 'No subscribers found' },
   adjustHint: { bg: 'Минимум 2 символа за търсене', en: 'Type at least 2 characters to search' },
+  // BC-QA-031: the unit is stated explicitly because this input is the one money
+  // field on this page that is NOT EUR. Every rendered figure here goes through
+  // fmtAmount = formatEUR, but POST /api/admin/transactions/adjust stores the
+  // submitted number verbatim on the BGN WalletTransaction.amount column and then
+  // echoes it back converted — so typing 50 credits 50 BGN and the list redraws it
+  // as €25.56. Labelling it лв. makes what ships today honest; whether the input
+  // SHOULD submit EUR is a product decision — this transaction-adjust endpoint's
+  // unlabelled currency unit is filed as BC-QA-031-FOLLOWUP-3 (admin receipts and
+  // transaction-adjust endpoints carry role-dependent or unlabelled currency units).
   adjustAmount: {
-    bg: 'Сума (положителна за кредит, отрицателна за дебит)',
-    en: 'Amount (positive to credit, negative to debit)',
+    bg: 'Сума в лв. (положителна за кредит, отрицателна за дебит)',
+    en: 'Amount in BGN (positive to credit, negative to debit)',
   },
   adjustReason: { bg: 'Причина', en: 'Reason' },
   adjustReasonPh: {

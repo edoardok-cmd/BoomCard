@@ -45,8 +45,8 @@ const WRITE_CONV = /\beurToBgn\s*\(/;
 type Symmetry =
   /** A client-writable money field exists here AND the write converts EUR→BGN. */
   | 'write-converts'
-  /** Reads are converted, but nothing on this surface is client-writable money. */
-  | 'read-only'
+  /** This file declares no POST/PUT/PATCH handler at all, so no request body can reach storage through it. */
+  | 'no-write-handler'
   /** Both sides deliberately speak BGN (the read is NOT converted for the writer). */
   | 'symmetric-bgn'
   /** Money here is server-derived; no client-supplied amount is persisted. */
@@ -90,12 +90,19 @@ const REGISTRY: Record<string, Entry> = {
       'server-side from StickerScan rows in BGN storage.',
   },
   'routes/adminDashboard.routes.ts': {
-    symmetry: 'read-only',
+    symmetry: 'no-write-handler',
     why: 'GET /admin/dashboard statistics only — this router declares no POST/PUT/PATCH handler, so no client-supplied amount can reach storage through it.',
   },
   'routes/adminSubscribers.routes.ts': {
     symmetry: 'server-derived',
-    why: 'Wallet balances are read-converted; the PATCH bodies carry profile/plan fields, not amounts.',
+    why:
+      'Wallet balances are read-converted from the BGN ledger. One write handler DOES take a ' +
+      'client amount — POST /:userId/refund (adminSubscribers.routes.ts:1306) destructures ' +
+      '`amount` at :1309 — but it is out of the BGN-column class: the figure is denominated in ' +
+      "the Stripe PaymentIntent's own currency, capped against amount_received / 100 (:1385-1400) " +
+      'and forwarded to stripeService.createRefund (:1408). No local money row is written, so ' +
+      'there is no bgnToEur column for it to round-trip against. Every other write body on this ' +
+      'router carries profile/plan fields only.',
   },
   'routes/adminSubscriptions.routes.ts': {
     symmetry: 'server-derived',
@@ -110,7 +117,7 @@ const REGISTRY: Record<string, Entry> = {
       'seeded-form round trip: nothing seeds the adjust form from a converted GET.',
   },
   'routes/dashboard.routes.ts': {
-    symmetry: 'read-only',
+    symmetry: 'no-write-handler',
     why: 'GET /dashboard/me only — it projects StickerScan money into EUR for the mobile home screen and declares no write handler of any kind.',
   },
   'routes/wallet.routes.ts': {
@@ -118,11 +125,11 @@ const REGISTRY: Record<string, Entry> = {
     why: 'Balances and statistics are derived from the WalletTransaction ledger; the write handlers request a payout, whose amount the service computes from the available balance rather than from the request body.',
   },
   'routes/loyalty.routes.ts': {
-    symmetry: 'read-only',
+    symmetry: 'no-write-handler',
     why: 'Reward.cashValue and loyalty balances are read-converted; Reward rows are seeded operationally and no route in this app creates or updates them from a request body.',
   },
   'routes/partners.routes.ts': { symmetry: 'server-derived', why: 'Revenue/turnover figures are aggregated server-side.' },
-  'routes/subscriptions.routes.ts': { symmetry: 'read-only', why: 'History reads only; no client-supplied amount is persisted.' },
+  'routes/subscriptions.routes.ts': { symmetry: 'no-write-handler', why: 'History reads only; no client-supplied amount is persisted.' },
   'routes/payments.paysera.routes.ts': {
     symmetry: 'symmetric-bgn',
     why:
@@ -150,22 +157,34 @@ const REGISTRY: Record<string, Entry> = {
   'services/receipt.service.ts': {
     symmetry: 'symmetric-bgn',
     why:
-      'formatReceipt() short-circuits on `includeInternal` BEFORE its bgnToEur block, and ' +
-      'GET /api/receipts/admin/all — the only surface that seeds the review form — passes ' +
-      'includeInternal:true. So the admin reads raw BGN and POST /:id/review stores BGN. ' +
-      'Converting the write would halve every approved receipt AND its recomputed cashback.',
+      'formatReceipt() short-circuits on `includeInternal` (receipt.service.ts:624) BEFORE its ' +
+      'bgnToEur block, so this file serves the SAME Receipt rows in two different units and the ' +
+      'classification depends on which reader seeds the write. TWO surfaces seed a verifiedAmount ' +
+      'write to POST /receipts/:id/review, and they read opposite units: (1) AdminReceiptsPage ' +
+      'loads GET /api/receipts/v2/admin/all, which passes includeInternal:true, so it reads RAW ' +
+      'BGN and writing BGN back is symmetric — this is the shipping path; (2) ReceiptReviewDashboard ' +
+      'loads GET /api/receipts (receipts.routes.ts:69, no includeInternal), so it reads EUR and ' +
+      'seeding its Verified Amount input from that EUR totalAmount would write EUR onto the BGN ' +
+      'column and recompute cashback from it — the A1 shape this sweep exists to catch. That second ' +
+      'path is NOT symmetric; the file is classified symmetric-bgn only because ' +
+      'ReceiptReviewDashboard has no mount site (it is imported solely by its own test) and so ' +
+      'ships nothing today. Wiring that component up REQUIRES converting its write, or reading it ' +
+      'from the admin endpoint instead. The underlying contract defect — one Receipt resource ' +
+      'returning EUR or BGN depending on the CALLER ROLE, with no currency discriminator anywhere ' +
+      'on the wire for a client to branch on — is filed as BC-QA-031-FOLLOWUP-3 (admin receipts ' +
+      'and transaction-adjust endpoints carry role-dependent or unlabelled currency units).',
   },
   'services/wallet.service.ts': { symmetry: 'server-derived', why: 'Balances are ledger-derived; no client amount is persisted through this service.' },
   'services/adminAlerts.service.ts': {
-    symmetry: 'read-only',
+    symmetry: 'no-write-handler',
     why: 'meta.threshold is derived from PayoutThreshold/SystemSetting for display in the alert feed; this service performs no writes at all.',
   },
   'services/receiptAnalytics.service.ts': {
-    symmetry: 'read-only',
+    symmetry: 'no-write-handler',
     why: 'Aggregates Receipt rows into totals for the analytics widgets; every money value is computed from stored rows and nothing is persisted from a request.',
   },
   'services/auth.service.ts': {
-    symmetry: 'read-only',
+    symmetry: 'no-write-handler',
     why: 'Converts loyalty balance and receipt totals for the GDPR data-export payload; the export is a pure read and persists no amount.',
   },
 };
@@ -203,7 +222,7 @@ describe('[MONEY-UNIT sweep] every read-side EUR conversion has a recorded write
           "  'write-converts'  — a client-supplied amount is persisted here; the write now calls eurToBgn()\n" +
           "  'symmetric-bgn'   — the surface that seeds the write form reads RAW BGN, so both sides agree\n" +
           "  'server-derived'  — no client-supplied amount is persisted on this surface\n" +
-          "  'read-only'       — this file has no write handler at all\n" +
+          "  'no-write-handler' — this file declares no POST/PUT/PATCH handler at all\n" +
           'If you pick write-converts, add a test that asserts the PERSISTED value, not the response.',
     ).toBe('all classified');
   });
