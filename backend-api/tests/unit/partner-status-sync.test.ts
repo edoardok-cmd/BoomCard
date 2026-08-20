@@ -196,25 +196,61 @@ describe('BC-ADMIN-PARTNER-STATUS-SYNC-025 — Partner status enum normalization
     );
   });
 
-  it('should accept database-mapped enum value ODOBRENA (NEGOTIATION → ONBOARDING, then ONBOARDING → APPROVED)', async () => {
-    mockPartnerFindUnique.mockResolvedValueOnce(partnerRow({ requestStatus: 'ONBOARDING' }));
-    mockPartnerUpdate.mockResolvedValueOnce(partnerRow({ requestStatus: 'APPROVED' }));
+  // BC-QA-045: this case previously asserted that PATCH /:id/status could take a
+  // partner ONBOARDING → APPROVED (200). That edge has been removed from
+  // VALID_PIPELINE_TRANSITIONS because reaching APPROVED through this endpoint
+  // skipped the activation-link issuance that POST /:id/approve performs (spec
+  // §1.6, §3.5 step 3), leaving a partner marked approved with no way to
+  // activate. This suite's actual subject is enum NORMALIZATION, not the legality
+  // of that particular edge, so both halves of the normalization contract are
+  // still covered here:
+  //   • ONBOARDING (database name == TypeScript name) still advances from
+  //     NEGOTIATION and still writes the TypeScript enum value.
+  //   • ODOBRENA is still normalized to APPROVED — demonstrated by the rejection
+  //     naming APPROVED rather than echoing the raw 'ODOBRENA' it was sent.
+  it('should accept database-mapped enum values: ONBOARDING advances from NEGOTIATION, ODOBRENA normalizes to APPROVED but is refused', async () => {
+    // ── Part 1: NEGOTIATION → ONBOARDING is a legal advance ──────────────────
+    mockPartnerFindUnique.mockResolvedValueOnce(partnerRow({ requestStatus: 'NEGOTIATION' }));
+    mockPartnerUpdate.mockResolvedValueOnce(partnerRow({ requestStatus: 'ONBOARDING' }));
 
-    const response = await request(makeApp())
+    let response = await request(makeApp())
       .patch('/api/admin/partner-requests/p1/status')
-      .send({ requestStatus: 'ODOBRENA' }); // Database-mapped value, not 'APPROVED'
+      .send({ requestStatus: 'ONBOARDING' });
 
     expect(response.status).toBe(200);
-    expect(response.body.partner.requestStatus).toBe('APPROVED');
-
+    expect(response.body.partner.requestStatus).toBe('ONBOARDING');
     expect(mockPartnerUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'p1' },
         data: expect.objectContaining({
-          requestStatus: PartnerRequestStatus.APPROVED,
+          requestStatus: PartnerRequestStatus.ONBOARDING,
         }),
       })
     );
+
+    // ── Part 2: ODOBRENA normalizes to APPROVED, which PATCH now refuses ─────
+    mockPartnerUpdate.mockClear();
+    mockPartnerFindUnique.mockResolvedValueOnce(partnerRow({ requestStatus: 'ONBOARDING' }));
+
+    response = await request(makeApp())
+      .patch('/api/admin/partner-requests/p1/status')
+      .send({ requestStatus: 'ODOBRENA' }); // Database-mapped value, not 'APPROVED'
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('Cannot transition');
+    expect(response.body.error).toContain('ONBOARDING');
+    // Proves the DB-mapped name was normalized before the transition check: the
+    // error names APPROVED, which only the normalized value can produce.
+    expect(response.body.error).toContain('APPROVED');
+    expect(response.body.allowedTransitions).toBeDefined();
+    expect(response.body.allowedTransitions).not.toContain('APPROVED');
+
+    // A refused transition must not attempt a write. This assertion also keeps
+    // the `mockResolvedValueOnce` queues balanced: Part 2 queues a findUnique and
+    // no update, so nothing is left unconsumed to leak into the next test (the
+    // `beforeEach` runs jest.clearAllMocks(), which clears recorded calls but NOT
+    // queued one-shot implementations).
+    expect(mockPartnerUpdate).not.toHaveBeenCalled();
   });
 
   it('should accept TypeScript enum values for backward compatibility', async () => {

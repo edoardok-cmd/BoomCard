@@ -410,7 +410,22 @@ router.get('/subscriber/:userId', requirePermission('cashback.read'), async (req
     const { userId } = req.params;
     const { page, limit } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
-    const result = await getSubscriberCashbackEntries(userId, page, limit);
+    // BC-QA-045 — `?status=` was never read here, so this endpoint always
+    // returned the subscriber's UNFILTERED entry list while each row still
+    // carried its own derived status, making a filtered view silently show every
+    // other state too. Filtering it is required by the contract in
+    // tests/integration/bc-admin-spec-reaudit3-trialpending-label.test.ts, whose
+    // last two cases call this endpoint with `?status=TrialPending` and
+    // `?status=Pending` and assert the other state is absent. Parsed exactly like
+    // GET /entries and /entries/export above (unknown values fall back to "no
+    // filter" rather than erroring, matching those two endpoints' behaviour).
+    const statusParam = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const validStatuses: CashbackEntryStatus[] = ['Pending', 'TrialPending', 'Cleared', 'Locked', 'Paid', 'Expired', 'Voided'];
+    const statusFilter = statusParam && (validStatuses as string[]).includes(statusParam)
+      ? (statusParam as CashbackEntryStatus)
+      : undefined;
+
+    const result = await getSubscriberCashbackEntries(userId, page, limit, statusFilter);
 
     // entry.amount is BGN-denominated — convert to EUR before returning
     // (BC-QA-031 — EUR-only responses).

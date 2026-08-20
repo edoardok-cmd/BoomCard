@@ -1911,8 +1911,69 @@ export class AuthService {
       throw new AppError('Password is incorrect', 401);
     }
 
-    const anonymizedEmail = `deleted_${uuid()}@removed.local`;
+    // One token per erasure event, shared by every uniqueness-bearing sentinel
+    // below so an anonymized row stays internally consistent (and so a support
+    // engineer can tell "these three opaque values belong to one deletion").
+    const erasureToken = uuid();
+    const anonymizedEmail = `deleted_${erasureToken}@removed.local`;
 
+    // BC-QA-045 — this block used to write `null` into firstName / lastName /
+    // phone. All three are non-nullable `String` columns in schema.prisma, so
+    // Prisma rejected the payload with a client-side PrismaClientValidationError
+    // BEFORE any SQL was emitted, and the route answered 400. Net effect: GDPR
+    // Art. 17 right-to-erasure was completely broken — no user could ever delete
+    // their account. Replaced with sentinels that carry no personal data.
+    //
+    // Choice of sentinel per column:
+    //
+    //   email     `deleted_<uuid>@removed.local` — UNCHANGED and already correct.
+    //             `@@unique([email, role])` is a TOTAL unique index, so the uuid
+    //             is what keeps repeated erasures from colliding.
+    //
+    //   firstName 'Deleted' / lastName 'User' — neither column has a uniqueness
+    //             constraint, so a shared constant is safe here (unlike phone
+    //             below). Fixed, human-readable placeholders keep admin listings
+    //             and any `${firstName} ${lastName}` interpolation legible
+    //             instead of rendering a blank or an opaque token.
+    //
+    //   phone     `deleted_<uuid>` — deliberately UNIQUE PER ERASURE rather than
+    //             the empty string, so that erasure cannot be refused by a
+    //             uniqueness collision under EITHER shape of the (phone, role)
+    //             index:
+    //               • schema.prisma declares that index PARTIAL
+    //                 (`where btrim(phone) <> ''`) and documents '' as the "no
+    //                 phone on file" value. Under a partial index '' would be
+    //                 safe, because blanks are excluded from it.
+    //               • The local `boomcard_test` database this was developed
+    //                 against carries the plain TOTAL
+    //                 `User_phone_role_key ON "User"(phone, role)` instead —
+    //                 migration 20260810160000's partial rewrite is recorded as
+    //                 applied there without its content having run. Under a total
+    //                 index, the SECOND user of a given role to erase would hit a
+    //                 P2002 and be refused. (That staleness is a property of that
+    //                 developer database; migration 20260810160000's own header
+    //                 asserts the opposite about production, and this comment
+    //                 makes no claim about which shape production carries.)
+    //             A per-erasure uuid is collision-free under both, so the choice
+    //             does not depend on resolving that question.
+    //             It also cannot shadow a real phone number — not because the
+    //             stored value is format-constrained (the only normalisation is a
+    //             bare `.trim()`; see the BC-QA-032 duplicate pre-check ~line 422,
+    //             which does not restrict the shape) but because the token is a
+    //             freshly generated uuid: it is not predictable in advance, so no
+    //             caller can pre-place a value that would collide with a future
+    //             erasure.
+    //
+    // NOTE on the alternative, writing real NULLs: schema.prisma types all three
+    // columns as non-nullable `String`, which is why the old code's `null` was
+    // rejected client-side. Some databases (including the local `boomcard_test`)
+    // do physically permit NULL in these columns, so `$executeRaw` could force
+    // one in — but that is NOT the right fix: Prisma's generated types declare
+    // `firstName: string`, so every reader in `src/` assumes non-null and would
+    // start receiving nulls it is not typed to handle. GDPR Art. 17 requires the
+    // personal data to be GONE, which sentinels achieve; it does not require the
+    // column to be NULL.
+    //
     // Anonymize PII and soft-delete (DELETED + deletedAt for GDPR erasure audit trail).
     // Background jobs filter status !== 'ACTIVE' so DELETED users are excluded from all
     // automated emails and processing without requiring a hard delete.
@@ -1920,9 +1981,9 @@ export class AuthService {
       where: { id: userId },
       data: {
         email: anonymizedEmail,
-        firstName: null,
-        lastName: null,
-        phone: null,
+        firstName: 'Deleted',
+        lastName: 'User',
+        phone: `deleted_${erasureToken}`,
         avatar: null,
         status: 'DELETED',
         deletedAt: new Date(),
@@ -1990,10 +2051,25 @@ export class AuthService {
         `,
       });
     } catch {
-      logger.warn(`Could not send account deletion email to ${user.email}`);
+      // BC-QA-045 — log the id, never the address. See the note below: this runs
+      // AFTER the anonymizing update, so `user.email` here is the pre-update
+      // (real) address of someone who has just exercised right-to-erasure.
+      logger.warn(`Could not send account deletion email for user: ${userId}`);
     }
 
-    logger.info(`Account deleted (anonymized) for user: ${user.email}`);
+    // BC-QA-045 — this used to interpolate `user.email`. `user` is the object
+    // read BEFORE the anonymizing update, so that wrote the erased user's real
+    // email address into the application log at info level, moments after
+    // scrubbing it from the database. Logs are a separate sink with their own
+    // retention and their own access control, so that quietly re-published the
+    // exact identifier the GDPR Art. 17 request existed to remove, and undid part
+    // of this erasure for however long the log window is. The user id is
+    // sufficient to correlate the event and is not personal data on its own.
+    //
+    // NB: the confirmation email above legitimately needs the original address —
+    // it has to reach a mailbox — so `to: user.email` there is correct and must
+    // stay. It is only the LOG sinks that must not receive it.
+    logger.info(`Account deleted (anonymized) for user: ${userId}`);
 
     const response: Record<string, any> = {
       message: 'Account deleted successfully. Data will be fully removed within 30 days.',

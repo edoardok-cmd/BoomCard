@@ -1280,8 +1280,29 @@ describe('Authentication Flow (F01)', () => {
 
   describe('DELETE /api/auth/account', () => {
     it('should anonymize user data on deletion', async () => {
-      const { accessToken, user, password } = await createTestUser();
+      // BC-QA-045: distinctive names are passed explicitly, and they are
+      // load-bearing — without them this test fails against a CORRECT
+      // implementation.
+      //
+      // `createTestUser`'s default lastName is 'User', which is byte-identical to
+      // the lastName erasure sentinel. So with the defaults,
+      // `expect(dbUser!.lastName).not.toBe(originalLastName)` below compares
+      // 'User' against 'User' and goes RED even though the row was anonymized
+      // exactly as intended — a false negative, not a vacuous pass. (Verified:
+      // dropping these two overrides fails at that line with
+      // `Expected: not "User"`.)
+      //
+      // Distinct originals make the "no longer carries the original value" half
+      // of each assertion able to tell erasure from a no-op, which is the whole
+      // point of asserting it alongside the sentinel-shape half.
+      const { accessToken, user, password } = await createTestUser({
+        firstName: 'Erasure',
+        lastName: 'Subject',
+      });
       const originalEmail = user.email;
+      const originalFirstName = user.firstName;
+      const originalLastName = user.lastName;
+      const originalPhone = user.phone;
 
       const res = await authRequest(accessToken)
         .delete('/api/auth/account')
@@ -1297,9 +1318,38 @@ describe('Authentication Flow (F01)', () => {
       expect(dbUser!.email).not.toBe(originalEmail);
       expect(dbUser!.email).toContain('deleted_');
       expect(dbUser!.email).toContain('@removed.local');
-      expect(dbUser!.firstName).toBeNull();
-      expect(dbUser!.lastName).toBeNull();
-      expect(dbUser!.phone).toBeNull();
+
+      // BC-QA-045 — these three used to assert `toBeNull()`. That was the wrong
+      // contract, and it was never satisfiable through Prisma: `firstName`,
+      // `lastName` and `phone` are non-nullable `String` columns in
+      // schema.prisma, so writing null was rejected client-side with a
+      // PrismaClientValidationError and the endpoint 400'd — GDPR Art. 17
+      // right-to-erasure was completely broken, for every user, in production.
+      //
+      // The correct contract is SENTINEL anonymization, not NULL:
+      //   • Prisma's generated types declare `firstName: string` /
+      //     `lastName: string` / `phone: string`, and every reader in `src/`
+      //     assumes non-null. Forcing nulls in (which raw SQL could do, since the
+      //     columns are physically nullable on some databases) would hand those
+      //     readers a value they are not typed to handle — a worse contract than
+      //     the one being fixed.
+      //   • Art. 17 requires the personal data to be GONE. It says nothing about
+      //     the column being NULL. A sentinel carrying no personal data satisfies
+      //     it.
+      //
+      // These assertions are therefore STRICTER than the originals, not weaker:
+      // each field must both (a) no longer carry the original value and (b) match
+      // the documented anonymized shape.
+      expect(dbUser!.firstName).not.toBe(originalFirstName);
+      expect(dbUser!.firstName).toBe('Deleted');
+      expect(dbUser!.lastName).not.toBe(originalLastName);
+      expect(dbUser!.lastName).toBe('User');
+      expect(dbUser!.phone).not.toBe(originalPhone);
+      expect(dbUser!.phone.startsWith('deleted_')).toBe(true);
+      // The phone sentinel is unique per erasure, so it must not embed any part
+      // of the real number it replaced.
+      expect(dbUser!.phone).not.toContain(originalPhone.replace('+', ''));
+
       expect(dbUser!.status).toBe('DELETED');
 
       // Cleanup the anonymized user

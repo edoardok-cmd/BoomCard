@@ -5,7 +5,7 @@ import { auditMiddleware, writeAudit } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { stripeService } from '../services/stripe.service';
 import { notificationService } from '../services/notification.service';
-import { getSubscriberCashbackEntries } from '../services/adminCashback.service';
+import { getSubscriberCashbackEntries, CashbackEntryStatus } from '../services/adminCashback.service';
 import { computeRiskForUsers, persistRiskAssessments } from '../services/userRisk.service';
 import { planDisplayName } from '../utils/planDisplayName';
 import { logger } from '../utils/logger';
@@ -409,7 +409,42 @@ router.get('/:userId/cashback', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
     const { userId } = req.params;
     const { page, limit } = parsePagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
-    const result = await getSubscriberCashbackEntries(userId, page, limit);
+    // BC-QA-045 — this route is documented above as a MIRROR of
+    // GET /api/admin/cashback/subscriber/:userId, so it must honour the same
+    // `?status=` filter. It previously dropped the parameter and returned every
+    // state, and fixing only the cashback-domain copy would have left the two
+    // mirrored endpoints disagreeing for the same query string — on the route the
+    // spec §4 Абонати navigation actually reaches. Parsed identically to the
+    // sibling (unknown values fall back to "no filter" rather than erroring).
+    const statusParam = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const validStatuses: CashbackEntryStatus[] = ['Pending', 'TrialPending', 'Cleared', 'Locked', 'Paid', 'Expired', 'Voided'];
+    const statusFilter = statusParam && (validStatuses as string[]).includes(statusParam)
+      ? (statusParam as CashbackEntryStatus)
+      : undefined;
+
+    const result = await getSubscriberCashbackEntries(userId, page, limit, statusFilter);
+
+    // entry.amount is BGN-denominated — convert to EUR before returning
+    // (BC-QA-031 — EUR-only responses).
+    //
+    // BC-QA-045: this handler previously did `res.json({ success: true, ...result })`
+    // with no conversion, so it shipped the raw stored BGN figure while its mirror
+    // GET /api/admin/cashback/subscriber/:userId returned the same row converted —
+    // the two endpoints disagreed by a factor of EUR_TO_BGN_RATE on the money
+    // field, with no currency marker in either payload. EUR is the contract:
+    // src/utils/currency.ts states it without qualification ("every response field
+    // is a single EUR scalar") and says to apply the helper AT THE ROUTE BOUNDARY,
+    // this file already honours it at its three other money sites, and the route's
+    // own invariant row INV-CURGAP-005 asserts these responses are "money-accurate,
+    // EUR-only". So the mirror was the side that was wrong, not the sibling.
+    //
+    // Scope note: `entry.receipt.totalAmount` is ALSO BGN-denominated and is
+    // converted by NEITHER route, so a single entry still mixes units. That is
+    // deliberately left alone here — it is pre-existing on both endpoints and is
+    // tracked under the BoomCard currency programme (BC-QA-031-FOLLOWUP-3), not
+    // this task. Do not "fix" it on one route only; that would recreate exactly the
+    // asymmetry this change removes.
+    const dataEur = result.data.map(entry => ({ ...entry, amount: bgnToEur(entry.amount) }));
 
     detach(writeAudit({
       actorUserId: (req as AuthRequest).user?.id ?? null,
@@ -420,7 +455,7 @@ router.get('/:userId/cashback', authenticate, authorize('ADMIN', 'SUPER_ADMIN'),
       userAgent: req.headers['user-agent'] ?? null,
     }), () => {});
 
-    res.json({ success: true, ...result });
+    res.json({ success: true, ...result, data: dataEur });
   } catch (error: any) {
     if (error?.statusCode === 404) {
       res.status(404).json({ success: false, error: error.message });
