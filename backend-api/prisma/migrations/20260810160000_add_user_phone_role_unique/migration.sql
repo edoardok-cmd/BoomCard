@@ -159,9 +159,45 @@
 --
 -- The pre-flight check below is retained (scoped to the predicate the index
 -- actually uses) purely so that a deploy attempted BEFORE the dedupe fails
--- with an enumerated, actionable message instead of a bare 23505 naming one
--- arbitrary row. It does not make the migration idempotent and is not a
--- substitute for running the dedupe.
+-- with an actionable message instead of a bare 23505 naming one arbitrary
+-- row. It does not make the migration idempotent and is not a substitute for
+-- running the dedupe.
+--
+-- ============================================================================
+-- THE PRE-FLIGHT MESSAGE MUST NOT CONTAIN CUSTOMER DATA
+-- ============================================================================
+-- The first version of this rewrite built its abort message with
+-- `format('phone=%L role=%s (rows=%s)', "phone", "role", cnt)` over up to 50
+-- groups — i.e. it printed real customers' phone numbers. That was survivable
+-- while migrations ran inside the app machine's start command, where stderr
+-- only reached Fly's log stream (which needs a Fly token to read).
+--
+-- It is NOT survivable now. The ops half of BC-QA-051 moved migrations to
+-- `fly.toml [deploy] release_command`. `flyctl deploy` streams the release
+-- command's own output into the CD step's stdout — that is how an operator
+-- learns why a release aborted — and .github/workflows/deploy-fly.yml runs on
+-- `push` to `master` under `paths: ['backend-api/**']`, which this very
+-- migration matches. The repository (edoardok-cmd/BoomCard) is PUBLIC, so
+-- Actions logs are world-readable with no authentication and are retained for
+-- 90 days. Merging before the dedupe has run IS therefore the leak path, and
+-- that is the default ordering, not an exotic one.
+--
+-- (The same review round also had the workflow dumping `flyctl logs` on
+-- failure. That step was removed in the companion ops commit — see the long
+-- comment above "Dump Fly diagnostics on failure" in deploy-fly.yml. The
+-- release_command path above is independent of it and is the one this file
+-- has to defend against: the guard's own message is the payload there.)
+--
+-- Therefore: this message reports COUNTS and ROLES only. `UserRole` is a
+-- fixed enum of five values and carries no personal data; a group count and a
+-- row count carry none either. The operator has database access by
+-- definition — anyone able to act on this message can run the SELECT it
+-- names — so withholding the values costs nothing operationally. The values
+-- also remain available locally from the dedupe script's own plan output.
+--
+-- RULE FOR ANY FUTURE EDIT OF THIS FILE: nothing that can reach `RAISE`,
+-- `RAISE NOTICE`, or a Postgres error DETAIL may carry a phone, an email, a
+-- name or a user id. Aggregate over them instead.
 --
 -- Race note: the pre-flight SELECT does not itself lock "User", so in
 -- principle a concurrent INSERT could introduce a new duplicate between the
@@ -172,34 +208,41 @@
 
 DO $$
 DECLARE
-  conflict_count integer;
-  conflict_report text;
+  conflict_groups integer;
+  conflict_rows   integer;
+  role_breakdown  text;
 BEGIN
-  SELECT count(*) INTO conflict_count
+  -- Counts and roles only. See "THE PRE-FLIGHT MESSAGE MUST NOT CONTAIN
+  -- CUSTOMER DATA" above before adding anything to this block.
+  SELECT count(*), coalesce(sum(cnt), 0)
+  INTO conflict_groups, conflict_rows
   FROM (
-    SELECT "phone", "role"
+    SELECT count(*) AS cnt
     FROM "User"
     WHERE btrim("phone") <> ''
     GROUP BY "phone", "role"
     HAVING count(*) > 1
   ) dupes;
 
-  IF conflict_count > 0 THEN
-    SELECT string_agg(format('phone=%L role=%s (rows=%s)', "phone", "role", cnt), E'\n')
-    INTO conflict_report
+  IF conflict_groups > 0 THEN
+    SELECT string_agg(format('%s: %s group(s)/%s row(s)', "role", groups, rows_in_role), ', '
+                      ORDER BY "role")
+    INTO role_breakdown
     FROM (
-      SELECT "phone", "role", count(*) AS cnt
-      FROM "User"
-      WHERE btrim("phone") <> ''
-      GROUP BY "phone", "role"
-      HAVING count(*) > 1
-      ORDER BY cnt DESC
-      LIMIT 50
-    ) reported;
+      SELECT "role", count(*) AS groups, sum(cnt) AS rows_in_role
+      FROM (
+        SELECT "role", count(*) AS cnt
+        FROM "User"
+        WHERE btrim("phone") <> ''
+        GROUP BY "phone", "role"
+        HAVING count(*) > 1
+      ) g
+      GROUP BY "role"
+    ) by_role;
 
     RAISE EXCEPTION
-      'BC-QA-051: cannot create partial unique index "User_phone_role_key" — % non-blank (phone, role) pair(s) still collide (showing up to 50). Run backend-api/prisma/scripts/bc-qa-051-dedupe-phone-role.js (trial mode first) against this database, then re-run migrate deploy. Colliding pairs: %',
-      conflict_count, conflict_report;
+      'BC-QA-051: cannot create partial unique index "User_phone_role_key" — % non-blank (phone, role) group(s) covering % row(s) still collide. Colliding VALUES are deliberately omitted from this message: it can surface in a PUBLIC CI log via fly.toml release_command. Breakdown by role: %. To see the offending rows, query the database directly: SELECT phone, role, count(*) FROM "User" WHERE btrim(phone) <> '''' GROUP BY 1, 2 HAVING count(*) > 1; Then run backend-api/prisma/scripts/bc-qa-051-dedupe-phone-role.js (trial mode first) against this database and re-run migrate deploy.',
+      conflict_groups, conflict_rows, role_breakdown;
   END IF;
 END $$;
 

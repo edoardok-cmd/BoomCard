@@ -20,6 +20,20 @@ partner-dashboard/.env.production
 *.db-journal
 backend-api/prisma/*.db
 
+# BC-QA-051 dedupe before-images. Each one holds the phone number, email and id
+# of every account the dedupe re-phoned — real customer PII — and it is the only
+# record of the original numbers. This repository is PUBLIC, so a single
+# `git add -A` on a stray copy would publish them permanently and undoing it
+# would need a history rewrite.
+#
+# The script defaults to writing these to ~/.bc-qa-051-before-images/ and
+# REFUSES an explicit --out that resolves inside a git working tree, so this
+# pattern should never actually match anything. It is the third layer, kept
+# unanchored so it applies at any depth (the backend-api/.gitignore copy only
+# covers backend-api/, which is not where the file lands when the script is run
+# from the repository root).
+bc-qa-051-before-image-*.json
+
 # Logs
 *.log
 /tmp/*.log

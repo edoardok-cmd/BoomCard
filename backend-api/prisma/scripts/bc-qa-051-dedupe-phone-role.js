@@ -62,21 +62,30 @@
  *
  * MODES
  * -----
- *   (default)                 TRIAL. Opens a transaction, writes the
- *                             before-image file, runs the REAL update
- *                             statements, verifies the result, then
- *                             unconditionally ROLLS BACK. The trial code path
- *                             contains no COMMIT statement at all.
- *   --commit --confirm-database <name>
- *                             APPLY FOR REAL. Refuses unless <name> matches the
- *                             database it actually connected to.
- *   --rollback-from <file>    Restore phones from a before-image file. Trial by
- *                             default; add --commit --confirm-database <name>
- *                             to actually write.
+ *   (default)                 TRIAL. Opens a transaction, locks "User" against
+ *                             concurrent writers, writes the before-image file,
+ *                             runs the REAL update statements, verifies the
+ *                             result, then unconditionally ROLLS BACK. The
+ *                             trial code path contains no COMMIT statement.
+ *   --commit dedupe --confirm-database <name>
+ *                             APPLY FOR REAL. `--commit` NAMES the operation
+ *                             and must match the operation the other flags
+ *                             describe; `--confirm-database` must match the
+ *                             database actually connected to. Both are checked.
+ *   --rollback-from <file>    Restore phones from a before-image file (TRIAL).
+ *   --rollback-from <file> --commit rollback --confirm-database <name>
+ *                             …and actually write it.
  *
  * Other flags:
- *   --out <path>              Where to write the before-image (default:
- *                             ./bc-qa-051-before-image-<db>-<ISO ts>.json)
+ *   --out <path>              Where to write the before-image. Must be OUTSIDE
+ *                             any git working tree — the file is customer PII
+ *                             and this repository is public. Default:
+ *                             ~/.bc-qa-051-before-images/…json (mode 0600).
+ *   --show-values             Print phone numbers and ids literally instead of
+ *                             as stable 8-hex digests. Off by default so that
+ *                             pasting this script's output into a ticket, a
+ *                             chat, an agent transcript or a CI log cannot leak
+ *                             customer data.
  *
  * The database is taken from DATABASE_URL. The script prints the host, port,
  * database and user it is about to touch before doing anything, and never
@@ -85,15 +94,53 @@
  *
  * RUNBOOK
  * -------
+ *   0. RUN THIS BEFORE THE BRANCH REACHES `master`.
+ *      .github/workflows/deploy-fly.yml fires on push to master under
+ *      paths: ['backend-api/**'], and `fly.toml [deploy] release_command`
+ *      then runs `prisma migrate deploy` on production. If the collisions are
+ *      still there when that happens, the migration's pre-flight guard aborts
+ *      the release (the previous release keeps serving — no new outage) but
+ *      the failure lands in a PUBLIC GitHub Actions log. The guard's message
+ *      is redacted for exactly that reason; do not rely on that alone.
  *   1. export DATABASE_URL=…            (never inline it in a command)
  *   2. node prisma/scripts/bc-qa-051-dedupe-phone-role.js
- *        → read the plan, keep the before-image file it writes
- *   3. node prisma/scripts/bc-qa-051-dedupe-phone-role.js --commit --confirm-database boomcard
+ *        → read the plan; keep the before-image file it names
+ *   3. node prisma/scripts/bc-qa-051-dedupe-phone-role.js \
+ *        --commit dedupe --confirm-database boomcard
  *   4. npx prisma migrate resolve --rolled-back 20260810160000_add_user_phone_role_unique
  *   5. npx prisma migrate deploy
  *   Undo step 3 with:
  *      node prisma/scripts/bc-qa-051-dedupe-phone-role.js \
- *        --rollback-from <before-image.json> --commit --confirm-database boomcard
+ *        --rollback-from <before-image.json> --commit rollback \
+ *        --confirm-database boomcard
+ *
+ * WHAT STEP 5 ACTUALLY APPLIES
+ * ----------------------------
+ * Three migrations, not one. Besides this task's
+ * 20260810160000_add_user_phone_role_unique, production has never run
+ * 20260819120000_add_payment_provider_columns or
+ * 20260819120100_backfill_and_constrain_payment_provider — they have no row in
+ * `_prisma_migrations` at all, because `migrate deploy` stops at the first
+ * failure. They add `paymentProvider`/`providerOrderId` to `subscriptions` and
+ * `PendingSubscription`, backfill them from `payseraOrderId` /
+ * `stripeSubscriptionId`, and add a composite unique on each table. Checked
+ * read-only against production on 2026-08-20: 0 duplicate `payseraOrderId`
+ * groups, 0 duplicate `stripeSubscriptionId` groups, 0 rows with both set, so
+ * both apply cleanly as things stand — but re-check before running step 5 if
+ * meaningful time has passed, because a new duplicate would abort the release
+ * the same way this migration did.
+ *
+ * BLAST RADIUS OF STEP 3, MEASURED AGAINST PRODUCTION (read-only, 2026-08-20)
+ * --------------------------------------------------------------------------
+ * 51 accounts lose the phone number stored on their "User" row:
+ *   USER    ACTIVE 9 · PENDING_VERIFICATION 24 · DELETED 2 · ARCHIVED 2
+ *   PARTNER ACTIVE 3 · PENDING_VERIFICATION 11
+ * i.e. 12 live accounts will no longer have a reachable number on file. None
+ * of the 51 is `phoneVerified`, so no verified-phone state is invalidated. 14
+ * are linked to a "Partner" row (2 of those partners ACTIVE), but "Partner"
+ * carries its own `phone` column for the business contact and is untouched.
+ * The keeper in every group — the oldest row by "createdAt" — keeps both its
+ * number and its "updatedAt".
  *
  * ROLLBACK ORDERING — READ THIS
  * -----------------------------
@@ -108,34 +155,157 @@
 'use strict';
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { Client } = require('pg');
 
 const PLACEHOLDER_PREFIX = 'BCQA051-DUP-';
 
+// ─── PII in output ──────────────────────────────────────────────────────────
+//
+// Same rule as the migration's pre-flight guard (see its header): nothing this
+// script prints may carry a phone number, an email or a user id unless the
+// operator asks for it explicitly with --show-values. Console output from a
+// destructive production script routinely ends up pasted into a ticket, a chat
+// message, an agent transcript or a CI log, and this repository is public.
+//
+// The redacted form is a stable 8-hex-character digest, so two lines about the
+// same value are still visibly about the same value (you can group and count
+// and correlate) without the value itself being recoverable from the output.
+// The real values live in the before-image file, which is written 0600 outside
+// the working tree — that is the one artefact allowed to hold them.
+function digest(value) {
+  return crypto.createHash('sha256').update(String(value)).digest('hex').slice(0, 8);
+}
+
+function redactPhone(phone, showValues) {
+  return showValues ? `phone=${JSON.stringify(phone)}` : `phone#${digest(phone)}`;
+}
+
+function redactId(id, showValues) {
+  return showValues ? id : `id#${digest(id)}`;
+}
+
+// ─── before-image location ──────────────────────────────────────────────────
+//
+// The before-image holds every touched row's phone, email, id, role and status
+// — real customer PII — and it is the only record of the original numbers.
+//
+// It used to default to a bare filename resolved against the PROCESS WORKING
+// DIRECTORY. Run from `backend-api/` that landed on a path covered by
+// backend-api/.gitignore; run from the repository root (an entirely natural
+// invocation) it landed in the root of a PUBLIC repository as an untracked,
+// UN-ignored file, one `git add -A` away from being published permanently.
+//
+// So: default to a private directory in the operator's home, outside any
+// checkout, and refuse an explicit --out that resolves inside a git working
+// tree. The .gitignore rules (repo root and backend-api/) are kept as a third
+// layer for anyone who overrides this in future.
+const DEFAULT_OUT_DIR = path.join(os.homedir(), '.bc-qa-051-before-images');
+
+function enclosingGitWorkTree(startDir) {
+  let dir = path.resolve(startDir);
+  for (;;) {
+    if (fs.existsSync(path.join(dir, '.git'))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+function resolveOutPath(argsOut, dbName) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `bc-qa-051-before-image-${dbName}-${stamp}.json`;
+
+  if (!argsOut) {
+    fs.mkdirSync(DEFAULT_OUT_DIR, { recursive: true, mode: 0o700 });
+    return path.join(DEFAULT_OUT_DIR, filename);
+  }
+
+  const outPath = path.resolve(argsOut);
+  const repo = enclosingGitWorkTree(path.dirname(outPath));
+  if (repo) {
+    throw new Error(
+      `refusing to write the before-image to ${outPath}: that path is inside the git working ` +
+        `tree at ${repo}. The file contains customer phone numbers, emails and ids, and this ` +
+        'repository is public. Choose a path outside any checkout, or omit --out to use ' +
+        `${DEFAULT_OUT_DIR}.`,
+    );
+  }
+  return outPath;
+}
+
 // ─── argument parsing ───────────────────────────────────────────────────────
+
+const OPERATIONS = ['dedupe', 'rollback'];
+
+// Every value-taking flag goes through this. Previously the parser used a bare
+// `argv[++i]`, which silently yielded `undefined` when the value was missing —
+// and because the operation was then INFERRED from `if (args.rollbackFrom)`,
+// typing `--commit --confirm-database <db> --rollback-from` with the filename
+// lost off the end of the line ran the DEDUPE in commit mode and wrote 51 rows.
+// `--confirm-database` was no help: it validates which DATABASE, never which
+// OPERATION. Fail closed instead, and refuse a value that is itself a flag.
+function requireValue(argv, i, flag) {
+  const v = argv[i];
+  if (v === undefined) {
+    throw new Error(`${flag} requires a value but the argument list ended. Refusing to guess.`);
+  }
+  if (v.startsWith('--')) {
+    throw new Error(
+      `${flag} requires a value but got the flag ${JSON.stringify(v)}. ` +
+        'Refusing to guess — did a value get dropped off the command line?',
+    );
+  }
+  return v;
+}
 
 function parseArgs(argv) {
   const args = {
-    commit: false,
+    commit: null, // null = trial; otherwise the operation the caller declared
     confirmDatabase: null,
     rollbackFrom: null,
     out: null,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
-    if (a === '--commit') args.commit = true;
-    else if (a === '--confirm-database') args.confirmDatabase = argv[++i];
-    else if (a === '--rollback-from') args.rollbackFrom = argv[++i];
-    else if (a === '--out') args.out = argv[++i];
+    if (a === '--commit') args.commit = requireValue(argv, ++i, '--commit');
+    else if (a === '--confirm-database') args.confirmDatabase = requireValue(argv, ++i, a);
+    else if (a === '--rollback-from') args.rollbackFrom = requireValue(argv, ++i, a);
+    else if (a === '--out') args.out = requireValue(argv, ++i, a);
+    else if (a === '--show-values') args.showValues = true;
     else if (a === '--help' || a === '-h') args.help = true;
     else throw new Error(`Unknown argument: ${a}`);
   }
-  if (args.commit && !args.confirmDatabase) {
-    throw new Error(
-      '--commit requires --confirm-database <name>. Pass the exact database name you ' +
-        'intend to modify; the script aborts if it does not match the database it connected to.',
-    );
+
+  // The operation is DERIVED from the flags, and when writing it must also be
+  // DECLARED and must match. Two independent statements of intent have to
+  // agree before anything is committed.
+  args.operation = args.rollbackFrom ? 'rollback' : 'dedupe';
+
+  if (args.commit !== null) {
+    if (!OPERATIONS.includes(args.commit)) {
+      throw new Error(
+        `--commit must name the operation: --commit ${OPERATIONS.join(' | --commit ')}. ` +
+          `Got ${JSON.stringify(args.commit)}.`,
+      );
+    }
+    if (args.commit !== args.operation) {
+      throw new Error(
+        `--commit ${args.commit} was requested, but the flags describe a ${args.operation} ` +
+          (args.operation === 'dedupe'
+            ? '(no --rollback-from was supplied). Refusing to run a different operation than the one you named.'
+            : '(--rollback-from was supplied). Refusing to run a different operation than the one you named.'),
+      );
+    }
+    if (!args.confirmDatabase) {
+      throw new Error(
+        `--commit ${args.commit} requires --confirm-database <name>. Pass the exact database ` +
+          'name you intend to modify; the script aborts if it does not match the database it ' +
+          'connected to.',
+      );
+    }
   }
   return args;
 }
@@ -334,9 +504,27 @@ async function applyRestore(client, beforeImage) {
 // runTrial() contains NO commit statement anywhere in its body — the rollback
 // in its `finally` is the only way out. runCommit() is a separate function.
 
+// SHARE ROW EXCLUSIVE conflicts with the ROW EXCLUSIVE lock that
+// INSERT/UPDATE/DELETE take, so it blocks concurrent WRITERS to "User" for the
+// life of the transaction while leaving readers alone. It is taken as the
+// FIRST statement, before the before-image snapshot is read, which is what
+// makes the snapshot and the UPDATE describe the same table state.
+//
+// Why this is not optional: the before-image used to be collected and written
+// to disk BEFORE `BEGIN`, with nothing holding the rows still in between, and
+// the only cross-check was a row COUNT. A concurrent UPDATE of a planned row
+// keeps the count identical, so it was invisible — the before-image kept the
+// pre-concurrent value and a later restore wrote that stale value back over
+// the newer one. On a phone column that means silently resurrecting a customer's
+// old number. The migration that follows takes a ShareLock on the same table
+// moments later anyway, so this costs nothing that the runbook was not already
+// paying.
+const LOCK_USER_TABLE = 'LOCK TABLE "User" IN SHARE ROW EXCLUSIVE MODE';
+
 async function runTrial(client, work) {
   await client.query('BEGIN');
   try {
+    await client.query(LOCK_USER_TABLE);
     return await work();
   } finally {
     await client.query('ROLLBACK');
@@ -347,6 +535,7 @@ async function runTrial(client, work) {
 async function runCommit(client, work) {
   await client.query('BEGIN');
   try {
+    await client.query(LOCK_USER_TABLE);
     const result = await work();
     await client.query('COMMIT');
     console.log('\n[commit] COMMIT issued — changes are now permanent.');
@@ -393,8 +582,13 @@ async function main() {
     console.log(` user      : ${actualDb.usr}`);
     console.log(` tls       : ${target.isLocal ? 'off (loopback)' : 'on, certificate verified'}`);
     console.log(
-      ` mode      : ${args.rollbackFrom ? 'ROLLBACK' : 'DEDUPE'} / ${args.commit ? 'COMMIT (writes)' : 'TRIAL (rolls back)'}`,
+      ` operation : ${args.operation.toUpperCase()}` +
+        (args.operation === 'rollback' ? ` (from ${path.resolve(args.rollbackFrom)})` : ''),
     );
+    console.log(
+      ` mode      : ${args.commit ? `COMMIT (writes) — declared as --commit ${args.commit}` : 'TRIAL (rolls back)'}`,
+    );
+    console.log(` values    : ${args.showValues ? 'SHOWN (--show-values)' : 'redacted'}`);
     console.log('══════════════════════════════════════════════════════════════\n');
 
     if (args.commit && args.confirmDatabase !== actualDb.db) {
@@ -405,7 +599,7 @@ async function main() {
       return 2;
     }
 
-    if (args.rollbackFrom) {
+    if (args.operation === 'rollback') {
       return await doRollback(client, args);
     }
     return await doDedupe(client, args, actualDb.db);
@@ -415,56 +609,83 @@ async function main() {
 }
 
 async function doDedupe(client, args, dbName) {
-  const groups = (await client.query(SELECT_GROUPS)).rows;
-  const targets = await collectBeforeImage(client);
-
-  console.log(`Colliding non-blank (phone, role) groups: ${groups.length}`);
-  for (const g of groups) {
-    console.log(
-      `  phone=${JSON.stringify(g.phone)} role=${g.role} rows=${g.cnt} (soft-deleted: ${g.soft_deleted})`,
-    );
-  }
-  const blanks = (
-    await client.query(`SELECT count(*)::int AS n FROM "User" WHERE btrim(phone) = ''`)
-  ).rows[0].n;
-  console.log(`\nBlank-phone rows (NOT touched, excluded by the partial index): ${blanks}`);
-  console.log(`Rows this run will re-phone: ${targets.length}\n`);
-
-  if (targets.length === 0) {
-    console.log('Nothing to do — no non-blank (phone, role) collisions remain.');
-    return 0;
-  }
-
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const outPath = path.resolve(args.out || `bc-qa-051-before-image-${dbName}-${stamp}.json`);
-  const beforeImage = {
-    task: 'BC-QA-051',
-    generatedAt: new Date().toISOString(),
-    database: dbName,
-    placeholderPrefix: PLACEHOLDER_PREFIX,
-    mode: args.commit ? 'commit' : 'trial',
-    rowCount: targets.length,
-    rows: targets.map((r) => ({
-      id: r.id,
-      phone: r.phone,
-      role: r.role,
-      email: r.email,
-      status: r.status,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at,
-      deletedAt: r.deleted_at,
-      groupSize: Number(r.group_size),
-      rankInGroup: Number(r.rn),
-      newPhone: PLACEHOLDER_PREFIX + r.id,
-    })),
-  };
-  fs.writeFileSync(outPath, `${JSON.stringify(beforeImage, null, 2)}\n`, { mode: 0o600 });
-  console.log(`Before-image written: ${outPath}`);
-  console.log('KEEP THIS FILE. It is the only record of the original phone numbers.\n');
+  // Everything below — the plan, the before-image and the UPDATE — happens
+  // inside one transaction that holds SHARE ROW EXCLUSIVE on "User" from its
+  // first statement (see LOCK_USER_TABLE). Nothing is read before the lock, so
+  // no concurrent writer can slip between the snapshot and the mutation.
+  let outPath = null;
 
   const work = async () => {
+    const groups = (await client.query(SELECT_GROUPS)).rows;
+    const targets = await collectBeforeImage(client);
+
+    console.log(`Colliding non-blank (phone, role) groups: ${groups.length}`);
+    for (const g of groups) {
+      console.log(
+        `  ${redactPhone(g.phone, args.showValues)} role=${g.role} rows=${g.cnt} ` +
+          `(soft-deleted: ${g.soft_deleted})`,
+      );
+    }
+    const blanks = (
+      await client.query(`SELECT count(*)::int AS n FROM "User" WHERE btrim(phone) = ''`)
+    ).rows[0].n;
+    console.log(`\nBlank-phone rows (NOT touched, excluded by the partial index): ${blanks}`);
+    console.log(`Rows this run will re-phone: ${targets.length}`);
+    if (!args.showValues) {
+      console.log('(phone values redacted — pass --show-values to print them literally)');
+    }
+    console.log('');
+
+    if (targets.length === 0) {
+      console.log('Nothing to do — no non-blank (phone, role) collisions remain.');
+      return [];
+    }
+
+    outPath = resolveOutPath(args.out, dbName);
+    const beforeImage = {
+      task: 'BC-QA-051',
+      generatedAt: new Date().toISOString(),
+      database: dbName,
+      placeholderPrefix: PLACEHOLDER_PREFIX,
+      mode: args.commit ? 'commit' : 'trial',
+      rowCount: targets.length,
+      rows: targets.map((r) => ({
+        id: r.id,
+        phone: r.phone,
+        role: r.role,
+        email: r.email,
+        status: r.status,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        deletedAt: r.deleted_at,
+        groupSize: Number(r.group_size),
+        rankInGroup: Number(r.rn),
+        newPhone: PLACEHOLDER_PREFIX + r.id,
+      })),
+    };
+    fs.writeFileSync(outPath, `${JSON.stringify(beforeImage, null, 2)}\n`, { mode: 0o600 });
+    console.log(`Before-image written: ${outPath}`);
+    console.log('KEEP THIS FILE. It is the only record of the original phone numbers.\n');
+
     const updated = await applyDedupe(client);
     console.log(`UPDATE affected ${updated.length} row(s).`);
+
+    // Verify the SET of touched ids, not just how many there were. A count
+    // comparison cannot tell "the 51 rows I planned" from "51 rows, one of
+    // which someone else changed under me".
+    const plannedIds = new Set(targets.map((r) => r.id));
+    const updatedIds = new Set(updated.map((r) => r.id));
+    const missing = [...plannedIds].filter((id) => !updatedIds.has(id));
+    const unexpected = [...updatedIds].filter((id) => !plannedIds.has(id));
+    if (missing.length > 0 || unexpected.length > 0) {
+      throw new Error(
+        `verification failed: the rows updated are not the rows planned — ` +
+          `${missing.length} planned row(s) were not updated, ` +
+          `${unexpected.length} unplanned row(s) were. ` +
+          `First divergent: ${redactId(missing[0] || unexpected[0], args.showValues)}`,
+      );
+    }
+
     const check = await verifyPostState(client, updated.length);
     console.log(
       `Post-state: ${check.remaining} colliding group(s) left, ` +
@@ -473,11 +694,6 @@ async function doDedupe(client, args, dbName) {
     );
     if (check.problems.length > 0) {
       throw new Error(`verification failed: ${check.problems.join('; ')}`);
-    }
-    if (updated.length !== targets.length) {
-      throw new Error(
-        `verification failed: planned ${targets.length} row(s) but UPDATE touched ${updated.length}`,
-      );
     }
     console.log('Verification OK.');
     return updated;
@@ -491,8 +707,14 @@ async function doDedupe(client, args, dbName) {
     await runTrial(client, work);
     console.log(
       'This was a TRIAL: the statements above really executed and really were rolled back.\n' +
-        `To apply for real: --commit --confirm-database ${dbName}`,
+        `To apply for real: --commit dedupe --confirm-database ${dbName}`,
     );
+    if (outPath) {
+      console.log(
+        `The trial's before-image at ${outPath} describes a state that was rolled back; ` +
+          'the commit run writes its own.',
+      );
+    }
   }
   return 0;
 }
@@ -502,12 +724,28 @@ async function doRollback(client, args) {
   if (beforeImage.task !== 'BC-QA-051' || !Array.isArray(beforeImage.rows)) {
     throw new Error(`${args.rollbackFrom} does not look like a BC-QA-051 before-image file.`);
   }
+  // Shape-check, not just type-check. `typeof === 'string'` alone does NOT
+  // catch the corruption this guard exists for: JSON.stringify turns a JS Date
+  // into a STRING ("2026-01-31T20:12:00.435Z"), so a before-image written by a
+  // build that lost the ::text casts in SELECT_TARGETS sailed through and the
+  // restore shifted all 51 rows by the local UTC offset. Require Postgres's
+  // `timestamp` text form (YYYY-MM-DD HH:MM:SS…) and reject the ISO `T…Z` form
+  // explicitly.
+  const PG_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/;
   for (const r of beforeImage.rows) {
-    if (typeof r.id !== 'string' || typeof r.phone !== 'string' || typeof r.updatedAt !== 'string') {
+    if (typeof r.id !== 'string' || typeof r.phone !== 'string') {
       throw new Error(
-        `before-image row ${JSON.stringify(r.id)} is missing a string id/phone/updatedAt — ` +
-          'refusing to restore from a file that cannot reproduce the exact prior state. ' +
-          '(Timestamps must be TEXT, not a JSON date: see the SELECT_TARGETS comment.)',
+        `before-image row ${JSON.stringify(r.id)} is missing a string id/phone — refusing to ` +
+          'restore from a file that cannot reproduce the exact prior state.',
+      );
+    }
+    if (typeof r.updatedAt !== 'string' || !PG_TIMESTAMP_RE.test(r.updatedAt)) {
+      throw new Error(
+        `before-image row ${redactId(r.id, args.showValues)} has updatedAt=` +
+          `${JSON.stringify(r.updatedAt)}, which is not a Postgres timestamp literal ` +
+          '("YYYY-MM-DD HH:MM:SS[.ffffff]"). An ISO "…T…Z" value here means the file was ' +
+          'written without the ::text casts in SELECT_TARGETS and every timestamp in it is ' +
+          'shifted by the writer\'s UTC offset. Refusing to restore from it.',
       );
     }
   }
@@ -538,7 +776,15 @@ async function doRollback(client, args) {
   const work = async () => {
     const { restored, skipped } = await applyRestore(client, beforeImage);
     console.log(`Restored ${restored.length} row(s); skipped ${skipped.length}.`);
-    for (const s of skipped) console.log(`  SKIPPED ${s.id}: ${s.reason}`);
+    for (const s of skipped) {
+      console.log(`  SKIPPED ${redactId(s.id, args.showValues)}: ${s.reason}`);
+    }
+    if (skipped.length > 0 && !args.showValues) {
+      console.log(
+        '  (ids redacted — pass --show-values to print them, or look them up in the ' +
+          'before-image file)',
+      );
+    }
     const stillPlaceholders = (
       await client.query(`SELECT count(*)::int AS n FROM "User" WHERE phone LIKE $1`, [
         `${PLACEHOLDER_PREFIX}%`,
@@ -553,15 +799,37 @@ async function doRollback(client, args) {
   return 0;
 }
 
-// Only run when invoked directly, so the connection helpers can be exercised
-// by a read-only probe without the script performing any work.
+// Only run when invoked directly. Requiring this file therefore performs no
+// work and opens no connection, which is what makes the exports below usable
+// from a REPL or a one-off check without side effects.
 if (require.main === module) {
   main()
     .then((code) => process.exit(code || 0))
     .catch((err) => {
-      console.error('\nFAILED:', err && err.message ? err.message : err);
+      // Print the message ONLY. A pg error object carries `detail`, which for a
+      // 23505 is `Key (phone, role)=(+359…, USER) already exists.` — i.e. a
+      // customer's phone number. Dumping the whole object here would defeat the
+      // redaction everywhere else in this file.
+      const message =
+        err && typeof err.message === 'string' && err.message.length > 0
+          ? err.message
+          : `${err && err.name ? err.name : 'Error'} (no message; details withheld — they can contain customer data)`;
+      console.error('\nFAILED:', message);
       process.exit(1);
     });
 }
 
-module.exports = { describeTarget, makeClient, parseArgs, PLACEHOLDER_PREFIX };
+// Exported for inspection and ad-hoc verification (e.g. checking what `ssl`
+// option makeClient actually resolves for a given URL before running anything
+// destructive). Nothing in the repository imports this module today.
+module.exports = {
+  describeTarget,
+  makeClient,
+  parseArgs,
+  resolveOutPath,
+  enclosingGitWorkTree,
+  redactPhone,
+  redactId,
+  PLACEHOLDER_PREFIX,
+  DEFAULT_OUT_DIR,
+};
