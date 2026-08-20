@@ -29,22 +29,39 @@ name: Deploy Backend (Fly.io)
 # `flyctl releases --app boomcard-api` tells the same story: v296..v306 are all
 # recorded `complete`, so Fly's own release ledger was green too.
 #
-# Three independent gates now stand between a bad build and a green check:
-#   1. `flyctl config validate --strict` BEFORE deploying — a malformed or
+# Four independent gates now stand between a bad build and a green check:
+#   1. A pre-deploy secrets-presence check (BC-QA-054) — fails BEFORE
+#      `flyctl deploy` even runs if a secret that shipped code requires at
+#      process start is missing from the target app. `dist/server.js` throws
+#      `Missing required environment variables: ...` at module load
+#      (src/server.ts) and `dist/worker.js` calls `process.exit(1)` at module
+#      load (src/lib/prisma.ts / src/worker.ts) under the same conditions —
+#      both are the identical crash-loop shape gate 3 below now catches, just
+#      one deploy earlier and without ever touching production machines.
+#   2. `flyctl config validate --strict` BEFORE deploying — a malformed or
 #      unrecognised fly.toml fails here instead of at deploy time.
-#   2. `flyctl deploy` itself now gates on the health check added to fly.toml
+#   3. `flyctl deploy` itself now gates on the health check added to fly.toml
 #      ([[http_service.checks]] on /health) and on `[deploy] release_command`.
 #      A migration failure aborts the release with the previous version still
 #      serving; a process that starts and dies fails the health check and
 #      therefore fails the deploy.
-#   3. A post-deploy assertion against the PUBLIC health URL. This is not
-#      redundant with (2): Fly's check runs INSIDE the machine against
+#   4. A post-deploy assertion against the PUBLIC health URL. This is not
+#      redundant with (3): Fly's check runs INSIDE the machine against
 #      127.0.0.1:3001, so it cannot see the edge — proxy routing,
 #      force_https/TLS, [http_service] service wiring, or a certificate
 #      problem. It also exercises `/api/health`, the exact base path that
 #      boomcard.bg's frontend calls, rather than the internal `/health`. The
 #      user-visible symptom of this outage was "boomcard-api.fly.dev/api/health
 #      times out", so that is precisely the thing CI should assert.
+#
+# The `worker` process (fly.toml [processes].worker) is still NOT covered by
+# gate 3 or gate 4 — neither `[[http_service.checks]]` nor the public
+# assertion above says anything about it, because it has no listening HTTP
+# port. Gate 1 above narrows that gap for the one class of worker failure a
+# pre-deploy check CAN catch (a missing required secret) but does not close
+# it for a worker that starts cleanly and dies later. See the comment above
+# `[processes]` in fly.toml for why a real Fly machine check for `worker`
+# could not be added in this pass.
 # ---------------------------------------------------------------------------
 
 on:
@@ -75,14 +92,65 @@ jobs:
       - name: Set up flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      # Gate 1 — catch a broken config before it can touch production.
+      # Gate 1 — fail BEFORE a deploy starts if a secret the shipped code
+      # requires at process start is missing on the target app.
+      #
+      # `required` below is the union of two independently-sourced lists,
+      # kept in sync BY HAND with the code that actually enforces them — if
+      # either list changes, update this one in the same commit:
+      #   - the `app` process: the exact `required` array in src/server.ts's
+      #     `NODE_ENV === 'production'` boot guard (JWT_SECRET, DATABASE_URL,
+      #     API_BASE_URL, FRONTEND_URL, STRIPE_SECRET_KEY, the five R2_*
+      #     vars, INTEGRATION_CREDENTIALS_KEY). Missing any of these throws
+      #     `Missing required environment variables: ...` at module load,
+      #     before the server ever binds a port.
+      #   - the `worker` process: DATABASE_URL (src/lib/prisma.ts, which
+      #     `worker.ts` transitively imports via sticker.service) and
+      #     REDIS_URL (src/worker.ts's own explicit
+      #     `FATAL: REDIS_URL is required` check). Both call
+      #     `process.exit(1)` at module load. Note REDIS_URL is deliberately
+      #     OPTIONAL for the `app` process (src/queues/redis.ts degrades to a
+      #     detached-promise fallback instead of throwing) — it is only
+      #     required here because the worker process has no such fallback.
+      #
+      # `flyctl secrets list --json` prints each secret's NAME and a DIGEST
+      # of its value, never the value itself — safe for this repository's
+      # public logs. This step reads secret names only.
+      - name: Verify required secrets are present before deploying
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          required=(
+            JWT_SECRET DATABASE_URL API_BASE_URL FRONTEND_URL
+            STRIPE_SECRET_KEY
+            R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
+            R2_BUCKET_NAME R2_PUBLIC_URL
+            INTEGRATION_CREDENTIALS_KEY
+            REDIS_URL
+          )
+          present="$(flyctl secrets list --app "$FLY_APP" --json | jq -r '.[].name')"
+          missing=()
+          for name in "${required[@]}"; do
+            if ! grep -qx "$name" <<<"$present"; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required Fly secret(s) on app $FLY_APP: ${missing[*]}"
+            echo "Set with: flyctl secrets set <NAME>=<value> --app $FLY_APP"
+            exit 1
+          fi
+          echo "All ${#required[@]} required secrets are present on $FLY_APP."
+
+      # Gate 2 — catch a broken config before it can touch production.
       - name: Validate fly.toml
         working-directory: backend-api
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: flyctl config validate --strict --config fly.toml --app "$FLY_APP"
 
-      # Gate 2 — the deploy itself. With [[http_service.checks]] defined in
+      # Gate 3 — the deploy itself. With [[http_service.checks]] defined in
       # fly.toml, flyctl now waits for machines to report HEALTHY and fails the
       # step if they do not within --wait-timeout. `[deploy] release_command`
       # runs the migration first; if it exits non-zero the deploy aborts here
@@ -115,16 +183,32 @@ jobs:
             --app "$FLY_APP" \
             --wait-timeout 10m
 
-      # Gate 3 — assert the public endpoint the frontend actually uses.
-      # Retries because a rolling deploy can briefly race the edge; fails hard
-      # if the API is not answering 200 within ~2.5 minutes.
+      # Gate 4 — assert the public endpoint the frontend actually uses.
+      # Retries because a rolling deploy can briefly race the edge.
+      #
+      # BC-QA-054: the retry budget is NOT `attempts * sleep`. Each attempt
+      # also spends up to `--max-time 10` inside curl itself before the 5s
+      # sleep even starts — a connection that hangs (a cold auto_start_machines
+      # wake-up, or a proxy timing out waiting for a machine to answer) burns
+      # the full 10s, not 0s. So the real per-attempt worst case is
+      # 10s (curl) + 5s (sleep) = 15s, and the true worst-case wall-clock
+      # budget is `attempts * 15s`. A previous revision of this comment claimed
+      # "~2.5 minutes" (30 * 5s — the sleep alone, ignoring curl's own
+      # timeout), which undersold the real bound by 3x: 30 * 15s = 450s = 7.5
+      # minutes was the ACTUAL prior worst case, exactly on the boundary of
+      # the cold-machine-wake case this gate needs to tolerate, with zero
+      # margin. `attempts` is raised from 30 to 40 to put real margin above
+      # that 7.5-minute floor: 40 * 15s = 600s = 10 minutes. A gate that gives
+      # up early on a healthy-but-slow-waking machine is a false red exactly
+      # as damaging as a false green — fails hard only if the API is not
+      # answering 200 within 10 minutes.
       - name: Assert public API health
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           set -uo pipefail
           echo "Asserting 200 from $HEALTH_URL"
-          attempts=30
+          attempts=40
           for i in $(seq 1 "$attempts"); do
             # Truncate first: curl does NOT clear the file when it fails to
             # connect, so without this the "last response body" printed below

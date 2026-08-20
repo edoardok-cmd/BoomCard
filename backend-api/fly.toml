@@ -92,6 +92,58 @@ primary_region = 'fra'
   app = "node dist/server.js"
   worker = "node dist/worker.js"
 
+  # BC-QA-054: `worker` has NO health check, unlike `app` below. This is a
+  # known, investigated gap, not an oversight — flyctl deploy reports green
+  # as soon as worker machines are CREATED, exactly like `app` before
+  # BC-QA-051, regardless of whether src/worker.ts survives startup.
+  #
+  # Why no check was added here: `worker` opens no listening port (it is a
+  # pure outbound BullMQ consumer — see src/worker.ts, src/queues/redis.ts —
+  # `netstat`/`grep -n "\.listen(" src/worker.ts` finds nothing), and every
+  # Fly mechanism for an ONGOING liveness check is fundamentally port-based.
+  # Verified directly against this app with `flyctl config validate
+  # --strict` (flyctl v0.3.219) rather than assumed from docs alone:
+  #   - Top-level `[checks]` (the portless-LOOKING option): flyctl itself
+  #     rejects `type = "exec"` with "Missing or invalid check type, must be
+  #     'http' or 'tcp'". Only http/tcp exist here, and both hard-require a
+  #     `port` field naming something the process is actually listening on.
+  #   - `[[services.http_checks]]` / `[[services.tcp_checks]]`: same
+  #     requirement, one level down — they check a `[[services]]` block's
+  #     `internal_port`, which must be a real open socket.
+  #   - `[[services.machine_checks]]` (exec-in-an-ephemeral-Machine,
+  #     genuinely portless in spirit): DEPLOY-TIME ONLY, not ongoing
+  #     monitoring, and flyctl's own config validator still requires it to
+  #     sit inside a `[[services]]` block, which itself requires an
+  #     `internal_port` (validator emits a WARNING rather than a hard
+  #     failure if `[[services.ports]]` is omitted, but the warning text
+  #     says unported services "will hard fail" — a claim this repo has no
+  #     way to confirm or refute without a real `flyctl deploy`, which is
+  #     out of scope for an ops-file-only change to try against production).
+  #     Whether the app's secrets (e.g. REDIS_URL, to let a check command
+  #     actually probe something real) are even injected into that ephemeral
+  #     Machine is undocumented and likewise unverifiable without deploying.
+  #     Shipping an unverified deploy-time gate is exactly the false-red
+  #     risk called out for the public-health-assertion step elsewhere in
+  #     this repo (.github/workflows/deploy-fly.yml) — worse here, since a
+  #     wrong config could hard-fail EVERY future deploy, not just one slow
+  #     one.
+  #
+  # The correct fix is the one this pass could not make: give `worker` a
+  # minimal TCP/HTTP liveness listener (mirroring `app`'s `/health` handler
+  # in src/server.ts) purely so something exists to check — a few lines in
+  # src/worker.ts. That is application code, out of an ops-file-only
+  # devops pass's scope; it needs a backend-engineer task. Once it exists,
+  # wiring a `[[services.tcp_checks]]` or top-level `[checks]` entry here
+  # (`processes = ["worker"]`) is the easy, well-supported part.
+  #
+  # What THIS pass could and did do instead: .github/workflows/deploy-fly.yml
+  # gate 1 checks that REDIS_URL and DATABASE_URL — the two env vars whose
+  # absence makes src/worker.ts / src/lib/prisma.ts call `process.exit(1)`
+  # at module load, a real and previously-unmonitored crash-at-boot cause —
+  # are present on the target app BEFORE a deploy starts. That closes the
+  # missing-required-secret slice of this gap without touching worker.ts; it
+  # does not catch a worker that starts cleanly and dies later.
+
 [http_service]
   internal_port = 3001
   force_https = true

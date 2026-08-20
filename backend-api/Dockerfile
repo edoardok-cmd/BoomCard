@@ -18,6 +18,18 @@ COPY prisma ./prisma/
 # Install dependencies (production only); ignore native build scripts that
 # may fail on transient network errors (e.g. @sentry/profiling-node).
 # The app handles missing native modules gracefully at runtime.
+#
+# BC-QA-054: `npm install --legacy-peer-deps` (NOT `npm ci`) is kept here.
+# `--legacy-peer-deps` IS load-bearing: bullmq@5.81.3 has a peerOptional
+# requirement on redis@">=5.0.0", while root package.json pins redis@^4.6.11
+# — a real ERESOLVE conflict that only this flag suppresses. Separately, the
+# committed package-lock.json is out of sync with package.json: it has no
+# entries at all for node_modules/bullmq, node_modules/ioredis,
+# node_modules/twilio, or node_modules/web-push despite all four being
+# direct dependencies, so even `npm ci --legacy-peer-deps` fails differently
+# (EUSAGE, lockfile not in sync). Either reason alone blocks `npm ci` as-is.
+# Follow-up: regenerate and commit an in-sync lockfile, then switch to
+# `npm ci --legacy-peer-deps` (or resolve the redis peer conflict directly).
 RUN npm install --omit=dev --ignore-scripts --legacy-peer-deps && \
     npx node-gyp-build 2>/dev/null || true
 
@@ -40,6 +52,9 @@ COPY tsconfig.json ./
 COPY prisma ./prisma/
 
 # Install all dependencies (including dev); skip native scripts (see dependencies stage)
+# BC-QA-054: `npm install --legacy-peer-deps`, not `npm ci` — see the
+# dependencies stage above for why (real bullmq/redis peer conflict, plus
+# an out-of-sync lockfile).
 RUN npm install --ignore-scripts --legacy-peer-deps
 
 # Generate Prisma Client
