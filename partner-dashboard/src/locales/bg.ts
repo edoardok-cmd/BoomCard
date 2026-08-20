@@ -2474,7 +2474,26 @@ export const bg: TranslationKey = {
     titlePending: 'Проверка на плащането...',
     titleError: 'Нещо се обърка',
     titleDefault: 'Обработка...',
-    subtitleSuccess: 'Вашият абонамент е активен. Можете да започнете да използвате Premium функциите веднага.',
+    // BC-QA-003: plan-aware success copy — rendered as prefix + plan name + suffix
+    // so a Basic purchase doesn't get told it has "Premium" features (the old
+    // single subtitleSuccess string was hardcoded to premium marketing copy).
+    // BC-QA-003 round 2 (F4): "Вашият абонамент " + planName read grammatically
+    // awkward for a plan name that doesn't inflect as a noun apposition
+    // (e.g. "Вашият абонамент Basic"). The "за план" construction reads
+    // naturally regardless of the plan name's grammatical gender/form.
+    subtitleSuccessPrefix: 'Вашият абонамент за план ',
+    subtitleSuccessSuffix: ' вече е активен. Можете да започнете да използвате предимствата си веднага.',
+    // Fallback for the rare tick where status is already 'success' but the
+    // subscription record hasn't loaded yet, so no plan name is available.
+    subtitleSuccessGeneric: 'Вашият абонамент е активен. Можете да започнете да използвате предимствата си веднага.',
+    // Anonymous/guest checkout: payment confirmed, account activation is still
+    // pending profile completion via the emailed link.
+    titlePaymentReceived: 'Плащането е получено!',
+    subtitlePaymentReceivedPrefix: 'Получихме плащането ви за план ',
+    subtitlePaymentReceivedSuffix: '. Проверете имейла си, за да завършите настройката на акаунта.',
+    // BC-QA-003 round 2 (F1): fallback for the anonymous/guest-checkout branch
+    // when the plan's Bulgarian display name hasn't been set.
+    subtitlePaymentReceivedGeneric: 'Получихме плащането ви. Проверете имейла си, за да завършите настройката на акаунта.',
     subtitlePending: 'Моля, изчакайте докато потвърдим вашето плащане. Това обикновено отнема няколко секунди.',
     subtitleError: 'Не успяхме да потвърдим вашето плащане. Моля, свържете се с поддръжката ако проблемът продължава.',
     subtitleDefault: 'Зареждане...',
@@ -2484,6 +2503,8 @@ export const bg: TranslationKey = {
     statusLabel: 'Статус',
     statusActive: 'Активен',
     statusProcessing: 'Обработва се',
+    // BC-QA-003 round 2 (F2): see en.ts statusAwaitingSetup for rationale.
+    statusAwaitingSetup: 'Очаква се настройка на профила',
     validUntilLabel: 'Валиден до',
     weekly: 'Седмичен',
     monthly: 'Месечен',
