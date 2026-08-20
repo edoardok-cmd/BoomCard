@@ -12,8 +12,11 @@
 // Scope is deliberately narrow: the highest-risk admin modules where a silent
 // fault is most costly. Widen `mutate` as the suite hardens. Empirical note
 // (2026-06-28 manual run): flipping bgnToEur's `/`→`*` is KILLED by the suite
-// (specConformFix009 asserts the conversion) but SURVIVES walletCurrencyTransition
-// alone — which is exactly why mutation score is a whole-suite metric.
+// as a whole, but SURVIVED against a single suite run in isolation — which is
+// exactly why mutation score is a whole-suite metric. (The two suites originally
+// named here, specConformFix009 and walletCurrencyTransition, were both deleted
+// with the dual-currency feature in BC-QA-031; the conversion is now asserted by
+// tests/unit/currency.test.ts and tests/unit/subscriptionsHistoryCurrency.test.ts.)
 module.exports = {
   packageManager: 'npm',
   testRunner: 'jest',

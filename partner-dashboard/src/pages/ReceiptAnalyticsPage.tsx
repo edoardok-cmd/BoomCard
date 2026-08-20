@@ -24,7 +24,7 @@ import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval } from
 import { exportReceiptsToCSV } from '../utils/receiptExport';
 // MEDIUM-2 fix (r2t): currency-aware formatter for displayed amounts
 // (spec §7.3 / Clash 12.1 — BGN during transition, EUR after).
-import { useCurrencyDisplay, formatWithCurrency } from '../utils/currencyDisplay';
+import { formatEUR } from '../utils/helpers';
 
 // Register ChartJS components
 ChartJS.register(
@@ -377,8 +377,6 @@ interface AnalyticsData {
 export const ReceiptAnalyticsPage: React.FC = () => {
   const { language } = useLanguage();
   const navigate = useNavigate();
-  // MEDIUM-2 fix (r2t): resolve active currency mode for displayed amounts
-  const currencyMode = useCurrencyDisplay();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [dateRange, setDateRange] = useState('6months');
@@ -828,7 +826,7 @@ export const ReceiptAnalyticsPage: React.FC = () => {
               <DollarSign size={20} />
             </StatIcon>
           </StatHeader>
-          <StatValue>{formatWithCurrency(data.stats.totalAmount, currencyMode)}</StatValue>
+          <StatValue>{formatEUR(data.stats.totalAmount)}</StatValue>
         </StatCard>
 
         <StatCard>
@@ -838,7 +836,7 @@ export const ReceiptAnalyticsPage: React.FC = () => {
               <TrendingUp size={20} />
             </StatIcon>
           </StatHeader>
-          <StatValue>{formatWithCurrency(data.stats.totalCashback, currencyMode)}</StatValue>
+          <StatValue>{formatEUR(data.stats.totalCashback)}</StatValue>
         </StatCard>
 
         <StatCard>
@@ -848,7 +846,7 @@ export const ReceiptAnalyticsPage: React.FC = () => {
               <PieChartIcon size={20} />
             </StatIcon>
           </StatHeader>
-          <StatValue>{formatWithCurrency(data.stats.averageAmount, currencyMode)}</StatValue>
+          <StatValue>{formatEUR(data.stats.averageAmount)}</StatValue>
         </StatCard>
 
         <StatCard>
@@ -867,7 +865,7 @@ export const ReceiptAnalyticsPage: React.FC = () => {
         <PredictionGrid>
           <PredictionItem>
             <PredictionLabel>{t.predictions.nextMonthSpending}</PredictionLabel>
-            <PredictionValue>{formatWithCurrency(data.predictions.nextMonthSpending, currencyMode)}</PredictionValue>
+            <PredictionValue>{formatEUR(data.predictions.nextMonthSpending)}</PredictionValue>
           </PredictionItem>
           {/* nextMonthCashback prediction removed — spec §11.3 prohibits exposing cashback % to partners */}
           <PredictionItem>

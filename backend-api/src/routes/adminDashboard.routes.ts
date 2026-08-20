@@ -9,7 +9,7 @@ import { Router, Response } from 'express';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
-import { bgnToEur } from '../utils/currency';
+import { bgnToEur, sumMixedCurrencyToEur } from '../utils/currency';
 
 const router = Router();
 
@@ -112,11 +112,19 @@ router.get(
 
       // Транзакции — днес (count + volume) + общ оборот (cumulative volume per spec §3.1)
       prisma.transaction.count({ where: { createdAt: { gte: todayStart }, status: 'COMPLETED' } }),
-      prisma.transaction.aggregate({
+      // groupBy(['currency']) rather than a flat aggregate: Transaction.currency
+      // is genuinely mixed (schema default BGN; POST /api/payments/create stores
+      // a caller-supplied currency defaulting to EUR; Stripe writes EUR rows), so
+      // a single `_sum.finalAmount` would add BGN and EUR magnitudes together
+      // before any conversion could run. sumMixedCurrencyToEur() converts each
+      // per-currency subtotal, then folds (BC-QA-031 — EUR-only responses).
+      prisma.transaction.groupBy({
+        by: ['currency'],
         where: { createdAt: { gte: todayStart }, status: 'COMPLETED' },
         _sum: { finalAmount: true },
       }),
-      prisma.transaction.aggregate({
+      prisma.transaction.groupBy({
+        by: ['currency'],
         where: { status: 'COMPLETED' },
         _sum: { finalAmount: true },
       }),
@@ -230,9 +238,17 @@ router.get(
     // Stripe-lifecycle states still present in older rows.
     const failedPaymentSubscribers = countByStatuses(['PAST_DUE', 'UNPAID', 'FAILED_PAYMENT']);
 
-    const todayVolume = todayTxVolume._sum.finalAmount ?? 0;
-    const todayAvg = todayTxCount > 0
-      ? parseFloat((todayVolume / todayTxCount).toFixed(2))
+    // Per-currency subtotals converted then folded — see the groupBy above.
+    // These are already EUR, so the response emits them directly rather than
+    // running bgnToEur() over them a second time.
+    const todayVolumeEur = sumMixedCurrencyToEur(
+      todayTxVolume.map((g) => ({ currency: g.currency, amount: g._sum.finalAmount })),
+    );
+    const totalVolumeEur = sumMixedCurrencyToEur(
+      totalTxVolume.map((g) => ({ currency: g.currency, amount: g._sum.finalAmount })),
+    );
+    const todayAvgEur = todayTxCount > 0
+      ? parseFloat((todayVolumeEur / todayTxCount).toFixed(2))
       : 0;
     const payoutsDue = Math.abs(payoutsDueAgg._sum.amount ?? 0);
 
@@ -279,9 +295,9 @@ router.get(
         },
         transactions: {
           todayCount: todayTxCount,
-          todayVolume: bgnToEur(todayVolume),
-          todayAvg: bgnToEur(todayAvg),
-          totalVolume: bgnToEur(totalTxVolume._sum.finalAmount ?? 0),
+          todayVolume: todayVolumeEur,
+          todayAvg: todayAvgEur,
+          totalVolume: totalVolumeEur,
         },
         cashback: {
           accrued: bgnToEur(accruedCashback._sum.amount ?? 0),

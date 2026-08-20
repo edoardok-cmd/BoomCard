@@ -4,10 +4,11 @@
  * Walks the live Express router stack so the set of admin endpoints is derived
  * from the running app, never hand-maintained. Used by:
  *   - admin-endpoint-coverage.test.ts (the coverage-manifest gate)
- *   - (can be adopted by admin-currency-leak-sweep / admin-uuid-500-sweep)
+ *   - admin-uuid-500-sweep.test.ts
  *
- * The walk logic is copied verbatim from admin-currency-leak-sweep.test.ts so
- * the two stay consistent.
+ * The walk logic originated in the admin-currency-leak-sweep suite, which was
+ * deleted in BC-QA-031 along with the dual-currency display feature it policed;
+ * this helper is now the single source of that logic.
  */
 
 export interface EnumeratedRoute {
@@ -95,12 +96,20 @@ const MONEY_ROUTER =
 
 /**
  * Default coverage classification for a route, used to bootstrap the manifest:
- *   - a money-returning GET → covered by admin-currency-leak-sweep (CUR)
+ *   - a money-returning GET → `sweep:CUR`
  *   - any `:param` route   → covered by admin-uuid-500-sweep (INPUT)
  *   - everything else (e.g. non-money list GETs, POST bodies) → `review`:
  *     NOT covered by an exhaustive sweep, so it must map to an invariant-matrix
  *     row and be checked by a re-audit. (This is exactly the class the
  *     subscriber null-wallet 500 lived in — a list GET no sweep gated.)
+ *
+ * ⚠ BC-QA-031 — the `sweep:CUR` tag no longer names a live suite. It used to mean
+ * "covered by admin-currency-leak-sweep.test.ts", which was deleted along with the
+ * dual-currency display feature. The tag is deliberately left unchanged here
+ * because it is persisted on 33 routes in tests/admin-endpoint-manifest.json and
+ * re-tagging them is a coverage-accounting decision (those routes would fall back
+ * to `review` and need invariant-matrix rows), not a rename. Until that decision is
+ * made, treat a `sweep:CUR` route as UNSWEPT rather than covered.
  */
 export function classifyRoute(r: EnumeratedRoute): CoverageTag {
   if (r.method === 'GET' && MONEY_ROUTER.test(r.path)) return 'sweep:CUR';

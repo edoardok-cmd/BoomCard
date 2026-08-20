@@ -11,8 +11,8 @@ admin 232 · user 158 · redemption 39 · partner 24 · system 17 · public 7.
 
 | Scope ID | Surface (routes) | Matrix | Ledger | Sweeps | Status |
 |---|---|---|---|---|---|
-| `BC-ADMIN-SPEC-REAUDIT` | Admin spec — `/api/admin/*` (232) | `docs/specs/admin-invariant-matrix.md` | `.claude/reviews/BC-ADMIN-SPEC-REAUDIT-coverage-ledger.md` | admin-currency-leak-sweep, admin-uuid-500-sweep, app-route-ownership | **COMPLETE** — 264/264 verified, closed on evidence (r4 approve) |
-| `BC-PARTNER-SPEC-REAUDIT` | Partner spec — `/api/partners/*`, `/api/partner/*` (24) | `docs/specs/partner-spec-invariant-matrix.md` | `.claude/reviews/BC-PARTNER-SPEC-REAUDIT-coverage-ledger.md` | partner-cross-scope-sweep, partner-currency-leak-sweep, partner-uuid-500-sweep | Active — 113/114, 1 open (INV-NOTIF-002) |
+| `BC-ADMIN-SPEC-REAUDIT` | Admin spec — `/api/admin/*` (232) | `docs/specs/admin-invariant-matrix.md` | `.claude/reviews/BC-ADMIN-SPEC-REAUDIT-coverage-ledger.md` | admin-uuid-500-sweep, app-route-ownership | **COMPLETE** — 264/264 verified, closed on evidence (r4 approve) |
+| `BC-PARTNER-SPEC-REAUDIT` | Partner spec — `/api/partners/*`, `/api/partner/*` (24) | `docs/specs/partner-spec-invariant-matrix.md` | `.claude/reviews/BC-PARTNER-SPEC-REAUDIT-coverage-ledger.md` | partner-cross-scope-sweep, partner-internal-field-leak-sweep, partner-uuid-500-sweep | Active — 113/114, 1 open (INV-NOTIF-002) |
 | `BC-USER-SPEC-REAUDIT` | User/subscriber — `/api/subscriptions\|wallet\|offers\|receipts\|favorites\|cards\|checkout\|payments\|notifications\|help\|loyalty\|reviews` + subscriber `/api/auth/*` (158) | `docs/specs/user-invariant-matrix.md` (not yet built) | `.claude/reviews/BC-USER-SPEC-REAUDIT-coverage-ledger.md` (not yet built) | none yet | Bootstrap needed |
 | `BC-REDEMPTION-SPEC-REAUDIT` | Redemption — `/api/stickers\|venues\|bookings\|messaging\|dashboard` (39) | `docs/specs/redemption-invariant-matrix.md` (not yet built) | `.claude/reviews/BC-REDEMPTION-SPEC-REAUDIT-coverage-ledger.md` (not yet built) | none yet | Bootstrap needed |
 | `BC-SYSTEM-SPEC-REAUDIT` | System — `/api/webhooks\|email\|integrations\|health` (17) | `docs/specs/system-invariant-matrix.md` (not yet built) | `.claude/reviews/BC-SYSTEM-SPEC-REAUDIT-coverage-ledger.md` (not yet built) | none yet | Bootstrap needed |
@@ -44,13 +44,34 @@ All sweep files live in `backend-api/tests/integration/`:
 
 | Sweep | File | Scope |
 |---|---|---|
-| `admin-currency-leak-sweep` | `backend-api/tests/integration/admin-currency-leak-sweep.test.ts` | BC-ADMIN-SPEC-REAUDIT |
 | `admin-uuid-500-sweep` | `backend-api/tests/integration/admin-uuid-500-sweep.test.ts` | BC-ADMIN-SPEC-REAUDIT |
 | `partner-cross-scope-sweep` | `backend-api/tests/integration/partner-cross-scope-sweep.test.ts` | BC-PARTNER-SPEC-REAUDIT |
-| `partner-currency-leak-sweep` | `backend-api/tests/integration/partner-currency-leak-sweep.test.ts` | BC-PARTNER-SPEC-REAUDIT |
+| `partner-internal-field-leak-sweep` | `backend-api/tests/integration/partner-internal-field-leak-sweep.test.ts` | BC-PARTNER-SPEC-REAUDIT |
+| `user-internal-field-leak-sweep` | `backend-api/tests/integration/user-internal-field-leak-sweep.test.ts` | BC-USER-SPEC-REAUDIT |
+| `subscriber-internal-field-introspect-sweep` | `backend-api/tests/integration/subscriber-internal-field-introspect-sweep.test.ts` | BC-USER-SPEC-REAUDIT ↔ BC-REDEMPTION-SPEC-REAUDIT |
 | `partner-uuid-500-sweep` | `backend-api/tests/integration/partner-uuid-500-sweep.test.ts` | BC-PARTNER-SPEC-REAUDIT |
 
 Manifests: `backend-api/tests/app-route-ownership-manifest.json`, `backend-api/tests/admin-endpoint-manifest.json`.
+
+> **Retired sweeps — the CUR (dual-currency display) class (BC-QA-031, 2026-08-10).**
+> Bulgaria's BGN→EUR transition window closed and the dual-currency display feature
+> was removed: there is no `currency_transition_window_open` flag, no
+> `currencyDisplay.ts`, and no `display:{bgn,eur}` envelope anywhere in the API.
+> All monetary responses are single EUR scalars. The CUR-class sweeps that policed
+> that envelope are therefore retired, not merely renamed:
+>
+> | Retired sweep | Disposition |
+> |---|---|
+> | `admin-currency-leak-sweep` | deleted — no replacement (nothing left to police) |
+> | `public-currency-display-sweep` | deleted — no replacement |
+> | `user-currency-leak-sweep` | non-currency invariants extracted to `user-internal-field-leak-sweep` |
+> | `partner-currency-leak-sweep` | renamed to `partner-internal-field-leak-sweep` |
+> | `user-money-introspect-sweep` | deleted; the subscriber counterpart survives as `subscriber-internal-field-introspect-sweep` |
+>
+> A re-audit agent following the §6 prompts must NOT file the absence of these
+> suites as a red-suite finding, and must NOT rebuild a currency-leak sweep for a
+> new scope. Genuinely-BGN domain values that legitimately remain (plan pricing,
+> internal payout thresholds) are out of this class's scope by definition.
 
 ## §4 Runtime recipe
 
@@ -79,10 +100,10 @@ You are a neutral re-audit agent for the BoomCard Admin surface.
 SCOPE: BC-ADMIN-SPEC-REAUDIT
 MATRIX: /Users/administrator/Documents/BoomCard/docs/specs/admin-invariant-matrix.md (227+ enumerated invariants)
 LEDGER: /Users/administrator/Documents/AI Projects/Agent X/.claude/reviews/BC-ADMIN-SPEC-REAUDIT-coverage-ledger.md
-SWEEPS: backend-api/tests/integration/admin-currency-leak-sweep.test.ts, backend-api/tests/integration/admin-uuid-500-sweep.test.ts, backend-api/tests/app-route-ownership-manifest.json
+SWEEPS: backend-api/tests/integration/admin-uuid-500-sweep.test.ts, backend-api/tests/app-route-ownership-manifest.json
 
 Round 1 Bootstrap — full pass:
-1. Run all standing suite tests (admin-currency-leak-sweep, admin-uuid-500-sweep). File any red tests as HIGH tasks immediately.
+1. Run all standing suite tests (admin-uuid-500-sweep). File any red tests as HIGH tasks immediately.
 2. Import the coverage skeleton (INV- IDs + untested rows only — NOT prior verdicts — independence must be preserved).
 3. Work through ALL untested rows, targeting oldest-`Last run checked` first. Use static read, runtime probe (curl vs :3025), and suite results.
 4. Record results in the ledger (verified/open/untested). File a task (--tier, BC-ADMIN-SPEC-REAUDIT-suffixed) for every OPEN row.
@@ -131,10 +152,10 @@ You are a neutral re-audit agent for the BoomCard Partner surface.
 SCOPE: BC-PARTNER-SPEC-REAUDIT
 MATRIX: /Users/administrator/Documents/BoomCard/docs/specs/partner-spec-invariant-matrix.md (114+ enumerated invariants)
 LEDGER: /Users/administrator/Documents/AI Projects/Agent X/.claude/reviews/BC-PARTNER-SPEC-REAUDIT-coverage-ledger.md
-SWEEPS: backend-api/tests/integration/partner-cross-scope-sweep.test.ts, backend-api/tests/integration/partner-currency-leak-sweep.test.ts, backend-api/tests/integration/partner-uuid-500-sweep.test.ts
+SWEEPS: backend-api/tests/integration/partner-cross-scope-sweep.test.ts, backend-api/tests/integration/partner-internal-field-leak-sweep.test.ts, backend-api/tests/integration/partner-uuid-500-sweep.test.ts
 
 Round 1 Bootstrap — full pass:
-1. Run all three partner sweeps (cross-scope, currency-leak, uuid-500). File any red tests as HIGH tasks immediately.
+1. Run all three partner sweeps (cross-scope, internal-field-leak, uuid-500). File any red tests as HIGH tasks immediately.
 2. Import the coverage skeleton (INV- IDs + untested rows only — NOT prior verdicts — independence must be preserved).
 3. Work through ALL untested rows, targeting oldest-`Last round` first. Use static read, runtime probe (curl vs :3025 with PARTNER login), and suite results.
 4. Record results in the ledger (verified/open/untested). File a task (--tier, BC-PARTNER-SPEC-REAUDIT-suffixed) for every OPEN row.
@@ -163,7 +184,7 @@ Still-untested rows to target this round:
   [GENERATED FROM LEDGER — INV-IDs listed here by the UI]
 
 Continuation steps:
-1. Run partner-cross-scope-sweep, partner-currency-leak-sweep, partner-uuid-500-sweep first. Red = free findings.
+1. Run partner-cross-scope-sweep, partner-internal-field-leak-sweep, partner-uuid-500-sweep first. Red = free findings.
 2. Work through ONLY the listed rows using static read + runtime probe vs :3025 (PARTNER login).
 3. Record results in the ledger (verified / open). File a task (--tier, BC-PARTNER-SPEC-REAUDIT-suffixed) for every OPEN row.
 4. Roll up to .claude/reviews/BC-PARTNER-SPEC-REAUDIT-reaudit-r<N>.md.
@@ -187,7 +208,7 @@ Round 1 Bootstrap — must build the convergence machinery:
 2. Write docs/specs/user-invariant-matrix.md: enumerate every machine-checkable user invariant. Tag suite-covered classes [SUITE: X]. Format: | Invariant ID | Description | Class | Suite Coverage |
 3. Seed .claude/reviews/BC-USER-SPEC-REAUDIT-coverage-ledger.md: one row per INV-USER-xxx, all untested. Columns: | Invariant ID | Last round | Result | Method | Evidence pointer |
 4. Identify which user invariants are executable (input-boundary, cross-scope, auth) and which are enumerated (state-machine transitions, notification rules, cashback logic). Build sweeps for the executable classes if not yet present.
-5. Work through untested rows, targeting the highest-severity classes first (cross-scope data access, auth gates, currency leaks).
+5. Work through untested rows, targeting the highest-severity classes first (cross-scope data access, auth gates, internal-field leaks).
 6. File a task for every OPEN row. Roll up to .claude/reviews/BC-USER-SPEC-REAUDIT-reaudit-r1.md.
 
 Runtime: backend on :3025. Use a real subscriber account (mobile user, not admin/partner).
@@ -215,7 +236,7 @@ Round 1 Bootstrap — must build the convergence machinery:
 1. Enumerate the 39 redemption routes from the manifest. Read the stickers/venues/bookings/messaging/dashboard handlers + spec.
 2. Write docs/specs/redemption-invariant-matrix.md (INV-RDM-xxx). Tag suite-covered [SUITE: XSCOPE]/[SUITE: INPUT]/[SUITE: CUR].
 3. Seed the ledger (one row per INV-RDM-xxx, all untested; header cells include Result + Invariant).
-4. FLAGSHIP class: cross-tenant scoping (a venue/booking owner must never read/modify another's). Build redemption-cross-scope-sweep + input-500 + currency-leak sweeps; teeth-prove each.
+4. FLAGSHIP class: cross-tenant scoping (a venue/booking owner must never read/modify another's). Build redemption-cross-scope-sweep + input-500 + internal-field-leak sweeps; teeth-prove each. (Do NOT build a currency-leak sweep — see the retirement note in §3.)
 5. Work through untested rows (cross-scope, then input-500). File a task (--tier, BC-REDEMPTION-SPEC-REAUDIT-suffixed, --project boomcard) per OPEN row. Roll up to .claude/reviews/BC-REDEMPTION-SPEC-REAUDIT-reaudit-r1.md.
 
 Runtime: backend on :3025. Use venue/partner + subscriber accounts to exercise booking/redemption flows.
@@ -277,9 +298,9 @@ LEDGER: NOT YET BUILT — seed .claude/reviews/BC-PUBLIC-SPEC-REAUDIT-coverage-l
 
 Round 1 Bootstrap — must build the convergence machinery:
 1. Enumerate the 7 public routes. The dominant risk is data exposure + abuse (no auth).
-2. Write docs/specs/public-invariant-matrix.md (INV-PUB-xxx). Key classes: no authenticated/PII data on public endpoints, rate-limit / contact-form spam abuse, input-500, currency dual-display on public pricing.
+2. Write docs/specs/public-invariant-matrix.md (INV-PUB-xxx). Key classes: no authenticated/PII data on public endpoints, rate-limit / contact-form spam abuse, input-500. (The former "currency dual-display on public pricing" class is retired — see the retirement note in §3.)
 3. Seed the ledger (one row per INV-PUB-xxx, all untested; header cells include Result + Invariant).
-4. Build sweeps for executable classes (input-500, public-currency-leak); teeth-prove each.
+4. Build sweeps for executable classes (input-500); teeth-prove each.
 5. Work through untested rows (data-exposure + input-500 first). File a task (--tier, BC-PUBLIC-SPEC-REAUDIT-suffixed, --project boomcard) per OPEN row. Roll up to .claude/reviews/BC-PUBLIC-SPEC-REAUDIT-reaudit-r1.md.
 
 Runtime: backend on :3025, NO auth token (public). Confirm responses carry no internal/PII fields and pricing honors the BGN→EUR window.

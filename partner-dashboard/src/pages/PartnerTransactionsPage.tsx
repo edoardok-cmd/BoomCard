@@ -6,7 +6,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useCurrentPartner } from '../hooks/usePartners';
 import { usePartnerTransactions } from '../hooks/usePartnerPortal';
 import { PartnerTransactionFilters } from '../services/partnerPortal.service';
-import { useCurrencyDisplay, formatWithCurrency } from '../utils/currencyDisplay';
+import { formatEUR } from '../utils/helpers';
 
 /* ── Layout ── */
 
@@ -256,7 +256,6 @@ const PAGE_SIZE = 20;
 const PartnerTransactionsPage: React.FC = () => {
   const { user } = useAuth();
   const { language } = useLanguage();
-  const currencyMode = useCurrencyDisplay();
   const isPartner = user?.role === 'partner';
 
   const { data: partnerData } = useCurrentPartner(isPartner);
@@ -288,7 +287,7 @@ const PartnerTransactionsPage: React.FC = () => {
   // Venue options come from the partner profile (own venues only).
   const venues = partnerData?.venues ?? [];
 
-  const fmtMoney = (n: number) => formatWithCurrency(n, currencyMode, language === 'bg' ? 'bg' : 'en');
+  const fmtMoney = (n: number) => formatEUR(n);
   const locale = language === 'bg' ? 'bg-BG' : 'en-US';
 
   const onFilterChange = <T,>(setter: (v: T) => void) => (v: T) => {

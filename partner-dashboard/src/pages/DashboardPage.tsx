@@ -15,7 +15,7 @@ import { apiService } from '../services/api.service';
 // regardless of whether the routes are registered, surfacing an unspecified
 // feature to end-users.
 const OFFER_MANAGEMENT_ENABLED = import.meta.env.VITE_OFFER_MANAGEMENT_ENABLED === 'true';
-import { useCurrencyDisplay, formatWithCurrency } from '../utils/currencyDisplay';
+import { formatEUR } from '../utils/helpers';
 
 const PageContainer = styled.div`
   max-width: 72rem;
@@ -805,9 +805,6 @@ interface DashboardData {
   wallet: DashboardWallet;
   receipts: DashboardReceipt[];
   showUpgradePrompt?: boolean;
-  // §7.3 / Clash 12.1: when true, wallet amounts are BGN scalars; when false, EUR scalars.
-  // Populated by backend after parallel fix adds it to /api/dashboard/me.
-  currencyWindowOpen?: boolean;
 }
 
 /* ── Component ── */
@@ -815,8 +812,6 @@ interface DashboardData {
 const DashboardPage: React.FC = () => {
   const { user } = useAuth();
   const { language, t } = useLanguage();
-  // MEDIUM-4: currency display mode — resolves to EUR_ONLY post-2026-01-01 (Clash 12.1).
-  const currencyMode = useCurrencyDisplay();
 
   // MEDIUM-1: Admin users see a different dashboard view and must NOT trigger /partners/me.
   // Only users with role === 'partner' are actual partner accounts.
@@ -915,23 +910,16 @@ const DashboardPage: React.FC = () => {
   };
 
   /**
-   * MEDIUM-4 fix: currency display (§7.3, Clash 12.1).
-   * Uses the currency mode resolved from `useCurrencyDisplay()` above.
-   * Post-transition (2026-01-01) this returns EUR_ONLY.
+   * BC-QA-031: every money field on /dashboard/me (and the partner stats
+   * endpoints) is a plain EUR scalar — the dual-currency display feature and
+   * its `currencyWindowOpen` toggle were removed. Format the value as-is; do
+   * NOT apply any BGN→EUR conversion, or every figure renders at ~51% of its
+   * real value.
    */
-  const formatCurrency = (amount: number) =>
-    formatWithCurrency(amount, currencyMode, language === 'bg' ? 'bg' : 'en');
+  const formatCurrency = (amount: number) => formatEUR(amount);
 
-  /**
-   * F1 fix: wallet amounts use a display mode driven by the API response field
-   * `currencyWindowOpen` (§7.3, Clash 12.1).  When the backend reports the BGN
-   * transition window is still open, wallet scalars are BGN → show DUAL (BGN + EUR).
-   * When the window is closed (or the field is absent), fall back to the
-   * date-based `currencyMode` which resolves to EUR_ONLY post-2026-01-01.
-   */
-  const walletDisplayMode = dashboardData?.currencyWindowOpen ? 'DUAL' : currencyMode;
-  const formatWalletCurrency = (amount: number) =>
-    formatWithCurrency(amount, walletDisplayMode, language === 'bg' ? 'bg' : 'en');
+  /** Wallet amounts are EUR scalars from the same response — same formatter. */
+  const formatWalletCurrency = (amount: number) => formatEUR(amount);
 
   const statusLabel = (status: string) => {
     const map: Record<string, { en: string; bg: string }> = {

@@ -227,9 +227,15 @@ describe('[LEAK sweep] INV-RDM-081: GET /api/dashboard/me does not expose paymen
   });
 });
 
-// ─── INV-RDM-082/083: GET /my-scans + POST /receipt dual-currency display ─────
+// ─── INV-RDM-082/083: GET /my-scans + POST /receipt EUR-only money fields ─────
+//
+// BC-QA-031: these two invariants used to require a `display: { bgn, eur }`
+// envelope gated by the currency transition window. That feature was retired
+// with the window itself, so the endpoints now emit plain EUR scalars converted
+// from BGN storage by bgnToEur(), and the assertions below were rewritten to
+// match. See the CUR retirement note in docs/specs/redemption-invariant-matrix.md.
 
-describe('[LEAK sweep] INV-RDM-SCAN-CURRENCY: GET /my-scans applies dual-currency display', () => {
+describe('[LEAK sweep] INV-RDM-SCAN-CURRENCY: /my-scans + /receipt expose EUR-only money fields', () => {
   const createdUserIds: string[] = [];
   let accessToken: string;
   let venueId: string;

@@ -71,13 +71,25 @@ jobs:
       #
       # admin-endpoint-coverage enforces coverage BREADTH: a new admin route that
       # isn't accounted for in tests/admin-endpoint-manifest.json fails the build,
-      # so no endpoint can be added without being classified/reviewed. The two
-      # sweeps enforce coverage DEPTH for the CUR + INPUT classes.
+      # so no endpoint can be added without being classified/reviewed. The sweep
+      # below enforces coverage DEPTH for the INPUT class.
+      #
+      # BC-QA-031: admin-currency-leak-sweep.test.ts was removed from this list
+      # because the CUR (dual-currency display) class it enforced was retired with
+      # the feature — the BGN→EUR transition window closed, so there is no
+      # `display:{bgn,eur}` envelope left to police on the admin surface. The file
+      # is deleted, not renamed; there is no admin-side replacement to add here.
+      #
+      # Deliberately NO --passWithNoTests: if every pattern below is ever deleted,
+      # jest exits 1 on "0 matches" and the gate fails loudly instead of silently
+      # passing an empty run. (Note that jest exits 0 when SOME patterns match, so a
+      # single stale path here would have degraded this gate silently rather than
+      # breaking the build — which is exactly why the stale path is removed rather
+      # than left in place.)
       - name: Run admin-spec coverage sweeps + endpoint-coverage gate
         working-directory: backend-api
         run: >-
           npx jest
-          tests/integration/admin-currency-leak-sweep.test.ts
           tests/integration/admin-uuid-500-sweep.test.ts
           tests/integration/admin-endpoint-coverage.test.ts
           tests/integration/app-route-ownership.test.ts

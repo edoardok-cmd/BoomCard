@@ -68,4 +68,24 @@ describe('DashboardPage — plain-number receipts shape (BC-QA-031 regression)',
     await waitFor(() => expect(screen.getByText('+€3.75')).toBeInTheDocument());
     expect(screen.getByText('Test Merchant')).toBeInTheDocument();
   });
+
+  // BC-QA-031 F1: the dashboard used to run the retired `formatWithCurrency(x,
+  // 'EUR_ONLY')` over these values, which divided them by BGN_TO_EUR_RATE
+  // (1.95583). Against the backend's already-EUR scalars that rendered
+  // availableBalance 42.50 as "€21.73" and pendingBalance 7.00 as "€3.58" —
+  // roughly half of every money figure on the page. The wallet balances must be
+  // rendered verbatim, with no client-side conversion.
+  it('renders wallet balances verbatim in EUR, without a second BGN→EUR conversion', async () => {
+    (apiService.get as ReturnType<typeof vi.fn>).mockResolvedValue(dashboardMeResponse);
+
+    renderPage();
+
+    // availableBalance: 42.5 → "€42.50" (the halved value would be "€21.73").
+    await waitFor(() => expect(screen.getByText('€42.50')).toBeInTheDocument());
+    expect(screen.queryByText('€21.73')).not.toBeInTheDocument();
+
+    // pendingBalance: 7 → "€7.00" (the halved value would be "€3.58").
+    expect(screen.getByText('€7.00')).toBeInTheDocument();
+    expect(screen.queryByText('€3.58')).not.toBeInTheDocument();
+  });
 });

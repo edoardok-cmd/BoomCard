@@ -5,7 +5,7 @@ import { toast } from 'react-hot-toast';
 import { useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { DataTable, ColumnDef, RowAction } from '../../components/admin/DataTable/DataTable';
-import { formatMoneyByMode } from '../../utils/helpers';
+import { formatEUR } from '../../utils/helpers';
 import {
   adminPayoutsService,
   AdminPayout,
@@ -738,7 +738,10 @@ export default function AdminPayoutsPage() {
     });
 
   const fmtBgn = (n: number) => `${n.toFixed(2)} BGN`;
-  const fmtAmount = (amount: number) => formatMoneyByMode(amount, 'eur_only', language);
+  // BC-QA-031: admin money endpoints emit plain EUR scalars. The retired
+  // `formatMoneyByMode(_, 'eur_only')` divided its input by BGN_TO_EUR_RATE,
+  // halving already-converted figures.
+  const fmtAmount = (amount: number) => formatEUR(amount);
 
   const thresholds = thresholdsData?.data ?? {};
 

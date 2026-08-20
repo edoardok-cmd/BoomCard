@@ -56,8 +56,8 @@ const I18N = {
   sVoided:          { en: 'Voided',            bg: 'Анулиран' },
   statVoided:       { en: 'Voided',            bg: 'Анулиран' },
   statTrialPending: { en: 'Trial pending',     bg: 'Пробен (изчакващ)' },
-  // Currency / unit
-  bgn:              { en: 'BGN',               bg: 'лв.' },
+  // Unit labels. BC-QA-031 removed the `bgn` label — cashback amounts are
+  // plain EUR scalars and are rendered with a € prefix, never a лв/BGN suffix.
   days:             { en: 'days',              bg: 'дни' },
   // Empty state
   noEntries:        { en: 'No cashback entries', bg: 'Няма кешбек записи' },

@@ -11,7 +11,7 @@ import { parsePagination } from '../utils/pagination';
 import { emailService } from '../services/email.service';
 import { logger } from '../utils/logger';
 import { detach } from '../utils/detach';
-import { bgnToEur } from '../utils/currency';
+import { toEur, sumMixedCurrencyToEur } from '../utils/currency';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://boomcard.bg';
 
@@ -162,8 +162,13 @@ async function enrichSubscriptions(
       where: { userId: { in: userIds } },
       _count: { _all: true },
     }),
+    // `currency` is part of the grouping key on purpose: Transaction.currency is
+    // genuinely mixed, so a single `_sum.amount` would add BGN and EUR magnitudes
+    // together and no downstream row-level guard could repair it. Grouping by
+    // currency lets sumMixedCurrencyToEur() convert each subtotal before folding
+    // (BC-QA-031 — EUR-only responses).
     prisma.transaction.groupBy({
-      by: ['userId'],
+      by: ['userId', 'currency'],
       where: {
         userId: { in: userIds },
         type: TransactionType.SUBSCRIPTION,
@@ -176,12 +181,28 @@ async function enrichSubscriptions(
   ]);
 
   const countByUser = new Map(subscriptionCounts.map((c) => [c.userId, c._count._all]));
-  const paymentsByUser = new Map(
-    paymentAggregates.map((p) => [
-      p.userId,
-      { count: p._count._all, totalAmount: p._sum.amount ?? 0, lastPaymentAt: p._max.createdAt },
-    ]),
-  );
+  // Re-fold the per-(user, currency) rows back to one entry per user: counts add,
+  // lastPaymentAt takes the latest, and the amount subtotals convert then sum.
+  const paymentsByUser = new Map<
+    string,
+    { count: number; currencySums: Array<{ currency: string | null; amount: number | null }>; lastPaymentAt: Date | null }
+  >();
+  for (const p of paymentAggregates) {
+    const existing = paymentsByUser.get(p.userId);
+    if (!existing) {
+      paymentsByUser.set(p.userId, {
+        count: p._count._all,
+        currencySums: [{ currency: p.currency, amount: p._sum.amount }],
+        lastPaymentAt: p._max.createdAt,
+      });
+      continue;
+    }
+    existing.count += p._count._all;
+    existing.currencySums.push({ currency: p.currency, amount: p._sum.amount });
+    if (p._max.createdAt && (!existing.lastPaymentAt || p._max.createdAt > existing.lastPaymentAt)) {
+      existing.lastPaymentAt = p._max.createdAt;
+    }
+  }
 
   const STATUS_DISPLAY_LABELS: Record<SubscriptionStatus, string> = {
     ACTIVE: 'Active',
@@ -198,7 +219,6 @@ async function enrichSubscriptions(
 
   return rows.map((s) => {
     const payments = paymentsByUser.get(s.user.id);
-    const paymentTotalAmount = payments?.totalAmount ?? 0;
     return {
       id: s.id,
       plan: s.plan,
@@ -220,9 +240,9 @@ async function enrichSubscriptions(
       userSubscriptionCount: countByUser.get(s.user.id) ?? 1,
       billingCycle: billingCycleFromPeriod(s.currentPeriodStart, s.currentPeriodEnd),
       paymentCount: payments?.count ?? 0,
-      // Stored payment total is BGN-denominated — convert to EUR before
-      // returning (BC-QA-031 — EUR-only responses).
-      paymentTotalAmount: bgnToEur(paymentTotalAmount),
+      // Per-currency subtotals converted then summed — see the groupBy above
+      // (BC-QA-031 — EUR-only responses).
+      paymentTotalAmount: sumMixedCurrencyToEur(payments?.currencySums ?? []),
       lastPaymentAt: payments?.lastPaymentAt ?? null,
     };
   });
@@ -355,7 +375,11 @@ router.get('/user/:userId/history', requirePermission('subscriptions.read'), asy
     // Each subscription can now have its own payment list via the subscriptionId FK.
     // Aggregate at user level for a summary banner, and per-subscription for detail rows.
     const [userPaymentAgg, subscriptionPayments] = await Promise.all([
-      prisma.transaction.aggregate({
+      // groupBy(['currency']) rather than a flat aggregate: summing the mixed
+      // Transaction.currency column in one go would add BGN and EUR magnitudes
+      // together before any conversion could run (BC-QA-031 — EUR-only responses).
+      prisma.transaction.groupBy({
+        by: ['currency'],
         where: {
           userId: user.id,
           type: TransactionType.SUBSCRIPTION,
@@ -386,7 +410,7 @@ router.get('/user/:userId/history', requirePermission('subscriptions.read'), asy
     ]);
 
     // Build a map of subscriptionId -> payments array for quick lookup.
-    // Stored amount is BGN-denominated — convert to EUR before returning
+    // Transaction.currency is mixed — convert only the BGN-denominated rows
     // (BC-QA-031 — EUR-only responses).
     const paymentsBySubscriptionId = new Map<string | null, Array<Omit<typeof subscriptionPayments[number], 'amount' | 'currency'> & { amount: number; currency: string }>>();
     subscriptionPayments.forEach((payment) => {
@@ -394,7 +418,7 @@ router.get('/user/:userId/history', requirePermission('subscriptions.read'), asy
       if (!paymentsBySubscriptionId.has(key)) {
         paymentsBySubscriptionId.set(key, []);
       }
-      paymentsBySubscriptionId.get(key)!.push({ ...payment, amount: bgnToEur(payment.amount), currency: 'EUR' });
+      paymentsBySubscriptionId.get(key)!.push({ ...payment, amount: toEur(payment.amount, payment.currency), currency: 'EUR' });
     });
 
     const result = subscriptions.map((s) => ({
@@ -418,17 +442,24 @@ router.get('/user/:userId/history', requirePermission('subscriptions.read'), asy
       payments: paymentsBySubscriptionId.get(s.id) ?? [],
     }));
 
-    // Stored total is BGN-denominated — convert to EUR before returning
+    // Fold the per-currency subtotals: convert each, then sum
     // (BC-QA-031 — EUR-only responses).
-    const paymentSummaryTotal = userPaymentAgg._sum.amount ?? 0;
+    const paymentSummaryTotal = sumMixedCurrencyToEur(
+      userPaymentAgg.map((g) => ({ currency: g.currency, amount: g._sum.amount })),
+    );
+    const paymentSummaryCount = userPaymentAgg.reduce((n, g) => n + g._count._all, 0);
+    const paymentSummaryLastAt = userPaymentAgg.reduce<Date | null>(
+      (latest, g) => (g._max.createdAt && (!latest || g._max.createdAt > latest) ? g._max.createdAt : latest),
+      null,
+    );
 
     res.json({
       user: { ...user, isTest: isTestEmail(user.email) },
       subscriptions: result,
       paymentSummary: {
-        count: userPaymentAgg._count._all,
-        totalAmount: bgnToEur(paymentSummaryTotal),
-        lastPaymentAt: userPaymentAgg._max.createdAt,
+        count: paymentSummaryCount,
+        totalAmount: paymentSummaryTotal,
+        lastPaymentAt: paymentSummaryLastAt,
       },
     });
   } catch (error) {

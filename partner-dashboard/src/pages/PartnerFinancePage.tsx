@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { usePartnerFinance } from '../hooks/usePartnerPortal';
 import { PartnerFinanceRow } from '../services/partnerPortal.service';
-import { useCurrencyDisplay, formatWithCurrency } from '../utils/currencyDisplay';
+import { formatEUR } from '../utils/helpers';
 import { csvEscape, downloadBlob } from '../utils/csvExport';
 
 /* ── Layout ── */
@@ -175,14 +175,13 @@ const ErrorBox = styled.div`
 const PartnerFinancePage: React.FC = () => {
   const { user } = useAuth();
   const { language } = useLanguage();
-  const currencyMode = useCurrencyDisplay();
   const isPartner = user?.role === 'partner';
 
   const { data, isLoading, isError } = usePartnerFinance(isPartner);
 
   const t = (bg: string, en: string) => (language === 'bg' ? bg : en);
   const locale = language === 'bg' ? 'bg-BG' : 'en-US';
-  const fmtMoney = (n: number) => formatWithCurrency(n, currencyMode, language === 'bg' ? 'bg' : 'en');
+  const fmtMoney = (n: number) => formatEUR(n);
   const fmtMonth = (m: string) => {
     // `month` is typically YYYY-MM or an ISO date; render a short month label.
     const d = new Date(m.length === 7 ? `${m}-01` : m);

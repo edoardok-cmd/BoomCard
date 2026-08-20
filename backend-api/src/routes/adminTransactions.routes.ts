@@ -5,7 +5,7 @@ import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { deriveCashbackEntryStatus } from '../services/adminCashback.service';
 import { parsePagination } from '../utils/pagination';
-import { bgnToEur } from '../utils/currency';
+import { bgnToEur, toEur, toEurOrNull, sumMixedCurrencyToEur } from '../utils/currency';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -601,20 +601,26 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
             partnerType: effectivePartner.partnerType,
           }
         : null;
-      // Stored amount/marginAmount/cashbackAmount/discountAmount/finalAmount/
-      // netAmount are BGN-denominated — convert to EUR before returning
-      // (BC-QA-031 — EUR-only responses).
+      // Every money column on this row is denominated in the row's own
+      // Transaction.currency, which is genuinely mixed — convert only the
+      // BGN-denominated rows (BC-QA-031 — EUR-only responses). `currency` is
+      // then relabelled 'EUR' so the row's amounts and its own label agree;
+      // previously it passed through raw via `...rest`, so a converted EUR
+      // amount could ship under a 'BGN' label. `margin` is derived from the
+      // already-converted amount/cashback below for the same unit consistency.
+      const rowCurrency = (rest as { currency?: string | null }).currency;
       return {
         ...rest,
         partner: partnerOut,
         venue: venueOut,
-        amount: bgnToEur(amount),
-        marginAmount: marginAmount != null ? bgnToEur(marginAmount) : marginAmount,
-        cashbackAmount: cashbackAmountResolved != null ? bgnToEur(cashbackAmountResolved) : cashbackAmountResolved,
-        discountAmount: discountAmount != null ? bgnToEur(discountAmount) : discountAmount,
-        finalAmount: finalAmount != null ? bgnToEur(finalAmount) : finalAmount,
-        netAmount: netAmount != null ? bgnToEur(netAmount) : netAmount,
-        margin,
+        currency: 'EUR',
+        amount: toEur(amount, rowCurrency),
+        marginAmount: toEurOrNull(marginAmount, rowCurrency),
+        cashbackAmount: toEurOrNull(cashbackAmountResolved, rowCurrency),
+        discountAmount: toEurOrNull(discountAmount, rowCurrency),
+        finalAmount: toEurOrNull(finalAmount, rowCurrency),
+        netAmount: toEurOrNull(netAmount, rowCurrency),
+        margin: toEurOrNull(margin, rowCurrency),
         partnerDiscountRate,
         riskScore,
         cashbackStatus,
@@ -681,10 +687,16 @@ router.get('/business/stats', requirePermission('transactions.read'), async (req
       : { ...whereSansDate, AND: [{ createdAt: { gte: startOfToday, lte: endOfToday } }] };
 
     const [agg, todayCount, fallbackAgg] = await Promise.all([
-      prisma.transaction.aggregate({
+      // groupBy(['currency']) rather than a flat aggregate: Transaction.currency
+      // is genuinely mixed, so a single `_sum.amount` would add BGN and EUR
+      // magnitudes together before any conversion could run. `_avg` is dropped
+      // for the same reason — an average across mixed units is meaningless — and
+      // recomputed below from the converted total and the total row count
+      // (BC-QA-031 — EUR-only responses).
+      prisma.transaction.groupBy({
+        by: ['currency'],
         where,
         _sum: { amount: true, cashbackAmount: true },
-        _avg: { amount: true },
         _count: { _all: true },
       }),
       prisma.transaction.count({ where: todayWhere }),
@@ -728,19 +740,29 @@ router.get('/business/stats', requirePermission('transactions.read'), async (req
       }),
     ]);
 
-    const totalVolume = agg._sum.amount ?? 0;
-    const averageValue = agg._avg.amount ?? 0;
-    const totalCashback =
-      (agg._sum.cashbackAmount ?? 0) + (fallbackAgg._sum.cashbackAmount ?? 0);
+    // Fold the per-currency subtotals into EUR totals (BC-QA-031 — EUR-only
+    // responses). Each subtotal is converted according to its own currency
+    // before being summed; see sumMixedCurrencyToEur.
+    const count = agg.reduce((n, g) => n + g._count._all, 0);
+    const totalVolumeEur = sumMixedCurrencyToEur(
+      agg.map((g) => ({ currency: g.currency, amount: g._sum.amount })),
+    );
+    // averageValue is recomputed from the converted total rather than taken from
+    // a DB `_avg`, which would have averaged across mixed currency units.
+    const averageValueEur = count > 0 ? Math.round((totalVolumeEur / count) * 100) / 100 : 0;
+    // Transaction.cashbackAmount rides the same row currency. The receipt-side
+    // fallback has no currency column of its own (Receipt stores BGN), so it is
+    // converted as BGN.
+    const totalCashbackEur =
+      sumMixedCurrencyToEur(agg.map((g) => ({ currency: g.currency, amount: g._sum.cashbackAmount }))) +
+      bgnToEur(fallbackAgg._sum.cashbackAmount ?? 0);
 
-    // Stored totals are BGN-denominated — convert to EUR before returning
-    // (BC-QA-031 — EUR-only responses).
     res.json({
-      count: agg._count._all,
+      count,
       todayCount,
-      totalVolume: bgnToEur(totalVolume),
-      averageValue: bgnToEur(averageValue),
-      totalCashback: bgnToEur(totalCashback),
+      totalVolume: totalVolumeEur,
+      averageValue: averageValueEur,
+      totalCashback: Math.round((totalCashbackEur + Number.EPSILON) * 100) / 100,
     });
   } catch (error) {
     next(error);

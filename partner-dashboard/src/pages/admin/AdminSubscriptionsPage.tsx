@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { DataTable, ColumnDef } from '../../components/admin/DataTable/DataTable';
-import { formatMoneyByMode } from '../../utils/helpers';
+import { formatEUR } from '../../utils/helpers';
 import {
   adminSubscriptionsService,
   AdminSubscription,
@@ -733,7 +733,10 @@ export default function AdminSubscriptionsPage() {
     });
 
   // Format amount in EUR-only mode
-  const fmtAmount = (amount: number) => formatMoneyByMode(amount, 'eur_only', language);
+  // BC-QA-031: admin money endpoints emit plain EUR scalars. The retired
+  // `formatMoneyByMode(_, 'eur_only')` divided its input by BGN_TO_EUR_RATE,
+  // halving already-converted figures.
+  const fmtAmount = (amount: number) => formatEUR(amount);
 
   const planLabel = (p: SubscriptionPlan) => sharedPlanLabel(p, lang);
   const statusLabel = (s: SubscriptionStatus) => sharedSubStatusLabel(s, lang);

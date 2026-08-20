@@ -4,7 +4,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { formatMoneyByMode } from '../../utils/helpers';
+import { formatEUR } from '../../utils/helpers';
 import {
   adminSubscribersService,
   SubscriptionPlan,
@@ -590,7 +590,10 @@ export default function AdminSubscriberDetailPage() {
     new Date(iso).toLocaleString(locale, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
   // Format amount in EUR-only mode
-  const fmtAmount = (amount: number) => formatMoneyByMode(amount, 'eur_only', language);
+  // BC-QA-031: admin money endpoints emit plain EUR scalars. The retired
+  // `formatMoneyByMode(_, 'eur_only')` divided its input by BGN_TO_EUR_RATE,
+  // halving already-converted figures.
+  const fmtAmount = (amount: number) => formatEUR(amount);
 
   /* ── Modal state ── */
   const [showCancelSub, setShowCancelSub]         = useState(false);

@@ -18,53 +18,25 @@ export const convertEURToBGN = (amountEUR: number): number => {
   return Math.round(amountEUR * BGN_TO_EUR_RATE * 100) / 100;
 };
 
-// Format amount in dual currency (BGN / EUR)
-export const formatDualCurrency = (
-  amountBGN: number,
-  language: 'en' | 'bg' = 'en',
-  compact: boolean = false
-): string => {
-  const amountEUR = convertBGNToEUR(amountBGN);
-
-  if (language === 'bg') {
-    if (compact) {
-      return `${amountBGN} лв. / €${amountEUR}`;
-    }
-    return `${amountBGN} лв. / €${amountEUR}`;
-  } else {
-    if (compact) {
-      return `${amountBGN} BGN / €${amountEUR}`;
-    }
-    return `${amountBGN} BGN / €${amountEUR}`;
-  }
-};
-
-// Format dual currency with custom options
-export const formatDualCurrencyCustom = (
-  amountBGN: number,
-  options: {
-    language?: 'en' | 'bg';
-    separator?: string;
-    showLabels?: boolean;
-  } = {}
-): { bgn: string; eur: string; formatted: string } => {
-  const {
-    language = 'en',
-    separator = ' / ',
-    showLabels = true
-  } = options;
-
-  const amountEUR = convertBGNToEUR(amountBGN);
-  const bgnLabel = language === 'bg' ? 'лв.' : 'BGN';
-
-  const bgnText = showLabels ? `${amountBGN} ${bgnLabel}` : `${amountBGN}`;
-  const eurText = `€${amountEUR}`;
-
-  return {
-    bgn: bgnText,
-    eur: eurText,
-    formatted: `${bgnText}${separator}${eurText}`
-  };
+/**
+ * Format an amount that is ALREADY denominated in EUR.
+ *
+ * BC-QA-031: the dual-currency (BGN alongside EUR) display feature was retired.
+ * Every money-returning backend endpoint now emits plain EUR scalars, so the
+ * frontend must format them as-is — it must NOT apply any BGN→EUR conversion.
+ * This replaces `formatWithCurrency(x, 'EUR_ONLY')` and `formatMoneyByMode(x,
+ * 'eur_only')`, both of which divided their already-EUR input by
+ * `BGN_TO_EUR_RATE` and therefore rendered roughly half of every figure.
+ *
+ * Missing / non-finite input renders as an em-dash rather than "€NaN". Note
+ * `null` and `undefined` are rejected explicitly: `Number(null)` is 0, so a
+ * bare finite-check would render an ABSENT balance as a confident "€0.00".
+ */
+export const formatEUR = (amountEUR: number | null | undefined): string => {
+  if (amountEUR === null || amountEUR === undefined) return '—';
+  const safe = Number(amountEUR);
+  if (!isFinite(safe)) return '—';
+  return `€${safe.toFixed(2)}`;
 };
 
 export const formatDate = (date: Date | string): string => {
@@ -108,30 +80,7 @@ export const generateQueryString = (params: Record<string, unknown>): string => 
   return queryString ? `?${queryString}` : '';
 };
 
-/**
- * Format an amount based on the currency display mode.
- * - In 'dual' mode: returns "X.XX лв. / €Y.YY"
- * - In 'eur_only' mode: returns "€Y.YY"
- *
- * @param amountBGN The amount in BGN
- * @param mode The currency display mode: 'dual' or 'eur_only'
- * @param language The language for labels: 'en' (BGN) or 'bg' (лв.)
- * @returns Formatted currency string
- */
-export const formatMoneyByMode = (
-  amountBGN: number,
-  mode: 'dual' | 'eur_only',
-  language: 'en' | 'bg' = 'en'
-): string => {
-  const safe = Number(amountBGN);
-  if (!isFinite(safe)) return '—';
-  const amountEUR = convertBGNToEUR(safe);
-  const bgnLabel = language === 'bg' ? 'лв.' : 'BGN';
-
-  if (mode === 'dual') {
-    return `${safe.toFixed(2)} ${bgnLabel} / €${amountEUR.toFixed(2)}`;
-  } else {
-    // eur_only mode
-    return `€${amountEUR.toFixed(2)}`;
-  }
-};
+// BC-QA-031: `formatMoneyByMode` (dual / eur_only) was removed along with the
+// rest of the dual-currency display layer. Its four admin call sites all passed
+// 'eur_only' against backend values that are already EUR, so they now use
+// `formatEUR` above.

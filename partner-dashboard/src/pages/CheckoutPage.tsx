@@ -5,8 +5,7 @@ import { ArrowLeft, Lock, Check, Loader2 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { plansService, Plan } from '../services/plans.service';
-import { convertEURToBGN } from '../utils/helpers';
-import { useCurrencyDisplay, formatWithCurrency } from '../utils/currencyDisplay';
+import { formatEUR } from '../utils/helpers';
 import Button from '../components/common/Button/Button';
 
 
@@ -439,10 +438,6 @@ const CheckoutPage: React.FC = () => {
   const location = useLocation();
   const { language, t } = useLanguage();
   const { isAuthenticated } = useAuth();
-  // Clash 12.1 / §8.1 rule 4 — single source of truth for monetary display.
-  // Plan prices come from the API in EUR; the util takes a BGN basis, so amounts
-  // are converted to BGN before formatting. Today the mode resolves to EUR_ONLY.
-  const currencyMode = useCurrencyDisplay();
 
   const planId = searchParams.get('planId');
   const planCode = searchParams.get('planCode');
@@ -537,13 +532,12 @@ const CheckoutPage: React.FC = () => {
   const priceUnavailable =
     !!plan && (!billingOffered || displayPrice === null || !(displayPrice > 0));
 
-  const displayPriceBGN = displayPrice ? convertEURToBGN(displayPrice) : 0;
-  // Currency-aware price string (EUR-only today; dual if the window reopens).
+  // BC-QA-031: plan prices come from the API already in EUR, so they are
+  // formatted as-is — the previous EUR→BGN→EUR round trip through the retired
+  // dual-currency util added nothing but double rounding.
   // When the price is unavailable for the selected period, show an em-dash
   // instead of a misleading "€0.00" in the order summary (M2 fix).
-  const formattedPrice = priceUnavailable
-    ? '—'
-    : formatWithCurrency(displayPriceBGN, currencyMode, language === 'bg' ? 'bg' : 'en');
+  const formattedPrice = priceUnavailable ? '—' : formatEUR(displayPrice);
 
   const getPeriodLabel = () => {
     switch (billingPeriod) {

@@ -13,7 +13,7 @@ import ShareButton from '../components/common/ShareButton/ShareButton';
 import { useOffer } from '../hooks/useOffers';
 import { offersService } from '../services/offers.service';
 import toast from 'react-hot-toast';
-import { useCurrencyDisplay, formatWithCurrency } from '../utils/currencyDisplay';
+import { formatEUR } from '../utils/helpers';
 
 // ─── Menu Modal Styles ─────────────────────────────────────────────────────────
 
@@ -667,9 +667,6 @@ const VenueDetailPage: React.FC = () => {
   const { language, t } = useLanguage();
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  // MEDIUM-1 fix: use the spec-mandated currency display mode (§7.3, Clash 12.1).
-  // Post-transition (2026-01-01) this resolves to EUR_ONLY.
-  const currencyMode = useCurrencyDisplay();
   const [isActivating, setIsActivating] = useState(false);
   const [activationCode, setActivationCode] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -924,7 +921,8 @@ const VenueDetailPage: React.FC = () => {
                   here as real money ("200 → 160, save 40"). Only the discount
                   PERCENTAGE is genuine, so present the offer by its percentage. If a
                   future backend genuinely provides both prices, the optional block
-                  below renders them via formatWithCurrency (§7.3, Clash 12.1). */}
+                  below renders them as plain EUR (BC-QA-031 — the backend emits EUR
+                  scalars and the frontend applies no conversion). */}
               <PriceSection>
                 <DiscountedPrice>
                   {venue.discount}% {language === 'bg' ? 'отстъпка' : 'discount'}
@@ -932,10 +930,10 @@ const VenueDetailPage: React.FC = () => {
                 {typeof venue.originalPrice === 'number' && typeof venue.discountedPrice === 'number' && (
                   <>
                     <OriginalPrice>
-                      {formatWithCurrency(venue.originalPrice, currencyMode, language === 'bg' ? 'bg' : 'en')}
+                      {formatEUR(venue.originalPrice)}
                     </OriginalPrice>
                     <Savings>
-                      {t('venueDetail.youSave')} {formatWithCurrency(venue.originalPrice - venue.discountedPrice, currencyMode, language === 'bg' ? 'bg' : 'en')}
+                      {t('venueDetail.youSave')} {formatEUR(venue.originalPrice - venue.discountedPrice)}
                     </Savings>
                   </>
                 )}

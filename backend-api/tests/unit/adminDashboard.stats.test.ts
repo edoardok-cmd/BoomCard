@@ -18,9 +18,14 @@ jest.mock('../../src/lib/prisma', () => {
   const agg = jest.fn();
   const cnt = jest.fn();
   const grp = jest.fn();
+  const txGrp = jest.fn();
   const client = {
     $queryRaw: qr,
-    transaction: { count: cnt, aggregate: agg },
+    // BC-QA-031: the two transaction-volume reads are groupBy(['currency']),
+    // not aggregate — Transaction.currency is mixed, so the volume subtotals
+    // must be converted per currency before they are folded. `txGrp` is kept
+    // separate from the walletTransaction `grp` so each can be asserted alone.
+    transaction: { count: cnt, aggregate: agg, groupBy: txGrp },
     walletTransaction: { aggregate: agg, count: cnt, groupBy: grp },
     partner: { count: cnt },
     venue: { count: cnt },
@@ -60,7 +65,7 @@ app.use('/admin/dashboard', dashboardRouter);
 // Retrieve the mock functions from the registered mock (the factory defined them inside).
 const m = prisma as unknown as {
   $queryRaw: jest.Mock;
-  transaction: { count: jest.Mock; aggregate: jest.Mock };
+  transaction: { count: jest.Mock; aggregate: jest.Mock; groupBy: jest.Mock };
   walletTransaction: { aggregate: jest.Mock; count: jest.Mock; groupBy: jest.Mock };
   partner: { count: jest.Mock };
   venue: { count: jest.Mock };
@@ -76,6 +81,7 @@ function resetMocks() {
   m.$queryRaw.mockReset();
   m.transaction.count.mockReset();
   m.transaction.aggregate.mockReset();
+  m.transaction.groupBy.mockReset();
   m.walletTransaction.aggregate.mockReset();
   m.walletTransaction.count.mockReset();
   m.walletTransaction.groupBy.mockReset();
@@ -89,6 +95,9 @@ function resetMocks() {
     .mockResolvedValueOnce([])          // latestSubCountsRaw — no subscriptions
     .mockResolvedValueOnce([{ cnt: 0n }]); // activeSubscribersRaw
   m.transaction.aggregate.mockResolvedValue(ZERO_AGGREGATE);
+  // Transaction volume groupBy(['currency']) — default to no rows, which the
+  // route folds to a 0 EUR total (BC-QA-031).
+  m.transaction.groupBy.mockResolvedValue([]);
   m.walletTransaction.aggregate.mockResolvedValue(ZERO_AGGREGATE);
   m.partnerCashbackPayment.aggregate.mockResolvedValue(ZERO_AGGREGATE);
   m.transaction.count.mockResolvedValue(0);
@@ -191,6 +200,40 @@ describe('GET /admin/dashboard — spec §3.1 stats', () => {
 
     const res = await request(app).get('/admin/dashboard').expect(200);
     expect(res.body.data.finance.payoutsDue).toBe(bgnToEur(250));
+  });
+
+  it('transaction volume folds per-currency subtotals — an EUR-native subtotal is NOT re-converted (BC-QA-031)', async () => {
+    // Transaction.currency is genuinely mixed (schema default BGN;
+    // POST /api/payments/create defaults to EUR; Stripe writes EUR rows), so the
+    // volume reads group by currency. A blanket bgnToEur() over one combined
+    // `_sum.finalAmount` would divide the already-EUR half a second time.
+    //
+    // Seed: 19.5583 BGN (→ 10.00 EUR) + 25.00 EUR (unchanged) = 35.00 EUR.
+    // A blanket conversion of the raw sum (44.5583) would report 22.78.
+    m.transaction.groupBy.mockResolvedValue([
+      { currency: 'BGN', _sum: { finalAmount: 19.5583 } },
+      { currency: 'EUR', _sum: { finalAmount: 25.0 } },
+    ]);
+    m.transaction.count.mockResolvedValue(2);
+
+    const res = await request(app).get('/admin/dashboard').expect(200);
+
+    expect(res.body.data.transactions.todayVolume).toBeCloseTo(35.0, 2);
+    expect(res.body.data.transactions.totalVolume).toBeCloseTo(35.0, 2);
+    // The blanket-conversion value must NOT appear.
+    expect(res.body.data.transactions.todayVolume).not.toBeCloseTo(bgnToEur(44.5583), 2);
+    // todayAvg is derived from the CONVERTED total, not a DB _avg across mixed units.
+    expect(res.body.data.transactions.todayAvg).toBeCloseTo(17.5, 2);
+  });
+
+  it('treats a null currency subtotal as BGN, matching the schema column default', async () => {
+    m.transaction.groupBy.mockResolvedValue([
+      { currency: null, _sum: { finalAmount: 19.5583 } },
+    ]);
+    m.transaction.count.mockResolvedValue(1);
+
+    const res = await request(app).get('/admin/dashboard').expect(200);
+    expect(res.body.data.transactions.todayVolume).toBeCloseTo(10.0, 2);
   });
 
   it('todayAvg is 0 (not NaN/Infinity) when there are no transactions today', async () => {

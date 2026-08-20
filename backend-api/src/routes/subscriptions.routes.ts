@@ -8,7 +8,7 @@ import { prisma } from '../lib/prisma';
 import { payseraService } from '../services/paysera.service';
 import crypto from 'crypto';
 import { logger } from '../utils/logger';
-import { bgnToEur } from '../utils/currency';
+import { toEur } from '../utils/currency';
 
 const router = Router();
 
@@ -226,15 +226,18 @@ router.get('/history', authenticate, asyncHandler(async (req: AuthRequest, res: 
       },
     });
 
-    // Stored Transaction.amount is BGN-denominated — convert to EUR before
-    // returning (BC-QA-031 — EUR-only responses). The T9 synthetic entry below
-    // is genuinely EUR-native (plan prices) and is deliberately NOT converted.
+    // Transaction.amount is stored in Transaction.currency, which is genuinely
+    // mixed (schema default BGN; POST /api/payments/create stores a
+    // caller-supplied currency defaulting to EUR; Stripe writes EUR rows) —
+    // convert ONLY the BGN-denominated rows (BC-QA-031 — EUR-only responses).
+    // The T9 synthetic entry below is genuinely EUR-native (plan prices) and is
+    // deliberately NOT converted.
     const history = transactions.map(t => {
       const meta = t.metadata ? JSON.parse(t.metadata as string) : {};
       return {
         id: t.id,
         date: t.createdAt.toISOString(),
-        amount: bgnToEur(t.amount),
+        amount: toEur(t.amount, t.currency),
         currency: 'EUR',
         status: t.status.toLowerCase(),
         description: t.description,
@@ -281,11 +284,17 @@ router.get('/history', authenticate, asyncHandler(async (req: AuthRequest, res: 
     limit: 5,
   });
 
+  // BoomCard's Stripe prices are EUR-denominated (Plan.price*Eur), so
+  // `amount_paid` is already EUR minor units and needs no conversion. The label
+  // stays the hardcoded 'EUR' this endpoint has always emitted: echoing
+  // `inv.currency` back (as BC-QA-031 briefly did) would put a non-EUR label on
+  // an unconverted amount, which the mobile SubscriptionManagementScreen then
+  // renders through its `лв` branch. EUR-only responses, per the task contract.
   const history = stripeInvoices.data.map(inv => ({
     id: inv.id,
     date: new Date(inv.created * 1000).toISOString(),
     amount: (inv.amount_paid ?? inv.amount_due ?? 0) / 100,
-    currency: (inv.currency ?? 'eur').toUpperCase(),
+    currency: 'EUR',
     status: inv.status ?? 'unknown',
     pdfUrl: inv.invoice_pdf,
   }));

@@ -20,7 +20,7 @@ import {
 } from '../constants/receipt.constants';
 import { getSystemSettingInt, getSystemSettingFloat } from '../utils/systemSettings';
 import { detach } from '../utils/detach';
-import { bgnToEur } from '../utils/currency';
+import { bgnToEur, toEur } from '../utils/currency';
 
 /**
  * Receipt Item structure (parsed from OCR)
@@ -302,6 +302,9 @@ class ReceiptService {
               select: {
                 id: true,
                 amount: true,
+                // Selected only so toEur() can tell a BGN row from an already-EUR
+                // one; stripped before the wire (BC-QA-031 — EUR-only responses).
+                currency: true,
                 status: true,
                 createdAt: true
               }
@@ -347,6 +350,9 @@ class ReceiptService {
             select: {
               id: true,
               amount: true,
+              // Selected only so toEur() can tell a BGN row from an already-EUR
+              // one; stripped before the wire (BC-QA-031 — EUR-only responses).
+              currency: true,
               status: true,
               cashbackAmount: true,
               createdAt: true
@@ -675,21 +681,29 @@ class ReceiptService {
       cardId: _cid,
       ...safe
     } = base;
-    // Stored totalAmount/cashbackAmount/transaction.amount are BGN-denominated —
-    // convert to EUR before returning to non-admin callers (BC-QA-031 —
-    // EUR-only responses).
+    // Receipt.totalAmount / Receipt.cashbackAmount are BGN-denominated (the
+    // Receipt model has no currency column), so they convert unconditionally.
+    // The nested Transaction row does NOT: Transaction.currency is genuinely
+    // mixed, so it converts via toEur() and its currency field is stripped
+    // rather than shipped, preserving the pre-existing wire shape
+    // (BC-QA-031 — EUR-only responses).
     return {
       ...safe,
       totalAmount: safe.totalAmount != null ? bgnToEur(safe.totalAmount) : undefined,
       cashbackAmount: bgnToEur(safe.cashbackAmount ?? 0),
       ...(safe.transaction && {
-        transaction: {
-          ...safe.transaction,
-          amount: bgnToEur(safe.transaction.amount),
-          ...(safe.transaction.cashbackAmount != null && {
-            cashbackAmount: bgnToEur(safe.transaction.cashbackAmount),
-          }),
-        },
+        transaction: (() => {
+          const { currency: txCurrency, ...txRest } = safe.transaction as typeof safe.transaction & {
+            currency?: string | null;
+          };
+          return {
+            ...txRest,
+            amount: toEur(safe.transaction.amount, txCurrency),
+            ...(safe.transaction.cashbackAmount != null && {
+              cashbackAmount: toEur(safe.transaction.cashbackAmount, txCurrency),
+            }),
+          };
+        })(),
       }),
     };
   }

@@ -21,14 +21,19 @@ import {
   ALERT_ICON_BY_ID,
   ALERT_FALLBACK_ICON,
   getAlertTitle,
+  formatThresholdTitle,
 } from '../../utils/adminAlertCatalog';
 
 // Spec §3 framing — dashboard is for at-a-glance situational awareness.
 // 60s matches AdminAlertsPage so badge counts stay in sync between pages.
 const REFRESH_INTERVAL_MS = 60_000;
 
-const fmt2 = (n: number | undefined | null): string =>
-  typeof n === 'number' && Number.isFinite(n) ? n.toFixed(2) : '—';
+// BC-QA-031: /admin/dashboard returns every monetary field as a plain EUR
+// scalar (adminDashboard.routes.ts converts before responding). Money is
+// therefore rendered with a € prefix; the previous hardcoded 'лв.'/'BGN'
+// suffixes labelled EUR figures as Lev.
+const fmtEur = (n: number | undefined | null): string =>
+  typeof n === 'number' && Number.isFinite(n) ? `€${n.toFixed(2)}` : '—';
 
 // Format an ISO timestamp as "HH:MM" 24-hour. Guards against Invalid Date
 // (empty/malformed strings past the truthy check) so a bad payload doesn't
@@ -913,11 +918,8 @@ const AdminDashboardPage: React.FC = () => {
                         const sev = tierToSeverity(alert.tier);
                         const Icon = ALERT_ICON_BY_ID[alert.id] ?? ALERT_FALLBACK_ICON;
                         const baseTitle = getAlertTitle(alert.id, alert.title, bg ? 'bg' : 'en');
-                        const threshold = alert.meta?.['threshold'];
-                        const title =
-                          typeof threshold === 'number' || typeof threshold === 'string'
-                            ? `${baseTitle} (≥${threshold} ${bg ? 'лв' : 'BGN'})`
-                            : baseTitle;
+                        // BC-QA-031: meta.threshold is a plain EUR number.
+                        const title = formatThresholdTitle(baseTitle, alert.meta?.['threshold']);
                         return (
                           <AlertCard
                             key={alert.id}
@@ -1009,15 +1011,15 @@ const AdminDashboardPage: React.FC = () => {
                 <StatValue>{dashStats?.transactions.todayCount ?? '—'}</StatValue>
                 <StatSubs>
                   <StatSub>
-                    <strong>{fmt2(dashStats?.transactions.todayVolume)}</strong>{' '}
-                    {bg ? 'лв. днес' : 'BGN today'}
+                    <strong>{fmtEur(dashStats?.transactions.todayVolume)}</strong>{' '}
+                    {bg ? 'днес' : 'today'}
                   </StatSub>
                   <StatSub>
-                    <strong>{fmt2(dashStats?.transactions.todayAvg)}</strong>{' '}
+                    <strong>{fmtEur(dashStats?.transactions.todayAvg)}</strong>{' '}
                     {bg ? 'средно' : 'avg'}
                   </StatSub>
                   <StatSub>
-                    <strong>{fmt2(dashStats?.transactions.totalVolume)}</strong>{' '}
+                    <strong>{fmtEur(dashStats?.transactions.totalVolume)}</strong>{' '}
                     {bg ? 'общ оборот (за всички времена)' : 'lifetime turnover'}
                   </StatSub>
                 </StatSubs>
@@ -1040,19 +1042,19 @@ const AdminDashboardPage: React.FC = () => {
               </StatTop>
               <div>
                 <StatValue>
-                  {`${fmt2(dashStats?.cashback.accrued)} ${bg ? 'лв.' : 'BGN'}`}
+                  {fmtEur(dashStats?.cashback.accrued)}
                 </StatValue>
                 <StatSubs>
                   <StatSub>
-                    <strong>{fmt2(dashStats?.cashback.approved)}</strong>{' '}
+                    <strong>{fmtEur(dashStats?.cashback.approved)}</strong>{' '}
                     {bg ? 'одобрен' : 'approved'}
                   </StatSub>
                   <StatSub>
-                    <strong>{fmt2(dashStats?.cashback.pending)}</strong>{' '}
+                    <strong>{fmtEur(dashStats?.cashback.pending)}</strong>{' '}
                     {bg ? 'изчакващ' : 'pending'}
                   </StatSub>
                   <StatSub>
-                    <strong>{fmt2(dashStats?.cashback.expiringSoon)}</strong>{' '}
+                    <strong>{fmtEur(dashStats?.cashback.expiringSoon)}</strong>{' '}
                     {bg ? 'изтичащ (7 дни)' : 'expiring (7d)'}
                   </StatSub>
                 </StatSubs>
@@ -1104,7 +1106,7 @@ const AdminDashboardPage: React.FC = () => {
               </StatTop>
               <div>
                 <StatValue>
-                  {`${fmt2(dashStats?.finance.payoutsDue)} ${bg ? 'лв.' : 'BGN'}`}
+                  {fmtEur(dashStats?.finance.payoutsDue)}
                 </StatValue>
                 <StatSubs>
                   <StatSub>
@@ -1112,11 +1114,11 @@ const AdminDashboardPage: React.FC = () => {
                     {bg ? 'в опашка' : 'in queue'}
                   </StatSub>
                   <StatSub>
-                    <strong>{fmt2(dashStats?.finance.partnerReceivables)}</strong>{' '}
+                    <strong>{fmtEur(dashStats?.finance.partnerReceivables)}</strong>{' '}
                     {bg ? 'от партньори' : 'from partners'}
                   </StatSub>
                   <StatSub>
-                    <strong>{fmt2(dashStats?.finance.margin)}</strong>{' '}
+                    <strong>{fmtEur(dashStats?.finance.margin)}</strong>{' '}
                     {bg ? 'марджин' : 'margin'}
                   </StatSub>
                 </StatSubs>

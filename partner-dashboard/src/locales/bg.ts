@@ -56,7 +56,6 @@ export const bg: TranslationKey = {
     eur: 'EUR',
     bgnSymbol: 'лв.',
     eurSymbol: '€',
-    dualCurrency: 'лв. / EUR',
     linkCopied: 'Връзката е копирана!',
     failedToCopyLink: 'Неуспешно копиране на връзка',
   },

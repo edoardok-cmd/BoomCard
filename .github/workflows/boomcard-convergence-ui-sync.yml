@@ -103,9 +103,20 @@ jobs:
           INTEGRATION="backend-api/tests/integration"
           MISSING=()
 
+          # BC-QA-031: the dual-currency (BGN+EUR) display feature was retired with
+          # Bulgaria's transition window, taking its CUR-class sweeps with it.
+          #   - admin-currency-leak-sweep.test.ts   — deleted, no replacement
+          #     (the admin surface has no dual-currency envelope left to police)
+          #   - partner-currency-leak-sweep.test.ts — RENAMED to
+          #     partner-internal-field-leak-sweep.test.ts; its non-currency
+          #     internal-field invariant survives there
+          #   - user-currency-leak-sweep.test.ts    — its non-currency invariants
+          #     were extracted to user-internal-field-leak-sweep.test.ts
+          # The renamed replacements are listed below so this check guards the
+          # suites that actually exist rather than the retired ones.
+
           # Admin sweeps
           for f in \
-            "admin-currency-leak-sweep.test.ts" \
             "admin-uuid-500-sweep.test.ts"; do
             if [ ! -f "$INTEGRATION/$f" ]; then
               MISSING+=("$INTEGRATION/$f")
@@ -115,8 +126,17 @@ jobs:
           # Partner sweeps
           for f in \
             "partner-cross-scope-sweep.test.ts" \
-            "partner-currency-leak-sweep.test.ts" \
+            "partner-internal-field-leak-sweep.test.ts" \
             "partner-uuid-500-sweep.test.ts"; do
+            if [ ! -f "$INTEGRATION/$f" ]; then
+              MISSING+=("$INTEGRATION/$f")
+            fi
+          done
+
+          # User / subscriber sweeps (BC-QA-031 replacements)
+          for f in \
+            "user-internal-field-leak-sweep.test.ts" \
+            "subscriber-internal-field-introspect-sweep.test.ts"; do
             if [ ! -f "$INTEGRATION/$f" ]; then
               MISSING+=("$INTEGRATION/$f")
             fi

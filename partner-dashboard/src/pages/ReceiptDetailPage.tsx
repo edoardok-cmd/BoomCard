@@ -33,7 +33,7 @@ import {
 } from '../utils/receiptExport';
 // MEDIUM-2 fix (r2t): use the shared currency formatter so amounts are displayed
 // correctly during the BGN→EUR transition window and after it (spec §7.3 / Clash 12.1).
-import { useCurrencyDisplay, formatWithCurrency } from '../utils/currencyDisplay';
+import { formatEUR } from '../utils/helpers';
 
 const PageContainer = styled.div`
   max-width: 1000px;
@@ -277,9 +277,6 @@ export const ReceiptDetailPage: React.FC = () => {
   // F1: use PartnerReceipt type — no internal fields in state
   const [receipt, setReceipt] = useState<PartnerReceipt | null>(null);
   const [loading, setLoading] = useState(true);
-  // MEDIUM-2 fix (r2t): resolve currency mode for correct amount formatting
-  // (spec §7.3 / Clash 12.1 — BGN shown during transition, EUR after closure).
-  const currencyMode = useCurrencyDisplay();
 
   const t = {
     en: {
@@ -440,7 +437,7 @@ export const ReceiptDetailPage: React.FC = () => {
               <InfoLabel>{content.totalAmount}</InfoLabel>
               <InfoValue>
                 {receipt.totalAmount !== null && receipt.totalAmount !== undefined
-                  ? formatWithCurrency(receipt.totalAmount, currencyMode)
+                  ? formatEUR(receipt.totalAmount)
                   : '-'}
               </InfoValue>
             </InfoItem>
@@ -467,7 +464,7 @@ export const ReceiptDetailPage: React.FC = () => {
                 {receipt.items.map((item, index) => (
                   <ItemRow key={index}>
                     <ItemName>{item.name}</ItemName>
-                    {item.price !== undefined && <ItemPrice>{formatWithCurrency(item.price, currencyMode)}</ItemPrice>}
+                    {item.price !== undefined && <ItemPrice>{formatEUR(item.price)}</ItemPrice>}
                   </ItemRow>
                 ))}
               </ItemsList>

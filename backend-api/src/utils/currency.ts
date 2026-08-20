@@ -23,3 +23,49 @@ function r2(n: number): number {
 export function bgnToEur(amountBgn: number): number {
   return r2(amountBgn / EUR_TO_BGN_RATE);
 }
+
+/**
+ * Convert ONE stored amount to EUR according to the currency it is stored in.
+ *
+ * `Transaction.currency` is genuinely mixed, so a blanket `bgnToEur()` over that
+ * column halves any row that is already EUR-denominated. The writers are:
+ *   - `schema.prisma` `Transaction.currency @default("BGN")` — legacy/default rows
+ *   - `POST /api/payments/create` — stores the caller-supplied currency, which
+ *     `createPaymentSchema` defaults to `'EUR'`
+ *   - `stripe.service.ts` — `(invoice.currency ?? 'bgn').toUpperCase()`, so an
+ *     EUR-priced Stripe invoice produces an EUR row
+ *
+ * Only the BGN case is converted; anything already EUR-denominated passes through
+ * untouched. A `null`/absent currency is treated as BGN, matching the column default.
+ */
+export function toEur(amount: number, currency: string | null | undefined): number {
+  return (currency ?? 'BGN').toUpperCase() === 'BGN' ? bgnToEur(amount) : amount;
+}
+
+/** Nullable-passthrough variant of {@link toEur} for optional money columns. */
+export function toEurOrNull(
+  amount: number | null | undefined,
+  currency: string | null | undefined,
+): number | null {
+  return amount == null ? null : toEur(amount, currency);
+}
+
+/**
+ * Fold a per-currency set of DB-side sums into a single EUR total.
+ *
+ * A Prisma `_sum.amount` taken across a mixed-currency column is meaningless
+ * BEFORE any conversion — it adds BGN and EUR magnitudes together — so a
+ * row-level guard cannot repair it downstream. The fix is to make `currency`
+ * part of the aggregate's grouping key and fold the per-currency subtotals here.
+ *
+ * `bgnToEur` is linear, so converting a currency's subtotal equals converting each
+ * of its rows and summing, up to a single 2dp rounding at the subtotal instead of
+ * one per row — which is the more accurate of the two for a displayed total.
+ */
+export function sumMixedCurrencyToEur(
+  groups: Array<{ currency: string | null; amount: number | null }>,
+): number {
+  return r2(
+    groups.reduce((runningTotal, group) => runningTotal + toEur(group.amount ?? 0, group.currency), 0),
+  );
+}

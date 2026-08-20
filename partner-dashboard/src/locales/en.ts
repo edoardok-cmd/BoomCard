@@ -54,7 +54,6 @@ export const en = {
     eur: 'EUR',
     bgnSymbol: 'лв.',
     eurSymbol: '€',
-    dualCurrency: 'BGN / EUR',
     linkCopied: 'Link copied to clipboard!',
     failedToCopyLink: 'Failed to copy link',
   },

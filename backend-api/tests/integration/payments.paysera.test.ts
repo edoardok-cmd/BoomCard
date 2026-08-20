@@ -354,6 +354,11 @@ describe('Paysera Payment Routes', () => {
   });
 
   describe('GET /api/payments/history', () => {
+    // BC-QA-031: these two orderIds tag the rows the currency assertions below
+    // look up, so they survive whatever else is in the shared test DB.
+    let bgnRowOrderId: string;
+    let eurRowOrderId: string;
+
     beforeAll(async () => {
       // Create some test transactions
       for (let i = 1; i <= 3; i++) {
@@ -370,6 +375,39 @@ describe('Paysera Payment Routes', () => {
           },
         });
       }
+
+      // BC-QA-031 currency-guard fixtures. Transaction.currency is genuinely
+      // mixed: the schema default is BGN, but POST /api/payments/create stores
+      // the caller-supplied currency, which createPaymentSchema defaults to
+      // EUR. /history must convert the BGN row and leave the EUR row alone —
+      // without this pair the guard on that route is unpinned (AX-161).
+      const stamp = Date.now();
+      bgnRowOrderId = `HISTORY-CUR-BGN-${stamp}`;
+      eurRowOrderId = `HISTORY-CUR-EUR-${stamp}`;
+      await prisma.transaction.create({
+        data: {
+          userId,
+          type: 'WALLET_TOPUP',
+          paymentMethod: 'CARD',
+          amount: 19.5583, // BGN — converts to exactly 10.00 EUR
+          currency: 'BGN',
+          status: 'COMPLETED',
+          description: 'History currency test (BGN-stored)',
+          metadata: JSON.stringify({ orderId: bgnRowOrderId }),
+        },
+      });
+      await prisma.transaction.create({
+        data: {
+          userId,
+          type: 'WALLET_TOPUP',
+          paymentMethod: 'CARD',
+          amount: 25.0, // already EUR — must pass through untouched
+          currency: 'EUR',
+          status: 'COMPLETED',
+          description: 'History currency test (EUR-native)',
+          metadata: JSON.stringify({ orderId: eurRowOrderId }),
+        },
+      });
     });
 
     it('should return payment history', async () => {
@@ -383,6 +421,27 @@ describe('Paysera Payment Routes', () => {
       expect(response.body.pagination).toHaveProperty('total');
       expect(response.body.pagination).toHaveProperty('limit');
       expect(response.body.pagination).toHaveProperty('offset');
+    });
+
+    it('converts a BGN-stored row and leaves an EUR-native row unconverted', async () => {
+      const response = await authRequest(authToken)
+        .get('/api/payments/history?limit=100&offset=0');
+
+      expect(response.status).toBe(200);
+      const rows: any[] = response.body.data;
+
+      const bgnRow = rows.find((r) => r.orderId === bgnRowOrderId);
+      const eurRow = rows.find((r) => r.orderId === eurRowOrderId);
+      expect(bgnRow).toBeDefined();
+      expect(eurRow).toBeDefined();
+
+      // 19.5583 BGN → 10.00 EUR
+      expect(bgnRow.amount).toBeCloseTo(10, 2);
+      expect(bgnRow.currency).toBe('EUR');
+
+      // 25.00 EUR stays 25.00 — a blanket bgnToEur() would report 12.78 here.
+      expect(eurRow.amount).toBe(25.0);
+      expect(eurRow.currency).toBe('EUR');
     });
 
     it('should support pagination', async () => {

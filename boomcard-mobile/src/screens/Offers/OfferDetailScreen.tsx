@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { Text, Button, Chip, ActivityIndicator } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
+import { formatEurAmount } from '../../utils/format';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -40,10 +41,12 @@ type RouteParams = {
   partner?: Partner;
 };
 
-function getDiscountLabel(offer: Offer): string {
+// Exported for unit test (BC-QA-031): `discountAmount` is a plain EUR scalar
+// from offers.routes.ts mapOffer — it must never be suffixed with `лв.`.
+export function getDiscountLabel(offer: Offer): string {
   if (offer.discountPercent) return `${offer.discountPercent}% off`;
   if (offer.cashbackPercent) return `${offer.cashbackPercent}% cashback`;
-  if (offer.discountAmount) return `${offer.discountAmount} лв. off`;
+  if (offer.discountAmount) return `${formatEurAmount(offer.discountAmount)} off`;
   return '';
 }
 

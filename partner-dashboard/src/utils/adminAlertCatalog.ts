@@ -75,3 +75,22 @@ export function getAlertTitle(
   if (!entry) return serverTitle;
   return language === 'en' ? entry.en : entry.bg;
 }
+
+/**
+ * Append the alert's monetary threshold to its title, e.g. "… (≥€25.56)".
+ *
+ * BC-QA-031: `adminAlerts.service.ts` emits `meta.threshold` as a plain EUR
+ * number (it used to be a dual-currency object, which made this branch dead
+ * code — it stringified to "[object Object]" and so never rendered). The value
+ * is therefore labelled in EUR; the previous hardcoded `лв`/`BGN` suffix
+ * mislabelled a EUR figure as Lev.
+ *
+ * The suffix is currency-symbol-based and identical in BG and EN, so no
+ * language argument is needed.
+ */
+export function formatThresholdTitle(baseTitle: string, threshold: unknown): string {
+  if (typeof threshold !== 'number' && typeof threshold !== 'string') return baseTitle;
+  const numeric = Number(threshold);
+  if (!isFinite(numeric)) return baseTitle;
+  return `${baseTitle} (≥€${numeric.toFixed(2)})`;
+}

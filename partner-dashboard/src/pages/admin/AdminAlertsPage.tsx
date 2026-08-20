@@ -21,6 +21,7 @@ import {
   ALERT_ICON_BY_ID,
   ALERT_FALLBACK_ICON,
   getAlertTitle,
+  formatThresholdTitle,
 } from '../../utils/adminAlertCatalog';
 
 // Title strings and per-id icons live in utils/adminAlertCatalog.ts so the
@@ -482,13 +483,11 @@ const AdminAlertsPage: React.FC = () => {
             {items.map((alert, idx) => {
               const severity = tierToSeverity(alert.tier);
               const baseTitle = getAlertTitle(alert.id, alert.title, bg ? 'bg' : 'en');
-              // Append "(≥X лв/BGN)" when the backend supplied a threshold via meta —
+              // Append "(≥€X)" when the backend supplied a threshold via meta —
               // keeps EN titles in parity with BG instead of dropping the number.
-              const threshold = alert.meta?.['threshold'];
-              const title =
-                typeof threshold === 'number' || typeof threshold === 'string'
-                  ? `${baseTitle} (≥${threshold} ${bg ? 'лв' : 'BGN'})`
-                  : baseTitle;
+              // BC-QA-031: adminAlerts.service.ts emits meta.threshold as a plain
+              // EUR number, so it is labelled in EUR — never лв/BGN.
+              const title = formatThresholdTitle(baseTitle, alert.meta?.['threshold']);
               const Icon = ALERT_ICON_BY_ID[alert.id] ?? ALERT_FALLBACK_ICON;
               return (
                 <AlertRow

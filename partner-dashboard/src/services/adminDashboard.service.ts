@@ -1,5 +1,16 @@
 import { apiService } from './api.service';
 
+/**
+ * Shape of GET /api/admin/dashboard.
+ *
+ * BC-QA-031: every monetary field below (`transactions.today*`/`totalVolume`,
+ * all of `cashback.*`, `finance.payoutsDue`/`partnerReceivables`/`margin`) is a
+ * plain EUR scalar — `adminDashboard.routes.ts` converts from BGN storage
+ * before responding. `number` therefore still describes reality; the frontend
+ * must render these as-is and must NOT apply a further BGN→EUR conversion.
+ * Count fields (`todayCount`, `payoutsDueCount`, subscriber/partner counts) are
+ * not money.
+ */
 export interface AdminDashboardStats {
   subscribers: {
     active: number;

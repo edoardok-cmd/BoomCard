@@ -112,20 +112,33 @@ function getGitSha() {
 const INTEGRATION = path.join(TESTS_DIR, 'integration');
 const UNIT = path.join(TESTS_DIR, 'unit');
 
-// Sweeps that are run by jest
+// Sweeps that are run by jest.
+//
+// BC-QA-031 — the dual-currency (BGN+EUR) display feature was retired along with
+// Bulgaria's BGN→EUR transition window, and the CUR-class sweeps went with it.
+// Five entries were removed from this map because a missing file only produces a
+// `[SKIP]` line (see buildPatternAndActiveSweeps below), which silently degrades
+// the roll-up rather than failing it:
+//   - admin-currency-leak-sweep        deleted, no replacement
+//   - public-currency-display-sweep    deleted, no replacement
+//   - partner-currency-leak-sweep      RENAMED   → partner-internal-field-leak-sweep
+//   - user-currency-leak-sweep         EXTRACTED → user-internal-field-leak-sweep
+//   - user-money-introspect-sweep      deleted; the subscriber-surface counterpart
+//                                      survives as subscriber-internal-field-introspect-sweep
+// The three surviving replacements are registered below so their pass/fail state
+// appears in `npm run sweeps:report` instead of vanishing from it.
 const JEST_SWEEP_MAP = {
-  'admin-currency-leak-sweep':               path.join(INTEGRATION, 'admin-currency-leak-sweep.test.ts'),
   'admin-uuid-500-sweep':                    path.join(INTEGRATION, 'admin-uuid-500-sweep.test.ts'),
   'partner-cross-scope-sweep':               path.join(INTEGRATION, 'partner-cross-scope-sweep.test.ts'),
-  'partner-currency-leak-sweep':             path.join(INTEGRATION, 'partner-currency-leak-sweep.test.ts'),
+  'partner-internal-field-leak-sweep':       path.join(INTEGRATION, 'partner-internal-field-leak-sweep.test.ts'),
   'partner-uuid-500-sweep':                  path.join(INTEGRATION, 'partner-uuid-500-sweep.test.ts'),
   'user-cross-scope-sweep':                  path.join(INTEGRATION, 'user-cross-scope-sweep.test.ts'),
   'user-input-500-sweep':                    path.join(INTEGRATION, 'user-input-500-sweep.test.ts'),
   'user-auth-gate-sweep':                    path.join(INTEGRATION, 'user-auth-gate-sweep.test.ts'),
-  'user-currency-leak-sweep':                path.join(INTEGRATION, 'user-currency-leak-sweep.test.ts'),
-  'user-money-introspect-sweep':             path.join(INTEGRATION, 'user-money-introspect-sweep.test.ts'),
+  'user-internal-field-leak-sweep':          path.join(INTEGRATION, 'user-internal-field-leak-sweep.test.ts'),
   'user-acl-matrix-sweep':                   path.join(INTEGRATION, 'user-acl-matrix-sweep.test.ts'),
   'user-sub-upgrade-gate-sweep':             path.join(INTEGRATION, 'user-sub-upgrade-gate-sweep.test.ts'),
+  'subscriber-internal-field-introspect-sweep': path.join(INTEGRATION, 'subscriber-internal-field-introspect-sweep.test.ts'),
   'redemption-cross-scope-sweep':            path.join(INTEGRATION, 'redemption-cross-scope-sweep.test.ts'),
   'redemption-input-sweep':                  path.join(INTEGRATION, 'redemption-input-sweep.test.ts'),
   'redemption-leak-scan-sweep':              path.join(INTEGRATION, 'redemption-leak-scan-sweep.test.ts'),
@@ -137,7 +150,6 @@ const JEST_SWEEP_MAP = {
   'system-integ-leak-sweep':                 path.join(INTEGRATION, 'system-integ-leak-sweep.test.ts'),
   'system-email-idempotency':                path.join(INTEGRATION, 'system-email-idempotency.test.ts'),
   'public-data-exposure-sweep':              path.join(INTEGRATION, 'public-data-exposure-sweep.test.ts'),
-  'public-currency-display-sweep':           path.join(INTEGRATION, 'public-currency-display-sweep.test.ts'),
   'public-input-500-sweep':                  path.join(INTEGRATION, 'public-input-500-sweep.test.ts'),
 };
 
