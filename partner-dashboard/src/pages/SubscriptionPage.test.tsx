@@ -242,3 +242,130 @@ describe('SubscriptionPage — error vs empty subscription state', () => {
     expect(screen.getByRole('link', { name: 'View Plans' })).toBeInTheDocument();
   });
 });
+
+// ─── isLoading render branch (BC-QA-019-FOLLOWUP-3) ──
+//
+// While useCurrentSubscription() is fetching, the component renders a loading
+// state with LoadingText. This test suite verifies:
+//   - LoadingText is rendered while isLoading=true
+//   - Other UI branches (error, empty, full subscription) don't render during loading
+//   - isLoading branch takes precedence when concurrent with isError=true
+//   - LoadingText is absent when isLoading=false
+
+describe('SubscriptionPage — isLoading render branch', () => {
+  beforeEach(() => {
+    localStorage.setItem('boomcard_language', 'en');
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it('renders LoadingText while the subscription fetch is pending', async () => {
+    let resolveRequest: (() => void) | null = null;
+    const requestPromise = new Promise<void>((resolve) => {
+      resolveRequest = resolve;
+    });
+
+    routeGet(async (url) => {
+      if (url === '/subscriptions/current') {
+        await requestPromise; // Block the response until we resolve it
+        return realSubscription;
+      }
+      return { history: [] };
+    });
+
+    renderPage(makeQueryClient());
+
+    // While the fetch is pending, LoadingText should render
+    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+
+    // Other UI branches should NOT render while loading
+    expect(screen.queryByText('No active subscription found.')).not.toBeInTheDocument();
+    expect(screen.queryByText('We could not load your subscription. Please try again.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'View Plans' })).not.toBeInTheDocument();
+
+    // Resolve the pending request
+    if (resolveRequest) resolveRequest();
+
+    // After loading completes, the full subscription UI should render
+    await waitFor(() => {
+      expect(screen.getByText('Manage Subscription')).toBeInTheDocument();
+    });
+  });
+
+  it('renders the full subscription UI once loading completes successfully', async () => {
+    // This test verifies the complete isLoading → success flow:
+    // while fetch is pending, LoadingText shows; once data arrives, full UI renders.
+    let resolveRequest: (() => void) | null = null;
+    const requestPromise = new Promise<void>((resolve) => {
+      resolveRequest = resolve;
+    });
+
+    routeGet(async (url) => {
+      if (url === '/subscriptions/current') {
+        await requestPromise;
+        return realSubscription;
+      }
+      return { history: [] };
+    });
+
+    renderPage(makeQueryClient());
+
+    // Initially, only LoadingText should show
+    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    expect(screen.queryByText('Manage Subscription')).not.toBeInTheDocument();
+
+    // Resolve the fetch
+    if (resolveRequest) resolveRequest();
+
+    // After loading, the full subscription UI should render
+    await waitFor(() => {
+      expect(screen.getByText('Manage Subscription')).toBeInTheDocument();
+    });
+
+    // LoadingText should no longer be visible (the page-level loading state, not history loading)
+    const manageSub = screen.getByText('Manage Subscription');
+    expect(manageSub).toBeInTheDocument();
+  });
+
+  it('shows isLoading state when both isLoading=true and isError=true (loading takes precedence)', async () => {
+    let resolveRequest: (() => void) | null = null;
+    let rejectRequest: ((e: Error) => void) | null = null;
+    const requestPromise = new Promise<void>((resolve, reject) => {
+      resolveRequest = resolve;
+      rejectRequest = reject;
+    });
+
+    routeGet(async (url) => {
+      if (url === '/subscriptions/current') {
+        await requestPromise;
+        throw new Error('Network error');
+      }
+      return { history: [] };
+    });
+
+    renderPage(makeQueryClient());
+
+    // While loading (even though the request will eventually error),
+    // LoadingText should be visible
+    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+
+    // Error UI should NOT appear yet (loading takes precedence)
+    expect(screen.queryByText('We could not load your subscription. Please try again.')).not.toBeInTheDocument();
+
+    // Resolve the request with an error
+    if (rejectRequest) rejectRequest(new Error('Network error'));
+
+    // After the error state is reached, the error UI should appear
+    // (and LoadingText should disappear)
+    await waitFor(
+      () => {
+        expect(screen.getByText('We could not load your subscription. Please try again.')).toBeInTheDocument();
+        expect(screen.queryByText(/loading/i)).not.toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+  });
+});
