@@ -2,7 +2,59 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "types": ["node", "jest"],
-    "allowJs": true
+    "allowJs": true,
+    "rootDir": "."
   },
-  "include": ["src/**/*", "tests/**/*"]
+  "include": ["src/**/*", "tests/**/*"],
+  // BC-QA-060 M2: the `pretest` hook (see package.json) runs this project's
+  // typecheck before every `npm test`. Wiring that gate unconditionally
+  // would break `npm test` project-wide today, since ~33 pre-existing files
+  // already fail typecheck under this config. The literal, non-glob file
+  // list below is a staged-rollout exclude: it names EXACTLY the files that
+  // were already broken at the time this gate was added, so `npm test`
+  // keeps working now while the gate still catches any NEW type error in
+  // any file NOT on this list. Each entry should be removed as its owning
+  // follow-up fixes that file -- do not add new files here for anything
+  // introduced after this round; fix it instead.
+  "exclude": [
+    "node_modules",
+    "dist",
+
+    // BC-QA-060-FOLLOWUP-1 (src/ files, 3):
+    "src/middleware/audit.middleware.ts",
+    "src/routes/adminAdmins.routes.ts",
+    "src/routes/adminTransactions.routes.ts",
+
+    // BC-QA-060-FOLLOWUP-2 (tests/ files, 30):
+    "tests/bc-admin-spec-reaudit-pending-super-hygiene.test.ts",
+    "tests/bc-admin-spec-reaudit3-expire-legacy-locked.test.ts",
+    "tests/bc-admin-spec-reaudit3-partner-reject-patch.test.ts",
+    "tests/helpers/test-utils.ts",
+    "tests/integration/admin-help-change-bucket.test.ts",
+    "tests/integration/adminSubscriptionsHistory.test.ts",
+    "tests/integration/bc-admin-audit-fix-008.integration.test.ts",
+    "tests/integration/bc-admin-contract-notify.integration.test.ts",
+    "tests/integration/bc-admin-spec-reaudit-ticket-shortref-1.integration.test.ts",
+    "tests/integration/bc-admin-spec-reaudit2-bounce-shortref-width-1.integration.test.ts",
+    "tests/integration/bc-admin-spec-reaudit2-reject-link-invalidate.test.ts",
+    "tests/integration/bc-admin-spec-reaudit2-void-actor-fallback.test.ts",
+    "tests/integration/bc-admin-spec-reaudit3-trialpending-label.test.ts",
+    "tests/integration/bc-admin-spec-reaudit9-ptype-null-500.test.ts",
+    "tests/integration/bc-align-partner-audit-fixes.integration.test.ts",
+    "tests/integration/bc-align-partner.integration.test.ts",
+    "tests/integration/bc-qa-035-onboard-phone-required.test.ts",
+    "tests/integration/bc-qua-020-currency-mode.integration.test.ts",
+    "tests/integration/checkout-flow.test.ts",
+    "tests/integration/help-ticket-withdraw.test.ts",
+    "tests/integration/impersonation.test.ts",
+    "tests/integration/redemption-cross-scope-sweep.test.ts",
+    "tests/integration/stickers-permission-gating.test.ts",
+    "tests/integration/user-acl-matrix-sweep.test.ts",
+    "tests/partner-lifecycle-fixes.test.ts",
+    "tests/unit/adminPayoutsBulkApprove.test.ts",
+    "tests/unit/auth.deletedGuards.test.ts",
+    "tests/unit/bc-admin-audit-fix-002.test.ts",
+    "tests/unit/section5.coverage.test.ts",
+    "tests/unit/section7.autoApprove.test.ts"
+  ]
 }
