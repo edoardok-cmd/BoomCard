@@ -23,7 +23,10 @@ primary_region = 'fra'
 # `node dist/server.js` unreachable: every machine exited 1 and Fly crash-looped
 # it until it hit the max restart count. A release problem became a TOTAL
 # OUTAGE, and because no health checks were defined, `flyctl deploy` still
-# reported SUCCESS. Six green deploys landed on a dead app over ten days.
+# reported SUCCESS — every CD run from the start of the outage onward was
+# green, and `flyctl releases` recorded v296..v306 all `complete`, for ~10
+# days. (See .github/workflows/deploy-fly.yml for the query that reproduces
+# the run list; do not hand-maintain a count here.)
 #
 # `release_command` is Fly's intended mechanism for this. It runs ONCE, in a
 # temporary machine using this app's env + secrets, BEFORE any new machine
@@ -51,7 +54,37 @@ primary_region = 'fra'
   # nothing but noise, and the `|| true` is exactly the pattern that hides a
   # real failure. A genuinely stuck `0_init` row is already handled by
   # auto-baseline.js step 2.
+  #
+  # PUBLIC-LOG INVARIANT (BC-QA-051 review F1): this command's output is
+  # printed inline by `flyctl deploy` when it fails, and the CD workflow that
+  # runs it lives in a PUBLIC repository, so that output is published to a
+  # world-readable Actions log retained for 90 days. The surface is bounded —
+  # only the two commands below run here, never the application — but any
+  # MIGRATION that prints row data publishes it. Migrations reached from here
+  # must report counts/ids, not values.
   release_command = "sh -c 'node prisma/auto-baseline.js && node_modules/.bin/prisma migrate deploy'"
+
+  # Pinned explicitly rather than inherited. Fly's default for this is 5
+  # minutes; setting it to the same value changes nothing today but makes the
+  # budget visible and stops it moving under us if the platform default
+  # changes.
+  #
+  # Why 5m is right for THIS workload: the release runs auto-baseline (a couple
+  # of metadata queries) plus `migrate deploy` over three pending migrations
+  # against a 231-row User table. The heaviest statement is a CREATE UNIQUE
+  # INDEX on that table — sub-second at this size.
+  #
+  # The failure mode is deliberately the safe one. A timeout aborts the release
+  # exactly like a non-zero exit: no machines are created or updated and the
+  # PREVIOUS version keeps serving. So the risk of this value being too LOW is
+  # a failed deploy, while the risk of it being too HIGH is a migration holding
+  # locks for longer before anyone is told. Given `CREATE UNIQUE INDEX` takes a
+  # ShareLock that blocks writers, failing fast is the better default.
+  #
+  # Raise this deliberately, in the same commit, if a future migration needs a
+  # long backfill or a large index build — and prefer doing that work outside
+  # the release command entirely.
+  release_command_timeout = "5m"
 
 [processes]
   # Just start the server. No migration, no `|| true`, nothing that can turn a

@@ -17,11 +17,17 @@ name: Deploy Backend (Fly.io)
 # fly.toml defined NO health checks, `flyctl deploy` reported SUCCESS as soon as
 # machines were created — even though the process inside them exited 1
 # immediately (a failed Prisma migration, P3009, in the start command) and Fly
-# crash-looped them to the max restart count. Six consecutive runs of this
-# workflow were green while boomcard-api served nothing at all:
-#   2026-08-10 11:42, 2026-08-10 14:55, 2026-08-19 21:29,
-#   2026-08-19 22:41, 2026-08-20 00:34, 2026-08-20 10:56.
-# The API was down for ~10 days and CI never once said so.
+# crash-looped them to the max restart count. EVERY run of this workflow from
+# the start of the outage onward concluded `success` while boomcard-api served
+# nothing at all. The API was down for ~10 days and CI never once said so.
+# Reproduce the run list rather than trusting a hand-written one here (an
+# earlier revision of this comment enumerated six runs and was already wrong
+# the day it was written — the real number was larger):
+#   gh run list --workflow deploy-fly.yml --limit 30 \
+#     --json createdAt,conclusion,displayTitle
+# The outage began with the `Merge branch 'BC-QA-032'` run (2026-08-10T08:36Z).
+# `flyctl releases --app boomcard-api` tells the same story: v296..v306 are all
+# recorded `complete`, so Fly's own release ledger was green too.
 #
 # Three independent gates now stand between a bad build and a green check:
 #   1. `flyctl config validate --strict` BEFORE deploying — a malformed or
@@ -85,6 +91,19 @@ jobs:
       # --wait-timeout 10m: covers release_command (migration) + rolling
       # replacement of both app machines, each of which cannot report healthy
       # for at least its 30s grace_period.
+      #
+      # PUBLIC-LOG INVARIANT (BC-QA-051 review F1): when release_command fails,
+      # flyctl prints that command's output inline into THIS step, and this
+      # repository is public. That output is therefore published. It is a
+      # bounded surface by construction — only `prisma/auto-baseline.js` and
+      # `prisma migrate deploy` run there, not the application — but it means
+      # anything a MIGRATION prints becomes world-readable. Migrations must not
+      # emit row data. A pre-flight guard that enumerated real customer phone
+      # numbers is exactly what this rule exists to prevent; report counts and
+      # ids and point the operator at a local script for the values.
+      # Suppressing this output is not an option: it is the only diagnostic for
+      # a failed release, and losing it recreates the silent-failure class this
+      # whole task is fixing.
       - name: Deploy to Fly.io
         working-directory: backend-api
         env:
@@ -107,6 +126,10 @@ jobs:
           echo "Asserting 200 from $HEALTH_URL"
           attempts=30
           for i in $(seq 1 "$attempts"); do
+            # Truncate first: curl does NOT clear the file when it fails to
+            # connect, so without this the "last response body" printed below
+            # can be a body from an EARLIER attempt, mislabelled as the last.
+            : > /tmp/health.out
             # NB: on a connection failure curl itself prints "000" AND exits
             # non-zero, so `$(curl ...) || echo 000` would yield "000000".
             # Assign, then overwrite on non-zero exit.
@@ -122,30 +145,65 @@ jobs:
             sleep 5
           done
           echo "::error::Deploy reported success but $HEALTH_URL never returned 200."
-          echo "----- last response body -----"
-          cat /tmp/health.out || true
+          # Bounded on purpose: this is a public log. /api/health returns a
+          # fixed {status,message,timestamp} shape and the failure bodies are
+          # the rate limiter's notice or Fly's proxy error page, none of which
+          # carry user data — but cap it so an unexpected body cannot dump a
+          # large payload into a world-readable log.
+          echo "----- last response body (first 512 bytes) -----"
+          head -c 512 /tmp/health.out 2>/dev/null || true
           echo
           echo "----- flyctl status -----"
           flyctl status --app "$FLY_APP" || true
-          echo "----- recent logs -----"
-          flyctl logs --app "$FLY_APP" --no-tail || true
+          # Deliberately NOT `flyctl logs` here — see the diagnostics step below.
           exit 1
 
-      # Diagnostics on ANY failure above. Without this, a failed deploy is a red
-      # X with no explanation and the next move is to go log into Fly by hand.
+      # Diagnostics on ANY failure above.
+      #
+      # ------------------------------------------------------------------
+      # THIS REPOSITORY IS PUBLIC (`gh repo view edoardok-cmd/BoomCard
+      # --json visibility` -> PUBLIC). Everything printed by this workflow is
+      # world-readable with no authentication and is retained by GitHub for 90
+      # days. Treat every line below as published.
+      #
+      # `flyctl logs` was deliberately REMOVED from this step (BC-QA-051
+      # review round 1, finding F1). It dumps the application's raw log
+      # buffer, which is an unbounded, PII-bearing surface:
+      #   - src/server.ts logs `${req.method} ${req.path}` on EVERY request.
+      #     Measured on this build: a request to /api/users/<email> is
+      #     recorded verbatim (percent-encoded) in that stream. Query strings
+      #     and request bodies are NOT captured by that middleware, but any
+      #     identifier carried in a PATH SEGMENT is.
+      #   - src/ has 1068 logger/console call sites across 143 files, 454 of
+      #     which interpolate an error object or a user-derived value. A
+      #     failed deploy is exactly when those fire.
+      # The buffer looks harmless while the app is down (it is currently just
+      # crash-loop output) — which is precisely why sampling it during an
+      # outage is the wrong way to judge the risk. Do not re-add it.
+      #
+      # `flyctl status` and `flyctl releases` are KEPT: they are a different
+      # risk class. Both emit deployment metadata only — app name, hostname,
+      # image reference, machine id/region/state/CHECKS, release version and
+      # date. No application data passes through either. The one identity they
+      # print is the Fly account email in the `releases` USER column, which is
+      # already the author email on every commit in this public repository, so
+      # it is not a new exposure. Fly SECRETS are never printed by either.
+      # ------------------------------------------------------------------
       - name: Dump Fly diagnostics on failure
         if: failure()
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          echo "----- flyctl status -----"
+          echo "----- flyctl status (metadata only) -----"
           flyctl status --app "$FLY_APP" || true
-          echo "----- flyctl releases -----"
+          echo "----- flyctl releases (metadata only) -----"
           flyctl releases --app "$FLY_APP" || true
-          echo "----- recent logs -----"
-          flyctl logs --app "$FLY_APP" --no-tail || true
           echo
           echo "If the release command failed, the PREVIOUS version is still"
           echo "serving — production was not replaced by a broken release."
-          echo "Check migration state with:"
+          echo
+          echo "Application logs are intentionally NOT printed here: this is a"
+          echo "public log and the app's log stream carries request paths and"
+          echo "error payloads. Read them from an authenticated terminal:"
+          echo "  flyctl logs -a $FLY_APP --no-tail"
           echo "  flyctl ssh console -a $FLY_APP -C 'npm run db:migrate:status'"
