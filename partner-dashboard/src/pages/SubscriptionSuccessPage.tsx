@@ -227,18 +227,20 @@ const SubscriptionSuccessPage: React.FC = () => {
       setRedirectVerified(true);
 
       if (result.isSuccess) {
-        setStatus('success');
-        setIsPolling(false);
-        activeRef.current = false;
-        // Create a minimal subscription-like object for display
-        setSubscription({
-          subscriptionId: '',
-          status: 'ACTIVE',
-          plan: { code: '', name: orderId || 'BoomCard', nameBg: null },
-          billingPeriod: '',
-          currentPeriodEnd: '',
-          isActive: true,
-        });
+        // BC-QA-003: the Paysera redirect signature only proves the PAYMENT
+        // succeeded — it carries no plan/billing-period info (see
+        // verifyPaymentRedirect's return type), so it must never be used to
+        // fabricate a final subscription record. This previously synthesized
+        // a fake "active" subscription with the raw orderId standing in for
+        // the plan name and an empty billing period, and immediately stopped
+        // polling — exactly the "empty fields pretending to be final data"
+        // bug: the card looked done but showed garbage forever. We now know
+        // the payment succeeded but not yet whether the backend has finished
+        // processing the webhook (plan/period/activation), so stay in the
+        // honest 'pending' state — reusing the existing "confirming your
+        // payment" copy — and keep polling /status/:orderId in the
+        // background so real data lands as soon as it's available.
+        setStatus('pending');
         return true;
       }
     } catch (error) {
@@ -362,10 +364,25 @@ const SubscriptionSuccessPage: React.FC = () => {
 
   const showTimeoutWarning = elapsedTime >= MAX_POLLING_TIME && status !== 'success';
 
+  // BC-QA-003: the purchased plan's display name, used to make the success
+  // copy plan-aware instead of unconditionally advertising "Premium
+  // features" to someone who just bought Basic.
+  const planName = subscription
+    ? (language === 'bg' ? subscription.plan.nameBg : subscription.plan.name) || null
+    : null;
+
   const getTitle = () => {
     switch (status) {
       case 'success':
-        return t('subscriptionSuccessPage.titleSuccess');
+        // Anonymous/guest checkout: payment is confirmed but the account
+        // isn't active yet — the user still has to complete their profile
+        // via the emailed link. Calling this "Payment Successful" (the same
+        // title used once the subscription is truly active) is what made
+        // the top of the card contradict the Status: Processing badge below
+        // it. Use distinct, honest copy for this in-between state.
+        return isAnonymous
+          ? t('subscriptionSuccessPage.titlePaymentReceived')
+          : t('subscriptionSuccessPage.titleSuccess');
       case 'pending':
         return t('subscriptionSuccessPage.titlePending');
       case 'error':
@@ -375,10 +392,39 @@ const SubscriptionSuccessPage: React.FC = () => {
     }
   };
 
-  const getSubtitle = () => {
+  const getSubtitle = (): React.ReactNode => {
     switch (status) {
       case 'success':
-        return t('subscriptionSuccessPage.subtitleSuccess');
+        if (isAnonymous) {
+          // BC-QA-003 round 2 (F1): planName is null whenever the plan's
+          // nameBg is unset under the bg locale (Plan.displayNameBg is a
+          // nullable column, passed through unconditionally by the backend's
+          // pending-subscription branch) — fall back to generic copy instead
+          // of interpolating null into the sentence, mirroring the
+          // non-anonymous branch's existing planName-ternary below.
+          return planName ? (
+            <>
+              {t('subscriptionSuccessPage.subtitlePaymentReceivedPrefix')}
+              {planName}
+              {t('subscriptionSuccessPage.subtitlePaymentReceivedSuffix')}
+            </>
+          ) : (
+            t('subscriptionSuccessPage.subtitlePaymentReceivedGeneric')
+          );
+        }
+        // Plan-aware copy: name the actual plan that was purchased instead
+        // of a generic "Premium features" claim (BC-QA-003). Falls back to
+        // neutral wording on the rare tick where `subscription` hasn't
+        // loaded yet even though status is already 'success'.
+        return planName ? (
+          <>
+            {t('subscriptionSuccessPage.subtitleSuccessPrefix')}
+            {planName}
+            {t('subscriptionSuccessPage.subtitleSuccessSuffix')}
+          </>
+        ) : (
+          t('subscriptionSuccessPage.subtitleSuccessGeneric')
+        );
       case 'pending':
         return t('subscriptionSuccessPage.subtitlePending');
       case 'error':
@@ -440,7 +486,13 @@ const SubscriptionSuccessPage: React.FC = () => {
               <DetailRow>
                 <DetailLabel>{t('subscriptionSuccessPage.planLabel')}</DetailLabel>
                 <DetailValue>
-                  {language === 'bg' ? subscription.plan.nameBg : subscription.plan.name}
+                  {/* BC-QA-003 round 2 (F1): same nullable-nameBg gap as the
+                      anonymous subtitle above — reuse `planName` (which already
+                      resolves null->null for the active locale) with a dash
+                      fallback, matching getBillingPeriodLabel's existing '-'
+                      convention for this same row group, so the field is never
+                      a blank gap. */}
+                  {planName || '-'}
                 </DetailValue>
               </DetailRow>
               <DetailRow>
@@ -452,7 +504,16 @@ const SubscriptionSuccessPage: React.FC = () => {
                 <StatusBadge $active={subscription.isActive}>
                   {subscription.isActive
                     ? t('subscriptionSuccessPage.statusActive')
-                    : t('subscriptionSuccessPage.statusProcessing')}
+                    : isAnonymous
+                      // BC-QA-003 round 2 (F2): the anonymous/pending-account
+                      // branch is factually not active yet (backend hardcodes
+                      // isActive: false until profile setup completes), but
+                      // reusing the generic "Processing" label here reads as a
+                      // contradiction under the green "Payment Received!"
+                      // success icon/title — as if confirmation were stuck.
+                      // Distinct, accurate, non-alarming label for this state.
+                      ? t('subscriptionSuccessPage.statusAwaitingSetup')
+                      : t('subscriptionSuccessPage.statusProcessing')}
                 </StatusBadge>
               </DetailRow>
               {subscription.currentPeriodEnd && subscription.isActive && (

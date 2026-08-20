@@ -711,6 +711,7 @@ const CheckoutPage: React.FC = () => {
                         placeholder={t('checkoutPage.firstNamePlaceholder')}
                         aria-invalid={!!guestErrors.firstName}
                         aria-describedby={guestErrors.firstName ? 'guestFirstName-error' : undefined}
+                        autoComplete="given-name"
                       />
                       {guestErrors.firstName && (
                         <FieldError id="guestFirstName-error" role="alert">{guestErrors.firstName}</FieldError>
@@ -727,6 +728,7 @@ const CheckoutPage: React.FC = () => {
                         placeholder={t('checkoutPage.lastNamePlaceholder')}
                         aria-invalid={!!guestErrors.lastName}
                         aria-describedby={guestErrors.lastName ? 'guestLastName-error' : undefined}
+                        autoComplete="family-name"
                       />
                       {guestErrors.lastName && (
                         <FieldError id="guestLastName-error" role="alert">{guestErrors.lastName}</FieldError>
@@ -745,6 +747,7 @@ const CheckoutPage: React.FC = () => {
                       placeholder="you@example.com"
                       aria-invalid={!!guestErrors.email}
                       aria-describedby={guestErrors.email ? 'guestEmail-error' : undefined}
+                      autoComplete="email"
                     />
                     {guestErrors.email && (
                       <FieldError id="guestEmail-error" role="alert">{guestErrors.email}</FieldError>
@@ -759,6 +762,7 @@ const CheckoutPage: React.FC = () => {
                       value={guestPhone}
                       onChange={e => setGuestPhone(e.target.value)}
                       placeholder="+359 88 888 8888"
+                      autoComplete="tel"
                     />
                   </GuestField>
                 </GuestForm>

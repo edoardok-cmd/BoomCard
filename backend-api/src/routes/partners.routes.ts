@@ -12,6 +12,7 @@
  */
 
 import { Router, Response } from 'express';
+import bcrypt from 'bcryptjs';
 import { asyncHandler } from '../middleware/error.middleware';
 import { authenticate, authorize, optionalAuthenticate, AuthRequest } from '../middleware/auth.middleware';
 import { requireActivePartnerForWritesAuthed } from '../middleware/partnerStatus.middleware';
@@ -31,6 +32,7 @@ import { publicPartnerFilter } from '../services/publicPartnerFilter';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
 import { bgnToEur } from '../utils/currency';
+import { PHONE_REGEX } from '../validators/auth.validator';
 
 /**
  * Normalize a categories[] payload alongside its main category id.
@@ -1869,6 +1871,25 @@ router.post(
       return res.status(400).json({ success: false, error: 'email, businessName, and category are required' });
     }
 
+    // BC-QA-035 — User.phone is a NOT-NULL column with no @default; this route
+    // used to pass `phone: phone || null` straight into `tx.user.create()`
+    // below, which is a latent NOT-NULL-violation (500) whenever an admin
+    // submitted the onboarding form without a phone. The admin onboarding
+    // form (AdminPartnerOnboardingPage.tsx) already treats phone as a
+    // required field client-side ("Задължително поле") — enforce the same
+    // rule server-side, mirroring registerValidation's phone check in
+    // auth.validator.ts, rather than trust an unvalidated client.
+    if (typeof phone !== 'string' || phone.trim() === '') {
+      return res.status(400).json({ success: false, error: 'phone is required' });
+    }
+    const normalizedPhone = phone.trim().replace(/[\s-]/g, '');
+    if (!PHONE_REGEX.test(normalizedPhone)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid phone number format. Use +359XXXXXXXXX or 0XXXXXXXXX',
+      });
+    }
+
     const normalizedCategories = normalizePartnerCategories(category, categories);
     if (normalizedCategories.error) {
       return res.status(400).json({ success: false, error: normalizedCategories.error });
@@ -1971,7 +1992,7 @@ router.post(
           address,
           city,
           region: region || null,
-          phone: phone || null,
+          phone: normalizedPhone,
           latitude: typeof req.body.latitude === 'number' ? req.body.latitude : null,
           longitude: typeof req.body.longitude === 'number' ? req.body.longitude : null,
           capacity: null,
@@ -2028,7 +2049,6 @@ router.post(
     const result = await prisma.$transaction(async (tx) => {
       // Each onboarded partner gets its own dedicated PARTNER user account,
       // even if another account (user or partner) shares the same email/phone.
-      const bcrypt = await import('bcryptjs');
       const tempPassword = await bcrypt.hash(
         Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-10).toUpperCase() + '!1',
         10
@@ -2040,7 +2060,11 @@ router.post(
           firstName: primaryContact?.split(' ')[0] || ownerName?.split(' ')[0] || businessName.split(' ')[0],
           lastName: primaryContact?.split(' ').slice(1).join(' ') || ownerName?.split(' ').slice(1).join(' ') || '',
           role: 'PARTNER' as any,
-          phone: phone || null,
+          // BC-QA-035 — User.phone is NOT NULL with no @default; `phone` is
+          // now guaranteed present and E.164/local-format-valid by the
+          // required-phone check above (was `phone || null`, a latent
+          // NOT-NULL-violation 500).
+          phone: normalizedPhone,
           // Admin-created accounts are pre-verified — no email confirmation needed.
           emailVerified: true,
           status: UserStatus.ACTIVE,
@@ -2074,7 +2098,7 @@ router.post(
           city: city || null,
           region: region || null,
           address: address || null,
-          phone: phone || null,
+          phone: normalizedPhone,
           email: email.toLowerCase(),
           website: website || null,
           partnerTypeId: partnerTypeId || null,

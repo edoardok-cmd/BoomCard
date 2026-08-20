@@ -1,6 +1,9 @@
 import { body } from 'express-validator';
 
-const PHONE_REGEX = /^(\+359|0)\d{9}$/;
+// Exported (BC-QA-035) so non-express-validator routes — e.g. the admin
+// partner-onboarding endpoint in partners.routes.ts — can enforce the exact
+// same phone format instead of inventing a parallel rule.
+export const PHONE_REGEX = /^(\+359|0)\d{9}$/;
 
 /**
  * Canonical password policy (single source of truth for ALL password-setting

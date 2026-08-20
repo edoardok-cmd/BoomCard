@@ -90,6 +90,12 @@ export function applyRateLimiters(app: Application) {
   app.use('/api/auth/request-email-verification', authRateLimiter);
   app.use('/api/auth/partner/activate', authRateLimiter);
   app.use('/api/auth/complete-profile', authRateLimiter);
+  // BC-QA-007 round 2 (F1) — resend-complete-profile-link's own doc comment
+  // (auth.routes.ts) claims it mirrors /request-email-verification and
+  // /complete-profile exactly; this line is what makes that claim true. See
+  // that comment for why authRateLimiter is deliberately NOT mounted inline
+  // on the route itself.
+  app.use('/api/auth/resend-complete-profile-link', authRateLimiter);
 
   // Payment endpoints - very restrictive.
   //

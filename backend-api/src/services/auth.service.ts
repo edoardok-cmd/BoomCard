@@ -94,6 +94,92 @@ function markVerificationResendAttempt(email: string): void {
   }
 }
 
+// BC-QA-007 — per-token cooldown for the complete-profile resend endpoint.
+// Same rationale/window (60s) as verificationResendCache above, mirrored
+// deliberately per the task brief. Keyed by the raw token rather than an
+// email address: POST /auth/resend-complete-profile-link is unauthenticated
+// and the complete-profile flow never exposes the underlying email to the
+// browser, so the (possibly already-expired) token the caller already has is
+// the only identifier available. In-process only (single-node safe); see the
+// matching TODO(cluster) on verificationResendCache above for the same
+// caveat if this ever runs behind multiple Fly.io machines / PM2 cluster.
+const COMPLETE_PROFILE_RESEND_WINDOW_MS = 60_000;
+const completeProfileResendCache = new Map<string, number>();
+
+// BC-QA-007 round 2 (F2) — alias map from a rotated-away token to the token
+// it was rotated INTO, so a resend request submitted with a stale-but-
+// previously-issued token (the only token the browser ever has, since the
+// response never leaks the freshly-rotated one) still resolves to the live
+// PendingSubscription row instead of silently no-oping. Each successful
+// resend adds exactly one entry; resolveCompleteProfileToken walks the chain
+// to the most recent link. In-process only, same caveat as the caches above.
+const completeProfileTokenAliasCache = new Map<string, string>();
+
+// F3 — the only tokens this endpoint is ever meant to receive are the
+// `crypto.randomBytes(32).toString('hex')` values PendingSubscription.token
+// is generated as everywhere in this codebase (pending-checkout.routes.ts,
+// this file's own rotation below, etc.): exactly 64 lowercase hex chars.
+// Bound the cache-key format to that shape before ANY cache/DB work runs, so
+// an attacker can't inflate completeProfileResendCache /
+// completeProfileTokenAliasCache with arbitrarily large strings. A
+// non-conforming token can never match a real row anyway, so short-circuiting
+// straight to the same neutral response (rather than a distinguishing 400)
+// preserves the enumeration-safety posture the route's doc comment commits to.
+const COMPLETE_PROFILE_TOKEN_RE = /^[0-9a-f]{64}$/;
+
+// Resolve a (possibly stale, already-rotated-away) token to the most
+// recently issued token in its chain. Returns the input unchanged if it was
+// never rotated (or is not a token this process has ever rotated away). The
+// `seen` guard makes this safe against a pathological cycle even though the
+// rotation logic below never intentionally creates one.
+function resolveCompleteProfileToken(token: string): string {
+  let current = token;
+  const seen = new Set<string>();
+  while (completeProfileTokenAliasCache.has(current) && !seen.has(current)) {
+    seen.add(current);
+    current = completeProfileTokenAliasCache.get(current)!;
+  }
+  return current;
+}
+
+function completeProfileResendIsAllowed(token: string): boolean {
+  const now = Date.now();
+  const last = completeProfileResendCache.get(token);
+  if (last == null) return true;
+  return now - last >= COMPLETE_PROFILE_RESEND_WINDOW_MS;
+}
+function markCompleteProfileResendAttempt(token: string): void {
+  const now = Date.now();
+  completeProfileResendCache.set(token, now);
+  if (completeProfileResendCache.size > 10_000) {
+    for (const [k, v] of completeProfileResendCache) {
+      if (now - v >= COMPLETE_PROFILE_RESEND_WINDOW_MS) completeProfileResendCache.delete(k);
+    }
+  }
+  if (completeProfileTokenAliasCache.size > 10_000) {
+    // Bounded, cheap fallback: alias entries are only ever consulted by a
+    // caller who still holds a rotated-away token, so dropping the whole
+    // chain table under sustained load just means those particular stale
+    // tokens fall back to "no email" behaviour instead of resolving — the
+    // same outcome F2 fixes, but only under a volume high enough to already
+    // be well outside this endpoint's normal single-tab-resend use case.
+    completeProfileTokenAliasCache.clear();
+  }
+}
+
+// F2 — called after a successful rotation. Links the old token to the new
+// one for future resolution, and carries the cooldown timestamp forward so a
+// request that resolves through the chain still sees the recent attempt
+// (the cooldown is tied to the underlying PendingSubscription's resend
+// activity, not to whichever ephemeral token happened to name it).
+function rotateCompleteProfileToken(oldToken: string, newToken: string): void {
+  completeProfileTokenAliasCache.set(oldToken, newToken);
+  const lastAttempt = completeProfileResendCache.get(oldToken);
+  if (lastAttempt !== undefined) {
+    completeProfileResendCache.set(newToken, lastAttempt);
+  }
+}
+
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
@@ -782,6 +868,112 @@ export class AuthService {
       after: { selfService: true },
     }), (err: unknown) => logger.error('[resendEmailVerification] writeAudit failed', err));
     return { alreadyVerified: false };
+  }
+
+  /**
+   * Self-service resend of the post-payment complete-profile link (BC-QA-007).
+   *
+   * Public, unauthenticated by necessity: the complete-profile flow (paid
+   * checkout → set-password) never issues a session, so there is no user to
+   * authenticate as. The only identifier the caller has is the token from
+   * their email link / the `?token=` query param — which may already be the
+   * expired one, since that's exactly the case this exists to recover from.
+   *
+   * Always returns the same `{ ok: true }` shape regardless of whether the
+   * token matched a real, still-live PendingSubscription — mirrors
+   * requestEmailVerificationByEmail's enumeration-safety above so this
+   * endpoint cannot be used to probe for the existence of a payment/account.
+   * Per-token cooldown (completeProfileResendCache, 60s) is checked and
+   * marked BEFORE any DB work, and the DB lookup + email dispatch run
+   * detached (fire-and-forget) so response latency can't act as a timing
+   * oracle for "token matched a real row" either.
+   *
+   * Rotates the token on every successful reissue (fresh crypto.randomBytes
+   * value + fresh 30-min tokenExpiresAt) rather than extending the old one —
+   * identical mechanics to the original issuers at
+   * pending-checkout.routes.ts's Paysera callback and
+   * payments.paysera.routes.ts (~L1262), and to forgotPassword's existing
+   * PendingSubscription-resend branch below (~L2362), which this method
+   * intentionally mirrors rather than duplicates ad hoc.
+   */
+  static async resendCompleteProfileLink(token: string): Promise<{ ok: true }> {
+    // F3 — malformed/oversized input never touches the cache or the DB; the
+    // route already rejects an empty token with 400, so anything reaching
+    // here that doesn't match the real token shape can never match a live
+    // row anyway.
+    if (!COMPLETE_PROFILE_TOKEN_RE.test(token)) {
+      return { ok: true };
+    }
+
+    // F2 — resolve a stale-but-previously-issued token (rotated away by an
+    // earlier resend in this same browser tab) to the currently live token
+    // before doing anything else, so both the cooldown check and the DB
+    // lookup below operate on the token that's actually still valid.
+    const resolvedToken = resolveCompleteProfileToken(token);
+
+    if (!completeProfileResendIsAllowed(resolvedToken)) {
+      return { ok: true };
+    }
+    markCompleteProfileResendAttempt(resolvedToken);
+
+    detachImmediate(async () => {
+      try {
+        // status: 'PAID' — the only state /complete-profile itself accepts a
+        // token in (see routes/auth.routes.ts). tokenExpiresAt is deliberately
+        // NOT part of this filter: an expired token is exactly the case this
+        // endpoint recovers from, since /complete-profile's own check only
+        // 400s the submit, it never clears the row's `token` column.
+        // expiresAt: the row's own 24h checkout-session lifetime (distinct
+        // from the 30-min tokenExpiresAt) — mirrors the same guard
+        // forgotPassword's PendingSubscription branch already applies, so a
+        // long-abandoned checkout can't be resurrected indefinitely.
+        const pending = await prisma.pendingSubscription.findFirst({
+          where: { token: resolvedToken, status: 'PAID', expiresAt: { gt: new Date() } },
+          include: { plan: { select: { displayName: true, displayNameBg: true } } },
+        });
+        if (!pending) return;
+
+        const freshToken = crypto.randomBytes(32).toString('hex');
+        await prisma.pendingSubscription.update({
+          where: { id: pending.id },
+          data: {
+            token: freshToken,
+            tokenExpiresAt: new Date(Date.now() + 30 * 60 * 1000),
+          },
+        });
+        // F2 — record the rotation so a future request that still carries
+        // `resolvedToken` (or anything upstream of it in the chain) resolves
+        // through to `freshToken` instead of missing.
+        rotateCompleteProfileToken(resolvedToken, freshToken);
+
+        const frontendBase = process.env.FRONTEND_URL || 'https://boomcard.bg';
+        const lang: 'bg' | 'en' = pending.language === 'en' ? 'en' : 'bg';
+        await emailService.sendCompleteProfileEmail(pending.email, {
+          planName: pending.plan.displayName,
+          planNameBg: pending.plan.displayNameBg ?? undefined,
+          completeProfileUrl: `${frontendBase}/complete-profile?token=${freshToken}`,
+          language: lang,
+        });
+
+        await prisma.linkResendLog.create({
+          data: { linkType: 'COMPLETE_PROFILE', subjectId: pending.id, actorId: null },
+        }).catch((err: unknown) => logger.error('[resendCompleteProfileLink] linkResendLog.create failed', err));
+
+        detach(writeAudit({
+          actorUserId: null,
+          action: 'auth.complete-profile.resend',
+          objectType: 'PendingSubscription',
+          objectId: pending.id,
+          after: { selfService: true },
+        }), (err: unknown) => logger.error('[resendCompleteProfileLink] writeAudit failed', err));
+
+        logger.info(`[resendCompleteProfileLink] PendingSubscription ${pending.id}: token rotated, complete-profile email resent`);
+      } catch (err) {
+        logger.error('[resendCompleteProfileLink] async work failed:', err);
+      }
+    }, (err) => logger.error('[resendCompleteProfileLink] detached body failed:', err));
+
+    return { ok: true };
   }
 
   /**

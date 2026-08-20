@@ -68,7 +68,7 @@ router.get('/status/:orderId', asyncHandler(async (req: Request, res: Response) 
     // Fallback: check PendingSubscription (anonymous checkout)
     const pending = await prisma.pendingSubscription.findFirst({
       where: { payseraOrderId: orderId },
-      include: { plan: { select: { displayName: true, planCode: true } } },
+      include: { plan: { select: { displayName: true, displayNameBg: true, planCode: true } } },
     });
     if (!pending) {
       return res.status(404).json({ success: false, message: 'Subscription not found' });
@@ -79,7 +79,17 @@ router.get('/status/:orderId', asyncHandler(async (req: Request, res: Response) 
       data: {
         status: pending.status,
         email: pending.email,
-        plan: { code: pending.plan.planCode, name: pending.plan.displayName },
+        // BC-QA-003: include nameBg and billingPeriod — both were previously
+        // dropped here even though PendingSubscription.billingPeriod and
+        // Plan.displayNameBg are stored at checkout time, causing the
+        // confirmation page's Plan/Period fields to render blank for the
+        // anonymous (payment-first onboarding) checkout flow.
+        plan: {
+          code: pending.plan.planCode,
+          name: pending.plan.displayName,
+          nameBg: pending.plan.displayNameBg,
+        },
+        billingPeriod: pending.billingPeriod ?? undefined,
         isActive: false,
       },
     });

@@ -359,7 +359,7 @@ export const en = {
     privacyLinkText: 'Privacy Policy',
     acceptPrivacySuffix: ' *',
     marketingConsentLabel: 'I agree to receive marketing communications (optional)',
-    applicationReviewNote: 'After submitting your application, our team will contact you within 2 business days. Once approved and onboarding is complete, you will receive an email with an activation link to set your password.',
+    applicationReviewNote: 'After submitting your application, our team will contact you within 2 working days. Once approved and onboarding is complete, you will receive an email with an activation link to set your password.',
   },
 
   // Home Page
@@ -1056,7 +1056,7 @@ export const en = {
     subtitle: 'BOOM Card connects active users with real businesses through discounts that drive more visits and real revenue.',
     applyNow: 'Apply as a partner',
     contactUs: 'Contact Us',
-    microTrust: 'Our team will contact you within 24 hours',
+    microTrust: 'Our team will contact you within 2 working days',
     partnersCount: 'Partner businesses',
     activeUsers: 'Active discount users',
     redeemedOffers: 'Real visits through discounts',
@@ -2478,7 +2478,24 @@ export const en = {
     titlePending: 'Verifying Payment...',
     titleError: 'Something Went Wrong',
     titleDefault: 'Processing...',
-    subtitleSuccess: 'Your subscription is now active. You can start using Premium features right away.',
+    // BC-QA-003: plan-aware success copy — rendered as prefix + plan name + suffix
+    // so a Basic purchase doesn't get told it has "Premium features" (the old
+    // single subtitleSuccess string was hardcoded to premium marketing copy).
+    subtitleSuccessPrefix: 'Your ',
+    subtitleSuccessSuffix: ' subscription is now active. You can start using your benefits right away.',
+    // Fallback for the rare tick where status is already 'success' but the
+    // subscription record hasn't loaded yet, so no plan name is available.
+    subtitleSuccessGeneric: 'Your subscription is now active. You can start using your benefits right away.',
+    // Anonymous/guest checkout: payment confirmed, account activation is still
+    // pending profile completion via the emailed link.
+    titlePaymentReceived: 'Payment Received!',
+    subtitlePaymentReceivedPrefix: 'We received your payment for the ',
+    subtitlePaymentReceivedSuffix: ' plan. Check your email to complete your account setup.',
+    // BC-QA-003 round 2 (F1): fallback for the anonymous/guest-checkout branch
+    // when the plan's Bulgarian display name (or, in principle, either locale's
+    // name) hasn't been set — mirrors subtitleSuccessGeneric's pattern so this
+    // flow never renders a blank gap where the plan name should be.
+    subtitlePaymentReceivedGeneric: 'We received your payment. Check your email to complete your account setup.',
     subtitlePending: 'Please wait while we confirm your payment. This usually takes a few seconds.',
     subtitleError: 'We could not confirm your payment. Please contact support if the issue persists.',
     subtitleDefault: 'Loading...',
@@ -2488,6 +2505,13 @@ export const en = {
     statusLabel: 'Status',
     statusActive: 'Active',
     statusProcessing: 'Processing',
+    // BC-QA-003 round 2 (F2): anonymous/guest-checkout accounts are genuinely
+    // not active yet (no real Subscription row exists until profile setup is
+    // completed via the emailed link), but reusing the generic "Processing"
+    // label under the green "Payment Received!" success icon read as a
+    // contradiction — as if confirmation were stuck. This label is honest
+    // (not "Active") without sounding broken.
+    statusAwaitingSetup: 'Awaiting Account Setup',
     validUntilLabel: 'Valid Until',
     weekly: 'Weekly',
     monthly: 'Monthly',
