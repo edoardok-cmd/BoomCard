@@ -20,6 +20,70 @@ import { isPhoneRoleUniqueViolation } from '../services/auth.service';
 const router = Router();
 router.use(auditMiddleware);
 
+/**
+ * True when `err` is a PostgreSQL serialization failure (SQLSTATE 40001), i.e.
+ * the "could not serialize access due to read/write dependencies" abort that
+ * SERIALIZABLE isolation raises on the loser of a concurrent read-then-write
+ * race. The last-active-SUPER_ADMIN TOCTOU guards in this file rely on detecting
+ * it so they can answer 409 ("please retry") rather than letting the abort reach
+ * the generic error middleware as an opaque 400.
+ *
+ * BC-QA-045 — this used to test `err.code === 'P2034'` only, which matches SOME
+ * but not all 40001 aborts under Prisma 7 + `@prisma/adapter-pg`. A 40001 can
+ * reach us in either of two shapes, and which one you get is TIMING-DEPENDENT:
+ *
+ *   (a) Raised at STATEMENT time. The adapter maps SQLSTATE 40001 to
+ *       `{ kind: 'TransactionWriteConflict' }` and throws a `DriverAdapterError`,
+ *       but the query-execution path then runs it through
+ *       `rethrowAsUserFacing`, whose `getErrorCode` maps
+ *       `TransactionWriteConflict` to `'P2034'`. The caller sees a
+ *       PrismaClientKnownRequestError with `code === 'P2034'`.
+ *
+ *   (b) Raised at COMMIT time. `commitTransaction` closes the transaction
+ *       WITHOUT any `rethrowAsUserFacing` wrapper, so the adapter error escapes
+ *       unmapped and the caller sees the bare `DriverAdapterError`:
+ *
+ *           name    === 'DriverAdapterError'
+ *           message === 'TransactionWriteConflict'   (the Error superclass is
+ *                                                     given `kind` when the
+ *                                                     payload has no message)
+ *           cause   === { kind: 'TransactionWriteConflict' }
+ *           code    === undefined                    ← the old check missed this
+ *
+ * So the pre-BC-QA-045 matcher was PARTIAL, not dead: it caught (a) and silently
+ * dropped (b). Under the concurrency these guards exist for, (b) is common,
+ * because a read-then-write conflict is often only certified unserializable once
+ * the transactions try to commit.
+ *
+ * All of these shapes are matched, so the guards behave identically whichever
+ * path raises, and the error is unwrapped through `cause` because the
+ * transaction manager may rethrow the adapter error inside a wrapper.
+ *
+ * The shape claims above are pinned by an executable check rather than by this
+ * comment: see `tests/unit/bc-qa-045-serialization-conflict.test.ts`, which
+ * constructs each shape and asserts this predicate's answer. That is why the
+ * function is exported.
+ */
+export function isSerializationConflict(err: unknown): boolean {
+  let cursor: unknown = err;
+  // Walk the `cause` chain (bounded) — the adapter error can arrive either bare
+  // or nested inside a wrapper thrown by the transaction manager.
+  for (let depth = 0; depth < 5 && typeof cursor === 'object' && cursor !== null; depth += 1) {
+    const candidate = cursor as { code?: unknown; name?: unknown; message?: unknown; kind?: unknown; cause?: unknown };
+
+    // Legacy Rust-query-engine shape (and any future adapter that re-maps to it).
+    if (candidate.code === 'P2034') return true;
+    // Raw SQLSTATE, e.g. a `pg` error that reached us before Prisma mapped it.
+    if (candidate.code === '40001') return true;
+    // Prisma 7 driver-adapter shape.
+    if (candidate.kind === 'TransactionWriteConflict') return true;
+    if (candidate.name === 'DriverAdapterError' && candidate.message === 'TransactionWriteConflict') return true;
+
+    cursor = candidate.cause;
+  }
+  return false;
+}
+
 // GET /api/admin/admins/roles — all AdminRole rows (for create / approve forms)
 router.get('/roles', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), requirePermission('admins.read'), async (_req, res, next) => {
   try {
@@ -899,8 +963,9 @@ router.post('/pending-super/:id/approve', authenticate, authorize('SUPER_ADMIN')
         const msg = (err as { message: string }).message.replace('FORBIDDEN:', '');
         return res.status(403).json({ error: msg });
       }
-      // Serializable isolation can trigger conflicts (P2034)
-      if (typeof err === 'object' && err !== null && (err as { code?: string }).code === 'P2034') {
+      // Serializable isolation can trigger conflicts (SQLSTATE 40001 — P2034 on
+      // the Rust engine, DriverAdapterError/TransactionWriteConflict on adapter-pg).
+      if (isSerializationConflict(err)) {
         return res.status(409).json({ error: 'Concurrent modification detected — please retry' });
       }
       // BC-QA-032 — the pre-check above only covers email; a phone collision
@@ -1138,56 +1203,38 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'SUPER_ADMIN'), req
         const msg = (txErr as { message: string }).message.replace('GUARD_FAILED:', '');
         return res.status(409).json({ error: msg });
       }
-      // Serializable isolation can trigger conflicts if concurrent mutations race (P2034).
-      // Retry the transaction (may succeed if the concurrent mutation resolved the race).
-      if (typeof txErr === 'object' && txErr !== null && (txErr as { code?: string }).code === 'P2034') {
-        try {
-          // Re-fetch target to check for any schema/state changes
-          const refreshedTarget = await prisma.user.findUnique({ where: { id } });
-          if (!refreshedTarget || (refreshedTarget.role !== 'ADMIN' && refreshedTarget.role !== 'SUPER_ADMIN')) {
-            return res.status(404).json({ error: 'Admin not found' });
-          }
-
-          try {
-            updated = await prisma.$transaction(async (tx) => {
-              if (refreshedTarget.role === 'SUPER_ADMIN' && (status === 'INACTIVE' || status === 'ARCHIVED')) {
-                const activeSuperAdmins = await tx.user.count({
-                  where: { role: 'SUPER_ADMIN', status: 'ACTIVE', id: { not: id } },
-                });
-                if (activeSuperAdmins === 0) {
-                  throw new Error('GUARD_FAILED:Cannot deactivate the last active SUPER_ADMIN');
-                }
-              }
-
-              return await tx.user.update({
-                where: { id },
-                data: {
-                  status: status as UserStatus,
-                  ...(status === 'ARCHIVED' ? { rolesUpdatedAt: new Date() } : {}),
-                },
-                select: { id: true, status: true },
-              });
-            }, {
-              isolationLevel: 'Serializable',
-              timeout: 30000,
-            });
-          } catch (retryErr: unknown) {
-            if (typeof retryErr === 'object' && retryErr !== null && (retryErr as { message?: string }).message?.startsWith('GUARD_FAILED:')) {
-              const msg = (retryErr as { message: string }).message.replace('GUARD_FAILED:', '');
-              return res.status(409).json({ error: msg });
-            }
-            // If retry transaction also fails with P2034, return 409
-            if (typeof retryErr === 'object' && retryErr !== null && (retryErr as { code?: string }).code === 'P2034') {
-              return res.status(409).json({ error: 'Concurrent modification detected — please retry' });
-            }
-            throw retryErr;
-          }
-        } catch (error) {
-          throw error;
-        }
-      } else {
-        throw txErr;
+      // Serializable isolation aborts the loser of a concurrent read-then-write
+      // race with SQLSTATE 40001. Report it to the caller as 409 and leave the
+      // losing mutation UNAPPLIED.
+      //
+      // BC-QA-045 — this branch used to transparently re-run the whole
+      // guard+update a second time and return 200 if the second pass passed the
+      // guard. That retry was LIVE, not dead code: the old `code === 'P2034'`
+      // matcher caught statement-time conflicts (see isSerializationConflict
+      // above for why commit-time conflicts arrive in a different shape and were
+      // missed), so under contention this endpoint really did sometimes retry and
+      // return 200, and really did sometimes 400. It is removed because the retry
+      // is the wrong behaviour for this endpoint, not because it never ran:
+      //
+      //   • The guard's decision was computed against a snapshot that Postgres
+      //     has just certified as non-serializable. Re-running it evaluates a
+      //     DESTRUCTIVE, reason-carrying admin action (archive / deactivate)
+      //     against a world state the operator never saw and did not consent to.
+      //   • Under a burst of N concurrent archive requests the retry serialises
+      //     them all into successes, walking the estate down to exactly one
+      //     active SUPER_ADMIN while every caller sees 200. The invariant
+      //     survives, but the contention is invisible to the operator.
+      //   • 409 + "please retry" is already this file's own optimistic-
+      //     concurrency contract (it is what the retry's own terminal branch
+      //     answered); the client re-issues against fresh state if it still
+      //     wants the change. It is also what
+      //     tests/bc-admin-spec-reaudit-sa-guard-races.test.ts:182 requires:
+      //     exactly one of two racing archives commits, the loser is told 409
+      //     and its target is left un-archived.
+      if (isSerializationConflict(txErr)) {
+        return res.status(409).json({ error: 'Concurrent modification detected — please retry' });
       }
+      throw txErr;
     }
 
     req.skipAudit = true;
@@ -1381,54 +1428,26 @@ router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADM
       // checks user.role directly, not UserAdminRole, so deleting only the junction row
       // would leave the user with full SUPER_ADMIN access.
       try {
-        let deleteResult: { count: number };
-        try {
-          deleteResult = await prisma.$transaction(async (tx) => {
-            // Re-check invariant INSIDE transaction with Serializable isolation.
-            const remainingActiveSupers = await tx.user.count({
-              where: { role: 'SUPER_ADMIN', status: 'ACTIVE', id: { not: id } },
-            });
-            if (remainingActiveSupers === 0) {
-              throw new Error('GUARD_FAILED:Cannot revoke the role of the last active SUPER_ADMIN');
-            }
-
-            const result = await tx.userAdminRole.deleteMany({ where: { userId: id, roleId: adminRole.id } });
-            if (result.count === 0) {
-              throw new Error('NOT_FOUND:Admin does not have this role');
-            }
-
-            await tx.user.update({ where: { id }, data: { role: 'ADMIN', rolesUpdatedAt: new Date() } });
-            return result;
-          }, {
-            isolationLevel: 'Serializable',
-            timeout: 30000,
+        const deleteResult = await prisma.$transaction(async (tx) => {
+          // Re-check invariant INSIDE transaction with Serializable isolation.
+          const remainingActiveSupers = await tx.user.count({
+            where: { role: 'SUPER_ADMIN', status: 'ACTIVE', id: { not: id } },
           });
-        } catch (txErr: unknown) {
-          // Serializable conflict on first attempt — retry once
-          if (typeof txErr === 'object' && txErr !== null && (txErr as { code?: string }).code === 'P2034') {
-            deleteResult = await prisma.$transaction(async (tx) => {
-              const remainingActiveSupers = await tx.user.count({
-                where: { role: 'SUPER_ADMIN', status: 'ACTIVE', id: { not: id } },
-              });
-              if (remainingActiveSupers === 0) {
-                throw new Error('GUARD_FAILED:Cannot revoke the role of the last active SUPER_ADMIN');
-              }
-
-              const result = await tx.userAdminRole.deleteMany({ where: { userId: id, roleId: adminRole.id } });
-              if (result.count === 0) {
-                throw new Error('NOT_FOUND:Admin does not have this role');
-              }
-
-              await tx.user.update({ where: { id }, data: { role: 'ADMIN', rolesUpdatedAt: new Date() } });
-              return result;
-            }, {
-              isolationLevel: 'Serializable',
-              timeout: 30000,
-            });
-          } else {
-            throw txErr;
+          if (remainingActiveSupers === 0) {
+            throw new Error('GUARD_FAILED:Cannot revoke the role of the last active SUPER_ADMIN');
           }
-        }
+
+          const result = await tx.userAdminRole.deleteMany({ where: { userId: id, roleId: adminRole.id } });
+          if (result.count === 0) {
+            throw new Error('NOT_FOUND:Admin does not have this role');
+          }
+
+          await tx.user.update({ where: { id }, data: { role: 'ADMIN', rolesUpdatedAt: new Date() } });
+          return result;
+        }, {
+          isolationLevel: 'Serializable',
+          timeout: 30000,
+        });
 
         if (deleteResult.count === 0) {
           return res.status(404).json({ error: 'Admin does not have this role' });
@@ -1442,8 +1461,18 @@ router.delete('/:id/roles/:roleKey', authenticate, authorize('ADMIN', 'SUPER_ADM
           if (msg.startsWith('NOT_FOUND:')) {
             return res.status(404).json({ error: msg.replace('NOT_FOUND:', '') });
           }
-          if ((txErr as { code?: string }).code === 'P2034') {
-            // Serializable conflict persists even after retry — return 409
+          // BC-QA-045 — as in PATCH /:id/status above, the loser of a
+          // SERIALIZABLE read-then-write race answers 409 and its revoke is NOT
+          // applied. The former "retry the whole guard+delete once" wrapper was
+          // removed for the same reason, and with the same caveat: that wrapper
+          // was LIVE under the old `code === 'P2034'` matcher for statement-time
+          // conflicts (only the commit-time DriverAdapterError shape escaped it —
+          // see isSerializationConflict). It is removed on the merits, not as
+          // dead code: silently re-evaluating a destructive privilege revocation
+          // against state the operator never saw is the wrong contract. Revoking
+          // N SUPER_ADMINs concurrently would otherwise serialise into N
+          // successes down to the last one, all reported 200.
+          if (isSerializationConflict(txErr)) {
             return res.status(409).json({ error: 'Concurrent modification detected — please retry' });
           }
         }

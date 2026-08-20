@@ -329,11 +329,44 @@ router.get(
 
 // ─── Advance pipeline status ──────────────────────────────────────────────────
 
+// Legal pipeline advances for PATCH /:id/status ONLY.
+//
+// Terminal transitions are deliberately NOT reachable from this table, because
+// each of them owns side effects that this generic "advance the pipeline"
+// handler does not perform:
+//
+//   • → APPROVED  is owned by POST /:id/approve, which additionally ISSUES THE
+//     PARTNER ACTIVATION LINK (spec §1.6, §3.5 step 3) via
+//     activationLink.service and emails it. BC-QA-045: `ONBOARDING: ['APPROVED']`
+//     used to sit here, so PATCH /:id/status could flip a partner's
+//     requestStatus to APPROVED with no activation link ever created — the
+//     partner was marked approved but had never been sent the link they need to
+//     activate. Removing APPROVED from the table makes the link-issuing endpoint
+//     the only door into that state.
+//
+//     Such a partner is NOT permanently stranded: because PATCH /:id/status
+//     never writes `partner.status`, it leaves the row at
+//     requestStatus=APPROVED + status=PENDING, and POST /:id/approve has a
+//     deliberate resend-activation carve-out (see its guards, which accept an
+//     APPROVED source ONLY while status is still PENDING) that re-issues the
+//     link for exactly that combination. So the operational damage was a
+//     partner sitting un-activated until someone noticed, not an unrecoverable
+//     row — and that carve-out is load-bearing, not dead code: do not delete it
+//     on the strength of this edge having been removed.
+//   • → REJECTED  is owned by POST /:id/reject (audit trail + link
+//     invalidation) and is already rejected explicitly a few lines below, with
+//     a message naming the correct endpoint.
+//
+// With APPROVED gone, ONBOARDING has no onward PATCH transition, so its entry is
+// an empty list exactly like the terminal APPROVED entry. An attempt to advance
+// past it falls through to the standard pipeline rejection below (400 +
+// `allowedTransitions`), which is the same shape every other illegal transition
+// in this handler returns.
 const VALID_PIPELINE_TRANSITIONS: Partial<Record<PartnerRequestStatus, PartnerRequestStatus[]>> = {
   NEW: ['COMMUNICATION'],
   COMMUNICATION: ['NEGOTIATION'],
   NEGOTIATION: ['ONBOARDING'],
-  ONBOARDING: ['APPROVED'],
+  ONBOARDING: [],
   APPROVED: [],
 };
 
@@ -389,8 +422,13 @@ router.patch(
       });
     }
 
-    const isOdobrenaTransition =
-      requestStatus === PartnerRequestStatus.APPROVED && current !== PartnerRequestStatus.APPROVED;
+    // BC-QA-045: the APPROVED bookkeeping that used to live here — an
+    // `isOdobrenaTransition` flag stamping `onboardingCompletedAt` and clearing
+    // the ONBOARDING_INACTIVE marker — has been REMOVED rather than left in place.
+    // No entry in VALID_PIPELINE_TRANSITIONS yields APPROVED any more, so the
+    // guard above always rejects first and those branches could never evaluate
+    // true again. `onboardingCompletedAt` is stamped by POST /:id/approve, which
+    // is now the only door to APPROVED.
 
     // M2 (Spec §1.6) — at the Onboarding stage the partner account exists in a
     // distinct "Inactive, read-only" operational state. The canonical partner
@@ -403,7 +441,12 @@ router.patch(
     // "Inactive" (partners.routes.toCanonicalPartnerStatus / partnerStatus
     // middleware), and writes are already blocked for non-ACTIVE partners, so the
     // operational behavior (Inactive + read-only) is enforced; this marker makes
-    // the state explicit and queryable. Cleared once the partner is approved.
+    // the state explicit and queryable.
+    // NB (BC-QA-045): nothing clears this marker. The clearing branch that used
+    // to live below only ran on a PATCH ONBOARDING → APPROVED transition, which
+    // no longer exists, and POST /:id/approve has never cleared it — so partners
+    // approved through the intended door were already unaffected by it. Filed
+    // separately; do not read the marker as self-clearing.
     const isOnboardingTransition =
       requestStatus === PartnerRequestStatus.ONBOARDING && current !== PartnerRequestStatus.ONBOARDING;
     const ONBOARDING_INACTIVE_MARKER = 'ONBOARDING_INACTIVE';
@@ -412,16 +455,8 @@ router.patch(
       where: { id: req.params.id },
       data: {
         requestStatus: requestStatus as PartnerRequestStatus,
-        // Spec §3.2 informational alert needs an explicit completion timestamp.
-        // Stamp once on the first APPROVED transition; later edits don't reset it.
-        ...(isOdobrenaTransition && !partner.onboardingCompletedAt
-          ? { onboardingCompletedAt: new Date() }
-          : {}),
-        // M2 — stamp/clear the Onboarding-Inactive sub-state marker.
+        // M2 — stamp the Onboarding-Inactive sub-state marker.
         ...(isOnboardingTransition ? { statusReason: ONBOARDING_INACTIVE_MARKER } : {}),
-        ...(isOdobrenaTransition && partner.statusReason === ONBOARDING_INACTIVE_MARKER
-          ? { statusReason: null }
-          : {}),
       },
       select: PARTNER_SELECT,
     });
@@ -433,10 +468,11 @@ router.patch(
       objectType: 'Partner',
       objectId: req.params.id,
       before: { requestStatus: current },
-      after: {
-        requestStatus,
-        ...(isOdobrenaTransition ? { onboardingCompleted: true } : {}),
-      },
+      // BC-QA-045: the `onboardingCompleted: true` audit annotation that used to
+      // be spread in here was also gated on the now-impossible APPROVED
+      // transition, so it could never appear. POST /:id/approve writes its own
+      // audit entry for the approval.
+      after: { requestStatus },
     }), (err) => logger.error('[adminPartners] pipeline writeAudit failed:', err));
 
     res.json({ partner: updated });

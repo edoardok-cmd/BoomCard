@@ -744,6 +744,7 @@ export async function getSubscriberCashbackEntries(
   userId: string,
   page: number,
   limit: number,
+  statusFilter?: CashbackEntryStatus,
 ): Promise<SubscriberCashbackResult> {
   const wallet = await prisma.wallet.findUnique({
     where: { userId },
@@ -753,9 +754,44 @@ export async function getSubscriberCashbackEntries(
     throw new AppError('Subscriber wallet not found', 404);
   }
 
+  // BC-QA-045 — `statusFilter` is new. This function had no such parameter, so
+  // both routes that call it (GET /api/admin/cashback/subscriber/:userId and its
+  // mirror GET /api/admin/subscribers/:userId/cashback) dropped `?status=` on the
+  // floor and ALWAYS returned the subscriber's full unfiltered entry list. The
+  // response still looked plausible — each row carries its own derived `status` —
+  // so a filtered view silently showed every other state too.
+  //
+  // Reuses the same buildStateWhere() the global listing uses, so the subscriber
+  // and global endpoints partition IDENTICALLY TO EACH OTHER. That is the only
+  // agreement claimed here. It is deliberately NOT a claim that buildStateWhere
+  // agrees with deriveCashbackEntryStatus(): the TrialPending branch does agree
+  // (checked in both directions), but at least two others provably do not, and
+  // both mis-partitions are pre-existing, untouched by BC-QA-045, and filed
+  // separately:
+  //
+  //   • Expired / Paid / Cleared — their LEGACY arms build `status: { notIn: [...] }`
+  //     from PENDING_RAW / NEVER_PAID_RAW / 'CANCELLED', none of which include
+  //     'TRIAL_PENDING'. So a legacy row (cashbackStatus null, cashbackPaidAt
+  //     null, raw status TRIAL_PENDING) whose cashbackExpiresAt has passed is
+  //     returned by the Expired filter while being LABELLED TrialPending.
+  //
+  //   • Voided / Locked — deriveCashbackEntryStatus maps a legacy raw status of
+  //     'ANNULLED' to 'Voided', but the Voided branch here is
+  //     `{ cashbackStatus: 'VOIDED' }` with NO legacy arm, while the Locked
+  //     branch's legacy arm admits `status: { in: ['ANNULLED', 'FAILED'] }`. So a
+  //     legacy ANNULLED row is LABELLED Voided, is absent from the Voided filter
+  //     entirely, and is returned by the Locked filter.
+  //
+  // Recorded here so this call site is not read as asserting an agreement that
+  // does not hold.
+  const filterWhere = statusFilter ? await buildStateWhere(statusFilter, new Date()) : undefined;
+  const listWhere: WTWhere = filterWhere
+    ? { AND: [{ walletId: wallet.id, type: 'CASHBACK_CREDIT' as const }, filterWhere] }
+    : { walletId: wallet.id, type: 'CASHBACK_CREDIT' as const };
+
   const [entries, total, latestWithdrawal] = await Promise.all([
     prisma.walletTransaction.findMany({
-      where: { walletId: wallet.id, type: 'CASHBACK_CREDIT' },
+      where: listWhere,
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
       take: limit,
@@ -785,7 +821,8 @@ export async function getSubscriberCashbackEntries(
         },
       },
     }),
-    prisma.walletTransaction.count({ where: { walletId: wallet.id, type: 'CASHBACK_CREDIT' } }),
+    // Count the SAME filtered set, so pagination totals match the rows returned.
+    prisma.walletTransaction.count({ where: listWhere }),
     // Most recent completed payout — any cleared entry before this date was paid out
     prisma.walletTransaction.findFirst({
       where: { walletId: wallet.id, type: 'WITHDRAWAL', status: 'COMPLETED' },
@@ -862,10 +899,46 @@ async function buildStateWhere(
   };
   const expired: WTWhere = { cashbackExpiresAt: { lte: now } };
 
-  // TrialPending — wallet rows in the TRIAL_PENDING status (trial-period cashback
-  // that is resolved by the scheduler at trial end, not by the 60-day expiry rule).
+  // Prefer cashbackStatus when set and fall back to the legacy raw-status
+  // derivation so old rows still partition correctly.
+  // Two sources of truth per state:
+  //   (a) NEW: lifecycle column `cashbackStatus` is set (post-v1.1 writes)
+  //   (b) LEGACY: cashbackStatus is null — fall back to raw-status derivation
+  // OR the two so old rows continue to partition correctly during migration.
+  // Legacy branches require cashbackStatus IS NULL so a row that was later
+  // voided via the lifecycle service doesn't double-count under its legacy bucket.
+  const legacyOnly: WTWhere = { cashbackStatus: null };
+
+  // TrialPending — trial-period cashback that the scheduler resolves at trial
+  // end, not by the 60-day expiry rule.
+  //
+  // BC-QA-045: this branch used to be a bare `{ status: 'TRIAL_PENDING' }` — the
+  // ONLY state branch that read the legacy raw `status` column WITHOUT preferring
+  // the authoritative `cashbackStatus` lifecycle column, contrary to the contract
+  // documented directly above and implemented by every sibling branch below. The
+  // filter therefore disagreed with deriveCashbackEntryStatus(), which produces
+  // the LABEL the same rows are rendered with, in BOTH directions:
+  //
+  //   • MISSED  rows whose cashbackStatus is TRIAL_PENDING but whose raw status
+  //     is something else (the normal new-world shape — the lifecycle service
+  //     writes cashbackStatus and leaves `status` as the wallet-level value, e.g.
+  //     COMPLETED). Those render as "TrialPending" in the listing yet were
+  //     silently absent from the TrialPending filter.
+  //   • ADMITTED rows whose raw status is still TRIAL_PENDING but whose
+  //     cashbackStatus has since moved on (e.g. to PAID or VOIDED) and which
+  //     therefore render as that other state, plus legacy rows carrying a
+  //     cashbackPaidAt, which derive to Paid.
   if (state === 'TrialPending') {
-    return { status: 'TRIAL_PENDING' as const };
+    const legacy: WTWhere = {
+      AND: [
+        legacyOnly,
+        // deriveCashbackEntryStatus tests cashbackPaidAt BEFORE the legacy
+        // status === 'TRIAL_PENDING' test, so a paid-out legacy row is Paid.
+        { cashbackPaidAt: null },
+        { status: 'TRIAL_PENDING' as const },
+      ],
+    };
+    return { OR: [{ cashbackStatus: 'TRIAL_PENDING' as const }, legacy] };
   }
 
   // Voided is the only state that ONLY exists via the new lifecycle column.
@@ -874,15 +947,6 @@ async function buildStateWhere(
     return { cashbackStatus: 'VOIDED' as const };
   }
 
-  // For the other 6 states, prefer cashbackStatus when set and fall back to
-  // the legacy raw-status derivation so old rows still partition correctly.
-  // Two sources of truth per state:
-  //   (a) NEW: lifecycle column `cashbackStatus` is set (post-v1.1 writes)
-  //   (b) LEGACY: cashbackStatus is null — fall back to raw-status derivation
-  // OR the two so old rows continue to partition correctly during migration.
-  // Legacy branches require cashbackStatus IS NULL so a row that was later
-  // voided via the lifecycle service doesn't double-count under its legacy bucket.
-  const legacyOnly: WTWhere = { cashbackStatus: null };
   const newWorldStateUpper = state.toUpperCase() as 'PENDING' | 'CLEARED' | 'LOCKED' | 'PAID' | 'EXPIRED';
   const newWorld: WTWhere = { cashbackStatus: newWorldStateUpper };
 
