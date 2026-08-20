@@ -644,8 +644,8 @@ const PartnersPage: React.FC = () => {
     {
       titleEn: 'Apply online',
       titleBg: 'Кандидатствате онлайн',
-      textEn: 'Fill out a short form and our team will contact you within 24 hours.',
-      textBg: 'Попълвате кратка форма, екипът се свързва с вас до 24 часа.'
+      textEn: 'Fill out a short form and our team will contact you within 2 working days.',
+      textBg: 'Попълвате кратка форма, екипът се свързва с вас до 2 работни дни.'
     },
     {
       titleEn: 'Set up your profile',

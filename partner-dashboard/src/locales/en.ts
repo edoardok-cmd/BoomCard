@@ -1056,7 +1056,7 @@ export const en = {
     subtitle: 'BOOM Card connects active users with real businesses through discounts that drive more visits and real revenue.',
     applyNow: 'Apply as a partner',
     contactUs: 'Contact Us',
-    microTrust: 'Our team will contact you within 24 hours',
+    microTrust: 'Our team will contact you within 2 working days',
     partnersCount: 'Partner businesses',
     activeUsers: 'Active discount users',
     redeemedOffers: 'Real visits through discounts',
