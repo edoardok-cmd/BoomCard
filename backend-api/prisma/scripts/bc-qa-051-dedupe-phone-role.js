@@ -86,8 +86,17 @@
  * Other flags:
  *   --out <path>              Where to write the before-image. Must be OUTSIDE
  *                             any git working tree — the file is customer PII
- *                             and this repository is public. Default:
- *                             ~/.bc-qa-051-before-images/…json (mode 0600).
+ *                             and this repository is public. By default it is
+ *                             filed by target, so a real run's file is never
+ *                             mixed in with scratch rehearsals:
+ *                               ~/.bc-qa-051-before-images/PRODUCTION/  (0700)
+ *                                 …any non-loopback database. Real data. Keep.
+ *                               ~/.bc-qa-051-before-images/scratch/
+ *                                 …127.0.0.1 / localhost / ::1. Disposable.
+ *                             Filenames carry the mode and host, e.g.
+ *                             bc-qa-051-before-image-commit-<host>-<db>-<ts>.json
+ *                             Files are 0600, and PRODUCTION/ gets a
+ *                             README-KEEP-THESE.txt explaining itself.
  *   --show-values             Print phone numbers and ids literally instead of
  *                             as stable 8-hex digests. Off by default so that
  *                             pasting this script's output into a ticket, a
@@ -116,6 +125,47 @@
  *        --commit dedupe --confirm-database boomcard
  *   4. npx prisma migrate resolve --rolled-back 20260810160000_add_user_phone_role_unique
  *   5. npx prisma migrate deploy
+ *
+ *      *** PRODUCTION RECOVERS HERE — at step 5, not at a deploy. ***
+ *      Do not stop before step 6. This whole task exists because a pipeline
+ *      reported success without checking whether the service was alive;
+ *      finishing a recovery without that check repeats the mistake by hand.
+ *
+ *   6. CONFIRM IT IS ACTUALLY SERVING:
+ *
+ *        curl -sS -o /dev/null -w '%{http_code}\n' --max-time 120 \
+ *          https://boomcard-api.fly.dev/api/health
+ *
+ *      Expect 200, and a JSON body of {"status":"ok",…} if you drop the
+ *      -o /dev/null. Anything else — including a timeout — means step 5 did
+ *      not do what you think; re-read its output before touching anything.
+ *
+ *      BE PATIENT WITH THE FIRST REQUEST, and know why. Read read-only from
+ *      the live app on 2026-08-20:
+ *        - both `app` machines are in state `stopped`, not crash-looping.
+ *          They exhausted their restart budget days ago.
+ *        - fly.toml sets `auto_start_machines = true`, so the Fly proxy boots
+ *          a stopped machine on the next inbound request. The machine's own
+ *          event log shows exactly that: `starting start proxy 17:09:46` →
+ *          `started start flyd 17:09:49` → `stopped exit flyd 17:12:03
+ *          exit_code=1`.
+ *        - that machine's recorded Command still ends
+ *          `&& node dist/server.js`, and it runs the OLD image.
+ *      So your curl is what wakes it, it boots off the image already on the
+ *      machine, and the only reason it has been dying is the failed migration
+ *      that step 5 just fixed. No deploy, no machine restart, no merge is
+ *      needed for recovery. Budget ~2-3 minutes: the failing boot above took
+ *      2m14s from wake to exit, nearly all of it inside `migrate deploy`, and
+ *      a succeeding one has three migrations to apply before the server binds.
+ *      The first curl may well time out before the boot finishes — that is the
+ *      wake, not a failure. Wait a minute and run it again before concluding
+ *      anything.
+ *
+ *      Deploying this branch is a SEPARATE, LATER action. It is still required
+ *      (so the fixed migration file matches the checksum production recorded,
+ *      and so the fly.toml/CD hardening ships) but it is not what brings the
+ *      service back, and nothing about step 6 depends on it.
+ *
  *   Undo step 3 with:
  *      node prisma/scripts/bc-qa-051-dedupe-phone-role.js \
  *        --rollback-from <before-image.json> --commit rollback \
@@ -238,7 +288,51 @@ function redactId(id, showValues) {
 // checkout, and refuse an explicit --out that resolves inside a git working
 // tree. The .gitignore rules (repo root and backend-api/) are kept as a third
 // layer for anyone who overrides this in future.
-const DEFAULT_OUT_DIR = path.join(os.homedir(), '.bc-qa-051-before-images');
+//
+// SEGREGATION BY TARGET. Everything used to land in one flat directory, which
+// meant the single file that is the only record of 51 real customers' phone
+// numbers sat in the same listing as throwaway files from scratch-database
+// runs, distinguishable only by a database name in the middle of a long
+// filename. Every rehearsal, every review pass and every trial adds another.
+// Picking the wrong one to restore from is a foreseeable mistake — per-row
+// restore is fail-closed on the placeholder check, so a wrong file restores
+// nothing rather than corrupting anything, but "nothing happened and I don't
+// know why" during an incident is its own cost. Files are therefore filed
+// under:
+//
+//   ~/.bc-qa-051-before-images/
+//     PRODUCTION/   <- any non-loopback target. Real data. Keep.
+//     scratch/      <- loopback (127.0.0.1/localhost/::1). Disposable.
+//
+// with the mode and the operation in the filename, so a human scanning the
+// directory can see what each file is without opening it. The discriminator is
+// deliberately "is the target loopback", not a database-name match: anything
+// reachable over the network is treated as real until proven otherwise.
+const DEFAULT_OUT_ROOT = path.join(os.homedir(), '.bc-qa-051-before-images');
+const PRODUCTION_SUBDIR = 'PRODUCTION';
+const SCRATCH_SUBDIR = 'scratch';
+
+// Dropped in PRODUCTION/ the first time it is used, so the directory explains
+// itself to whoever finds it later — including the operator's future self.
+const PRODUCTION_README = `Files in this directory are BC-QA-051 before-images taken against a
+NON-LOOPBACK (i.e. real) database.
+
+Each one is the ONLY record of the original phone numbers of the "User" rows
+that the dedupe re-phoned. Restoring those rows is impossible without the
+matching file.
+
+They contain customer PII: id, phone, email, role, status. Mode 0600.
+
+  * DO NOT commit them, paste them, or move them into a checkout.
+  * KEEP the file from the run that was COMMITTED (…-commit-….json) until you
+    are certain the change is permanent.
+  * Files marked -trial- were rolled back and describe a state that never
+    existed on disk; they can be deleted once the real run has been done.
+
+Restore with:
+  node prisma/scripts/bc-qa-051-dedupe-phone-role.js \\
+    --rollback-from <file> --commit rollback --confirm-database <db>
+`;
 
 function enclosingGitWorkTree(startDir) {
   let dir = path.resolve(startDir);
@@ -250,13 +344,44 @@ function enclosingGitWorkTree(startDir) {
   }
 }
 
-function resolveOutPath(argsOut, dbName) {
+function slug(value) {
+  return String(value).replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown';
+}
+
+// The git-worktree refusal is target-independent, so it is checked SEPARATELY
+// and EARLY — before connecting, before any work. resolveOutPath is only
+// reached once there is actually something to write, which meant a bad --out
+// silently "passed" on a database with no collisions left: the script printed
+// "Nothing to do" and exited 0 without ever validating the path. An operator
+// rehearsing their --out against an already-clean database would have been told
+// it was fine and then had it refused during the real run.
+function assertOutPathAllowed(argsOut) {
+  if (!argsOut) return;
+  const outPath = path.resolve(argsOut);
+  const repo = enclosingGitWorkTree(path.dirname(outPath));
+  if (repo) {
+    throw new Error(
+      `refusing to write the before-image to ${outPath}: that path is inside the git working ` +
+        `tree at ${repo}. The file contains customer phone numbers, emails and ids, and this ` +
+        `repository is public. Choose a path outside any checkout, or omit --out to use ` +
+        `${DEFAULT_OUT_ROOT}/{${PRODUCTION_SUBDIR},${SCRATCH_SUBDIR}}.`,
+    );
+  }
+}
+
+function resolveOutPath(argsOut, dbName, target, isCommit) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const filename = `bc-qa-051-before-image-${dbName}-${stamp}.json`;
+  const mode = isCommit ? 'commit' : 'trial';
+  const filename = `bc-qa-051-before-image-${mode}-${slug(target.host)}-${slug(dbName)}-${stamp}.json`;
 
   if (!argsOut) {
-    fs.mkdirSync(DEFAULT_OUT_DIR, { recursive: true, mode: 0o700 });
-    return path.join(DEFAULT_OUT_DIR, filename);
+    const dir = path.join(DEFAULT_OUT_ROOT, target.isLocal ? SCRATCH_SUBDIR : PRODUCTION_SUBDIR);
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    if (!target.isLocal) {
+      const readme = path.join(dir, 'README-KEEP-THESE.txt');
+      if (!fs.existsSync(readme)) fs.writeFileSync(readme, PRODUCTION_README, { mode: 0o600 });
+    }
+    return path.join(dir, filename);
   }
 
   const outPath = path.resolve(argsOut);
@@ -266,7 +391,7 @@ function resolveOutPath(argsOut, dbName) {
       `refusing to write the before-image to ${outPath}: that path is inside the git working ` +
         `tree at ${repo}. The file contains customer phone numbers, emails and ids, and this ` +
         'repository is public. Choose a path outside any checkout, or omit --out to use ' +
-        `${DEFAULT_OUT_DIR}.`,
+        `${DEFAULT_OUT_ROOT}/${target.isLocal ? SCRATCH_SUBDIR : PRODUCTION_SUBDIR}.`,
     );
   }
   return outPath;
@@ -631,6 +756,10 @@ async function main() {
     return 0;
   }
 
+  // Validate --out before touching anything, so a bad path fails fast rather
+  // than after the plan has been computed (or, worse, silently never at all).
+  assertOutPathAllowed(args.out);
+
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     console.error(
@@ -677,13 +806,13 @@ async function main() {
     if (args.operation === 'rollback') {
       return await doRollback(client, args);
     }
-    return await doDedupe(client, args, actualDb.db);
+    return await doDedupe(client, args, actualDb.db, target);
   } finally {
     await client.end().catch(() => {});
   }
 }
 
-async function doDedupe(client, args, dbName) {
+async function doDedupe(client, args, dbName, target) {
   // Everything below — the plan, the before-image and the UPDATE — happens
   // inside one transaction that holds SHARE ROW EXCLUSIVE on "User" from its
   // first statement (see LOCK_USER_TABLE). Nothing is read before the lock, so
@@ -716,7 +845,7 @@ async function doDedupe(client, args, dbName) {
       return [];
     }
 
-    outPath = resolveOutPath(args.out, dbName);
+    outPath = resolveOutPath(args.out, dbName, target, Boolean(args.commit));
     const beforeImage = {
       task: 'BC-QA-051',
       generatedAt: new Date().toISOString(),
@@ -740,7 +869,15 @@ async function doDedupe(client, args, dbName) {
     };
     fs.writeFileSync(outPath, `${JSON.stringify(beforeImage, null, 2)}\n`, { mode: 0o600 });
     console.log(`Before-image written: ${outPath}`);
-    console.log('KEEP THIS FILE. It is the only record of the original phone numbers.\n');
+    if (args.commit) {
+      console.log('KEEP THIS FILE. It is the only record of the original phone numbers.\n');
+    } else {
+      console.log(
+        'This is a TRIAL before-image: the run it describes is about to be rolled back, so\n' +
+          'it records a state that never persisted. The commit run writes its own. Delete this\n' +
+          'one once the real run is done — it still contains customer PII.\n',
+      );
+    }
 
     const updated = await applyDedupe(client);
     console.log(`UPDATE affected ${updated.length} row(s).`);
@@ -902,9 +1039,12 @@ module.exports = {
   makeClient,
   parseArgs,
   resolveOutPath,
+  assertOutPathAllowed,
   enclosingGitWorkTree,
   redactPhone,
   redactId,
   PLACEHOLDER_PREFIX,
-  DEFAULT_OUT_DIR,
+  DEFAULT_OUT_ROOT,
+  PRODUCTION_SUBDIR,
+  SCRATCH_SUBDIR,
 };
