@@ -19,7 +19,11 @@
     "screenshot": "node scripts/take-screenshot.js",
     "screenshot:compressed": "node scripts/take-compressed-screenshot.js",
     "screenshot:help": "node scripts/take-screenshot.js --help",
-    "screenshot:workflow": "node scripts/screenshot-workflow.js"
+    "screenshot:workflow": "node scripts/screenshot-workflow.js",
+    "pii:scan": "node scripts/pii-scan.js --all",
+    "pii:scan:staged": "node scripts/pii-scan.js --staged",
+    "pii:scan:selftest": "node scripts/pii-scan.js --selftest",
+    "hooks:install": "git config core.hooksPath .githooks && echo \"git hooks installed (core.hooksPath=.githooks)\""
   },
   "devDependencies": {
     "@types/node": "^18.0.0",

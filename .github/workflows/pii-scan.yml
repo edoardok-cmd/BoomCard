@@ -1,0 +1,68 @@
+name: PII scan
+
+# BC-QA-055. This repository is PUBLIC. A Playwright snapshot of the admin
+# Subscribers table reached master on 2026-05-03 carrying real consumer
+# mailboxes, phone numbers and subscription payment state, and stayed publicly
+# fetchable for three and a half months because nothing gated what got
+# committed. This workflow is that gate.
+#
+# It runs on pull_request AND on direct pushes to master, because master
+# receives direct pushes today -- that is exactly how the snapshot arrived, and
+# a PR-only check would not have caught it.
+#
+# To make this binding, add "pii-scan / scan" to the required status checks for
+# master in branch protection. Without that, this workflow reports but does not
+# block. See docs/pii-gate.md.
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the scan needs the merge base to diff against.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Pins the classifier itself. An earlier draft substring-matched
+      # "mail.com" inside "gmail.com" and would have passed the very file this
+      # gate exists to catch, so the detector's own correctness is a CI gate.
+      - name: Self-test the detector
+        run: node scripts/pii-scan.js --selftest
+
+      - name: Scan changed files
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+            echo "Scanning PR range ${base}...${head}"
+            node scripts/pii-scan.js --range "${base}...${head}"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            before="${{ github.event.before }}"
+            # A new branch, or a force-push whose 'before' is gone, reports the
+            # all-zero sha. Fall back to scanning the whole tree rather than
+            # skipping -- silently passing is how this class of leak survives.
+            if [ -z "${before}" ] || [ "${before}" = "0000000000000000000000000000000000000000" ] \
+               || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+              echo "No usable 'before' sha; scanning the full tree."
+              node scripts/pii-scan.js --all
+            else
+              echo "Scanning push range ${before}..${{ github.sha }}"
+              node scripts/pii-scan.js --range "${before}..${{ github.sha }}"
+            fi
+          else
+            node scripts/pii-scan.js --all
+          fi

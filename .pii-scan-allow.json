@@ -1,0 +1,24 @@
+{
+  "_readme": [
+    "Baseline for scripts/pii-scan.js (BC-QA-055).",
+    "Paths reviewed on 2026-08-20 and judged to carry no consumer PII.",
+    "Each entry states WHY. Adding a path here is a reviewed decision, not a silencer.",
+    "This is a path list, not a pattern list: a NEW file under an already-listed",
+    "directory is still scanned.",
+    "",
+    "Verification behind these entries: every consumer-domain address in the full",
+    "git history was tested against the production User table. Only one blob",
+    "matched live identities -- subscribers-all-snapshot.md -- and it is",
+    "deliberately NOT listed here, so the gate keeps failing on it until the",
+    "history purge lands."
+  ],
+  "allow": {
+    "backend-api/prisma/seed.ts": "Seed fixture. Invented venue business contacts (contact@grandhotelsofia.bg etc.) plus @boomcard.bg staff mailboxes this file itself creates. Zero consumer-domain addresses match the production User table.",
+    "backend-api/prisma/seed-venues.ts": "Seed fixture. Invented venue business contact addresses only; no consumer mailboxes.",
+    "database/seed-sample-offers.sql": "Seed fixture, same invented venue contacts as backend-api/prisma/seed.ts.",
+    "partner-dashboard/scripts/demo-data.json": "Demo-data fixture for the partner dashboard. Invented venue business contacts and phone numbers; no consumer mailboxes.",
+    "partner-dashboard/scripts/seedDemoData.ts": "Loader for partner-dashboard/scripts/demo-data.json; carries the same invented fixture values.",
+    "DATABASE_SETUP_GUIDE.md": "Documentation. Quotes the seed fixture's invented venue contacts as worked examples.",
+    "EMAIL_SERVICE_GUIDE.md": "Documentation. Worked examples only (john@example.com, @boomcard.bg system mailboxes, the Resend service domain)."
+  }
+}
