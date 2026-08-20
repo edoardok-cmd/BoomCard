@@ -10,3 +10,9 @@ node_modules
 # fresh, so it can never be committed without immediately going stale. Regenerate
 # with `npm run sweeps:report`.
 tests/sweep-results.json
+
+# BC-QA-051 dedupe before-images. These are the ONLY record of the original
+# phone numbers of the rows the dedupe re-phoned, i.e. real customer PII, and
+# the script writes them to its working directory by default. They must be
+# archived somewhere private — never committed.
+bc-qa-051-before-image-*.json

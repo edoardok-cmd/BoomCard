@@ -122,11 +122,69 @@ model User {
   wallet                     Wallet?
 
   @@unique([email, role])
-  // BC-QA-032: mirrors the email-uniqueness shape exactly — the same phone
-  // number may register separately under each role (USER/PARTNER/ADMIN),
-  // but not twice with the same role. Backing migration:
-  // prisma/migrations/20260810160000_add_user_phone_role_unique.
-  @@unique([phone, role])
+  // BC-QA-032 / BC-QA-051 — (phone, role) uniqueness, but only for rows that
+  // actually carry a phone number.
+  //
+  // The `where:` clause is NOT optional decoration. "User"."phone" is NOT NULL,
+  // and the way "no phone on file" is represented in this database is the EMPTY
+  // STRING — which, unlike NULL, is not distinct from itself. A TOTAL
+  // `@@unique([phone, role])` is therefore unsatisfiable while any two accounts
+  // of the same role have a blank phone. In production that bucket is 134 rows
+  // and holds every live ACTIVE partner, all three SUPER_ADMINs and real end
+  // users. The plain `@@unique([phone, role])` that used to sit here is exactly
+  // what produced the ~10-day BC-QA-051 production outage: its migration
+  // aborted, `prisma migrate deploy` exited 1, and because deploy is chained
+  // into the Fly start command with `&&`, the API never started.
+  //
+  // It also matches what the application already does: AuthService.register's
+  // duplicate-phone pre-check is guarded by `if (sanitizedPhone)`, i.e. it
+  // deliberately does not treat a blank phone as a collision.
+  //
+  // `raw(...)` here requires `partialIndexes` in the generator's previewFeatures
+  // (already enabled at the top of this file). Verified on prisma@7.7.0:
+  //   * `prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script`
+  //     emits exactly
+  //       CREATE UNIQUE INDEX "User_phone_role_key"
+  //         ON "User"("phone", "role") WHERE (btrim(phone) <> '');
+  //     which is what 20260810160000_add_user_phone_role_unique creates, so a
+  //     clean `migrate deploy` and this schema agree.
+  //   * Against a database in the post-fix state,
+  //     `prisma migrate diff --from-config-datasource --to-schema …` reports NO
+  //     change for this index — no drift. Writing it as a plain
+  //     `@@unique([phone, role])` instead produces
+  //       DROP INDEX "User_phone_role_key";
+  //       CREATE UNIQUE INDEX "User_phone_role_key" ON "User"("phone","role");
+  //     i.e. the next `prisma migrate dev` would hand you a migration that
+  //     re-creates the outage. Omitting the attribute entirely produces
+  //       DROP INDEX "User_phone_role_key";
+  //     i.e. it would silently drop the enforcement. Neither alternative is safe.
+  //
+  // KNOWN LIMITATION of declaring a partial index this way: the generated client
+  // still exposes `where: { phone_role: { phone, role } }` as if the pair were
+  // TOTALLY unique. For a blank phone that predicate matches many rows, so that
+  // accessor is only sound for non-blank phones. Nothing in this repo uses it
+  // (grep `phone_role`: zero hits outside comments) — do not start.
+  //
+  // Violations surface as Prisma P2002. The index NAME is deliberately
+  // unchanged ("User_phone_role_key") because isPhoneRoleUniqueViolation() in
+  // src/services/auth.service.ts matches on that literal.
+  //
+  // CAVEAT, measured rather than assumed: on prisma@7.7.0 driving
+  // @prisma/adapter-pg (this app's setup — see src/lib/prisma.ts) the P2002
+  // error carries NO `meta.target` at all. It looks like:
+  //   { modelName: "User",
+  //     driverAdapterError: { cause: { originalCode: "23505",
+  //       originalMessage: 'duplicate key value violates unique constraint
+  //                         "User_phone_role_key"',
+  //       kind: "UniqueConstraintViolation",
+  //       constraint: { fields: ["phone", "role"] } } } }
+  // so isPhoneRoleUniqueViolation() returns FALSE today. This is NOT caused by
+  // the partial index: the untouched TOTAL @@unique([email, role]) behaves
+  // identically, and isEmailRoleUniqueViolation() is equally dead. It is a
+  // pre-existing Prisma-7/driver-adapter regression in both helpers, tracked
+  // separately. Enforcement itself is unaffected — the duplicate is still
+  // rejected; only the 409-mapping is.
+  @@unique([phone, role], where: raw("btrim(phone) <> ''"))
   @@index([email])
   @@index([role])
   @@index([status])
