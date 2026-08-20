@@ -155,7 +155,10 @@ const JEST_SWEEP_MAP = {
   // requirement text appears without a dated BC-QA-031 supersession marker. It is
   // registered here for the same reason the route sweeps are: an unregistered
   // sweep is one nothing runs, which is exactly how the retired CUR sweeps stayed
-  // listed while their live replacements stayed invisible. Deterministic, DB-free.
+  // listed while their live replacements stayed invisible. Its assertions are
+  // deterministic and file-based — it issues no query of its own — but it is not
+  // database-free: tests/setup.ts runs `prisma migrate deploy` in global setup for
+  // every suite, this one included.
   'spec-corpus-dual-currency-sweep':         path.join(INTEGRATION, 'spec-corpus-dual-currency-sweep.test.ts'),
 };
 

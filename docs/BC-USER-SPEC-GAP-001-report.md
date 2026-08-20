@@ -406,7 +406,7 @@ Overall the favorites backend is functionally adequate for the spec requirements
 
 **Rule 10 (Account status does not affect other users' QR access):** Clean — QR/sticker management is per-venue, not per-user. An individual user status change does not cascade to sticker records.
 
-**Rule 11 (Currency transition):** F-021 covered this — now RESOLVED (`CURRENCY_TRANSITION_MODE` env var added).
+**Rule 11 (Currency transition):** F-021 covered this — now RESOLVED (`CURRENCY_TRANSITION_MODE` env var added). *(Superseded 2026-08-20, BC-QA-031: the transition window closed, the env var was deleted with the dual-currency feature, and all amounts are EUR-only — see F-021's Update.)*
 
 **Rule 12 (Password reset rate-limit):** F-002 covered the gaps in Super Admin notification and non-scan write endpoint blocking — both now RESOLVED.
 
@@ -430,7 +430,7 @@ Overall the favorites backend is functionally adequate for the spec requirements
 | F-004 | HIGH | DIVERGENCE | §2.1 | RESOLVED (product sign-off 2026-06-04; spec §2.1 amended) | Trial cashback is visible as Pending/"In Review"; held out of spendable balance until 24h trial window closes — approved interpretation, no code change |
 | F-007 | HIGH | DIVERGENCE | §3.5.1 | RESOLVED (`dashboard.routes.ts:50`) | Dashboard upsell `isPremiumWeekly` now checks correct `PREMIUM_WEEKLY` plan code |
 | F-014 | HIGH | GAP | §7.4 | RESOLVED (`wallet.service.ts:984-1027`) | First-failure IBAN-correction notification + second-failure High-risk escalation implemented |
-| F-021 | HIGH | GAP | §17 | RESOLVED (`wallet.service.ts:100-115`) | `CURRENCY_TRANSITION_MODE` env var now controls dual-vs-EUR-only display |
+| F-021 | HIGH | GAP | §17 | RESOLVED, then SUPERSEDED 2026-08-20 (BC-QA-031) | `CURRENCY_TRANSITION_MODE` was added, then deleted with the dual-currency feature; amounts are now EUR-only |
 | F-001 | HIGH | PARTIAL | §1.2 | RESOLVED (`wallet.service.ts:516-528`) | INACTIVE users now blocked from `requestPayout` (user_account_status checked) |
 | F-002 | MEDIUM | PARTIAL | §1.4/§19r12 | RESOLVED (`auth.service.ts:1672`; `wallet.routes.ts:85`) | In-app Super Admin suspension notification + INACTIVE write-path block both added |
 | F-005 | MEDIUM | GAP | §2 | OPEN — approved for impl (`auth.service.ts:419-422`; task `BC-USER-SPEC-FIX-005-CODE`) | Registration issues JWT before subscription/payment — confirmed to implement per spec; breaking client-contract change, code pending |

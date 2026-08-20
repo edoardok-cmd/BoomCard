@@ -40,7 +40,10 @@ The convergence machinery makes the audit terminate instead of sampling the same
 
 ## §3 Sweep files (BoomCard repo paths)
 
-All sweep files live in `backend-api/tests/integration/`:
+All sweep files live in `backend-api/tests/integration/`. All but one enumerate a
+live route surface; `spec-corpus-dual-currency-sweep` is the exception — it walks
+the `docs/` documentation corpus and fails when dual-currency requirement text
+appears without a dated BC-QA-031 supersession marker (added 2026-08-20, BC-QA-031).
 
 | Sweep | File | Scope |
 |---|---|---|
@@ -50,6 +53,7 @@ All sweep files live in `backend-api/tests/integration/`:
 | `user-internal-field-leak-sweep` | `backend-api/tests/integration/user-internal-field-leak-sweep.test.ts` | BC-USER-SPEC-REAUDIT |
 | `subscriber-internal-field-introspect-sweep` | `backend-api/tests/integration/subscriber-internal-field-introspect-sweep.test.ts` | BC-USER-SPEC-REAUDIT ↔ BC-REDEMPTION-SPEC-REAUDIT |
 | `partner-uuid-500-sweep` | `backend-api/tests/integration/partner-uuid-500-sweep.test.ts` | BC-PARTNER-SPEC-REAUDIT |
+| `spec-corpus-dual-currency-sweep` | `backend-api/tests/integration/spec-corpus-dual-currency-sweep.test.ts` | Cross-scope — guards the `docs/` corpus, not a route surface |
 
 Manifests: `backend-api/tests/app-route-ownership-manifest.json`, `backend-api/tests/admin-endpoint-manifest.json`.
 

@@ -84,9 +84,14 @@ jobs:
       # because this is the ONLY workflow in the repo that invokes jest without
       # `continue-on-error`, and it carries no `paths:` filter, so it runs on every
       # push and PR to a protected branch — which is what a standing guard needs.
-      # It is deterministic, touches no database and adds a few seconds. The job
-      # name above was widened to say so rather than leaving the addition to look
-      # like an admin sweep.
+      # Its own assertions are deterministic and read only files on disk — it makes
+      # no query of its own. It is NOT database-free, though: every jest suite in
+      # this repo goes through tests/setup.ts, which runs `npx prisma migrate deploy`
+      # in global setup, so pointing DATABASE_URL at a closed port fails this suite
+      # like any other. That is why it belongs in THIS job, which already provisions
+      # postgres, rather than in a lighter standalone workflow that would have to
+      # provision one anyway. The job name above was widened to say so rather than
+      # leaving the addition to look like an admin sweep.
       #
       # Deliberately NO --passWithNoTests: if every pattern below is ever deleted,
       # jest exits 1 on "0 matches" and the gate fails loudly instead of silently

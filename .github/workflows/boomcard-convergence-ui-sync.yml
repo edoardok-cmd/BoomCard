@@ -31,10 +31,13 @@ on:
       - 'backend-api/tests/integration/**sweep*.test.js'
       # Requirement documents and invariant matrices.
       # Widened from three named matrices to the whole directory (BC-QA-031):
-      # spec-corpus-dual-currency-sweep polices docs/specs/0*.md — the numbered
-      # requirement set — and an edit there previously reached NO workflow at all,
-      # which is how 08-user-spec-extracted.md kept a live dual-display
-      # requirement through seven audit rounds.
+      # spec-corpus-dual-currency-sweep polices the whole docs/ tree, which
+      # includes the numbered requirement set under docs/specs/. An edit to that
+      # set previously reached NO workflow at all — which is how
+      # 08-user-spec-extracted.md kept a live dual-display requirement through
+      # seven audit rounds. (This trigger covers docs/specs/** only; the sweep's
+      # own corpus is wider, and the other jest runner that executes it —
+      # admin-spec-sweeps.yml — has no paths filter, so it runs regardless.)
       - 'docs/specs/**'
       # Route ownership manifests
       - 'backend-api/tests/app-route-ownership-manifest.json'

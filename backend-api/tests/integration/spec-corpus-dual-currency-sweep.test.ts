@@ -1,6 +1,7 @@
 /**
  * BC-QA-031 — standing guard against unmarked dual-currency requirement text in
- * the spec corpus (`docs/specs/`).
+ * the documentation corpus (`docs/`, recursively — see the SPECS constant for why
+ * that width and not narrower or wider).
  *
  * WHY THIS EXISTS
  * ---------------
@@ -48,10 +49,18 @@ import path from 'path';
  * by this task — as the shipped resolution.
  *
  * The widening was measured rather than assumed, because a wider net over a repo
- * full of historical reports can cost more in false positives than it buys:
- *   docs/specs/  21 files →  7 marked, 0 unmarked
- *   docs/**      50 files →  9 marked, 0 unmarked  (+1 true positive, 0 false)
- *   whole repo  350 files →  8 marked, 6 unmarked  (5 of them audit artifacts)
+ * full of historical reports can cost more in false positives than it buys.
+ *
+ * All three rows measured at HEAD 6b09557 with one walk rule — every `*.md`,
+ * excluding only .git/node_modules/dist/build/coverage. (An earlier version of
+ * this table had its rows taken at two different tree states AND with two
+ * different walk rules — one of them skipped dotted directories and so missed
+ * `backend-api/.claude/reviews/` entirely — which is why its whole-repo row did
+ * not reproduce. Re-measure all three together or not at all.)
+ *
+ *   docs/specs/   21 files →  7 marked, 0 unmarked
+ *   docs/**       50 files →  9 marked, 0 unmarked   (+2 marked, 0 false positives)
+ *   whole repo   350 files →  9 marked, 5 unmarked   (all 5 audit artifacts)
  *
  * `docs/**` costs nothing and catches a real one. The repo-wide option was
  * rejected: five of its six extra hits are dated review files under
