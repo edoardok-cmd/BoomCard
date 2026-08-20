@@ -14,7 +14,7 @@ export const en = {
     searching: 'Searching...',
     results: 'results',
     noResultsFound: 'No results found',
-    searchPlaceholder: 'Search for offers, venues, categories...',
+    searchPlaceholder: 'Search for discounts, venues, categories...',
     filter: 'Filter',
     filters: 'Filters',
     apply: 'Apply',
@@ -61,11 +61,11 @@ export const en = {
   // Header & Navigation
   header: {
     nearby: 'Nearby',
-    nearbyOffers: 'Nearby Offers',
+    nearbyOffers: 'Nearby Discounts',
     favorites: 'Favorites',
     profile: 'Profile',
     myCards: 'My Cards',
-    myOffers: 'My Offers',
+    myOffers: 'My Discounts',
     analytics: 'Analytics',
     settings: 'Settings',
     settingsAndNotifications: 'Settings & Notifications',
@@ -124,7 +124,7 @@ export const en = {
   // Mobile Bottom Navigation
   nav: {
     home: 'Home',
-    offers: 'Deals',
+    offers: 'Discounts',
     venues: 'Places',
     experiences: 'Experiences',
     profile: 'Profile',
@@ -138,7 +138,7 @@ export const en = {
     reportProblem: 'Report a problem',
     mobileApp: 'Mobile App',
     subscriptionPlans: 'Subscription plans',
-    offers: 'Deals',
+    offers: 'Discounts',
     partners: 'Partners',
     partnerNetwork: 'Partner Network',
     features: 'Features',
@@ -369,8 +369,8 @@ export const en = {
     heroTitleHighlight: 'Try it free.',
     heroSubtitle: 'Exclusive discounts up to 20% for restaurants, hotels, spas, and experiences',
     heroCta: 'Activate your Premium – FREE!',
-    browseOffers: 'Browse Deals',
-    topOffers: 'Top Offers',
+    browseOffers: 'Browse Discounts',
+    topOffers: 'Top Discounts',
     topOffersSubtitle: 'Biggest discounts right now',
     categories: 'Categories',
     categoriesSubtitle: 'Browse our categories of venues and experiences',
@@ -390,10 +390,10 @@ export const en = {
 
     // Final CTA Section
     readyToSave: 'Start saving with BOOM Card today',
-    readyToSaveDescription: 'Exclusive offers, real discounts, and 24 hours Premium – FREE. Nothing to lose. Only to gain.',
+    readyToSaveDescription: 'Exclusive discounts, real savings, and 24 hours Premium – FREE. Nothing to lose. Only to gain.',
     signUpFree: '🔥 Start with 24 hours Premium – FREE',
     forPartners: 'Become a partner',
-    viewOffers: 'Browse Deals',
+    viewOffers: 'Browse Discounts',
     viewPartners: 'View all partners',
     finalTagline: 'One card. Real discounts. Full control.',
 
@@ -425,7 +425,7 @@ export const en = {
     // Hero Section - 2.1
     breadcrumb: 'BOOM Places',
     title: 'All BOOM Discounts in One Place',
-    subtitle: 'BOOM Card gives you access to exclusive offers with up to 20% cashback, based on your chosen plan.',
+    subtitle: 'BOOM Card gives you access to exclusive discounts with up to 20% cashback, based on your chosen plan.',
     heroCta: 'Unlock BOOM Card',
     heroTrustLine: 'Free 24-hour trial period. No payment required.',
 
@@ -437,10 +437,10 @@ export const en = {
     discountNote: 'cashback based on subscription plan',
 
     // Statistics
-    activeOffers: 'New offers at top venues',
+    activeOffers: 'New discounts at top venues',
     upToDiscount: 'Up to 20% cashback based on subscription plan',
-    newOffersRegularly: 'Curated offers',
-    premiumOnlyNote: 'Some offers are available only with Premium.',
+    newOffersRegularly: 'Curated discounts',
+    premiumOnlyNote: 'Some discounts are available only with Premium.',
 
     // Money Back Steps Section
     cashbackTitle: 'Money Back with BOOM Card in 3 steps',
@@ -452,10 +452,10 @@ export const en = {
     cashbackImportant: 'Important: Refunds are valid only when scanning on-site with a valid receipt.',
 
     // Sections
-    selectedOffers: 'Curated Offers',
+    selectedOffers: 'Curated Discounts',
 
     // Filters
-    topOffers: 'Top Offers',
+    topOffers: 'Top Discounts',
     filters: 'Filters',
     all: 'All',
     active: 'Active',
@@ -537,15 +537,15 @@ export const en = {
 
   // My Offers (Partner)
   myOffers: {
-    title: 'My Offers',
-    createNew: 'Create New Offer',
-    allOffers: 'All Offers',
+    title: 'My Discounts',
+    createNew: 'Create New Discount',
+    allOffers: 'All Discounts',
     active: 'Active',
     inactive: 'Inactive',
     expired: 'Expired',
-    search: 'Search offers...',
-    noOffers: 'No offers found',
-    createFirst: 'Create your first offer to get started',
+    search: 'Search discounts...',
+    noOffers: 'No discounts found',
+    createFirst: 'Create your first discount to get started',
     edit: 'Edit',
     delete: 'Delete',
     activate: 'Activate',
@@ -553,10 +553,10 @@ export const en = {
     views: 'Views',
     redemptions: 'Redemptions',
     validUntil: 'Valid until',
-    confirmDelete: 'Are you sure you want to delete this offer?',
-    deleted: 'Offer deleted successfully',
-    activated: 'Offer activated successfully',
-    deactivated: 'Offer deactivated successfully',
+    confirmDelete: 'Are you sure you want to delete this discount?',
+    deleted: 'Discount deleted successfully',
+    activated: 'Discount activated successfully',
+    deactivated: 'Discount deactivated successfully',
   },
 
   // Categories (MASTER Navigation List)
@@ -624,17 +624,17 @@ export const en = {
   // Category Listing
   categoryListing: {
     home: 'Home',
-    browseExclusiveOffers: 'Browse exclusive offers in',
+    browseExclusiveOffers: 'Browse exclusive discounts in',
     filters: 'Filters',
     sortBy: 'Sort by',
-    offer: 'offer',
-    offers: 'offers',
+    offer: 'discount',
+    offers: 'discounts',
     mostRelevant: 'Most Relevant',
     highestDiscount: 'Highest Discount',
     priceLowToHigh: 'Price: Low to High',
     priceHighToLow: 'Price: High to Low',
     highestRating: 'Highest Rating',
-    noOffersFound: 'No offers found',
+    noOffersFound: 'No discounts found',
     noOffersDescription: 'Try adjusting your filters or check back later',
   },
 
@@ -650,19 +650,19 @@ export const en = {
     smsNotificationsDesc: 'Receive text message alerts',
     pushNotifications: 'Push Notifications',
     pushNotificationsDesc: 'Receive push notifications in browser',
-    newOffers: 'New Offers',
-    newOffersDesc: 'Get notified about new deals and offers',
+    newOffers: 'New Discounts',
+    newOffersDesc: 'Get notified about new discounts and offers',
     weeklyDigest: 'Weekly Digest',
-    weeklyDigestDesc: 'Get a weekly summary of new offers',
+    weeklyDigestDesc: 'Get a weekly summary of new discounts',
     accountActivity: 'Account Activity',
     accountActivityDesc: 'Security alerts and account updates',
     // Marketing consents (GDPR)
     marketingTitle: 'Marketing Preferences',
     marketingDescription: 'Control how we contact you with promotions and news',
     emailMarketing: 'Marketing Emails',
-    emailMarketingDesc: 'Top offers, new BOOM places and special promotions',
+    emailMarketingDesc: 'Top discounts, new BOOM places and special offers',
     phoneMarketing: 'Marketing SMS / Phone',
-    phoneMarketingDesc: 'Top offers, new BOOM places and special promotions',
+    phoneMarketingDesc: 'Top discounts, new BOOM places and special offers',
     marketingConsentNote: 'You can withdraw consent at any time. Changes take effect within 24 hours.',
     // Privacy
     privacyTitle: 'Privacy',
@@ -793,14 +793,14 @@ export const en = {
   // Favorites
   favorites: {
     title: 'My Favorites',
-    subtitle: 'All your saved offers in one place',
-    savedOffers: 'Saved Offers',
-    offer: 'offer',
-    offers: 'offers',
+    subtitle: 'All your saved discounts in one place',
+    savedOffers: 'Saved Discounts',
+    offer: 'discount',
+    offers: 'discounts',
     clearAll: 'Clear All',
     clearAllConfirm: 'Are you sure you want to clear all favorites?',
     noFavorites: 'No Favorites Yet',
-    noFavoritesDescription: 'Start saving offers you like to easily find them here later',
+    noFavoritesDescription: 'Start saving discounts you like to easily find them here later',
     browseOffers: 'Browse BOOM Spots',
     sortRecentlyAdded: 'Recently Added',
     sortHighestDiscount: 'Highest Discount',
@@ -814,9 +814,9 @@ export const en = {
 
   // Search
   search: {
-    title: 'Find Your Perfect Deal',
-    subtitle: 'Search through thousands of exclusive offers for restaurants, hotels, and experiences',
-    placeholder: 'Search for offers, venues, or experiences...',
+    title: 'Find Your Perfect Discount',
+    subtitle: 'Search through thousands of exclusive discounts for restaurants, hotels, and experiences',
+    placeholder: 'Search for discounts, venues, or experiences...',
     popularSearches: 'Popular Searches',
     searchResults: 'Search Results',
     resultsFor: 'results for',
@@ -848,8 +848,8 @@ export const en = {
     title: 'Notifications',
     noNotifications: 'No notifications',
     markAllAsRead: 'Mark all as read',
-    newOffer: 'New offer available',
-    offerExpiringSoon: 'Offer expiring soon',
+    newOffer: 'New discount available',
+    offerExpiringSoon: 'Discount expiring soon',
     cardActivated: 'Card activated',
   },
 
@@ -912,12 +912,12 @@ export const en = {
     // Export types
     exportTransactions: 'Export Transactions',
     exportVenues: 'Export Venues',
-    exportOffers: 'Export Offers',
+    exportOffers: 'Export Discounts',
     exportAnalytics: 'Export Analytics',
     exportUsers: 'Export Users',
     // Import types
     importVenues: 'Import Venues',
-    importOffers: 'Import Offers',
+    importOffers: 'Import Discounts',
     importUsers: 'Import Users',
     importTransactions: 'Import Transactions',
     downloadTemplate: 'Download Template',
@@ -1025,7 +1025,7 @@ export const en = {
     goBack: 'Go Back',
     youMightBeLookingFor: 'You might be looking for',
     browseCategories: 'Browse Categories',
-    topOffers: 'Top Offers',
+    topOffers: 'Top Discounts',
     search: 'Search',
     becomePartner: 'Become a Partner',
   },
@@ -1041,13 +1041,13 @@ export const en = {
     mapIntegration: 'Map (Google Maps integration)',
     youSave: 'You save',
     validUntil: 'Valid until:',
-    getThisOffer: 'Get This Offer',
+    getThisOffer: 'Get This Discount',
     share: 'Share',
     phone: 'Phone:',
     email: 'Email:',
     website: 'Website:',
-    offerQRCode: 'Offer QR Code',
-    scanToRedeem: 'Scan this code to redeem the offer',
+    offerQRCode: 'Discount QR Code',
+    scanToRedeem: 'Scan this code to redeem the discount',
   },
 
   // Partners Page
@@ -1142,13 +1142,13 @@ export const en = {
     fromLastMonth: 'from last month',
     avgOrderValue: 'Avg Order Value',
     revenueOverTime: 'Revenue Over Time',
-    offer: 'Offer',
+    offer: 'Discount',
     venue: 'Venue',
     redemptions: 'Redemptions',
     chartPlaceholder: 'Chart visualization would go here',
     chartIntegration: 'Integrate with Chart.js, Recharts, or D3.js',
     transactionsByCategory: 'Transactions by Category',
-    topOffers: 'Top Performing Offers',
+    topOffers: 'Top Performing Discounts',
   },
 
   // Billing
@@ -1296,9 +1296,9 @@ export const en = {
     advancedAnalytics: 'Advanced analytics',
     posIntegration: 'POS integration',
     prioritySupport: 'Priority support',
-    customOffers: 'Custom offers',
+    customOffers: 'Custom discounts',
     dataExport: 'Data export',
-    limitedOffers: 'Limited availability special offers',
+    limitedOffers: 'Limited availability discounts',
     premiumCampaigns: 'Access to exclusive Premium campaigns',
 
     // Enterprise features
@@ -1361,7 +1361,7 @@ export const en = {
     monthlyPlanPeriod: '/ month',
     monthlyPlanFeature1: 'All Premium venues',
     monthlyPlanFeature2: 'Up to 20% cashback',
-    monthlyPlanFeature3: 'Exclusive offers',
+    monthlyPlanFeature3: 'Exclusive discounts',
     monthlyPlanFeature4: 'Priority support',
     monthlyPlanFeature5: 'First access to new partners',
     monthlyPlanCta: '🔥 Start with 24 hours Premium – FREE',
@@ -1371,7 +1371,7 @@ export const en = {
     basicPlanTitle: 'BOOM Card BASIC – MONTHLY',
     basicPlanPeriod: '/ month',
     basicPlanFeature1: 'Access to partner venues',
-    basicPlanFeature2: 'Basic offers',
+    basicPlanFeature2: 'Basic discounts',
     basicPlanFeature3: 'Up to 10% cashback',
     basicPlanFeature4: 'Managed through the app',
     basicPlanCta: '👉 Start with 24 hours Premium – FREE',
@@ -1405,7 +1405,7 @@ export const en = {
     review4Text: '"I like that I don\'t have to explain anything to the staff. Everything happens through the app."',
 
     review5Name: 'Veselina R.',
-    review5Text: '"Very useful for weekend trips. I found good offers for SPA and venues."',
+    review5Text: '"Very useful for weekend trips. I found good discounts for SPA and venues."',
 
     review6Name: 'Nikolay T.',
     review6Text: '"The Premium plan pays off quickly if you go out often. I use it regularly."',
@@ -1466,7 +1466,7 @@ export const en = {
 
     // Transaction Types
     booking: 'Booking',
-    offerRedemption: 'Offer Redemption',
+    offerRedemption: 'Discount Redemption',
     subscription: 'Subscription',
     refund: 'Refund',
     payout: 'Payout',
@@ -2291,7 +2291,7 @@ export const en = {
     // Dashboard overview
     dashboardEyebrow: 'Administration',
     dashboardWelcome: 'Welcome back',
-    dashboardSubtitle: 'An overview of the platform — offers, cashback, and fraud review at a glance.',
+    dashboardSubtitle: 'An overview of the platform — discounts, cashback, and fraud review at a glance.',
     dashboardToday: 'Today',
 
     // Alert feed

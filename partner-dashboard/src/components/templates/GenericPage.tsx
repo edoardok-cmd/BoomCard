@@ -359,7 +359,7 @@ export const GenericPage: React.FC<GenericPageProps> = ({
                     <EmptyText>{emptyText}</EmptyText>
                     <Link to="/search">
                       <Button variant="primary">
-                        {language === 'bg' ? 'Разгледай Всички Отстъпки' : 'Browse All Offers'}
+                        {language === 'bg' ? 'Разгледай Всички Отстъпки' : 'Browse All Discounts'}
                       </Button>
                     </Link>
                   </EmptyState>
@@ -395,7 +395,7 @@ export const GenericPage: React.FC<GenericPageProps> = ({
                   <EmptyText>{emptyText}</EmptyText>
                   <Link to="/search">
                     <Button variant="primary">
-                      {language === 'bg' ? 'Разгледай Всички Отстъпки' : 'Browse All Offers'}
+                      {language === 'bg' ? 'Разгледай Всички Отстъпки' : 'Browse All Discounts'}
                     </Button>
                   </Link>
                 </EmptyState>

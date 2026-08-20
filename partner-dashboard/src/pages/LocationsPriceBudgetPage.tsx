@@ -8,7 +8,7 @@ const LocationsPriceBudgetPage: React.FC = () => {
 
   return (
     <GenericPage
-      titleEn={`Budget (Under 293 BGN / €150) - ${entities.length} Offers`}
+      titleEn={`Budget (Under 293 BGN / €150) - ${entities.length} Discounts`}
       titleBg={`Бюджет (Под 293 лв. / €150) - ${entities.length} Отстъпки`}
       subtitleEn="Great value venues at budget-friendly prices"
       subtitleBg="Отлична стойност на бюджетни цени"

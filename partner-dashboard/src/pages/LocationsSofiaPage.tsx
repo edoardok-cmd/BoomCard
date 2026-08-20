@@ -8,9 +8,9 @@ const LocationsSofiaPage: React.FC = () => {
 
   return (
     <GenericPage
-      titleEn={`Sofia (${entities.length} Offers)`}
+      titleEn={`Sofia (${entities.length} Discounts)`}
       titleBg={`София (${entities.length} Отстъпки)`}
-      subtitleEn="Discover exclusive offers from top venues in Bulgaria's capital"
+      subtitleEn="Discover exclusive discounts from top venues in Bulgaria's capital"
       subtitleBg="Открийте ексклузивни отстъпки от топ места в столицата на България"
       entities={entities}
       isLoading={isLoading}

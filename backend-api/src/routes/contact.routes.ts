@@ -17,7 +17,7 @@ const MAX_NAME = 120;
 const MAX_EMAIL = 254;
 const MAX_MESSAGE = 5000;
 
-const contactRateLimiter = rateLimit({
+export const contactRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
   standardHeaders: true,

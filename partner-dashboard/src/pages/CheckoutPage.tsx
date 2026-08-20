@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useSearchParams, useLocation, Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { ArrowLeft, Lock, Check, Loader2 } from 'lucide-react';
@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { plansService, Plan } from '../services/plans.service';
 import { formatEUR } from '../utils/helpers';
 import Button from '../components/common/Button/Button';
+import { useScrollToFirstError } from '../hooks/useScrollToFirstError';
 
 
 const PageContainer = styled.div`
@@ -402,7 +403,7 @@ const GuestInput = styled.input<{ $hasError?: boolean }>`
   transition: border-color 0.2s;
 
   &:focus {
-    border-color: var(--color-primary);
+    border-color: ${p => p.$hasError ? '#ef4444' : 'var(--color-primary)'};
   }
 `;
 
@@ -463,6 +464,12 @@ const CheckoutPage: React.FC = () => {
   const [guestLastName, setGuestLastName] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
   const [guestErrors, setGuestErrors] = useState<Record<string, string>>({});
+
+  // BC-QA-015 — shared scroll-to-first-error + focus mechanism. There is no
+  // native <form> here (the guest fields sit in a plain container with a
+  // click-triggered "Pay" button), so the ref targets that container.
+  const guestFormRef = useRef<HTMLDivElement>(null);
+  const { markAttempt: markGuestFormAttempt } = useScrollToFirstError(guestFormRef);
 
   useEffect(() => {
     const fetchPlan = async () => {
@@ -591,6 +598,9 @@ const CheckoutPage: React.FC = () => {
       errors.lastName = t('checkoutPage.requiredField');
     }
     setGuestErrors(errors);
+    // BC-QA-015 — scroll to and focus the first invalid field once the
+    // aria-invalid attributes below have painted.
+    markGuestFormAttempt();
     return Object.keys(errors).length === 0;
   };
 
@@ -688,47 +698,63 @@ const CheckoutPage: React.FC = () => {
               </>
             ) : !isAuthenticated ? (
               <>
-                <GuestForm>
+                <GuestForm ref={guestFormRef}>
                   <GuestRow>
                     <GuestField>
-                      <GuestLabel>{t('checkoutPage.firstNameLabel')} *</GuestLabel>
+                      <GuestLabel htmlFor="guestFirstName">{t('checkoutPage.firstNameLabel')} *</GuestLabel>
                       <GuestInput
+                        id="guestFirstName"
                         type="text"
                         value={guestFirstName}
                         onChange={e => setGuestFirstName(e.target.value)}
                         $hasError={!!guestErrors.firstName}
                         placeholder={t('checkoutPage.firstNamePlaceholder')}
+                        aria-invalid={!!guestErrors.firstName}
+                        aria-describedby={guestErrors.firstName ? 'guestFirstName-error' : undefined}
                       />
-                      {guestErrors.firstName && <FieldError>{guestErrors.firstName}</FieldError>}
+                      {guestErrors.firstName && (
+                        <FieldError id="guestFirstName-error" role="alert">{guestErrors.firstName}</FieldError>
+                      )}
                     </GuestField>
                     <GuestField>
-                      <GuestLabel>{t('checkoutPage.lastNameLabel')} *</GuestLabel>
+                      <GuestLabel htmlFor="guestLastName">{t('checkoutPage.lastNameLabel')} *</GuestLabel>
                       <GuestInput
+                        id="guestLastName"
                         type="text"
                         value={guestLastName}
                         onChange={e => setGuestLastName(e.target.value)}
                         $hasError={!!guestErrors.lastName}
                         placeholder={t('checkoutPage.lastNamePlaceholder')}
+                        aria-invalid={!!guestErrors.lastName}
+                        aria-describedby={guestErrors.lastName ? 'guestLastName-error' : undefined}
                       />
-                      {guestErrors.lastName && <FieldError>{guestErrors.lastName}</FieldError>}
+                      {guestErrors.lastName && (
+                        <FieldError id="guestLastName-error" role="alert">{guestErrors.lastName}</FieldError>
+                      )}
                     </GuestField>
                   </GuestRow>
 
                   <GuestField>
-                    <GuestLabel>{t('checkoutPage.emailAddressLabel')} *</GuestLabel>
+                    <GuestLabel htmlFor="guestEmail">{t('checkoutPage.emailAddressLabel')} *</GuestLabel>
                     <GuestInput
+                      id="guestEmail"
                       type="email"
                       value={guestEmail}
                       onChange={e => { setGuestEmail(e.target.value); setEmailConflictCode(null); }}
                       $hasError={!!guestErrors.email}
                       placeholder="you@example.com"
+                      aria-invalid={!!guestErrors.email}
+                      aria-describedby={guestErrors.email ? 'guestEmail-error' : undefined}
                     />
-                    {guestErrors.email && <FieldError>{guestErrors.email}</FieldError>}
+                    {guestErrors.email && (
+                      <FieldError id="guestEmail-error" role="alert">{guestErrors.email}</FieldError>
+                    )}
                   </GuestField>
 
                   <GuestField>
-                    <GuestLabel>{t('checkoutPage.phoneOptionalLabel')}</GuestLabel>
+                    <GuestLabel htmlFor="guestPhone">{t('checkoutPage.phoneOptionalLabel')}</GuestLabel>
                     <GuestInput
+                      id="guestPhone"
                       type="tel"
                       value={guestPhone}
                       onChange={e => setGuestPhone(e.target.value)}

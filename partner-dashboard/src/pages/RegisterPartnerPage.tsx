@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
@@ -9,6 +9,7 @@ import { normalizePhone } from '../utils/validators';
 import Header from '../components/layout/Header/Header';
 import VenueLocationPicker, { type Coordinates } from '../components/common/VenueLocationPicker/VenueLocationPicker';
 import { placesCategories, experiencesCategories, findCategory } from '../types/categories.types';
+import { useScrollToFirstError } from '../hooks/useScrollToFirstError';
 
 const PageWrapper = styled.div`
   min-height: 100vh;
@@ -362,6 +363,11 @@ interface FormErrors {
   phone?: string;
   businessName?: string;
   businessCategory?: string;
+  // BC-QA-015 F1 fix — independent error slot for "category picked but its
+  // required subcategory is missing" so the subcategory chip group (not the
+  // already-valid category chip group) is the one that gets aria-invalid +
+  // focus in that case. See handleSubmit / toggleSubcategory.
+  subcategoryError?: string;
   city?: string;
   address?: string;
   // BC-PARTNER-FU1 — venue coordinates are required so the venue is redeemable.
@@ -390,6 +396,10 @@ const RegisterPartnerPage: React.FC = () => {
   const navigate = useNavigate();
   const { register, isLoading } = useAuth();
   const { t, language } = useLanguage();
+
+  // BC-QA-015 — shared scroll-to-first-error + focus mechanism.
+  const formRef = useRef<HTMLFormElement>(null);
+  const { markAttempt } = useScrollToFirstError(formRef);
 
   // Spec §2 (line 34) — "Категория" is a multi-select field. The selectable
   // category options (no empty placeholder; selection is via toggleable chips).
@@ -491,10 +501,24 @@ const RegisterPartnerPage: React.FC = () => {
   const toggleCategory = (id: string) => {
     setSelectedCategories(prev => {
       const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
-      // Drop any selected subcategories whose parent category is no longer chosen.
-      setSelectedSubcategories(subs =>
-        subs.filter(subId => next.some(catId => subId.startsWith(`${catId}/`))),
-      );
+      // Drop any selected subcategories whose parent category is no longer
+      // chosen, and (BC-QA-015 F1 fix) re-derive subcategoryError against the
+      // filtered result in the SAME updater — a stale error must not survive
+      // attached to a group whose available options just changed underneath it.
+      setSelectedSubcategories(subs => {
+        const filtered = subs.filter(subId => next.some(catId => subId.startsWith(`${catId}/`)));
+        if (touched.subcategoryError) {
+          const nextSubcats = next.flatMap(catId => findCategory(catId)?.subcategories ?? []);
+          setErrors(e => ({
+            ...e,
+            subcategoryError:
+              nextSubcats.length > 0 && filtered.length === 0
+                ? t('partnerRegistration.selectSubcategoryRequired')
+                : undefined,
+          }));
+        }
+        return filtered;
+      });
       if (touched.businessCategory) {
         setErrors(e => ({ ...e, businessCategory: validateCategories(next) }));
       }
@@ -503,9 +527,19 @@ const RegisterPartnerPage: React.FC = () => {
   };
 
   const toggleSubcategory = (id: string) => {
-    setSelectedSubcategories(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id],
-    );
+    setSelectedSubcategories(prev => {
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+      // BC-QA-015 F1 fix — clear/re-derive subcategoryError as soon as the
+      // user interacts with the group post-submit-attempt (mirrors the
+      // touched.businessCategory real-time-revalidation pattern above).
+      if (touched.subcategoryError) {
+        setErrors(e => ({
+          ...e,
+          subcategoryError: next.length === 0 ? t('partnerRegistration.selectSubcategoryRequired') : undefined,
+        }));
+      }
+      return next;
+    });
   };
 
   const validateField = (field: string, value: unknown): string | undefined => {
@@ -643,8 +677,11 @@ const RegisterPartnerPage: React.FC = () => {
       newErrors.businessCategory = categoryError;
     } else if (subcategoriesForCategory.length > 0 && selectedSubcategories.length === 0) {
       // Spec §2.3 — Подкатегория is required when a selected category exposes
-      // sub-options.
-      newErrors.businessCategory = t('partnerRegistration.selectSubcategoryRequired');
+      // sub-options. BC-QA-015 F1 fix — this is a DIFFERENT field than the
+      // category chip group above (which is already valid in this branch), so
+      // it gets its own error slot rather than overloading businessCategory —
+      // otherwise focus/aria-invalid land on the wrong (already-valid) group.
+      newErrors.subcategoryError = t('partnerRegistration.selectSubcategoryRequired');
     }
 
     // BC-PARTNER-FU1 — venue coordinates are required (offer redemption fails
@@ -660,7 +697,13 @@ const RegisterPartnerPage: React.FC = () => {
     });
     newTouched.coordinates = true;
     newTouched.businessCategory = true;
+    newTouched.subcategoryError = true;
     setTouched(newTouched);
+
+    // BC-QA-015 — scroll to and focus the first invalid field (DOM order).
+    // No-op once the aria-invalid attributes paint if there turn out to be
+    // none (i.e. this submit is actually valid).
+    markAttempt();
 
     // If there are errors, don't submit
     if (Object.keys(newErrors).length > 0) {
@@ -731,16 +774,18 @@ const RegisterPartnerPage: React.FC = () => {
         if (backendMsg.includes('phone')) {
           setErrors(prev => ({ ...prev, phone: t('errors.phoneAlreadyRegistered') }));
           setTouched(prev => ({ ...prev, phone: true }));
-          document.getElementById('phone')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         } else {
           setErrors(prev => ({ ...prev, email: t('errors.emailAlreadyRegistered') }));
           setTouched(prev => ({ ...prev, email: true }));
-          document.getElementById('email')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
+        // BC-QA-015 — was a bare scrollIntoView (phone/email only, no focus,
+        // hence no screen-reader announcement). Route through the same
+        // shared mechanism used for client-side validation failures instead.
+        markAttempt();
       } else if (status === 429) {
         setErrors(prev => ({ ...prev, email: t('errors.tooManyRequests') }));
         setTouched(prev => ({ ...prev, email: true }));
-        document.getElementById('email')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        markAttempt();
       }
     }
   };
@@ -767,7 +812,7 @@ const RegisterPartnerPage: React.FC = () => {
             {t('partnerRegistration.subtitle')}
           </Subtitle>
 
-        <Form onSubmit={handleSubmit}>
+        <Form onSubmit={handleSubmit} ref={formRef}>
           {/* Personal Information */}
           <Section>
             <SectionTitle>
@@ -796,9 +841,13 @@ const RegisterPartnerPage: React.FC = () => {
                   $hasError={touched.firstName && !!errors.firstName}
                   disabled={isLoading}
                   autoComplete="given-name"
+                  aria-invalid={touched.firstName && !!errors.firstName}
+                  aria-describedby={touched.firstName && errors.firstName ? 'firstName-error' : undefined}
                 />
                 {touched.firstName && errors.firstName && (
                   <ErrorMessage
+                    id="firstName-error"
+                    role="alert"
                     initial={{ opacity: 0, y: -5 }}
                     animate={{ opacity: 1, y: 0 }}
                   >
@@ -822,9 +871,13 @@ const RegisterPartnerPage: React.FC = () => {
                   $hasError={touched.lastName && !!errors.lastName}
                   disabled={isLoading}
                   autoComplete="family-name"
+                  aria-invalid={touched.lastName && !!errors.lastName}
+                  aria-describedby={touched.lastName && errors.lastName ? 'lastName-error' : undefined}
                 />
                 {touched.lastName && errors.lastName && (
                   <ErrorMessage
+                    id="lastName-error"
+                    role="alert"
                     initial={{ opacity: 0, y: -5 }}
                     animate={{ opacity: 1, y: 0 }}
                   >
@@ -850,9 +903,13 @@ const RegisterPartnerPage: React.FC = () => {
                   $hasError={touched.email && !!errors.email}
                   disabled={isLoading}
                   autoComplete="email"
+                  aria-invalid={touched.email && !!errors.email}
+                  aria-describedby={touched.email && errors.email ? 'email-error' : undefined}
                 />
                 {touched.email && errors.email && (
                   <ErrorMessage
+                    id="email-error"
+                    role="alert"
                     initial={{ opacity: 0, y: -5 }}
                     animate={{ opacity: 1, y: 0 }}
                   >
@@ -876,9 +933,13 @@ const RegisterPartnerPage: React.FC = () => {
                   $hasError={touched.phone && !!errors.phone}
                   disabled={isLoading}
                   autoComplete="tel"
+                  aria-invalid={touched.phone && !!errors.phone}
+                  aria-describedby={touched.phone && errors.phone ? 'phone-error' : undefined}
                 />
                 {touched.phone && errors.phone && (
                   <ErrorMessage
+                    id="phone-error"
+                    role="alert"
                     initial={{ opacity: 0, y: -5 }}
                     animate={{ opacity: 1, y: 0 }}
                   >
@@ -917,9 +978,13 @@ const RegisterPartnerPage: React.FC = () => {
                   placeholder={t('partnerRegistration.businessNamePlaceholder')}
                   $hasError={touched.businessName && !!errors.businessName}
                   disabled={isLoading}
+                  aria-invalid={touched.businessName && !!errors.businessName}
+                  aria-describedby={touched.businessName && errors.businessName ? 'businessName-error' : undefined}
                 />
                 {touched.businessName && errors.businessName && (
                   <ErrorMessage
+                    id="businessName-error"
+                    role="alert"
                     initial={{ opacity: 0, y: -5 }}
                     animate={{ opacity: 1, y: 0 }}
                   >
@@ -954,6 +1019,8 @@ const RegisterPartnerPage: React.FC = () => {
               <SubcategoryGroup
                 role="group"
                 aria-labelledby="businessCategoryLabel"
+                aria-invalid={touched.businessCategory && !!errors.businessCategory}
+                aria-describedby={touched.businessCategory && errors.businessCategory ? 'businessCategory-error' : undefined}
               >
                 {categoryOptions.map(cat => (
                   <SubcategoryChip
@@ -973,6 +1040,8 @@ const RegisterPartnerPage: React.FC = () => {
               </SubcategoryHelp>
               {touched.businessCategory && errors.businessCategory && (
                 <ErrorMessage
+                  id="businessCategory-error"
+                  role="alert"
                   initial={{ opacity: 0, y: -5 }}
                   animate={{ opacity: 1, y: 0 }}
                 >
@@ -1000,14 +1069,20 @@ const RegisterPartnerPage: React.FC = () => {
 
             {subcategoriesForCategory.length > 0 && (
               <FormGroup>
-                <Label as="span">
+                <Label as="span" id="businessSubcategoriesLabel">
                   {t('partnerRegistration.businessSubcategoriesLabel')}
                 </Label>
-                <SubcategoryGroup>
+                <SubcategoryGroup
+                  role="group"
+                  aria-labelledby="businessSubcategoriesLabel"
+                  aria-invalid={touched.subcategoryError && !!errors.subcategoryError}
+                  aria-describedby={touched.subcategoryError && errors.subcategoryError ? 'subcategoryError-error' : undefined}
+                >
                   {subcategoriesForCategory.map(sub => (
                     <SubcategoryChip
                       key={sub.id}
                       type="button"
+                      aria-pressed={selectedSubcategories.includes(sub.id)}
                       $selected={selectedSubcategories.includes(sub.id)}
                       onClick={() => toggleSubcategory(sub.id)}
                       disabled={isLoading}
@@ -1019,6 +1094,16 @@ const RegisterPartnerPage: React.FC = () => {
                 <SubcategoryHelp>
                   {t('partnerRegistration.businessSubcategoriesHelp')}
                 </SubcategoryHelp>
+                {touched.subcategoryError && errors.subcategoryError && (
+                  <ErrorMessage
+                    id="subcategoryError-error"
+                    role="alert"
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    {errors.subcategoryError}
+                  </ErrorMessage>
+                )}
               </FormGroup>
             )}
 
@@ -1052,9 +1137,13 @@ const RegisterPartnerPage: React.FC = () => {
                   placeholder={t('partnerRegistration.cityPlaceholder')}
                   $hasError={touched.city && !!errors.city}
                   disabled={isLoading}
+                  aria-invalid={touched.city && !!errors.city}
+                  aria-describedby={touched.city && errors.city ? 'city-error' : undefined}
                 />
                 {touched.city && errors.city && (
                   <ErrorMessage
+                    id="city-error"
+                    role="alert"
                     initial={{ opacity: 0, y: -5 }}
                     animate={{ opacity: 1, y: 0 }}
                   >
@@ -1077,9 +1166,13 @@ const RegisterPartnerPage: React.FC = () => {
                   placeholder={t('partnerRegistration.addressPlaceholder')}
                   $hasError={touched.address && !!errors.address}
                   disabled={isLoading}
+                  aria-invalid={touched.address && !!errors.address}
+                  aria-describedby={touched.address && errors.address ? 'address-error' : undefined}
                 />
                 {touched.address && errors.address && (
                   <ErrorMessage
+                    id="address-error"
+                    role="alert"
                     initial={{ opacity: 0, y: -5 }}
                     animate={{ opacity: 1, y: 0 }}
                   >
@@ -1095,16 +1188,23 @@ const RegisterPartnerPage: React.FC = () => {
               <Label as="span">
                 {t('partnerRegistration.venueLocation')} *
               </Label>
-              <VenueLocationPicker
-                address={formData.address}
-                city={formData.city}
-                value={coordinates}
-                onChange={handleCoordinatesChange}
-                onAddressResolved={handleAddressResolved}
-                disabled={isLoading}
-              />
+              <div
+                aria-invalid={touched.coordinates && !!errors.coordinates}
+                aria-describedby={touched.coordinates && errors.coordinates ? 'coordinates-error' : undefined}
+              >
+                <VenueLocationPicker
+                  address={formData.address}
+                  city={formData.city}
+                  value={coordinates}
+                  onChange={handleCoordinatesChange}
+                  onAddressResolved={handleAddressResolved}
+                  disabled={isLoading}
+                />
+              </div>
               {touched.coordinates && errors.coordinates && (
                 <ErrorMessage
+                  id="coordinates-error"
+                  role="alert"
                   initial={{ opacity: 0, y: -5 }}
                   animate={{ opacity: 1, y: 0 }}
                 >
@@ -1126,6 +1226,8 @@ const RegisterPartnerPage: React.FC = () => {
                 onBlur={() => handleBlur('requestObjectCount')}
                 $hasError={touched.requestObjectCount && !!errors.requestObjectCount}
                 disabled={isLoading}
+                aria-invalid={touched.requestObjectCount && !!errors.requestObjectCount}
+                aria-describedby={touched.requestObjectCount && errors.requestObjectCount ? 'requestObjectCount-error' : undefined}
               >
                 <option value="">
                   {t('partnerRegistration.selectPlaceholder')}
@@ -1137,6 +1239,8 @@ const RegisterPartnerPage: React.FC = () => {
               </Select>
               {touched.requestObjectCount && errors.requestObjectCount && (
                 <ErrorMessage
+                  id="requestObjectCount-error"
+                  role="alert"
                   initial={{ opacity: 0, y: -5 }}
                   animate={{ opacity: 1, y: 0 }}
                 >
@@ -1170,6 +1274,8 @@ const RegisterPartnerPage: React.FC = () => {
                 onBlur={() => handleBlur('participationLevel')}
                 $hasError={touched.participationLevel && !!errors.participationLevel}
                 disabled={isLoading}
+                aria-invalid={touched.participationLevel && !!errors.participationLevel}
+                aria-describedby={touched.participationLevel && errors.participationLevel ? 'participationLevel-error' : undefined}
               >
                 <option value="">{t('partnerRegistration.selectPlaceholder')}</option>
                 {/* Spec §2.3 canonical Bulgarian labels */}
@@ -1178,7 +1284,7 @@ const RegisterPartnerPage: React.FC = () => {
                 <option value="growth">{t('partnerRegistration.strongGrowth')}</option>
               </Select>
               {touched.participationLevel && errors.participationLevel && (
-                <ErrorMessage initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}>
+                <ErrorMessage id="participationLevel-error" role="alert" initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}>
                   {errors.participationLevel}
                 </ErrorMessage>
               )}
@@ -1221,6 +1327,8 @@ const RegisterPartnerPage: React.FC = () => {
                 checked={formData.acceptTerms}
                 onChange={handleChange}
                 disabled={isLoading}
+                aria-invalid={touched.acceptTerms && !!errors.acceptTerms}
+                aria-describedby={touched.acceptTerms && errors.acceptTerms ? 'acceptTerms-error' : undefined}
               />
               <CheckboxLabel
                 htmlFor="acceptTerms"
@@ -1236,6 +1344,8 @@ const RegisterPartnerPage: React.FC = () => {
             </CheckboxGroup>
             {touched.acceptTerms && errors.acceptTerms && (
               <ErrorMessage
+                id="acceptTerms-error"
+                role="alert"
                 initial={{ opacity: 0, y: -5 }}
                 animate={{ opacity: 1, y: 0 }}
               >
@@ -1254,6 +1364,8 @@ const RegisterPartnerPage: React.FC = () => {
                 checked={formData.acceptPrivacy}
                 onChange={handleChange}
                 disabled={isLoading}
+                aria-invalid={touched.acceptPrivacy && !!errors.acceptPrivacy}
+                aria-describedby={touched.acceptPrivacy && errors.acceptPrivacy ? 'acceptPrivacy-error' : undefined}
               />
               <CheckboxLabel
                 htmlFor="acceptPrivacy"
@@ -1266,6 +1378,8 @@ const RegisterPartnerPage: React.FC = () => {
             </CheckboxGroup>
             {touched.acceptPrivacy && errors.acceptPrivacy && (
               <ErrorMessage
+                id="acceptPrivacy-error"
+                role="alert"
                 initial={{ opacity: 0, y: -5 }}
                 animate={{ opacity: 1, y: 0 }}
               >
