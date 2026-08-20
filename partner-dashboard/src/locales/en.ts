@@ -359,7 +359,7 @@ export const en = {
     privacyLinkText: 'Privacy Policy',
     acceptPrivacySuffix: ' *',
     marketingConsentLabel: 'I agree to receive marketing communications (optional)',
-    applicationReviewNote: 'After submitting your application, our team will contact you within 2 business days. Once approved and onboarding is complete, you will receive an email with an activation link to set your password.',
+    applicationReviewNote: 'After submitting your application, our team will contact you within 2 working days. Once approved and onboarding is complete, you will receive an email with an activation link to set your password.',
   },
 
   // Home Page
