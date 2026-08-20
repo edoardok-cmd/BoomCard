@@ -23,6 +23,17 @@ on:
 
 jobs:
   admin-spec-sweeps:
+    # BC-QA-051 added two more gates to the jest step below (the (phone, role)
+    # partial-unique pin and its teeth-proof) and DELIBERATELY did not extend this
+    # `name:` to enumerate them, breaking with the precedent set when
+    # spec-corpus-dual-currency-sweep was added. Reason: this job's `name:` IS the
+    # status-check name that branch protection matches on, and the header above asks
+    # for it to be marked Required. Renaming it silently detaches the required check
+    # until someone re-points branch protection by hand — i.e. CI keeps reporting
+    # green while the gate no longer gates anything. That is the same failure mode
+    # BC-QA-051 exists to repair (nine green CD runs over a dead production API), so
+    # accepting a slightly stale enumeration here is the cheaper error. If the name
+    # is ever widened, update the branch protection rule in the same change.
     name: Deterministic spec gates (uuid-500, endpoint coverage, route ownership, docs corpus)
     runs-on: ubuntu-latest
 
@@ -93,6 +104,31 @@ jobs:
       # provision one anyway. The job name above was widened to say so rather than
       # leaving the addition to look like an admin sweep.
       #
+      # BC-QA-051: user-phone-role-partial-unique[.teeth] are likewise not admin-route
+      # sweeps, and are here for the same reason as spec-corpus-dual-currency-sweep —
+      # this is the only jest invocation in the repo that can fail a build, and it
+      # already provisions postgres and deploys migrations, which is exactly what
+      # these two need.
+      #
+      # They pin the ONE property that CI is structurally blind to. `(phone, role)`
+      # uniqueness on "User" must stay PARTIAL (`WHERE btrim("phone") <> ''`): "phone"
+      # is NOT NULL and "no phone on file" is the empty string, so a blanket
+      # `UNIQUE (phone, role)` is unsatisfiable against production, where 134 of 231
+      # rows are blank. That constraint shipped on 2026-08-10, `prisma migrate deploy`
+      # exited 1, and because deploy was chained into the Fly start command with `&&`
+      # the API never started — a ~10-day outage over nine green CD runs. The step
+      # above ("Apply migrations to test DB") CANNOT catch a recurrence: it runs
+      # against a FRESH service container where a total unique constraint applies
+      # perfectly cleanly. Only inserting blank-phone rows and watching them be
+      # accepted proves the predicate is still there, which is what these do.
+      #
+      # The .teeth file is in this list on purpose, not by copy-paste. It migrates a
+      # throwaway schema, recreates the index TOTAL (and in its btrim-expression
+      # variant), and asserts the shared probe module goes red — so if the probes are
+      # ever gutted into a green no-op, the gate breaks instead of quietly passing.
+      # Together they add ~10s; both are self-cleaning (every probe rolls its
+      # transaction back; the scratch schema is dropped in afterAll).
+      #
       # Deliberately NO --passWithNoTests: if every pattern below is ever deleted,
       # jest exits 1 on "0 matches" and the gate fails loudly instead of silently
       # passing an empty run. (Note that jest exits 0 when SOME patterns match, so a
@@ -107,4 +143,6 @@ jobs:
           tests/integration/admin-endpoint-coverage.test.ts
           tests/integration/app-route-ownership.test.ts
           tests/integration/spec-corpus-dual-currency-sweep.test.ts
+          tests/integration/user-phone-role-partial-unique.test.ts
+          tests/integration/user-phone-role-partial-unique.teeth.test.ts
           --runInBand --ci
