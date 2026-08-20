@@ -174,9 +174,29 @@ jobs:
       #     recorded verbatim (percent-encoded) in that stream. Query strings
       #     and request bodies are NOT captured by that middleware, but any
       #     identifier carried in a PATH SEGMENT is.
-      #   - src/ has 1068 logger/console call sites across 143 files, 454 of
-      #     which interpolate an error object or a user-derived value. A
-      #     failed deploy is exactly when those fire.
+      #   - beyond that one middleware, the service logs from call sites
+      #     spread across most of its modules, and the ones that interpolate
+      #     an error object or a user-derived value are precisely the ones a
+      #     failed deploy sets off.
+      #     No counts are quoted here on purpose. An earlier revision of this
+      #     comment quoted three and two of them were wrong: it reported the
+      #     total number of .ts files in src/ as though it were the number of
+      #     files containing a log call (`grep -rc` prints a line for every
+      #     file SEARCHED, zero-match files included — use -l), and it called
+      #     a count of matching LINES a count of call SITES. Every figure here
+      #     is definition-dependent, so re-derive rather than trust. From the
+      #     repository root:
+      #       # call sites (occurrences):
+      #       grep -rEoh '(logger|console)\.(error|warn|info|log|debug)\(' \
+      #         backend-api/src --include=*.ts | wc -l
+      #       # files containing at least one:
+      #       grep -rlE '(logger|console)\.(error|warn|info|log|debug)\(' \
+      #         backend-api/src --include=*.ts | wc -l
+      #       # heuristic — lines interpolating an error/user-derived value
+      #       # (indicative, not exact; widen or narrow the alternation to
+      #       # taste and the number moves):
+      #       grep -rEn '(logger|console)\.(error|warn)\([^)]*(error|err|user|email|phone)' \
+      #         backend-api/src --include=*.ts | wc -l
       # The buffer looks harmless while the app is down (it is currently just
       # crash-loop output) — which is precisely why sampling it during an
       # outage is the wrong way to judge the risk. Do not re-add it.
