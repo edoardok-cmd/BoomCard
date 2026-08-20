@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useSearchParams, Link, Navigate } from 'react-router-dom';
 import styled from 'styled-components';
 import Button from '../components/common/Button/Button';
@@ -9,6 +9,7 @@ import * as authStorage from '../lib/auth/authStorage';
 // base URL as the rest of the codebase. Raw axios was the only place in the
 // partner-facing code with this inconsistent pattern.
 import { apiService } from '../services/api.service';
+import { useScrollToFirstError } from '../hooks/useScrollToFirstError';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -68,7 +69,7 @@ const Input = styled.input<{ $hasError?: boolean }>`
   transition: border-color 0.2s;
 
   &:focus {
-    border-color: var(--color-primary);
+    border-color: ${p => p.$hasError ? '#ef4444' : 'var(--color-primary)'};
   }
 `;
 
@@ -129,6 +130,10 @@ const CompleteProfilePage: React.FC = () => {
   const [emailConflict, setEmailConflict] = useState(false);
   const [accountCreated, setAccountCreated] = useState(false);
 
+  // BC-QA-015 — shared scroll-to-first-error + focus mechanism.
+  const formRef = useRef<HTMLFormElement>(null);
+  const { markAttempt } = useScrollToFirstError(formRef);
+
   // HIGH fix (review r2ad HIGH-1): already-authenticated users must not reach
   // this page. If they do, their existing session tokens would be silently
   // overwritten by the activation token exchange. Guard by checking for a
@@ -178,6 +183,9 @@ const CompleteProfilePage: React.FC = () => {
       errs.confirmPassword = t('auth.passwordsMustMatch');
     }
     setErrors(errs);
+    // BC-QA-015 — scroll to and focus the first invalid field once the
+    // aria-invalid attributes below have painted.
+    markAttempt();
     return Object.keys(errs).length === 0;
   };
 
@@ -259,10 +267,11 @@ const CompleteProfilePage: React.FC = () => {
           <AlertBox $variant="error">{apiError}</AlertBox>
         )}
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} ref={formRef}>
           <Field>
-            <Label>{t('auth.password')}</Label>
+            <Label htmlFor="newPassword">{t('auth.password')}</Label>
             <Input
+              id="newPassword"
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
@@ -270,21 +279,30 @@ const CompleteProfilePage: React.FC = () => {
               minLength={8}
               placeholder={t('completeProfilePage.passwordPlaceholder')}
               autoComplete="new-password"
+              aria-invalid={!!errors.password}
+              aria-describedby={errors.password ? 'newPassword-error' : undefined}
             />
-            {errors.password && <ErrorText>{errors.password}</ErrorText>}
+            {errors.password && (
+              <ErrorText id="newPassword-error" role="alert">{errors.password}</ErrorText>
+            )}
           </Field>
 
           <Field>
-            <Label>{t('auth.confirmPassword')}</Label>
+            <Label htmlFor="confirmNewPassword">{t('auth.confirmPassword')}</Label>
             <Input
+              id="confirmNewPassword"
               type="password"
               value={confirmPassword}
               onChange={e => setConfirmPassword(e.target.value)}
               $hasError={!!errors.confirmPassword}
               placeholder="••••••••"
               autoComplete="new-password"
+              aria-invalid={!!errors.confirmPassword}
+              aria-describedby={errors.confirmPassword ? 'confirmNewPassword-error' : undefined}
             />
-            {errors.confirmPassword && <ErrorText>{errors.confirmPassword}</ErrorText>}
+            {errors.confirmPassword && (
+              <ErrorText id="confirmNewPassword-error" role="alert">{errors.confirmPassword}</ErrorText>
+            )}
           </Field>
 
           <ConsentSection>
