@@ -200,11 +200,9 @@ Partner doc (§1–4) consistently uses "заявка" for Partner Applications.
 
 ### ✅ **12.1 (A) - BGN / EUR Transition**
 **Clash:** TABLE 39 mentions EUR support "efter въвеждане в България" with no transition rule.  
-**Resolution:** Dual-currency display during defined transition window: both BGN and EUR shown simultaneously. After the transition window closes, BGN is hidden.
+**Resolution:** The BGN→EUR transition window has closed. All monetary amounts are displayed in EUR only, across the admin, partner and user surfaces. The transition-period display machinery (a `currency_transition_window_open` flag, `utils/currencyDisplay.ts`, and `display: { bgn, eur }` wrappers) has been removed (BC-QA-031, 2026-08-20); amounts remain BGN-denominated in storage and are converted to EUR at the fixed currency-board rate before display. The requirement is stated in `06-admin-spec-extracted.md` §3.7, `07-partner-spec-extracted.md` §7.3 and `08-user-spec-extracted.md` §17.
 
-**Update (2026-08-20, BC-QA-031):** The transition window has since closed and the second half of that resolution is what now holds — amounts are EUR only. The dual-currency display machinery built for the first half (a `currency_transition_window_open` flag, `utils/currencyDisplay.ts`, and `display: { bgn, eur }` wrappers across the admin, partner and user surfaces) has been fully removed. The resolution above is kept as the record of the decision that was taken at the time; the current requirement is stated in `06-admin-spec-extracted.md` §3.7, `07-partner-spec-extracted.md` §7.3 and `08-user-spec-extracted.md` §17.
-
-**Status:** RESOLVED ✓ (superseded — see Update above)
+**Status:** RESOLVED ✓ (resolution revised 2026-08-20, BC-QA-031)
 
 ---
 

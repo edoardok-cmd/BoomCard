@@ -25,9 +25,16 @@
  * WHAT IT ASSERTS
  * ---------------
  * Not "this phrasing may never appear" — the corpus legitimately contains the
- * historical record: the original clash catalogue (`00`), the clash-resolution
- * decision (`04`), and the dated client deliverables (`01`, `02`). Deleting those
- * would falsify what was specified and decided at the time.
+ * historical record. `00-admin-clashes-reference.md` is the clearest case: it is a
+ * catalogue of open QUESTIONS, so its dual-currency line asks one rather than
+ * asserting a requirement, and rewriting it would delete the question instead of
+ * updating a rule. Dated gap reports quoting a superseded rule are the same shape.
+ *
+ * NOTE (2026-08-20, user decision): an earlier revision of this file carved out
+ * `01`, `02` and `04` as "dated client deliverables and a decision record" to be
+ * annotated rather than rewritten. That carve-out was REVERSED — those three were
+ * rewritten in place to the EUR-only contract, like `06`/`07`/`08`. Do not
+ * reintroduce it; annotate only where there is genuinely no requirement to rewrite.
  *
  * Corpus: every `*.md` under `docs/` (see the SPECS constant for why not wider).
  *
@@ -61,6 +68,11 @@ import path from 'path';
  *   docs/specs/   21 files →  7 marked, 0 unmarked
  *   docs/**       50 files →  9 marked, 0 unmarked   (+2 marked, 0 false positives)
  *   whole repo   350 files →  9 marked, 5 unmarked   (all 5 audit artifacts)
+ *
+ * (Marked counts above are as-measured at that time. The 2026-08-20 rewrite of
+ * 01/02/04 removed five marked sites, so `docs/**` now reads 4 marked, 0 unmarked.
+ * The width decision the table supports is unchanged — it turns on the unmarked
+ * column, and repo-wide still drags in the 5 append-only audit artifacts.)
  *
  * `docs/**` costs nothing and catches a real one. The repo-wide option was
  * rejected: five of its six extra hits are dated review files under
@@ -247,10 +259,11 @@ describe('[SPEC-CORPUS sweep] dual-currency requirement text carries a supersess
           '\n\nThe BGN→EUR transition window has closed and the dual-currency display feature was\n' +
           'removed in BC-QA-031. A reader must never land on a requirement mandating simultaneous\n' +
           'BGN+EUR display without seeing, in the same breath, that it no longer holds.\n\n' +
-          'For a WORKING reference document (06/07/08-*-spec-extracted.md), rewrite the requirement\n' +
-          'to the EUR-only contract, as §17 of 08 was.\n' +
-          'For a HISTORICAL artifact (00, 01, 02, 04 — dated client deliverables and decision\n' +
-          'records), keep the original text and append a dated note, as those four already do:\n' +
+          'DEFAULT: rewrite the requirement to the EUR-only contract, as §17 of 08 was, and as\n' +
+          '01, 02 and 04 were. Rewriting is the treatment for anything that states a requirement,\n' +
+          'including dated deliverables and decision records (user decision, 2026-08-20).\n' +
+          'ONLY where the text states no requirement — a catalogued open QUESTION (00), or a dated\n' +
+          'report quoting a rule it already marks superseded — keep it and append a dated note:\n' +
           '  **Update (2026-08-20, BC-QA-031):** … / *(Обновено 2026-08-20, BC-QA-031: …)*',
     ).toBe('all superseded');
   });
