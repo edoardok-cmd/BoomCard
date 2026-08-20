@@ -15,13 +15,48 @@ primary_region = 'fra'
   OCR_MAX_CONCURRENT = '2'
   FRONTEND_URL = 'https://boomcard.bg'
 
+# BC-QA-051: schema migration is DECOUPLED from process start.
+#
+# Before this change, `[processes] app` was a single `sh -c` chain ending in
+# `... && prisma migrate deploy && node dist/server.js`. A migration failure
+# (P3009 — a migration recorded as failed in the production DB) therefore made
+# `node dist/server.js` unreachable: every machine exited 1 and Fly crash-looped
+# it until it hit the max restart count. A release problem became a TOTAL
+# OUTAGE, and because no health checks were defined, `flyctl deploy` still
+# reported SUCCESS. Six green deploys landed on a dead app over ten days.
+#
+# `release_command` is Fly's intended mechanism for this. It runs ONCE, in a
+# temporary machine using this app's env + secrets, BEFORE any new machine
+# takes traffic. If it exits non-zero the deploy ABORTS: no new machines are
+# created or updated, and the PREVIOUS release keeps serving. A migration
+# problem is now a failed release, not an outage.
+[deploy]
+  # 1. `node prisma/auto-baseline.js` (BC-QA-022 follow-up) auto-baselines an
+  #    existing, un-baselined, pre-squash-history database against `0_init`
+  #    before `prisma migrate deploy` would otherwise fail with P3018. Kept:
+  #    it is idempotent, a no-op on an already-baselined DB, and by its own
+  #    design it never fails the chain itself (it exits 0 on any unexpected
+  #    error and lets migrate deploy surface the real error). See
+  #    backend-api/prisma/auto-baseline.js header comment for full detail.
+  # 2. `prisma migrate deploy` applies pending migrations. If it fails, the
+  #    release fails and the deploy aborts — which is the entire point.
+  #
+  # DROPPED from the old chain (BC-QA-051): the two legacy
+  # `prisma migrate resolve --rolled-back <name> || true` calls for
+  # `20260321_simplify_partner_tiers` and `20260518_audit_pass_v11_followups`.
+  # Neither migration exists under prisma/migrations any more (both were
+  # squashed into `0_init`), and production logs show the first one emitting
+  # `Error: P3012 ... cannot be rolled back because it is not in a failed
+  # state` on EVERY boot. They were `|| true`-swallowed no-ops contributing
+  # nothing but noise, and the `|| true` is exactly the pattern that hides a
+  # real failure. A genuinely stuck `0_init` row is already handled by
+  # auto-baseline.js step 2.
+  release_command = "sh -c 'node prisma/auto-baseline.js && node_modules/.bin/prisma migrate deploy'"
+
 [processes]
-  # BC-QA-022 follow-up: `node prisma/auto-baseline.js` runs between the legacy
-  # rolled-back resolves and the real deploy — it auto-baselines an existing
-  # (un-baselined, pre-squash-history) database against 0_init before
-  # `prisma migrate deploy` would otherwise fail with P3018. See
-  # backend-api/prisma/auto-baseline.js header comment for full detail.
-  app = "sh -c 'node_modules/.bin/prisma migrate resolve --rolled-back 20260321_simplify_partner_tiers 2>&1 || true && node_modules/.bin/prisma migrate resolve --rolled-back 20260518_audit_pass_v11_followups 2>&1 || true && node prisma/auto-baseline.js && node_modules/.bin/prisma migrate deploy && node dist/server.js'"
+  # Just start the server. No migration, no `|| true`, nothing that can turn a
+  # schema problem into a crash-loop.
+  app = "node dist/server.js"
   worker = "node dist/worker.js"
 
 [http_service]
@@ -31,6 +66,50 @@ primary_region = 'fra'
   auto_start_machines = true
   min_machines_running = 1
   processes = ['app']
+
+  # BC-QA-051: the app previously defined NO health checks at all, so
+  # `flyctl deploy` reported success as soon as machines were CREATED, even
+  # though the process died immediately afterwards. `flyctl status` showed an
+  # empty CHECKS column. This check is the missing signal: it passes iff the
+  # HTTP server is actually listening and serving, so a crash-looping release
+  # now FAILS the deploy instead of reporting green.
+  #
+  # Path choice — `/health`, not `/api/health`:
+  #   Both are pure liveness handlers (no DB work in the handler). `/api/health`
+  #   sits BEHIND the global rate limiters mounted at `app.use('/api/', ...)`
+  #   in src/server.ts, which are IP-keyed and return 429 when tripped.
+  #   Measured against this build with NODE_ENV=production: 130 sequential
+  #   GETs to /api/health returned 98x200 + 32x429, while 130 GETs to /health
+  #   returned 130x200. Wiring the machine-level health check through a rate
+  #   limiter creates a path where LOAD — not a real fault — can mark healthy
+  #   machines unhealthy and take the app down. `/health` (src/server.ts) is
+  #   mounted outside `/api/`, so it is not rate limited and not subject to the
+  #   CSRF middleware. It is also the path the Dockerfile HEALTHCHECK uses.
+  #   The PUBLIC `/api/health` URL is still asserted post-deploy by
+  #   .github/workflows/deploy-fly.yml, which covers the edge/proxy/TLS path
+  #   and the exact base path boomcard.bg calls. The two checks are
+  #   complementary, not redundant.
+  [[http_service.checks]]
+    path = "/health"
+    method = "GET"
+    protocol = "http"
+    # Boot budget: with migrations moved to release_command, startup is only
+    # module load + one `SELECT 1` connectivity probe before httpServer.listen
+    # (src/server.ts startServer()). Measured on this build: 0.77s from process
+    # spawn to a 200 on /health (0.85s on /api/health). 30s grace is ~39x that,
+    # which absorbs a cold shared-cpu-1x machine, a cold Prisma query engine and
+    # a TLS handshake to a remote Postgres, while still catching a genuinely
+    # dead process quickly. It is deliberately NOT longer: grace_period is dead
+    # time added to every deploy and every auto_start wake-up.
+    grace_period = "30s"
+    # 10s interval: fast enough that a deploy verdict lands promptly and a
+    # mid-life crash is caught within ~30s (3 consecutive failures), cheap
+    # enough at ~6 req/min/machine to be irrelevant to load.
+    interval = "10s"
+    # 5s timeout: the handler does no I/O, so anything approaching 5s already
+    # means the event loop is blocked or the process is wedged — which is a
+    # condition we WANT to fail on, not wait out.
+    timeout = "5s"
 
 [[vm]]
   memory = '512mb'

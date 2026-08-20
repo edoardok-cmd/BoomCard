@@ -89,9 +89,21 @@ USER nodejs
 # Note: Render and other platforms inject PORT dynamically at runtime
 EXPOSE 3001
 
-# Health check
+# Health check.
+# Uses /health (NOT /api/health): /api/health sits behind the IP-keyed global
+# rate limiters mounted at app.use('/api/', ...) in src/server.ts and returns
+# 429 once the window is exhausted, so a health check on that path can be
+# failed by load rather than by a fault. /health is outside /api/ and is not
+# rate limited. Kept aligned with fly.toml's [[http_service.checks]].
+# The previous form had no 'error' listener and no request timeout. A refused
+# connection still exited 1, but via an UNCAUGHT ECONNREFUSED (stack trace on
+# stderr) rather than a clean check failure, and a server that accepted the
+# connection then stalled had nothing to abort the request — it relied purely
+# on Docker's --timeout. The explicit error handler and 5s request timeout make
+# both cases a deliberate exit 1. Verified locally: live server -> exit 0,
+# dead port -> exit 1, 200-less path (404) -> exit 1.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+  CMD node -e "const r=require('http').get('http://localhost:3001/health',s=>process.exit(s.statusCode===200?0:1));r.on('error',()=>process.exit(1));r.setTimeout(5000,()=>{r.destroy();process.exit(1)})"
 
 # Set production environment
 ENV NODE_ENV=production
@@ -99,10 +111,35 @@ ENV NODE_ENV=production
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the application:
-#   1. resolve failed no-op migrations left over from pre-squash history (existing idiom)
-#   2. BC-QA-022 follow-up: auto-baseline an un-baselined existing database against the
-#      squashed 0_init migration before a real deploy runs (see prisma/auto-baseline.js
-#      header comment for full detail) — never fails the chain itself
-#   3. deploy + start
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate resolve --rolled-back 20260321_simplify_partner_tiers 2>&1 || true && node prisma/auto-baseline.js && node_modules/.bin/prisma migrate deploy && node dist/server.js"]
+# Start the application. NOTHING ELSE.
+#
+# BC-QA-051: this CMD used to be a `sh -c` chain that ran
+#   prisma migrate resolve --rolled-back ... || true
+#   && node prisma/auto-baseline.js
+#   && prisma migrate deploy
+#   && node dist/server.js
+# i.e. it made the server's ability to start conditional on a schema migration
+# succeeding. On Fly that exact chain (duplicated in fly.toml's [processes])
+# turned a single failed migration (Prisma P3009) into a ten-day total
+# production outage: `migrate deploy` exited 1, `node dist/server.js` was never
+# reached, every machine exited 1, and Fly crash-looped them to the max restart
+# count. fly.toml's [processes] overrides this CMD, so this copy was latent —
+# but it is the same defect and would bite any non-Fly runtime of this image.
+#
+# Migrations are now a SEPARATE, PRE-START step. On Fly that is
+# `[deploy] release_command` (see fly.toml), which runs before new machines
+# take traffic and aborts the deploy — leaving the previous version serving —
+# if it fails. Anywhere else, run the equivalent as its own step BEFORE
+# starting containers, and treat a non-zero exit as a failed release:
+#
+#   docker run --rm --env-file <env> <image> \
+#     sh -c 'node prisma/auto-baseline.js && node_modules/.bin/prisma migrate deploy'
+#
+# (`npm run db:migrate:deploy` is the same `prisma migrate deploy` without the
+# auto-baseline step; `npm run db:migrate:status` reports pending/failed
+# migrations without changing anything.)
+#
+# Do NOT reintroduce a migration into this CMD, and do not "fix" a failing
+# migration by appending `|| true` — that swallows the error and starts a
+# server against a schema it was not built for.
+CMD ["node", "dist/server.js"]
