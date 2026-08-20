@@ -14,6 +14,11 @@ primary_region = 'fra'
   PORT = '3001'
   OCR_MAX_CONCURRENT = '2'
   FRONTEND_URL = 'https://boomcard.bg'
+  # BC-QA-058: liveness port for the `worker` process's health check below.
+  # Set explicitly (rather than relying on src/worker.ts's WORKER_PORT
+  # default) so this file and the internal_port it declares can never drift
+  # out of sync with what the process actually binds.
+  WORKER_PORT = '3002'
 
 # BC-QA-051: schema migration is DECOUPLED from process start.
 #
@@ -92,57 +97,20 @@ primary_region = 'fra'
   app = "node dist/server.js"
   worker = "node dist/worker.js"
 
-  # BC-QA-054: `worker` has NO health check, unlike `app` below. This is a
-  # known, investigated gap, not an oversight — flyctl deploy reports green
-  # as soon as worker machines are CREATED, exactly like `app` before
-  # BC-QA-051, regardless of whether src/worker.ts survives startup.
+  # BC-QA-054 found `worker` had NO health check, unlike `app` below — a
+  # known, investigated gap, not an oversight — because `worker` opened no
+  # listening port (a pure outbound BullMQ consumer) and every Fly mechanism
+  # for an ONGOING liveness check is fundamentally port-based. That pass
+  # documented the fix it could not make (a minimal liveness listener in
+  # src/worker.ts, application code out of an ops-file-only pass's scope)
+  # and closed only the missing-required-secret slice via a pre-deploy gate
+  # in .github/workflows/deploy-fly.yml.
   #
-  # Why no check was added here: `worker` opens no listening port (it is a
-  # pure outbound BullMQ consumer — see src/worker.ts, src/queues/redis.ts —
-  # `netstat`/`grep -n "\.listen(" src/worker.ts` finds nothing), and every
-  # Fly mechanism for an ONGOING liveness check is fundamentally port-based.
-  # Verified directly against this app with `flyctl config validate
-  # --strict` (flyctl v0.3.219) rather than assumed from docs alone:
-  #   - Top-level `[checks]` (the portless-LOOKING option): flyctl itself
-  #     rejects `type = "exec"` with "Missing or invalid check type, must be
-  #     'http' or 'tcp'". Only http/tcp exist here, and both hard-require a
-  #     `port` field naming something the process is actually listening on.
-  #   - `[[services.http_checks]]` / `[[services.tcp_checks]]`: same
-  #     requirement, one level down — they check a `[[services]]` block's
-  #     `internal_port`, which must be a real open socket.
-  #   - `[[services.machine_checks]]` (exec-in-an-ephemeral-Machine,
-  #     genuinely portless in spirit): DEPLOY-TIME ONLY, not ongoing
-  #     monitoring, and flyctl's own config validator still requires it to
-  #     sit inside a `[[services]]` block, which itself requires an
-  #     `internal_port` (validator emits a WARNING rather than a hard
-  #     failure if `[[services.ports]]` is omitted, but the warning text
-  #     says unported services "will hard fail" — a claim this repo has no
-  #     way to confirm or refute without a real `flyctl deploy`, which is
-  #     out of scope for an ops-file-only change to try against production).
-  #     Whether the app's secrets (e.g. REDIS_URL, to let a check command
-  #     actually probe something real) are even injected into that ephemeral
-  #     Machine is undocumented and likewise unverifiable without deploying.
-  #     Shipping an unverified deploy-time gate is exactly the false-red
-  #     risk called out for the public-health-assertion step elsewhere in
-  #     this repo (.github/workflows/deploy-fly.yml) — worse here, since a
-  #     wrong config could hard-fail EVERY future deploy, not just one slow
-  #     one.
-  #
-  # The correct fix is the one this pass could not make: give `worker` a
-  # minimal TCP/HTTP liveness listener (mirroring `app`'s `/health` handler
-  # in src/server.ts) purely so something exists to check — a few lines in
-  # src/worker.ts. That is application code, out of an ops-file-only
-  # devops pass's scope; it needs a backend-engineer task. Once it exists,
-  # wiring a `[[services.tcp_checks]]` or top-level `[checks]` entry here
-  # (`processes = ["worker"]`) is the easy, well-supported part.
-  #
-  # What THIS pass could and did do instead: .github/workflows/deploy-fly.yml
-  # gate 1 checks that REDIS_URL and DATABASE_URL — the two env vars whose
-  # absence makes src/worker.ts / src/lib/prisma.ts call `process.exit(1)`
-  # at module load, a real and previously-unmonitored crash-at-boot cause —
-  # are present on the target app BEFORE a deploy starts. That closes the
-  # missing-required-secret slice of this gap without touching worker.ts; it
-  # does not catch a worker that starts cleanly and dies later.
+  # BC-QA-058 makes that fix: src/worker.ts now opens a minimal HTTP
+  # liveness listener on WORKER_PORT (env, default 3002) once
+  # startMerchantVerificationWorker() has actually succeeded — see the
+  # `[[services]]` block below, which is the "easy, well-supported part"
+  # BC-QA-054 predicted once a real port existed to check.
 
 [http_service]
   internal_port = 3001
@@ -195,6 +163,66 @@ primary_region = 'fra'
     # means the event loop is blocked or the process is wedged — which is a
     # condition we WANT to fail on, not wait out.
     timeout = "5s"
+
+# BC-QA-058: `worker`'s ongoing liveness check. Unlike `[http_service]` above
+# (a single named "primary" service Fly treats specially — Elastic IP,
+# force_https, etc.), a non-`app` process needs the general `[[services]]`
+# form, scoped with `processes = ['worker']` the same way `[[vm]]` below
+# already is.
+[[services]]
+  internal_port = 3002
+  protocol = "tcp"
+  processes = ['worker']
+
+  # Deliberately no `[[services.ports]]` block: this service exists only so
+  # Fly has an internal port to run the check below against — `worker` has no
+  # auth, no CORS, no rate limiting (see src/worker.ts), and must not be
+  # reachable from the public internet the way `app`'s :3001 is. `[[services.
+  # ports]]` governs external/edge exposure, not whether Fly's own
+  # check daemon (which probes internal_port directly over the private 6PN
+  # network) can reach this service — so omitting it is expected to leave the
+  # check functional while keeping :3002 off the public internet.
+  # Verified with `flyctl config validate --strict -c fly.toml` (flyctl
+  # v0.3.219, this repo, BC-QA-058): the SAME "Service must expose at least
+  # one port ... will hard fail after February 15, 2024" warning BC-QA-054
+  # found above is emitted again here — and, since that date has long since
+  # passed with this validator still returning "✓ Configuration is valid"
+  # rather than an error, that warning is confirmed stale/unenforced by THIS
+  # flyctl version rather than merely assumed to be. Full confirmation still
+  # requires a real `flyctl deploy`, which remains out of scope here (no Fly
+  # credentials in this environment) — if a future deploy ever hard-fails on
+  # this warning, the fix is adding a `[[services.ports]]` block with no
+  # `handlers` (internal-only), not reverting this check.
+
+  # http, not tcp: a bare TCP check only proves the socket accepts a
+  # connection, which for a plain `http.createServer` (src/worker.ts) is true
+  # the instant `.listen()` resolves. An HTTP check additionally proves the
+  # process completes a full request/response cycle on its event loop, so a
+  # worker whose loop is wedged (e.g. hung inside a synchronous OCR call)
+  # still fails the check even though the TCP socket would still accept.
+  # That's the same reasoning `[http_service.checks]` above already applies
+  # to `app`; matching it here keeps semantics identical between the two
+  # processes.
+  [[services.http_checks]]
+    interval = "10s"
+    grace_period = "30s"
+    method = "get"
+    path = "/health"
+    protocol = "http"
+    timeout = "5s"
+    # grace_period: measured on this build, spawn-to-200 on :3002 was ~0.5s
+    # (module load + BullMQ/Redis connection, no Postgres round-trip on this
+    # path — worker.ts never calls prisma before binding) — even lighter than
+    # `app`'s measured 0.77s. Reusing `app`'s 30s grace budget rather than
+    # tightening it further: it's the same shared-cpu-1x machine class and
+    # cold-Redis-connection variance under real network conditions is
+    # unmeasured here, so there's no basis to shave the margin for a value
+    # that only adds dead time when a deploy is already failing.
+    # interval/timeout: identical reasoning to `[http_service.checks]` above
+    # — 10s interval catches a mid-life crash within ~30s (3 consecutive
+    # failures) at negligible request cost; 5s timeout fails fast on a
+    # wedged event loop rather than waiting it out, since the handler itself
+    # does zero I/O.
 
 [[vm]]
   memory = '512mb'
