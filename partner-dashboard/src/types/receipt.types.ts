@@ -19,15 +19,40 @@
  * full Receipt type. The full Receipt type is for admin-only pages.
  */
 
+/**
+ * Receipt status. The authoritative list lives in `enum ReceiptStatus` in
+ * backend-api/prisma/schema.prisma, NOT here.
+ *
+ * Do not take this comment's word for the two lists agreeing — that is checked
+ * executably, not asserted in prose. `src/services/receipts-api.contract.test.ts`
+ * ("the frontend ReceiptStatus enum mirrors enum ReceiptStatus in schema.prisma
+ * exactly") parses the Prisma enum body and compares it against this enum, so a
+ * member added or removed on either side alone turns that test red.
+ *
+ * Membership is only half the guarantee. That a member is actually HANDLED by
+ * the partner-facing surfaces that branch on status — rather than falling
+ * through to their `default` arm — is pinned separately by
+ * `src/sweeps/receipt-status-rendering.sweep.test.tsx`, which renders
+ * ReceiptCard and ReceiptDetailPage once per member. Adding a member here turns
+ * that sweep red until someone states what it should look like.
+ *
+ * BC-QA-031-FOLLOWUP-4 removed two invented members, `VALIDATED` and
+ * `CASHBACK_APPLIED`, which appear nowhere in backend-api. Code that filtered
+ * on them matched zero rows for every user forever — that is how the
+ * ReceiptAnalyticsWidget's Total Cashback card came to render a structural
+ * €0.00, and the same class of bug had already been fixed by hand in
+ * ReceiptAnalyticsPage.tsx. APPROVED is the terminal state in which a
+ * receipt's cashback has been calculated and credited. r2-F4 then replaced this
+ * block's prose correspondence claim with the check named above, so that class
+ * of drift is caught by machine next time.
+ */
 export enum ReceiptStatus {
   PENDING = 'PENDING',
   PROCESSING = 'PROCESSING',
   VALIDATING = 'VALIDATING',
-  VALIDATED = 'VALIDATED',
   APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
   MANUAL_REVIEW = 'MANUAL_REVIEW',
-  CASHBACK_APPLIED = 'CASHBACK_APPLIED',
   EXPIRED = 'EXPIRED'
 }
 
@@ -183,6 +208,18 @@ export interface ReceiptFilters {
   sortOrder?: 'asc' | 'desc';
 }
 
+/**
+ * Response body of `GET /api/receipts/stats` (v1 receipts router →
+ * receiptService.getUserReceiptStats). Every field below is emitted by that
+ * handler; `totalAmount` / `averageAmount` are EUR — the service runs the
+ * BGN-denominated stored figures through `bgnToEur()` before responding
+ * (BC-QA-031).
+ *
+ * This type must NOT be used for `GET /api/receipts/v2/stats/user`, which is a
+ * different handler with a different shape — see ReceiptSubmissionStats below.
+ * `receipts-api.contract.test.ts` checks this correspondence against the
+ * backend source.
+ */
 export interface ReceiptStats {
   totalReceipts: number;
   validatedReceipts: number;
@@ -190,6 +227,26 @@ export interface ReceiptStats {
   pendingReceipts: number;
   totalAmount: number;
   averageAmount: number;
+}
+
+/**
+ * Response body of `GET /api/receipts/v2/stats/user` (enhanced receipts router →
+ * receiptService.getUserSubmissionStats). Submission counters for rate-limit
+ * display only: the handler returns this object BARE — there is no
+ * `{ success, data }` envelope — and it emits no money fields and no card type.
+ *
+ * Added by BC-QA-031-FOLLOWUP-4 so the rate-limit endpoint has an honest type
+ * of its own rather than borrowing ReceiptStats, which promises money it never
+ * sends.
+ */
+export interface ReceiptSubmissionStats {
+  submissionsToday: number;
+  submissionsThisMonth: number;
+  totalSubmissions: number;
+  dailyLimit: number;
+  monthlyLimit: number;
+  remainingToday: number;
+  remainingThisMonth: number;
 }
 
 // Partner/user list endpoint returns PartnerReceipt[] — no internal fields.
@@ -243,6 +300,10 @@ export interface ReviewReceiptResponse {
   fraudWarning?: string;
 }
 
+/**
+ * Envelope returned by `GET /api/receipts/stats`. See ReceiptStats for the
+ * endpoint binding; `receiptsApiService.getUserStats()` is the only caller.
+ */
 export interface ReceiptStatsResponse {
   success: boolean;
   data: ReceiptStats;

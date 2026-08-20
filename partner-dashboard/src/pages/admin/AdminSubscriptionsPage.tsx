@@ -734,8 +734,8 @@ export default function AdminSubscriptionsPage() {
 
   // Format amount in EUR-only mode
   // BC-QA-031: admin money endpoints emit plain EUR scalars. The retired
-  // `formatMoneyByMode(_, 'eur_only')` divided its input by BGN_TO_EUR_RATE,
-  // halving already-converted figures.
+  // `formatMoneyByMode(_, 'eur_only')` divided its input by the BGN→EUR rate
+  // (1.95583), halving already-converted figures.
   const fmtAmount = (amount: number) => formatEUR(amount);
 
   const planLabel = (p: SubscriptionPlan) => sharedPlanLabel(p, lang);

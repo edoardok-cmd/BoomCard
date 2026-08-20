@@ -1,7 +1,16 @@
 /**
  * Receipt API Service
- * Handles all API communication for receipt operations
- * Base URL: /receipts/v2 (enhanced routes with fraud detection)
+ * Handles all API communication for receipt operations.
+ *
+ * ROUTERS: predominantly `/receipts/v2` — the enhanced routes with fraud
+ * detection, held in `baseUrl` below. A minority of methods deliberately target
+ * the v1 `/receipts` router instead, because the endpoint they need exists only
+ * there; each one passes an absolute path rather than `this.baseUrl` and carries
+ * its own justification comment. Those exceptions are intentional, not
+ * oversights, and must not be "tidied" onto `baseUrl` — doing so reintroduces a
+ * 404 or a shape mismatch. Look for a leading `/receipts/…` literal at the call
+ * site to spot one; `receipts-api.contract.test.ts` pins the getUserStats case
+ * against the backend source.
  */
 
 import { apiService } from './api.service';
@@ -40,10 +49,30 @@ class ReceiptsApiService {
   }
 
   /**
-   * Get receipt statistics for current user
+   * Get receipt statistics for the current user (counts + money totals).
+   *
+   * ROUTE: `GET /api/receipts/stats` — the v1 receipts router, NOT `baseUrl`.
+   * This is deliberate; do not "tidy" it onto `${this.baseUrl}` (BC-QA-031-FOLLOWUP-4).
+   * The two similarly-named endpoints are different handlers on different routers:
+   *
+   *   GET /api/receipts/stats       → receiptService.getUserReceiptStats()
+   *       { success, data: { totalReceipts, validatedReceipts, rejectedReceipts,
+   *         pendingReceipts, totalAmount, averageAmount } }  ← money, bgnToEur()-converted
+   *
+   *   GET /api/receipts/v2/stats/user → receiptService.getUserSubmissionStats()
+   *       { submissionsToday, submissionsThisMonth, totalSubmissions, dailyLimit,
+   *         monthlyLimit, remainingToday, remainingThisMonth }  ← rate-limit counters,
+   *       no money fields and no { success, data } envelope.
+   *
+   * `ReceiptStatsResponse` describes the FIRST of those. Pointing this method at
+   * the `/v2` one is what BC-QA-031-FOLLOWUP-4 fixed; `receipts-api.contract.test.ts`
+   * now fails if it is repointed back.
+   *
+   * apiService prepends the `/api` baseURL, so the absolute `/receipts/stats`
+   * below resolves to `/api/receipts/stats` — v1, not v2.
    */
   async getUserStats(): Promise<ReceiptStatsResponse> {
-    return apiService.get<ReceiptStatsResponse>(`${this.baseUrl}/stats/user`);
+    return apiService.get<ReceiptStatsResponse>('/receipts/stats');
   }
 
   /**

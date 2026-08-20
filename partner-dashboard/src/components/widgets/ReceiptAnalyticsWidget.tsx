@@ -253,16 +253,42 @@ export const ReceiptAnalyticsWidget: React.FC = () => {
         const stats = statsResponse.data;
         const receipts = receiptsResponse.data;
 
-        // Calculate total cashback (from validated/applied receipts)
-        const cashbackReceipts = receipts.filter(
-          r => r.status === ReceiptStatus.CASHBACK_APPLIED
-        );
-        const totalCashback = cashbackReceipts.reduce((sum, r) => {
-          // Assume 5% cashback for now (should come from backend)
-          return sum + (r.totalAmount || 0) * 0.05;
-        }, 0);
+        // Total cashback actually granted.
+        // BC-QA-031-FOLLOWUP-4: this used to filter on
+        // ReceiptStatus.CASHBACK_APPLIED and multiply totalAmount by a
+        // hardcoded 0.05. The backend never emits that status (see the
+        // ReceiptStatus enum in receipt.types.ts, which is now aligned with
+        // backend-api/prisma/schema.prisma), so the filter matched nothing and
+        // this card rendered €0.00 for every account, always. APPROVED is the
+        // terminal state in which cashback has been calculated and credited,
+        // and each row carries its own real `cashbackAmount` — no client-side
+        // rate guess.
+        //
+        // ReceiptAnalyticsPage.tsx:549-566 made the same status/field
+        // correction for the same reason, and this hunk is modelled on it — but
+        // only on that half of it. The sibling carries a SECOND, separate fix
+        // immediately below (server-side cap-free aggregates when no filter
+        // narrows the view) that is NOT reproduced here: the sum below still
+        // runs over the `limit: 100` page fetched at :249, while the Total
+        // Receipts card beside it is an unbounded server-side count, so the two
+        // disagree above 100 receipts. That divergence is out of scope for
+        // BC-QA-031-FOLLOWUP-4 and is tracked as board task BC-QA-056.
+        const totalCashback = receipts
+          .filter(r => r.status === ReceiptStatus.APPROVED)
+          .reduce((sum, r) => sum + (r.cashbackAmount || 0), 0);
 
-        // Calculate success rate
+        // Calculate success rate.
+        // GET /api/receipts/stats counts only three statuses explicitly —
+        // validatedReceipts = APPROVED, rejectedReceipts = REJECTED,
+        // pendingReceipts = PENDING — so the expression below reduces to
+        // (totalReceipts - pendingReceipts - rejectedReceipts): every receipt
+        // that is neither pending nor rejected counts as a success, whatever
+        // status it actually holds — EXPIRED, MANUAL_REVIEW, PROCESSING and
+        // VALIDATING all score as wins, and an EXPIRED receipt in particular is
+        // a failed submission. The two stats.validatedReceipts terms cancel out.
+        // Left exactly as-is by BC-QA-031-FOLLOWUP-4: that task repointed where
+        // these counts come from and did not re-scope what "success" means here.
+        // Re-scoping it is tracked as board task BC-QA-056 (item 6).
         const validatedCount = stats.validatedReceipts + (stats.totalReceipts - stats.pendingReceipts - stats.rejectedReceipts - stats.validatedReceipts);
         const successRate = stats.totalReceipts > 0
           ? (validatedCount / stats.totalReceipts) * 100
@@ -351,26 +377,27 @@ export const ReceiptAnalyticsWidget: React.FC = () => {
           <StatValue>{analytics.totalReceipts}</StatValue>
         </StatCard>
 
-        {/* BC-QA-031 — provenance, corrected in round 6:
-            `totalCashback` IS EUR. It is derived here from
-            receiptsApiService.getReceipts() → GET /api/receipts/v2, which does
-            NOT pass `includeInternal`, so receipt.service.ts `formatReceipt()`
-            reaches its bgnToEur() block and converts the rows.
+        {/* BC-QA-031 — provenance: every money figure below is EUR.
 
-            `totalAmount` / `averageAmount` are a different matter and their
-            label is currently moot: they are read off
-            receiptsApiService.getUserStats() → GET /api/receipts/v2/stats/user,
-            which is served by `getUserSubmissionStats()` — a submission-COUNT
-            endpoint that returns { submissionsToday, submissionsThisMonth,
-            totalSubmissions, dailyLimit, monthlyLimit, remaining* } and no
-            money fields at all. `ReceiptStatsResponse` in receipt.types.ts
-            declares them anyway, so the mismatch is invisible to tsc. The
-            round-5 comment here named GET /api/receipts/stats
-            (`getUserReceiptStats()`, which does convert) — that is a DIFFERENT
-            route on a different router. Filed as BC-QA-031-FOLLOWUP-4
-            (ReceiptAnalyticsWidget reads totalAmount and averageAmount from a
-            money-less stats endpoint); the component has no mount site, so
-            nothing ships broken today. */}
+            `totalCashback` is the sum of the per-row `cashbackAmount` of the
+            APPROVED receipts returned by receiptsApiService.getReceipts()
+            → GET /api/receipts/v2, which does NOT pass `includeInternal`, so
+            receipt.service.ts `formatReceipt()` reaches its bgnToEur() block —
+            it converts `cashbackAmount` unconditionally (receipt.service.ts
+            L693), so the summed figure is EUR.
+
+            `totalAmount` / `averageAmount` come from
+            receiptsApiService.getUserStats() → GET /api/receipts/stats
+            (`getUserReceiptStats()`), which runs both through bgnToEur() before
+            responding.
+
+            This note is about CURRENCY only — it says the figures are EUR, not
+            that each one means what its label says. `averageAmount` in
+            particular divides a sum taken over receipts with a non-null
+            `totalAmount` by a count of ALL of the account's receipts, so an
+            amount-less receipt inflates the denominator and never the
+            numerator, and the "Avg Amount" card understates. That basis is a
+            backend question and is tracked as board task BC-QA-057. */}
         <StatCard>
           <StatLabel>{content.totalCashback}</StatLabel>
           <StatValue>

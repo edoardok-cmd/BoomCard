@@ -107,8 +107,16 @@ const StatusBadge = styled.div<{ $status: ReceiptStatus }>`
   font-weight: 600;
   background: ${props => {
     switch (props.$status) {
-      case ReceiptStatus.VALIDATED:
-      case ReceiptStatus.CASHBACK_APPLIED:
+      // BC-QA-031-FOLLOWUP-4: was `case VALIDATED: case CASHBACK_APPLIED:`.
+      // Neither status exists in the backend ReceiptStatus enum, so this success
+      // branch was unreachable and an APPROVED receipt fell through to the amber
+      // `default`. APPROVED is the real granted-cashback terminal state.
+      //
+      // Which member reaches which branch is pinned by
+      // src/sweeps/receipt-status-rendering.sweep.test.tsx, which renders this
+      // page once per ReceiptStatus member and reads the badge's computed
+      // background, text colour and icon. Deleting this case turns it red.
+      case ReceiptStatus.APPROVED:
         return 'rgba(209, 250, 229, 0.9)';
       case ReceiptStatus.REJECTED:
         return 'rgba(254, 226, 226, 0.9)';
@@ -119,8 +127,7 @@ const StatusBadge = styled.div<{ $status: ReceiptStatus }>`
   }};
   color: ${props => {
     switch (props.$status) {
-      case ReceiptStatus.VALIDATED:
-      case ReceiptStatus.CASHBACK_APPLIED:
+      case ReceiptStatus.APPROVED:
         return '#065f46';
       case ReceiptStatus.REJECTED:
         return '#991b1b';
@@ -289,11 +296,9 @@ export const ReceiptDetailPage: React.FC = () => {
         [ReceiptStatus.PENDING]: 'Pending Review',
         [ReceiptStatus.PROCESSING]: 'Processing',
         [ReceiptStatus.VALIDATING]: 'Validating',
-        [ReceiptStatus.VALIDATED]: 'Validated',
         [ReceiptStatus.APPROVED]: 'Approved',
         [ReceiptStatus.REJECTED]: 'Rejected',
         [ReceiptStatus.MANUAL_REVIEW]: 'Manual Review',
-        [ReceiptStatus.CASHBACK_APPLIED]: 'Cashback Applied',
         [ReceiptStatus.EXPIRED]: 'Expired',
       },
       unknownMerchant: 'Unknown Merchant',
@@ -314,11 +319,9 @@ export const ReceiptDetailPage: React.FC = () => {
         [ReceiptStatus.PENDING]: 'Очаква преглед',
         [ReceiptStatus.PROCESSING]: 'Обработва се',
         [ReceiptStatus.VALIDATING]: 'Валидира се',
-        [ReceiptStatus.VALIDATED]: 'Валидиран',
         [ReceiptStatus.APPROVED]: 'Одобрен',
         [ReceiptStatus.REJECTED]: 'Отхвърлен',
         [ReceiptStatus.MANUAL_REVIEW]: 'Ръчна проверка',
-        [ReceiptStatus.CASHBACK_APPLIED]: 'Кешбек приложен',
         [ReceiptStatus.EXPIRED]: 'Изтекъл',
       },
       unknownMerchant: 'Неизвестен търговец',
@@ -375,8 +378,9 @@ export const ReceiptDetailPage: React.FC = () => {
   const getStatusIcon = () => {
     if (!receipt) return null;
     switch (receipt.status) {
-      case ReceiptStatus.VALIDATED:
-      case ReceiptStatus.CASHBACK_APPLIED:
+      // See StatusBadge above (BC-QA-031-FOLLOWUP-4) — APPROVED replaces two
+      // statuses the backend never emits.
+      case ReceiptStatus.APPROVED:
         return <CheckCircle size={20} />;
       case ReceiptStatus.REJECTED:
         return <XCircle size={20} />;

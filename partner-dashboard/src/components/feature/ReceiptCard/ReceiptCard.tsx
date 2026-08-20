@@ -76,9 +76,19 @@ const StatusBadge = styled.div<{ $status: ReceiptStatus }>`
   font-weight: 600;
   background: ${props => {
     switch (props.$status) {
+      // BC-QA-031-FOLLOWUP-4 removed two dead labels, `case VALIDATED:` and
+      // `case CASHBACK_APPLIED:`, that sat beside an already-correct APPROVED
+      // case here. Neither exists in the backend ReceiptStatus enum, so they
+      // matched nothing; this card rendered APPROVED green before that change
+      // and still does. (ReceiptDetailPage was the file where the same two
+      // labels were the ONLY success cases, so an APPROVED receipt there fell
+      // through to the amber `default` — see that file's own note.)
+      //
+      // Which member reaches which branch is pinned by
+      // src/sweeps/receipt-status-rendering.sweep.test.tsx, which renders this
+      // card once per ReceiptStatus member and reads the badge's computed
+      // background, text colour and icon. Deleting this case turns it red.
       case ReceiptStatus.APPROVED:
-      case ReceiptStatus.VALIDATED:
-      case ReceiptStatus.CASHBACK_APPLIED:
         return '#d1fae5';
       case ReceiptStatus.REJECTED:
         return '#fee2e2';
@@ -90,8 +100,6 @@ const StatusBadge = styled.div<{ $status: ReceiptStatus }>`
   color: ${props => {
     switch (props.$status) {
       case ReceiptStatus.APPROVED:
-      case ReceiptStatus.VALIDATED:
-      case ReceiptStatus.CASHBACK_APPLIED:
         return '#065f46';
       case ReceiptStatus.REJECTED:
         return '#991b1b';
@@ -204,11 +212,9 @@ export const ReceiptCard: React.FC<ReceiptCardProps> = ({
         [ReceiptStatus.PENDING]: 'Pending',
         [ReceiptStatus.PROCESSING]: 'Processing',
         [ReceiptStatus.VALIDATING]: 'Validating',
-        [ReceiptStatus.VALIDATED]: 'Approved',
         [ReceiptStatus.APPROVED]: 'Approved',
         [ReceiptStatus.REJECTED]: 'Rejected',
         [ReceiptStatus.MANUAL_REVIEW]: 'Under Review',
-        [ReceiptStatus.CASHBACK_APPLIED]: 'Cashback Applied',
         [ReceiptStatus.EXPIRED]: 'Expired',
       },
       unknownMerchant: 'Unknown Merchant',
@@ -223,11 +229,9 @@ export const ReceiptCard: React.FC<ReceiptCardProps> = ({
         [ReceiptStatus.PENDING]: 'Чакащ',
         [ReceiptStatus.PROCESSING]: 'Обработва се',
         [ReceiptStatus.VALIDATING]: 'Валидира се',
-        [ReceiptStatus.VALIDATED]: 'Одобрен',
         [ReceiptStatus.APPROVED]: 'Одобрен',
         [ReceiptStatus.REJECTED]: 'Отхвърлен',
         [ReceiptStatus.MANUAL_REVIEW]: 'Ръчна проверка',
-        [ReceiptStatus.CASHBACK_APPLIED]: 'Кешбек приложен',
         [ReceiptStatus.EXPIRED]: 'Изтекъл',
       },
       unknownMerchant: 'Неизвестен обект',
@@ -241,9 +245,10 @@ export const ReceiptCard: React.FC<ReceiptCardProps> = ({
 
   const getStatusIcon = () => {
     switch (receipt.status) {
-      case ReceiptStatus.VALIDATED:
+      // See StatusBadge above (BC-QA-031-FOLLOWUP-4) — two dead labels for
+      // statuses the backend never emits were removed from beside this
+      // already-correct APPROVED case.
       case ReceiptStatus.APPROVED:
-      case ReceiptStatus.CASHBACK_APPLIED:
         return <CheckCircle />;
       case ReceiptStatus.REJECTED:
         return <XCircle />;

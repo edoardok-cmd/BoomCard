@@ -70,7 +70,7 @@ describe('DashboardPage — plain-number receipts shape (BC-QA-031 regression)',
   });
 
   // BC-QA-031 F1: the dashboard used to run the retired `formatWithCurrency(x,
-  // 'EUR_ONLY')` over these values, which divided them by BGN_TO_EUR_RATE
+  // 'EUR_ONLY')` over these values, which divided them by the BGN→EUR rate
   // (1.95583). Against the backend's already-EUR scalars that rendered
   // availableBalance 42.50 as "€21.73" and pendingBalance 7.00 as "€3.58" —
   // roughly half of every money figure on the page. The wallet balances must be
