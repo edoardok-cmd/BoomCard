@@ -752,10 +752,13 @@ export default function AdminSubscriptionsPage() {
         toast.error(tr(T.emptyMessage, lang));
         return;
       }
+      // BC-QA-031: `paymentTotalAmount` is produced by
+      // adminSubscriptions.routes.ts via sumMixedCurrencyToEur(), so the total
+      // column is EUR. The header said BGN.
       const headers = [
         'Subscriber', 'Email', 'Phone', 'Plan', 'Cycle', 'Status', 'Auto-renewal',
         'Period start', 'Period ends', 'Cancel scheduled', 'Provider',
-        'Payments (count)', 'Payments (total BGN)', 'Last payment', 'Created',
+        'Payments (count)', 'Payments (total EUR)', 'Last payment', 'Created',
       ];
       const escape = (v: string | number | null | undefined) => {
         if (v == null) return '';

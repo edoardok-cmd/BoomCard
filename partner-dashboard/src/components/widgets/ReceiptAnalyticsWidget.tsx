@@ -351,22 +351,27 @@ export const ReceiptAnalyticsWidget: React.FC = () => {
           <StatValue>{analytics.totalReceipts}</StatValue>
         </StatCard>
 
+        {/* BC-QA-031: `totalAmount`/`averageAmount` come from
+            receiptsApiService.getUserStats() → GET /api/receipts/stats, where
+            receipt.service.ts `getUserReceiptStats()` converts both with
+            bgnToEur(); `totalCashback` is summed from receipt rows that
+            `formatReceipt()` already converted. All three are EUR. */}
         <StatCard>
           <StatLabel>{content.totalCashback}</StatLabel>
           <StatValue>
             <DollarSign />
-            {analytics.totalCashback.toFixed(2)} лв
+            €{analytics.totalCashback.toFixed(2)}
           </StatValue>
         </StatCard>
 
         <StatCard>
           <StatLabel>{content.totalSpent}</StatLabel>
-          <StatValue>{analytics.totalAmount.toFixed(2)} лв</StatValue>
+          <StatValue>€{analytics.totalAmount.toFixed(2)}</StatValue>
         </StatCard>
 
         <StatCard>
           <StatLabel>{content.avgAmount}</StatLabel>
-          <StatValue>{analytics.averageAmount.toFixed(2)} лв</StatValue>
+          <StatValue>€{analytics.averageAmount.toFixed(2)}</StatValue>
         </StatCard>
       </StatsGrid>
 

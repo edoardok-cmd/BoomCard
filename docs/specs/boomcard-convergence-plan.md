@@ -53,7 +53,7 @@ All sweep files live in `backend-api/tests/integration/`:
 
 Manifests: `backend-api/tests/app-route-ownership-manifest.json`, `backend-api/tests/admin-endpoint-manifest.json`.
 
-> **Retired sweeps — the CUR (dual-currency display) class (BC-QA-031, 2026-08-10).**
+> **Retired sweeps — the CUR (dual-currency display) class (BC-QA-031, 2026-08-20).**
 > Bulgaria's BGN→EUR transition window closed and the dual-currency display feature
 > was removed: there is no `currency_transition_window_open` flag, no
 > `currencyDisplay.ts`, and no `display:{bgn,eur}` envelope anywhere in the API.

@@ -358,6 +358,27 @@ export default function AdminSettingsThresholdsPage() {
                           setAmounts((prev) => ({ ...prev, [plan.key]: e.target.value }))
                         }
                       />
+                      {/* BC-QA-031 — DELIBERATELY still `лв.`, and NOT a missed
+                          relabel. This surface's read and write paths disagree
+                          about units after the branch's backend changes:
+                            • GET  /api/admin/settings/payout-thresholds returns
+                              `minAmount` through bgnToEur()   → EUR
+                            • PUT  /api/admin/settings/payout-thresholds stores
+                              the submitted number verbatim
+                              (`minAmount: Math.round(amount * 100) / 100`) → BGN
+                          The input is seeded from the GET value, so saving an
+                          untouched form already rewrites each threshold at ~51%
+                          of its previous value. Relabelling this to `€` would
+                          make the label lie about the WRITE instead of the READ
+                          and would not fix anything; converting in the frontend
+                          would reintroduce exactly the dual-currency conversion
+                          layer BC-QA-031 deleted. The fix belongs in
+                          adminSettings.routes.ts (accept EUR and convert on the
+                          way in, or stop converting on the way out) — reported
+                          as a caveat on the BC-QA-031 r5-F1 fix pass.
+                          SEED_DEFAULTS above (39.12 / 29.34 / 19.56) are the
+                          BGN seed values, which is the other half of the same
+                          incoherence. */}
                       <Currency>лв.</Currency>
                     </InputRow>
                   </PlanRow>
@@ -401,7 +422,13 @@ export default function AdminSettingsThresholdsPage() {
                 <HistoryItem key={row.id}>
                   <PlanBadge $color={plan?.color ?? palette.textMuted}>{plan?.name ?? row.plan}</PlanBadge>
                   <div style={{ color: palette.textMuted }}>
-                    <strong style={{ color: palette.text }}>{row.minAmount} лв.</strong>
+                    {/* BC-QA-031: GET /api/admin/settings/payout-thresholds/history
+                        runs each stored `minAmount` through bgnToEur() before
+                        responding (adminSettings.routes.ts), so every history row
+                        is EUR. This is a read-only render of that converted value.
+                        NOTE: the EDITOR above is deliberately still labelled `лв.` —
+                        see the comment there; its write path is not EUR. */}
+                    <strong style={{ color: palette.text }}>€{row.minAmount}</strong>
                     {row.notes && (
                       <div style={{ fontSize: '0.75rem', color: palette.textSubtle, marginTop: '0.125rem' }}>
                         {row.notes}

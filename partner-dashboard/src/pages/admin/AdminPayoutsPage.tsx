@@ -737,10 +737,17 @@ export default function AdminPayoutsPage() {
       hour: '2-digit', minute: '2-digit',
     });
 
-  const fmtBgn = (n: number) => `${n.toFixed(2)} BGN`;
   // BC-QA-031: admin money endpoints emit plain EUR scalars. The retired
   // `formatMoneyByMode(_, 'eur_only')` divided its input by BGN_TO_EUR_RATE,
   // halving already-converted figures.
+  //
+  // The summary-card totals below used to go through a separate
+  // `fmtBgn = (n) => \`${n.toFixed(2)} BGN\`` helper. adminPayouts.routes.ts
+  // now runs pendingTotal/processingTotal/completedTotal/failedTotal through
+  // bgnToEur() before responding, so that helper labelled EUR figures as Lev —
+  // an admin reading the payout queue saw roughly half the real obligation.
+  // There is deliberately only ONE money formatter on this page now: a second
+  // one is exactly how the mislabel survived the previous fix pass.
   const fmtAmount = (amount: number) => formatEUR(amount);
 
   const thresholds = thresholdsData?.data ?? {};
@@ -1006,13 +1013,13 @@ export default function AdminPayoutsPage() {
         <SummaryCard $variant="warning">
           <SummaryLabel>Чакащи</SummaryLabel>
           <SummaryValue>{displaySummary.pendingCount}</SummaryValue>
-          <SummaryMeta>{fmtBgn(displaySummary.pendingTotal)} общо</SummaryMeta>
+          <SummaryMeta>{fmtAmount(displaySummary.pendingTotal)} общо</SummaryMeta>
         </SummaryCard>
 
         <SummaryCard $variant="info">
           <SummaryLabel>В обработка</SummaryLabel>
           <SummaryValue>{displaySummary.processingCount}</SummaryValue>
-          <SummaryMeta>{fmtBgn(displaySummary.processingTotal)} общо</SummaryMeta>
+          <SummaryMeta>{fmtAmount(displaySummary.processingTotal)} общо</SummaryMeta>
         </SummaryCard>
 
         <SummaryCard style={{ background: palette.purpleSoft, border: `1px solid ${palette.purpleBorder}` }}>
@@ -1024,13 +1031,13 @@ export default function AdminPayoutsPage() {
         <SummaryCard $variant="neutral">
           <SummaryLabel style={{ color: palette.success }}>Платено</SummaryLabel>
           <SummaryValue style={{ color: palette.success }}>{displaySummary.completedCount}</SummaryValue>
-          <SummaryMeta>{fmtBgn(displaySummary.completedTotal)} изплатено</SummaryMeta>
+          <SummaryMeta>{fmtAmount(displaySummary.completedTotal)} изплатено</SummaryMeta>
         </SummaryCard>
 
         <SummaryCard $variant="danger">
           <SummaryLabel style={{ color: palette.danger }}>Неуспешни</SummaryLabel>
           <SummaryValue style={{ color: palette.danger }}>{displaySummary.failedCount}</SummaryValue>
-          <SummaryMeta>{fmtBgn(displaySummary.failedTotal)} общо</SummaryMeta>
+          <SummaryMeta>{fmtAmount(displaySummary.failedTotal)} общо</SummaryMeta>
         </SummaryCard>
 
         <SummaryCard>

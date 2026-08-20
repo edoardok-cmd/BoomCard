@@ -801,7 +801,12 @@ function downloadCSV(rows: AdminSubscriber[], locale: string) {
   // the historical column order — any external consumer (BI dashboards,
   // accounting spreadsheets, ops scripts) bound to absolute column index keeps
   // working. New consumers pick up the trailing column on demand.
-  const headers = ['ID', 'First name', 'Last name', 'Email', 'Phone', 'Account status', 'Plan', 'Sub status', 'Available cashback (BGN)', 'Pending cashback (BGN)', 'Period ends', 'Auto-renew', 'Last activity', 'Joined', 'Risk score'];
+  // BC-QA-031: the two cashback columns carry the wallet balances from
+  // GET /api/admin/subscribers, which adminSubscribers.routes.ts converts with
+  // bgnToEur() before responding. The headers said BGN over EUR figures — an
+  // external consumer joining on the header would have booked every balance at
+  // ~1.96x its real value.
+  const headers = ['ID', 'First name', 'Last name', 'Email', 'Phone', 'Account status', 'Plan', 'Sub status', 'Available cashback (EUR)', 'Pending cashback (EUR)', 'Period ends', 'Auto-renew', 'Last activity', 'Joined', 'Risk score'];
   const fmt = (iso: string) => new Date(iso).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
   const lines = [
     headers.join(','),
@@ -1357,9 +1362,13 @@ export default function AdminSubscribersAllPage() {
       render: (row) =>
         row.wallet ? (
           <BalanceCell>
-            {formatAmount(row.wallet.availableBalance)}
+            {/* BC-QA-031: adminSubscribers.routes.ts converts the stored wallet
+                balances with bgnToEur() before responding, so these scalars are
+                EUR. The currency code is passed explicitly — useSystemFormat's
+                formatAmount no longer defaults to BGN. */}
+            {formatAmount(row.wallet.availableBalance, 'EUR')}
             {row.wallet.pendingBalance > 0 && (
-              <MetaLine>+{formatAmount(row.wallet.pendingBalance)} {T('pendingShort')}</MetaLine>
+              <MetaLine>+{formatAmount(row.wallet.pendingBalance, 'EUR')} {T('pendingShort')}</MetaLine>
             )}
           </BalanceCell>
         ) : (

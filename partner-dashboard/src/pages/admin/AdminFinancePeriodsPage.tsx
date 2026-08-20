@@ -230,6 +230,18 @@ function fmtDateTime(iso: string | null | undefined) {
   });
 }
 
+/**
+ * BC-QA-031 — `row.total` comes from GET /api/admin/finance/periods, which
+ * adminFinance.routes.ts emits as `periodsEur` (each period's `total` run
+ * through bgnToEur()). Both render sites used `currency: 'BGN'`, labelling an
+ * already-converted figure as Lev — including the lifecycle-transition
+ * confirmation modal, where the admin is being asked to lock or invoice that
+ * exact obligation.
+ */
+function eur(v: number) {
+  return v.toLocaleString('bg-BG', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 });
+}
+
 interface ConfirmState {
   month: string;
   nextStatus: ReportingPeriodStatus;
@@ -504,7 +516,7 @@ export default function AdminFinancePeriodsPage() {
                         </span>
                       ) : (
                         <AmountLabel>
-                          {row.total.toLocaleString('bg-BG', { style: 'currency', currency: 'BGN', minimumFractionDigits: 2 })}
+                          {eur(row.total)}
                         </AmountLabel>
                       )}
                     </Td>
@@ -693,7 +705,7 @@ export default function AdminFinancePeriodsPage() {
               <ModalBody>
                 Засяга <strong>{confirmState.row.count} партньора</strong> с общо{' '}
                 <strong>
-                  {confirmState.row.total.toLocaleString('bg-BG', { style: 'currency', currency: 'BGN', minimumFractionDigits: 2 })}
+                  {eur(confirmState.row.total)}
                 </strong>{' '}задължение.
               </ModalBody>
             )}

@@ -243,6 +243,18 @@ describe('[LEAK sweep] INV-RDM-SCAN-CURRENCY: /my-scans + /receipt expose EUR-on
   // Capture the POST /receipt response in beforeAll so message/display tests
   // do not need a second scan (which would hit per-sticker cooldown).
   let receiptResponseBody: Record<string, any>;
+  // INV-RDM-082: GET /my-scans response + the raw stored StickerScan row, so the
+  // assertions can prove the wire values are the CONVERTED ones rather than the
+  // raw BGN scalars (the LEAK property both rows state).
+  let myScansResponseBody: Record<string, any>;
+  let storedScan: { billAmount: number | null; verifiedAmount: number | null; cashbackAmount: number | null };
+  let scanRowId: string;
+
+  // The fixed currency-board conversion the routes apply. Mirrors
+  // src/utils/currency.ts bgnToEur() — kept local so a mutation of the helper
+  // cannot silently move both sides of the assertion together.
+  const BGN_PER_EUR = 1.95583;
+  const toEurExpected = (bgn: number) => Math.round((bgn / BGN_PER_EUR + Number.EPSILON) * 100) / 100;
 
   // Sofia coordinates — same as other sticker tests
   const venueLatitude = 42.6977;
@@ -287,7 +299,8 @@ describe('[LEAK sweep] INV-RDM-SCAN-CURRENCY: /my-scans + /receipt expose EUR-on
     if (scanRes.status !== 200) {
       throw new Error(`Scan setup failed (${scanRes.status}): ${JSON.stringify(scanRes.body)}`);
     }
-    const scanId = scanRes.body.data.id as string;
+    scanRowId = scanRes.body.data.id as string;
+    const scanId = scanRowId;
 
     // Upload a receipt — with autoApproveThreshold=100, this lands in APPROVED.
     const receiptRes = await authRequest(accessToken)
@@ -297,6 +310,23 @@ describe('[LEAK sweep] INV-RDM-SCAN-CURRENCY: /my-scans + /receipt expose EUR-on
       throw new Error(`Receipt upload failed (${receiptRes.status}): ${JSON.stringify(receiptRes.body)}`);
     }
     receiptResponseBody = receiptRes.body;
+
+    // INV-RDM-082: capture GET /my-scans once, alongside the raw stored row, so
+    // the assertions below can compare wire values against DB storage. Runs
+    // AFTER the receipt upload so verifiedAmount/cashbackAmount are populated.
+    const myScansRes = await authRequest(accessToken).get('/api/stickers/my-scans');
+    if (myScansRes.status !== 200) {
+      throw new Error(`GET /my-scans failed (${myScansRes.status}): ${JSON.stringify(myScansRes.body)}`);
+    }
+    myScansResponseBody = myScansRes.body;
+
+    storedScan = (await prisma.stickerScan.findUnique({
+      where: { id: scanId },
+      select: { billAmount: true, verifiedAmount: true, cashbackAmount: true },
+    })) as { billAmount: number | null; verifiedAmount: number | null; cashbackAmount: number | null };
+    if (!storedScan) {
+      throw new Error(`StickerScan ${scanId} not found for storage comparison`);
+    }
   });
 
   afterAll(async () => {
@@ -311,10 +341,89 @@ describe('[LEAK sweep] INV-RDM-SCAN-CURRENCY: /my-scans + /receipt expose EUR-on
     const data = receiptResponseBody.data;
     expect(typeof data.cashbackAmount).toBe('number');
     expect(typeof data.billAmount).toBe('number');
+    // INV-RDM-083 names verifiedAmount too — it was previously unasserted.
+    expect(typeof data.verifiedAmount).toBe('number');
   });
 
   it('POST /receipt APPROVED message references the cashback amount', () => {
     // autoApproveThreshold=100 guarantees APPROVED status — no conditional branch.
     expect(receiptResponseBody.message).toMatch(/Cashback approved/i);
+  });
+
+  // ─── INV-RDM-083: no raw BGN scalar survives on POST /receipt ──────────────
+
+  it('POST /receipt money fields are the EUR-converted values, not the raw BGN scalars', () => {
+    // The route reuses the same key names for the converted values, so "raw BGN
+    // is never emitted alongside the EUR one" means: the value under each key
+    // equals bgnToEur(stored), and does NOT equal the stored BGN figure.
+    const data = receiptResponseBody.data;
+
+    expect(data.billAmount).toBeCloseTo(toEurExpected(storedScan.billAmount ?? 0), 2);
+    expect(data.verifiedAmount).toBeCloseTo(toEurExpected(storedScan.verifiedAmount ?? 0), 2);
+    expect(data.cashbackAmount).toBeCloseTo(toEurExpected(storedScan.cashbackAmount ?? 0), 2);
+
+    // billAmount is seeded at 25.00 BGN, so the converted value must differ from
+    // storage — this is the assertion that actually fails if the conversion is
+    // dropped and the raw scalar ships.
+    expect(storedScan.billAmount).toBeCloseTo(25.0, 2);
+    expect(data.billAmount).not.toBeCloseTo(storedScan.billAmount ?? 0, 2);
+  });
+
+  it('POST /receipt response carries no dual-currency envelope or BGN-suffixed sibling', () => {
+    const data = receiptResponseBody.data;
+    // The retired feature's shapes must not reappear.
+    expect(data).not.toHaveProperty('display');
+    expect(data).not.toHaveProperty('billAmountBgn');
+    expect(data).not.toHaveProperty('cashbackAmountBgn');
+    expect(data).not.toHaveProperty('verifiedAmountBgn');
+    for (const key of ['billAmount', 'verifiedAmount', 'cashbackAmount']) {
+      expect(typeof data[key]).toBe('number');
+      expect(data[key]).not.toBeNull();
+    }
+    // The approval message quotes EUR, never a BGN/лв figure.
+    expect(receiptResponseBody.message).toMatch(/EUR/);
+    expect(receiptResponseBody.message).not.toMatch(/BGN|лв/i);
+  });
+
+  // ─── INV-RDM-082: GET /api/stickers/my-scans ──────────────────────────────
+  //
+  // This endpoint had NO test in this block at all — the row cited the block as
+  // its verification while every case here hit POST /receipt instead.
+
+  it('GET /my-scans returns the scan and exposes plain numeric money fields', () => {
+    expect(myScansResponseBody.success).toBe(true);
+    expect(Array.isArray(myScansResponseBody.data)).toBe(true);
+
+    const row = myScansResponseBody.data.find((s: any) => s.id === scanRowId);
+    expect(row).toBeDefined();
+    expect(typeof row.cashbackAmount).toBe('number');
+    expect(typeof row.billAmount).toBe('number');
+    expect(typeof row.verifiedAmount).toBe('number');
+  });
+
+  it('GET /my-scans money fields are the EUR-converted values, not the raw BGN scalars', () => {
+    const row = myScansResponseBody.data.find((s: any) => s.id === scanRowId);
+
+    expect(row.billAmount).toBeCloseTo(toEurExpected(storedScan.billAmount ?? 0), 2);
+    expect(row.verifiedAmount).toBeCloseTo(toEurExpected(storedScan.verifiedAmount ?? 0), 2);
+    expect(row.cashbackAmount).toBeCloseTo(toEurExpected(storedScan.cashbackAmount ?? 0), 2);
+
+    // 25.00 BGN stored → 12.78 EUR on the wire. Dropping the conversion ships
+    // the raw BGN scalar and fails here.
+    expect(row.billAmount).not.toBeCloseTo(storedScan.billAmount ?? 0, 2);
+  });
+
+  it('GET /my-scans carries no dual-currency envelope or BGN-suffixed sibling', () => {
+    const row = myScansResponseBody.data.find((s: any) => s.id === scanRowId);
+
+    expect(row).not.toHaveProperty('display');
+    expect(row).not.toHaveProperty('billAmountBgn');
+    expect(row).not.toHaveProperty('cashbackAmountBgn');
+    expect(row).not.toHaveProperty('verifiedAmountBgn');
+    expect(row).not.toHaveProperty('windowOpen');
+    // Nothing anywhere in the row may be a { bgn, eur } pair.
+    const asJson = JSON.stringify(row);
+    expect(asJson).not.toMatch(/"bgn"\s*:/i);
+    expect(asJson).not.toMatch(/"windowOpen"\s*:/);
   });
 });

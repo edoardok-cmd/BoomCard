@@ -606,8 +606,17 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
       // BGN-denominated rows (BC-QA-031 — EUR-only responses). `currency` is
       // then relabelled 'EUR' so the row's amounts and its own label agree;
       // previously it passed through raw via `...rest`, so a converted EUR
-      // amount could ship under a 'BGN' label. `margin` is derived from the
-      // already-converted amount/cashback below for the same unit consistency.
+      // amount could ship under a 'BGN' label.
+      //
+      // `margin` is DERIVED FIRST, THEN CONVERTED — not derived from the
+      // converted inputs. It is computed above (see the `const margin` block)
+      // from the raw stored `tx.amount` and raw `cashback`, and only the result
+      // is passed through `toEurOrNull()` here. Because `bgnToEur()` is linear
+      // the two orders agree in magnitude, but they are not identical: each
+      // conversion rounds to 2dp, so convert-then-derive could differ from
+      // derive-then-convert by a cent. Derive-then-convert is deliberate — it
+      // keeps `margin` consistent with the persisted `tx.marginAmount` it falls
+      // back to, which is itself stored in the row's currency.
       const rowCurrency = (rest as { currency?: string | null }).currency;
       return {
         ...rest,

@@ -156,6 +156,61 @@ describe('GET /business — per-row currency conversion (BC-QA-031)', () => {
     expect(row.cashbackAmount).toBe(1.5);
   });
 
+  it('derives margin from the RAW stored values then converts the result (not convert-then-derive)', async () => {
+    // Legacy row: marginAmount is null, so the route falls back to the runtime
+    // formula `(discountRate/100) * tx.amount - cashback` at :543-545. That
+    // formula reads the RAW stored amount; only its result is passed through
+    // toEurOrNull(). Pins the order the :604 comment describes.
+    //
+    // 10% of 100.00 BGN − 0 cashback = 10.00 BGN margin → 5.11 EUR.
+    transactionFindManyMock.mockResolvedValue([
+      txRow({
+        id: 'tx-legacy-margin',
+        currency: 'BGN',
+        amount: 100.0,
+        marginAmount: null,
+        cashbackAmount: 0,
+        partner: {
+          id: 'p1',
+          businessName: 'P',
+          discountRate: 10,
+          partnerType: null,
+        },
+      }),
+    ]);
+    transactionCountMock.mockResolvedValue(1);
+
+    const res = await request(app).get('/api/admin/transactions/business').expect(200);
+    const row = (res.body.data ?? res.body.transactions ?? res.body)[0];
+
+    const rawMargin = Math.round((0.1 * 100.0 - 0) * 100) / 100; // 10.00 BGN
+    expect(row.margin).toBeCloseTo(bgnToEur(rawMargin), 2);
+    expect(row.margin).toBeCloseTo(5.11, 2);
+    // The raw BGN margin must not ship.
+    expect(row.margin).not.toBeCloseTo(rawMargin, 2);
+  });
+
+  it('does not convert margin on an EUR-native row', async () => {
+    transactionFindManyMock.mockResolvedValue([
+      txRow({
+        id: 'tx-eur-margin',
+        currency: 'EUR',
+        amount: 100.0,
+        marginAmount: null,
+        cashbackAmount: 0,
+        partner: { id: 'p1', businessName: 'P', discountRate: 10, partnerType: null },
+      }),
+    ]);
+    transactionCountMock.mockResolvedValue(1);
+
+    const res = await request(app).get('/api/admin/transactions/business').expect(200);
+    const row = (res.body.data ?? res.body.transactions ?? res.body)[0];
+
+    // 10% of 100.00 EUR = 10.00 EUR, already EUR — a blanket bgnToEur() reports 5.11.
+    expect(row.margin).toBeCloseTo(10.0, 2);
+    expect(row.margin).not.toBeCloseTo(bgnToEur(10.0), 2);
+  });
+
   it('keeps a genuinely-null money column null rather than converting it to 0', async () => {
     transactionFindManyMock.mockResolvedValue([
       txRow({ id: 'tx-nulls', currency: 'BGN', marginAmount: null, netAmount: null }),

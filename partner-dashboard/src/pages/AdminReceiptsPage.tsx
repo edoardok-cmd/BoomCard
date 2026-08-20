@@ -363,7 +363,10 @@ export const AdminReceiptsPage: React.FC = () => {
       cancel: 'Cancel', confirm: 'Confirm & Credit',
       statPending: 'Pending', statApproved: 'Confirmed',
       statReview: 'Needs Review', statRejected: 'Rejected',
-      statCashback: 'Cashback Credited (BGN)',
+      // BC-QA-031: receipt.service.ts `formatReceipt()` converts
+      // totalAmount/cashbackAmount with bgnToEur() before GET
+      // /api/receipts/admin/all responds, so this total is EUR.
+      statCashback: 'Cashback Credited (EUR)',
       bulkApprove: 'Bulk Approve', bulkReject: 'Bulk Reject', clearSelection: 'Clear',
       bulkRejectTitle: 'Bulk Reject Receipts',
       bulkSelected: (n: number) => `${n} receipt${n === 1 ? '' : 's'} selected`,
@@ -383,7 +386,7 @@ export const AdminReceiptsPage: React.FC = () => {
       cancel: 'Отказ', confirm: 'Потвърди и кредитирай',
       statPending: 'Чакащи', statApproved: 'Потвърдени',
       statReview: 'За преглед', statRejected: 'Отхвърлени',
-      statCashback: 'Кредитиран кешбек (лв)',
+      statCashback: 'Кредитиран кешбек (€)',
       bulkApprove: 'Масово одобрение', bulkReject: 'Масово отхвърляне', clearSelection: 'Изчисти',
       bulkRejectTitle: 'Масово отхвърляне',
       bulkSelected: (n: number) => `${n} бележк${n === 1 ? 'а' : 'и'} избран${n === 1 ? 'а' : 'и'}`,
@@ -672,13 +675,17 @@ export const AdminReceiptsPage: React.FC = () => {
                     </ReceiptMeta>
                   </div>
 
+                  {/* BC-QA-031: both scalars arrive already converted to EUR —
+                      receipt.service.ts `formatReceipt()` runs bgnToEur() over
+                      Receipt.totalAmount and Receipt.cashbackAmount before
+                      GET /api/receipts/admin/all responds. */}
                   <Amount>
-                    {receipt.totalAmount != null ? `${receipt.totalAmount.toFixed(2)} лв` : '—'}
+                    {receipt.totalAmount != null ? `€${receipt.totalAmount.toFixed(2)}` : '—'}
                   </Amount>
 
                   <Cashback>
                     {receipt.cashbackAmount > 0
-                      ? `${receipt.cashbackAmount.toFixed(2)} лв (${(receipt.cashbackPercent || 0).toFixed(1)}%)`
+                      ? `€${receipt.cashbackAmount.toFixed(2)} (${(receipt.cashbackPercent || 0).toFixed(1)}%)`
                       : '—'}
                   </Cashback>
 

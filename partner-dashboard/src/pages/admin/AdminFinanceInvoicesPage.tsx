@@ -213,8 +213,17 @@ const STATUS_OPTIONS: Array<{ value: InvoiceStatus | ''; label: string }> = [
 
 const PAGE_SIZE = 25;
 
-const bgn = (v: number) =>
-  v.toLocaleString('bg-BG', { style: 'currency', currency: 'BGN', minimumFractionDigits: 2 });
+/**
+ * BC-QA-031 — every money scalar on this page arrives already converted to EUR:
+ * `toEurInvoice()` in adminFinance.routes.ts runs bgnToEur() over
+ * totalCashbackOwed / turnoverAmount / marginAmount, and adminCashback.routes.ts
+ * does the same for the cashback summary's `totalOwed`. This formatter used to
+ * be `currency: 'BGN'`, which stamped a Lev label on EUR figures — an admin
+ * reading a 42.50 BGN obligation saw "21.73 лв." and would have transferred
+ * ~51% of what was owed.
+ */
+const eur = (v: number) =>
+  v.toLocaleString('bg-BG', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 });
 
 const fmt = (iso: string) =>
   new Date(iso).toLocaleDateString('bg-BG', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -283,7 +292,9 @@ export default function AdminFinanceInvoicesPage() {
       key: 'totalOwed',
       header: 'Дължимо',
       sortable: true,
-      render: (row) => <span style={{ fontWeight: 700, color: palette.text }}>{row.totalOwed.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} лв.</span>,
+      // BC-QA-031: adminCashback.routes.ts converts `totalOwed` with bgnToEur()
+      // before responding — this column is EUR, not Lev.
+      render: (row) => <span style={{ fontWeight: 700, color: palette.text }}>{eur(row.totalOwed)}</span>,
     },
     {
       key: 'status',
@@ -479,7 +490,7 @@ export default function AdminFinanceInvoicesPage() {
       header: 'Оборот',
       render: (row) => (
         <span style={{ fontSize: '0.875rem', color: row.turnoverAmount ? palette.text : palette.textSubtle }}>
-          {row.turnoverAmount ? bgn(row.turnoverAmount) : '—'}
+          {row.turnoverAmount ? eur(row.turnoverAmount) : '—'}
         </span>
       ),
     },
@@ -501,11 +512,11 @@ export default function AdminFinanceInvoicesPage() {
         return (
           <span>
             <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: palette.text }}>
-              {bgn(obligation)}
+              {eur(obligation)}
             </span>
             {row.marginAmount > 0 && (
               <MetaLine title="Вътрешен разбивка: кешбек + марджин">
-                {bgn(row.totalCashbackOwed)} кешбек + {bgn(row.marginAmount)} марджин
+                {eur(row.totalCashbackOwed)} кешбек + {eur(row.marginAmount)} марджин
               </MetaLine>
             )}
           </span>
@@ -789,7 +800,10 @@ export default function AdminFinanceInvoicesPage() {
             <ModalSub>
               {cbMarkPaidModal.partnerName} — {cbMarkPaidModal.month}
               <br />
-              Сума: <strong>{cbMarkPaidModal.totalOwed.toFixed(2)} лв.</strong>
+              {/* BC-QA-031: `totalOwed` is EUR (adminCashback.routes.ts →
+                  bgnToEur). This is the figure the admin transfers against, so
+                  a Lev label here understated every payout by ~49%. */}
+              Сума: <strong>{eur(cbMarkPaidModal.totalOwed)}</strong>
             </ModalSub>
             <FilterLabel style={{ display: 'block', marginBottom: '0.375rem' }}>
               Бележки (референция за плащане и др.)
@@ -820,7 +834,7 @@ export default function AdminFinanceInvoicesPage() {
       {/* Invoice action confirmation modal — replaces window.confirm for all 3 status transitions */}
       {invoiceActionModal && (() => {
         const { type, row } = invoiceActionModal;
-        const obligation = bgn(row.totalCashbackOwed + row.marginAmount);
+        const obligation = eur(row.totalCashbackOwed + row.marginAmount);
         const configs: Record<InvoiceActionType, { title: string; body: string; confirm: string; danger?: boolean }> = {
           pay: {
             title: 'Маркирай фактура като платена',
@@ -922,21 +936,21 @@ export default function AdminFinanceInvoicesPage() {
                 <tbody>
                   <tr>
                     <InvTdBold>Кешбек задължение — {inv.month}</InvTdBold>
-                    <InvTdRight>{inv.turnoverAmount ? bgn(inv.turnoverAmount) : '—'}</InvTdRight>
+                    <InvTdRight>{inv.turnoverAmount ? eur(inv.turnoverAmount) : '—'}</InvTdRight>
                     <InvTdRight>{inv.contractedRate != null ? `${inv.contractedRate}%` : '—'}</InvTdRight>
-                    <InvTdRight>{bgn(inv.totalCashbackOwed)}</InvTdRight>
+                    <InvTdRight>{eur(inv.totalCashbackOwed)}</InvTdRight>
                   </tr>
                   {inv.marginAmount > 0 && (
                     <tr>
                       <InvTd>Марджин BoomCard</InvTd>
                       <InvTdRight>—</InvTdRight>
                       <InvTdRight>—</InvTdRight>
-                      <InvTdRight>{bgn(inv.marginAmount)}</InvTdRight>
+                      <InvTdRight>{eur(inv.marginAmount)}</InvTdRight>
                     </tr>
                   )}
                   <InvTotalRow>
                     <InvTotalLabel colSpan={3}>Общо дължимо</InvTotalLabel>
-                    <InvTotalAmount>{bgn(obligation)}</InvTotalAmount>
+                    <InvTotalAmount>{eur(obligation)}</InvTotalAmount>
                   </InvTotalRow>
                 </tbody>
               </InvTable>

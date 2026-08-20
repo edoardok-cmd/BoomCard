@@ -17,7 +17,7 @@
 - `[SUITE: SCOPE]` — `partner-cross-scope-sweep.test.ts` — partner A must never read/modify partner B's resource (FLAGSHIP).
 - `[SUITE: INPUT]` — `partner-uuid-500-sweep.test.ts` — no partner `:param` route 500s on malformed/absent id.
 
-(The former `partner-currency-leak-sweep.test.ts` carried TWO invariant classes: the `[SUITE: CUR]` BGN→EUR dual-currency-display check, retired 2026-08-10 (BC-QA-031) along with the feature — see the retired §9 Currency Display section below — and the internal-field-name leak check (margin/cashback/fraud/raw-QR/PII), which is UNRELATED to currency and was extracted intact into `partner-internal-field-leak-sweep.test.ts` as `[SUITE: INTERNAL]`, now cited on the INV-INTERNAL-*/INV-SM-QR-007 rows below.)
+(The former `partner-currency-leak-sweep.test.ts` carried TWO invariant classes: the `[SUITE: CUR]` BGN→EUR dual-currency-display check, retired 2026-08-20 (BC-QA-031) along with the feature — see the retired §9 Currency Display section below — and the internal-field-name leak check (margin/cashback/fraud/raw-QR/PII), which is UNRELATED to currency and was extracted intact into `partner-internal-field-leak-sweep.test.ts` as `[SUITE: INTERNAL]`, now cited on the INV-INTERNAL-*/INV-SM-QR-007 rows below.)
 
 A suite-covered row is `verified` by suite while that suite is green. A `review`-tagged row has no exhaustive sweep and must be independently re-checked each round.
 
@@ -139,7 +139,7 @@ A suite-covered row is `verified` by suite while that suite is green. A `review`
 | INV-INTERNAL-010 | Internal margin %/cashback formula split never reconstructable from any partner finance/dashboard view. | dashboard/finance | runtime probe | review |
 | INV-INTERNAL-011 | Internal risk logic / risk level never shown in any transaction view. | transactions; detail | runtime probe | review |
 
-## 9. Currency Display (INV-CUR) — §7.3, Clash 12.1 — RETIRED 2026-08-10, BC-QA-031
+## 9. Currency Display (INV-CUR) — §7.3, Clash 12.1 — RETIRED 2026-08-20, BC-QA-031
 
 The dual-currency (BGN+EUR) display feature has been fully removed now that Bulgaria's BGN→EUR transition window has closed. All monetary amounts are EUR-only (or the pre-feature original scalar), with no `currency_transition_window_open` flag, no `currencyDisplay.ts` module, and no `display`/dual-currency wrapper objects anywhere in the partner surface. The 7 INV-CUR-* rows formerly here and the currency half of `partner-currency-leak-sweep.test.ts` no longer apply and have been removed along with the feature. See `00-admin-clashes-reference.md` §12.1 for the historical record.
 
@@ -214,7 +214,7 @@ The dual-currency (BGN+EUR) display feature has been fully removed now that Bulg
 ## Coverage tags
 
 - `[SUITE: SCOPE]` — `partner-cross-scope-sweep.test.ts` (cross-partner isolation, exhaustive over partner-owned-resource routes).
-- `[SUITE: INTERNAL]` — `partner-internal-field-leak-sweep.test.ts` (internal-field-name leak — margin/cashback/fraud/raw-QR/PII — exhaustive over partner GETs). Renamed 2026-08-10 (BC-QA-031) from `partner-currency-leak-sweep.test.ts` when the currency half of that file was retired along with the dual-currency feature.
+- `[SUITE: INTERNAL]` — `partner-internal-field-leak-sweep.test.ts` (internal-field-name leak — margin/cashback/fraud/raw-QR/PII — exhaustive over partner GETs). Renamed 2026-08-20 (BC-QA-031) from `partner-currency-leak-sweep.test.ts` when the currency half of that file was retired along with the dual-currency feature.
 - `[SUITE: INPUT]` — `partner-uuid-500-sweep.test.ts` (no-500 on malformed/absent id, exhaustive over partner :param routes).
 - `review` — no exhaustive sweep covers it; an independent re-audit round must re-check it. These are the rows the ledger drives to `verified` by runtime probe / static read each round.
 

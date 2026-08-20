@@ -446,7 +446,7 @@ Partners are invoiced based on **approved outturn only**. Cancelled and voided t
 ### 7.3 Currency Display Rule
 
 - The BGN → EUR transition window has closed. All monetary amounts visible to the partner (turnover, commissions, liabilities, payment history, export) are shown in EUR only.
-- The dual-currency (BGN + EUR) display machinery from the transition period has been removed (BC-QA-031, 2026-08-10).
+- The dual-currency (BGN + EUR) display machinery from the transition period has been removed (BC-QA-031, 2026-08-20).
 
 *(Source: §02 §8.3 Currency Display; §8.1 rule 4; Clash 12.1 — resolved, see `00-admin-clashes-reference.md`)*
 
@@ -750,7 +750,7 @@ The following clash resolutions from §10 of the consolidated spec directly cons
 | **9.4** | All four QR statuses (Active, Inactive, In Processing, Replaced) have defined transitions and semantics. |
 | **10.1** | "Заявки" (Bulgarian) is overloaded. Disambiguate by menu context: "Партньори > Заявки" = Partner Applications; "Помощ > Заявки" = Help Requests. |
 | **11.1** | Help Requests have no SLA. This is distinct from Partner Applications, which have a 24h internal / 2-working-day external SLA. |
-| **12.1** | RESOLVED (2026-08-10, BC-QA-031): dual-currency display during the BGN→EUR transition window was implemented then removed once the transition ended. All partner-facing monetary amounts are EUR-only; no dual-currency machinery remains. |
+| **12.1** | RESOLVED (2026-08-20, BC-QA-031): dual-currency display during the BGN→EUR transition window was implemented then removed once the transition ended. All partner-facing monetary amounts are EUR-only; no dual-currency machinery remains. |
 | **3.5** | "Locked" cashback status and the reporting "period lock" are independent. The monthly reporting cycle (Open → Under Review → Closed → Invoiced) is a separate layer from the cashback state machine. |
 | **3.6** | Expired and Voided cashback records are unaffected by any partner or subscription status changes. These are terminal cashback states. |
 | **10.6** | "Бизнес формула" (Business Formula) is the three-way percentage-split algorithm: partner commission %, cashback %, and margin %. The margin % and cashback % components are internal-only and must never be shown to the partner in any portal view. |

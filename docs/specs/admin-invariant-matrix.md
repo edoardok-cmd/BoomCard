@@ -33,11 +33,11 @@ One exhaustive sweep test mechanically covers an entire invariant class. When gr
 
 - **`admin-uuid-500-sweep.test.ts`** — for every admin route with a `:id`/`:userId`/`:partnerId`/`:tokenId`/`:memberId`/`:overId`/`:roleKey` path param, sends a malformed value (`not-a-uuid`, empty, SQL-ish, overlong) and asserts the response is a clean 4xx (typically 404/400), NEVER a 500 / Prisma `P2023`/`22P02`. Covers the entire **INPUT** class.
 
-(The former **CUR** class and its `admin-currency-leak-sweep.test.ts` suite were retired 2026-08-10, BC-QA-031, along with the dual-currency display feature — see the CUR section below.)
+(The former **CUR** class and its `admin-currency-leak-sweep.test.ts` suite were retired 2026-08-20, BC-QA-031, along with the dual-currency display feature — see the CUR section below.)
 
 ---
 
-## CUR — Currency dual-display (RETIRED 2026-08-10, BC-QA-031)
+## CUR — Currency dual-display (RETIRED 2026-08-20, BC-QA-031)
 
 The dual-currency (BGN+EUR) display feature (Clash 12.1 / §3.7 / §8.1.4) has been fully removed now that Bulgaria's BGN→EUR transition window has closed. All monetary amounts are EUR-only (or the pre-feature original scalar), with no `currency_transition_window_open` flag, no `currencyDisplay.ts` module, and no `display`/dual-currency wrapper objects anywhere in the admin surface. The 28 INV-CUR-* rows and the `admin-currency-leak-sweep.test.ts` suite that verified them no longer apply and have been removed along with the feature. See `00-admin-clashes-reference.md` §12.1 for the historical record.
 
@@ -434,7 +434,7 @@ Rule: a malformed/garbage path param MUST yield a clean 4xx (404/400), never a 5
 ## Notes for re-audit agents
 
 - **Independence:** when re-auditing, do NOT import a prior run's verdict or finding text. Use only the row skeleton above to know WHAT to check; reach your own conclusion on each.
-- **Suite first:** run `admin-uuid-500-sweep.test.ts`. Green → all `[SUITE: INPUT]` rows are verified for this run. Red → the specific failing rows are `open`. (The former `admin-currency-leak-sweep.test.ts` / `[SUITE: CUR]` rows were retired 2026-08-10, BC-QA-031.)
+- **Suite first:** run `admin-uuid-500-sweep.test.ts`. Green → all `[SUITE: INPUT]` rows are verified for this run. Red → the specific failing rows are `open`. (The former `admin-currency-leak-sweep.test.ts` / `[SUITE: CUR]` rows were retired 2026-08-20, BC-QA-031.)
 - **Then the non-suite rows:** SM-/ROLE-/AUTH-/CONSENT-/RISK-/HELP-/FIN-/DATA- rows are runtime-probe or executable-test or static-read; check them directly.
 - **New invariants:** if a run discovers a machine-checkable admin invariant not represented here, ADD a row (new ID in the right class) and re-seed the ledger. The audit cannot exit while the matrix is still growing (see exit criteria in the ledger).
-- **Open-at-run-6 markers** above (e.g. INV-SM-CASH-008, INV-AUTH-002, INV-CONSENT-001/002, INV-HELP-001/002/003) are recorded for grounding only; a fresh run must re-derive the result independently and not assume they are still open. (INV-CUR-012/013/014 were retired along with the CUR class, 2026-08-10, BC-QA-031.)
+- **Open-at-run-6 markers** above (e.g. INV-SM-CASH-008, INV-AUTH-002, INV-CONSENT-001/002, INV-HELP-001/002/003) are recorded for grounding only; a fresh run must re-derive the result independently and not assume they are still open. (INV-CUR-012/013/014 were retired along with the CUR class, 2026-08-20, BC-QA-031.)

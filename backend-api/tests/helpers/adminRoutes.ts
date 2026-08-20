@@ -103,13 +103,21 @@ const MONEY_ROUTER =
  *     row and be checked by a re-audit. (This is exactly the class the
  *     subscriber null-wallet 500 lived in — a list GET no sweep gated.)
  *
- * ⚠ BC-QA-031 — the `sweep:CUR` tag no longer names a live suite. It used to mean
- * "covered by admin-currency-leak-sweep.test.ts", which was deleted along with the
- * dual-currency display feature. The tag is deliberately left unchanged here
- * because it is persisted on 33 routes in tests/admin-endpoint-manifest.json and
- * re-tagging them is a coverage-accounting decision (those routes would fall back
- * to `review` and need invariant-matrix rows), not a rename. Until that decision is
- * made, treat a `sweep:CUR` route as UNSWEPT rather than covered.
+ * ⚠ BC-QA-031 — the `sweep:CUR` tag names a suite that NO LONGER EXISTS.
+ *
+ * It used to mean "covered by admin-currency-leak-sweep.test.ts", which was deleted
+ * along with the dual-currency display feature. The 33 routes carrying that tag in
+ * `tests/admin-endpoint-manifest.json` — and the 4 carrying `matrix:INV-CUR-*`,
+ * whose matrix rows were removed with the CUR class — are therefore **UNSWEPT**.
+ * Read them as untested, not as suite-covered: `admin-endpoint-coverage.test.ts`
+ * checks that a tag is PRESENT, not that it still resolves to anything, so it
+ * passes over all 37 without complaint.
+ *
+ * Re-tagging them is tracked as **BC-QA-031-FOLLOWUP-2** ("Re-tag 33 admin manifest
+ * routes claiming coverage from the deleted admin-currency-leak-sweep"). Until that
+ * task lands, `classifyRoute` below still mints `sweep:CUR` for every new
+ * money-returning admin GET, so the count grows rather than holds. This is a
+ * recorded, tracked gap — not an open judgement call and not a deferral.
  */
 export function classifyRoute(r: EnumeratedRoute): CoverageTag {
   if (r.method === 'GET' && MONEY_ROUTER.test(r.path)) return 'sweep:CUR';

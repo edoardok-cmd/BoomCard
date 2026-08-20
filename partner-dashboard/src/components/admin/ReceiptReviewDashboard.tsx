@@ -597,13 +597,17 @@ export const ReceiptReviewDashboard: React.FC = () => {
               </ReceiptHeader>
 
               <InfoGrid>
+                {/* BC-QA-031: these rows come from receiptService.getUserReceipts()
+                    → GET /api/receipts, whose payload passes through
+                    receipt.service.ts `formatReceipt()`; that converts
+                    totalAmount and cashbackAmount with bgnToEur(). Both are EUR. */}
                 <InfoItem>
                   <InfoLabel>{content.receipt.amount}</InfoLabel>
-                  <InfoValue>{receipt.totalAmount?.toFixed(2) || '-'} BGN</InfoValue>
+                  <InfoValue>{receipt.totalAmount != null ? `€${receipt.totalAmount.toFixed(2)}` : '-'}</InfoValue>
                 </InfoItem>
                 <InfoItem>
                   <InfoLabel>{content.receipt.cashback}</InfoLabel>
-                  <InfoValue>{receipt.cashbackAmount.toFixed(2)} BGN</InfoValue>
+                  <InfoValue>€{receipt.cashbackAmount.toFixed(2)}</InfoValue>
                 </InfoItem>
                 <InfoItem>
                   <InfoLabel>{content.receipt.confidence}</InfoLabel>

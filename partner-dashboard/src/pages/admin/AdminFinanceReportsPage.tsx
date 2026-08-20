@@ -304,8 +304,14 @@ export default function AdminFinanceReportsPage() {
   const withdrawals = walletTx['WITHDRAWAL'];
   const topUps = walletTx['TOP_UP'];
 
+  // BC-QA-031: every money scalar rendered through `fmt` on this page is EUR.
+  // adminFinance.routes.ts (GET /api/admin/finance/reports) runs bgnToEur()
+  // over the walletTransactions totals, the cashbackInvoices
+  // total/marginTotal/turnoverTotal, every partnerBreakdown and planBreakdown
+  // row, and the payoutBreakdown per-status totals. `currency: 'BGN'` labelled
+  // all of them as Lev.
   const fmt = (n: number) =>
-    n.toLocaleString('bg-BG', { style: 'currency', currency: 'BGN', minimumFractionDigits: 2 });
+    n.toLocaleString('bg-BG', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 });
 
   const handleRun = () => {
     runCount.current += 1;

@@ -650,7 +650,7 @@ Five risk signals are tracked across all cashback records:
    - New payouts: Allowed when subscription status is Active or Cancelled within paid period. Blocked when Cancelled (post period end), Failed Payment, or Expired.
    - In-flight payouts: **Always continue** regardless of subsequent subscription status changes (cashback earned during an active period can be paid out even after cancellation)
 
-4. **Currency Display (resolved 2026-08-10, BC-QA-031):**
+4. **Currency Display (resolved 2026-08-20, BC-QA-031):**
    - The BGN→EUR transition window has closed. Dual-currency display machinery has been removed; all amounts are EUR only.
 
 5. **Partner Status & QR:**
@@ -685,7 +685,7 @@ Five risk signals are tracked across all cashback records:
 4. ✅ **Risk combining function:** Additive score (IBAN change +40, receipt match <60% +30, location mismatch +20, 3+ Voided records +20, partner risk flag +10). Thresholds: 0–20 Low, 21–50 Medium, 51+ High.
 
 ### Tier 3 (Decided)
-1. ✅ **BGN ↔ EUR currency transition:** Dual-currency display was implemented for the transition window, then REMOVED (2026-08-10, BC-QA-031) once the transition ended. All amounts are now EUR-only.
+1. ✅ **BGN ↔ EUR currency transition:** Dual-currency display was implemented for the transition window, then REMOVED (2026-08-20, BC-QA-031) once the transition ended. All amounts are now EUR-only.
 2. ✅ **Password reset rate-limit:** Alert at 3 resets in 24h; account suspension pending Super Admin review at 5 resets in 24h.
 
 ---
@@ -716,7 +716,7 @@ Five risk signals are tracked across all cashback records:
 | 10.6 | Terminology | "Бизнес формула" undefined | Referent identified: percentage split algorithm (partner%, cashback%, margin%) | ✅ Resolved |
 | 11.1 | Gap | Help requests have no SLA | Confirmed: Help requests have no SLA (distinct from Partner Applications, which have SLA) | ✅ Resolved |
 | 11.4 | Gap | Password reset "repeated" undefined | Alert at 3 resets in 24h; account suspension pending Super Admin review at 5 resets in 24h | ✅ Resolved |
-| 12.1 | Gap | BGN/EUR transition undefined | Dual-currency display was implemented for the transition window, then REMOVED (2026-08-10, BC-QA-031) once the transition ended — feature removed, EUR-only retained | ✅ Resolved (feature removed) |
+| 12.1 | Gap | BGN/EUR transition undefined | Dual-currency display was implemented for the transition window, then REMOVED (2026-08-20, BC-QA-031) once the transition ended — feature removed, EUR-only retained | ✅ Resolved (feature removed) |
 | 13.3 | Gap | Dual-approval protocol for Super Admin creation undefined | 2-of-N Super Admin approval; 72h expiry; initiator can cancel; bootstrap exception for single-SA systems | ✅ Resolved |
 | 2.1/2.2 | Gap | Subscription status table missing Cancelled behaviour | Access ends at period end; Cancelled = scanning allowed through last paid day, then Expired | ✅ Resolved |
 | 2.4 | Gap | Archived account reactivation undefined | Users: password reset link + new subscription; Partners: admin action + new onboarding review; QR codes require explicit admin reactivation per code | ✅ Resolved |

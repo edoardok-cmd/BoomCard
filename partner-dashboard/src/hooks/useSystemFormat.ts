@@ -40,7 +40,24 @@ export function useSystemFormat() {
   const numberLocale = NUMBER_FORMAT_TO_LOCALE[numberFormat] ?? 'bg-BG';
   const dateLocale   = DATE_FORMAT_TO_LOCALE[dateFormat]    ?? 'bg-BG';
 
-  function formatAmount(value: number, currency = 'BGN'): string {
+  /**
+   * Format a money value under an explicit ISO-4217 currency code.
+   *
+   * BC-QA-031: `currency` is REQUIRED and deliberately has no default. It used
+   * to default to `'BGN'`, and that silent default is what made
+   * `AdminSubscribersAllPage` stamp `лв.` onto wallet balances that
+   * `adminSubscribers.routes.ts` had already converted to EUR — the call site
+   * simply passed one argument and the mislabel was invisible at both the call
+   * site and here. A default of `'EUR'` would have fixed today's two callers
+   * while leaving the same trap armed for the next one (any genuinely
+   * BGN-denominated value would then silently render as EUR). Requiring the
+   * argument makes every money caller state its unit, and `tsc` — not a
+   * reviewer tracing routes by hand — catches the ones that don't.
+   *
+   * This hook formats; it never converts. Pass the code the value is actually
+   * denominated in, as returned by the backend endpoint that produced it.
+   */
+  function formatAmount(value: number, currency: string): string {
     return new Intl.NumberFormat(numberLocale, {
       style: 'currency',
       currency,

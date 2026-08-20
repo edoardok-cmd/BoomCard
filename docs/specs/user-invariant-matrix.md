@@ -30,7 +30,7 @@ Three sweep tests mechanically cover entire invariant classes for the user surfa
 - **`user-input-500-sweep.test.ts`** — `[SUITE: INPUT]`. For every user route with a `:id`-style path param, sends malformed values (`not-a-uuid`, empty, SQL-ish, overlong) and asserts a clean 4xx, NEVER a 500 / Prisma `P2023`/`22P02`.
 - **`user-auth-gate-sweep.test.ts`** — `[SUITE: AUTH]`. Asserts (a) every user endpoint rejects an unauthenticated request (401), and (b) admin/partner-only sub-routes physically mounted under user routers (`/receipts/admin/all`, `/receipts/v2/admin/*`, `/receipts/v2/bulk-approve|reject`, `/reviews/:id/approve|reject|flag|admin-response`, discount mutations) reject a plain subscriber (403).
 
-(The former `user-currency-leak-sweep.test.ts` carried TWO invariant classes: the `[SUITE: CUR]` dual-currency-display class, retired 2026-08-10 (BC-QA-031) along with the feature — see the CUR section below — and the INV-USER-ACL-003 / INV-USER-PAY-007 / INV-USER-NOTIF-005 / INV-USER-QR-007 / INV-USER-SUB-011 internal-field / admin-identity invariants, which are UNRELATED to currency and were extracted intact into `user-internal-field-leak-sweep.test.ts`.)
+(The former `user-currency-leak-sweep.test.ts` carried TWO invariant classes: the `[SUITE: CUR]` dual-currency-display class, retired 2026-08-20 (BC-QA-031) along with the feature — see the CUR section below — and the INV-USER-ACL-003 / INV-USER-PAY-007 / INV-USER-NOTIF-005 / INV-USER-QR-007 / INV-USER-SUB-011 internal-field / admin-identity invariants, which are UNRELATED to currency and were extracted intact into `user-internal-field-leak-sweep.test.ts`.)
 
 ---
 
@@ -213,7 +213,7 @@ Three sweep tests mechanically cover entire invariant classes for the user surfa
 | INV-USER-DEF-001 | Plus-addressing email routing NOT implemented (deferred v1.3) | STATE | static |
 | INV-USER-DEF-002 | Nearby (Наблизо) feature behaviour matches a documented deferred-decision option (not a half-built leak) | STATE | static |
 
-## CUR — Currency Display (§17) — RETIRED 2026-08-10, BC-QA-031
+## CUR — Currency Display (§17) — RETIRED 2026-08-20, BC-QA-031
 
 The dual-currency (BGN+EUR) display feature (§17) has been fully removed now that Bulgaria's BGN→EUR transition window has closed. All monetary amounts are EUR-only (or the pre-feature original scalar), with no `currency_transition_window_open` flag, no `currencyDisplay.ts` module, and no `display`/dual-currency wrapper objects anywhere in the user surface. The 3 INV-USER-CUR-* rows and the `user-currency-leak-sweep.test.ts` suite that verified them no longer apply and have been removed along with the feature.
 
@@ -244,7 +244,7 @@ The dual-currency (BGN+EUR) display feature (§17) has been fully removed now th
 ## Exit criteria (audit is DONE only when ALL hold)
 
 1. **Every ledger row is `verified`** — zero `open`, zero `untested`.
-2. **All executable sweeps are green** (`user-cross-scope-sweep`, `user-input-500-sweep`, `user-auth-gate-sweep`, `user-internal-field-leak-sweep`). (`user-currency-leak-sweep` was retired 2026-08-10, BC-QA-031, along with the dual-currency feature; its non-currency invariants moved to `user-internal-field-leak-sweep`.)
+2. **All executable sweeps are green** (`user-cross-scope-sweep`, `user-input-500-sweep`, `user-auth-gate-sweep`, `user-internal-field-leak-sweep`). (`user-currency-leak-sweep` was retired 2026-08-20, BC-QA-031, along with the dual-currency feature; its non-currency invariants moved to `user-internal-field-leak-sweep`.)
 3. **Two consecutive independent passes add ZERO new invariants** to this matrix AND zero new findings — the enumeration has stopped growing.
 
 Until all three hold, the audit continues. A single `open`/`untested` row, a red suite, or a pass that discovers a new invariant resets the "done" claim.
