@@ -1,0 +1,20 @@
+#!/bin/sh
+# BC-QA-055 -- block production PII from entering this PUBLIC repository.
+#
+# Install with:  npm run hooks:install
+# Bypass (audit trail, never for real PII):  PII_SCAN_BYPASS=1 git commit ...
+#
+# CI runs the same scan, so bypassing here only defers the failure.
+
+if [ -n "${PII_SCAN_BYPASS}" ]; then
+  echo "pre-commit: pii-scan bypassed via PII_SCAN_BYPASS"
+  exit 0
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-commit: node not found; skipping pii-scan (CI will still enforce it)" >&2
+  exit 0
+fi
+
+root=$(git rev-parse --show-toplevel)
+exec node "${root}/scripts/pii-scan.js" --staged
