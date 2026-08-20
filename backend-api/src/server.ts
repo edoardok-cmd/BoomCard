@@ -57,6 +57,7 @@ import contactRouter from './routes/contact.routes';
 import dashboardRouter from './routes/dashboard.routes';
 import pendingCheckoutRouter from './routes/pending-checkout.routes';
 import { mobileConfigRouter, mobileErrorsRouter } from './routes/mobileConfig.routes';
+import settingsRouter from './routes/settings.routes';
 
 // Import WebSocket handler
 import { initializeWebSocket } from './websocket/server';
@@ -301,6 +302,7 @@ app.use('/api/unsubscribe', unsubscribeRouter); // §12 One-click email unsubscr
 app.use('/api/contact', contactRouter); // Public contact form (no auth required)
 app.use('/api/config/mobile', mobileConfigRouter); // Public mobile app config (feature flags, versions, status)
 app.use('/api/mobile/errors', mobileErrorsRouter); // Mobile error ingest (public, rate-limited)
+app.use('/api/settings', settingsRouter); // Public settings API (e.g. currency display mode, no auth required)
 app.use('/api/auth', authRouter);
 app.use('/api/checkout', pendingCheckoutRouter); // Payment-first onboarding (no auth required)
 app.use('/api/payments', payseraPaymentsRouter); // Paysera payment routes
