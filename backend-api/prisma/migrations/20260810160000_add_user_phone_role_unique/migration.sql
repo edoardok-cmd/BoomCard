@@ -60,11 +60,14 @@
 --      NULL-distinctness therefore protects nothing here.
 --   2. The way "no phone on file" is actually represented in this database is
 --      the EMPTY STRING, and empty strings are NOT distinct from each other —
---      they collide like any other value. In production the '' bucket is 134
---      rows and is by far the largest colliding group. It holds real accounts:
---      every live ACTIVE partner, all three SUPER_ADMINs, and real end users.
+--      they collide like any other value. Measured read-only against
+--      production 2026-08-20: the '' bucket is 134 of 231 rows, and its
+--      largest single (phone, role) group — ('' , USER) at 115 rows — is by
+--      itself the biggest collision in the table. It holds real accounts:
+--      115 USER, 13 PARTNER, 3 of the 4 SUPER_ADMINs and 3 ADMIN rows,
+--      including 11 users attached to an ACTIVE "Partner" and real end users.
 --      A blanket unique on (phone, role) can never be satisfied without
---      mutating those rows.
+--      mutating those rows — the three blank SUPER_ADMINs alone violate it.
 --
 -- ============================================================================
 -- THE CONSTRAINT SHAPE THIS MIGRATION NOW CREATES
@@ -232,14 +235,53 @@
 -- release IS still serving while release_command runs, so writers are live in
 -- the general case, and this file must not depend on the app being down.
 --
--- NOT CLOSED HERE, and worth knowing before step 5: the same channel is open in
--- 20260819120100_backfill_and_constrain_payment_provider, whose two
--- `ALTER TABLE … ADD CONSTRAINT … UNIQUE` statements would print
--- `Key (paymentProvider, providerOrderId)=(…)` on failure. `migrate deploy`
--- applies it in the same release. Measured read-only against production
--- 2026-08-20: zero duplicate providerOrderId groups, so it cannot fire today.
--- Left alone deliberately — that file belongs to BC-MYPOS-004's surface, not to
--- this outage repair; the remedy is the same one line at the top of it.
+-- THE SIBLING MIGRATION DOES NOT NEED THIS LOCK, and the reason is structural.
+-- 20260819120100_backfill_and_constrain_payment_provider adds two
+-- `ALTER TABLE … ADD CONSTRAINT … UNIQUE (paymentProvider, providerOrderId)`
+-- statements, which on failure would print
+--   DETAIL: Key ("paymentProvider", "providerOrderId")=(MYPOS, …) already exists.
+-- into the same release output. `migrate deploy` applies it in this very
+-- release. But it cannot be reached by the RACE this lock closes:
+--
+--   * Both columns are CREATED in the same release, by 20260819120000, which
+--     runs immediately before it. Before that migration commits, the columns do
+--     not exist, so no concurrent statement can put a value in them: a writer
+--     that omits them inserts fine, and one that names them fails outright with
+--     `column "providerOrderId" of relation "subscriptions" does not exist`.
+--   * They are added nullable with no DEFAULT, so every row a concurrent writer
+--     leaves behind in the window between the two migrations carries NULL/NULL.
+--   * A unique constraint never conflicts on NULL — Postgres treats every NULL
+--     as distinct. Two all-NULL rows insert cleanly against the live constraint.
+--
+-- So the only way to violate those constraints is to write a genuine non-NULL
+-- duplicate, which requires code that already knows the new columns — i.e. the
+-- new release's own code, which is not serving until after the release finishes.
+-- All four steps above were executed on a scratch three-migration run rather
+-- than assumed.
+--
+-- The other way those constraints could fail is DETERMINISTICALLY, on
+-- pre-existing data, and that is a data question rather than a race. The
+-- backfill derives providerOrderId solely from "payseraOrderId" and
+-- "stripeSubscriptionId", partitioned by provider, so it can only produce a
+-- duplicate if one of those source columns already holds one. Measured
+-- read-only against production 2026-08-20, on columns that exist there today:
+-- 0 duplicate "payseraOrderId" groups in "subscriptions", 0 in
+-- "PendingSubscription", 0 duplicate "stripeSubscriptionId" groups. Re-run
+-- those three before step 5 if meaningful time has passed.
+--
+-- CORRECTION (round 3): an earlier version of this note claimed "measured
+-- read-only against production: zero duplicate providerOrderId groups". That
+-- measurement was impossible and the claim was false — "providerOrderId" and
+-- "paymentProvider" do not exist in production at all; they are created by
+-- 20260819120000, which has never applied there. `SELECT … FROM subscriptions
+-- WHERE "providerOrderId" IS NOT NULL` against production errors with
+-- `column "providerOrderId" does not exist`. The real measurement was always
+-- of the SOURCE columns, written up under the wrong name. It is recorded here
+-- because a false measurement cited as the reason to leave a PII channel open
+-- is worse than no measurement: it invites the reader to stop thinking.
+--
+-- Either way that file is BC-MYPOS-004's surface, not this outage repair's, and
+-- is deliberately left unmodified.
 
 -- Hold "User" still for the whole migration: the pre-flight below and the index
 -- build at the end must see the same rows, or a raced duplicate reaches the

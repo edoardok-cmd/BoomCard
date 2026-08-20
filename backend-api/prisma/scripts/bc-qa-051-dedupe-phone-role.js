@@ -22,11 +22,12 @@
  * "Transaction", "subscriptions" and "Booking"; deleting a duplicate would
  * either destroy linked records or fail outright.
  *
- * It NEVER touches a row whose phone is blank (`btrim(phone) = ''`). In
- * production that is 134 rows and it contains every live ACTIVE partner, all
- * three SUPER_ADMINs, and real end users. The migration that follows creates a
- * PARTIAL unique index that excludes blank phones precisely so those rows never
- * have to be mutated.
+ * It NEVER touches a row whose phone is blank (`btrim(phone) = ''`). Measured
+ * read-only against production 2026-08-20 that is 134 of 231 rows: 115 USER,
+ * 13 PARTNER, 3 of the 4 SUPER_ADMINs and 3 ADMIN, including 11 users attached
+ * to an ACTIVE "Partner" and real end users. The migration that follows creates
+ * a PARTIAL unique index that excludes blank phones precisely so those rows
+ * never have to be mutated.
  *
  * WHY THE PLACEHOLDER LOOKS LIKE THAT
  * -----------------------------------

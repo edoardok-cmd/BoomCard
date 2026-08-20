@@ -129,9 +129,12 @@ model User {
   // and the way "no phone on file" is represented in this database is the EMPTY
   // STRING — which, unlike NULL, is not distinct from itself. A TOTAL
   // `@@unique([phone, role])` is therefore unsatisfiable while any two accounts
-  // of the same role have a blank phone. In production that bucket is 134 rows
-  // and holds every live ACTIVE partner, all three SUPER_ADMINs and real end
-  // users. The plain `@@unique([phone, role])` that used to sit here is exactly
+  // of the same role have a blank phone. Measured read-only against production
+  // 2026-08-20 that bucket is 134 of 231 rows — 115 USER, 13 PARTNER, 3 of the
+  // 4 SUPER_ADMINs, 3 ADMIN — and holds real end users plus 11 accounts
+  // attached to an ACTIVE "Partner". The three blank SUPER_ADMINs alone make a
+  // total unique unsatisfiable. The plain `@@unique([phone, role])` that used
+  // to sit here is exactly
   // what produced the ~10-day BC-QA-051 production outage: its migration
   // aborted, `prisma migrate deploy` exited 1, and because deploy is chained
   // into the Fly start command with `&&`, the API never started.
