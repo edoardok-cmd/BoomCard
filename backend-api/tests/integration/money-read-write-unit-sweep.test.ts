@@ -180,10 +180,21 @@ const REGISTRY: Record<string, Entry> = {
   'routes/stickers.routes.ts': {
     symmetry: 'symmetric-bgn',
     why:
-      'POST /scan takes a fresh user-entered billAmount (not seeded from a converted GET) and ' +
-      'GET /admin/pending-review — the surface the admin override form is seeded from — returns ' +
-      'raw rows. The user-facing /my-scans conversion does not feed any write form. The unit the ' +
-      'scanning user believes they are entering is a separate open question, recorded in the round-6 report.',
+      'WRITE side is symmetric: POST /scan takes a fresh user-entered billAmount (not seeded from ' +
+      'a converted GET) and stores it raw, and GET /admin/pending-review — the surface the admin ' +
+      'override form IS seeded from — returns raw rows too, so the admin correction round-trips in ' +
+      'BGN on both legs. ' +
+      'READ side is NOT uniform, and the registry previously said nothing about it: the same three ' +
+      'StickerScan money columns (billAmount / verifiedAmount / cashbackAmount) come back in ' +
+      'different units depending on the endpoint. POST /api/stickers/scan returns them RAW BGN — ' +
+      'its response projection at stickers.routes.ts:209 strips ten internal fields and converts no ' +
+      'money field at all — while POST /scan/:scanId/receipt and GET /my-scans return the same ' +
+      'columns converted with bgnToEur(). A client reading the scan response as EUR overstates by ' +
+      '1.96x, and nothing on the wire distinguishes the two shapes. ' +
+      'Filed as item 4 of BC-QA-031-FOLLOWUP-3 (admin receipts and transaction-adjust endpoints ' +
+      'carry role-dependent or unlabelled currency units), which also carries the open question of ' +
+      'whether the submitted billAmount should stay BGN — it interacts with autoApproveThreshold ' +
+      'and the other VenueStickerConfig thresholds, which are never converted on read.',
   },
 
   // ── Services ──────────────────────────────────────────────────────────────

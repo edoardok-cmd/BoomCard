@@ -215,7 +215,7 @@ Three sweep tests mechanically cover entire invariant classes for the user surfa
 
 ## CUR — Currency Display (§17) — RETIRED 2026-08-20, BC-QA-031
 
-The dual-currency (BGN+EUR) display feature (§17) has been fully removed now that Bulgaria's BGN→EUR transition window has closed. All monetary amounts are EUR-only (or the pre-feature original scalar), with no `currency_transition_window_open` flag, no `currencyDisplay.ts` module, and no `display`/dual-currency wrapper objects anywhere in the user surface. The 3 INV-USER-CUR-* rows and the `user-currency-leak-sweep.test.ts` suite that verified them no longer apply and have been removed along with the feature.
+The dual-currency (BGN+EUR) display feature has been fully removed now that Bulgaria's BGN→EUR transition window has closed, and `08-user-spec-extracted.md` §17 was rewritten to match (BC-QA-031, 2026-08-20) — it now states the EUR-only contract rather than requiring simultaneous BGN+EUR display, so this matrix and the spec section it cites agree. All monetary amounts are EUR-only (or the pre-feature original scalar), with no `currency_transition_window_open` flag, no `currencyDisplay.ts` module, and no `display`/dual-currency wrapper objects anywhere in the user surface. The 3 INV-USER-CUR-* rows and the `user-currency-leak-sweep.test.ts` suite that verified them no longer apply and have been removed along with the feature.
 
 ## DI — Data Integrity Atomic Rules (§19) — cross-references
 

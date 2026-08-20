@@ -696,9 +696,11 @@ The following features are documented in the source spec or user module as pendi
 
 ## 17. Currency Display Rules
 
-- During the **BGN → EUR transition window**: all amounts are displayed in **both BGN and EUR simultaneously.**
-- **After the transition window closes**: BGN display is hidden; amounts shown in **EUR only.**
-- This rule applies to all monetary amounts visible to the user (cashback balances, payout amounts, transaction history).
+- The BGN → EUR transition window has closed. All monetary amounts visible to the user (cashback balances, payout amounts, transaction history, receipts, offers) are shown in **EUR only.**
+- The dual-currency (BGN + EUR) display machinery from the transition period has been removed (BC-QA-031, 2026-08-20): there is no `currency_transition_window_open` flag, no `currencyDisplay.ts` module, and no `display` / `{bgn, eur}` wrapper object in any user-facing response.
+- Amounts remain BGN-denominated in storage and are converted to EUR at the fixed currency-board rate before they are returned; the conversion is a permanent server-side detail, not a display mode the user or an operator can toggle.
+
+*(Source: §03 §17 Currency Display Rules; Clash 12.1 — resolved, see `00-admin-clashes-reference.md` and `04-clash-resolution-analysis.md`)*
 
 ---
 
@@ -756,7 +758,7 @@ The following rules are non-negotiable constraints for any implementation:
 
 10. **Account status does not affect other users' QR access:** An individual user's account status change has no effect on QR codes at partner locations; those codes remain operational for all other users.
 
-11. **Currency transition:** During the BGN→EUR transition window, all amounts are shown in both currencies simultaneously. After the window, BGN is hidden and EUR is shown exclusively.
+11. **Currency display:** The BGN→EUR transition window has closed and all amounts are shown in EUR only. The dual-currency display machinery was implemented for the transition and has since been removed (BC-QA-031, 2026-08-20); amounts are BGN-denominated in storage and converted to EUR before display.
 
 12. **Password reset rate-limit:** The system alerts at 3 password reset attempts within 24 hours. At 5 reset attempts within 24 hours, the account is suspended pending Super Admin review.
 
