@@ -43,6 +43,25 @@ The dual-currency (BGN+EUR) display feature (Clash 12.1 / §3.7 / §8.1.4) has b
 
 ---
 
+## CURGAP — Money-GET breadth gap left by CUR retirement (untested, BC-QA-031-FOLLOWUP-2)
+
+When the CUR class above was retired, the manifest (`tests/admin-endpoint-manifest.json`) was left claiming 33 routes were still `sweep:CUR`-covered and 4 more were covered by specific `matrix:INV-CUR-021/025/026` rows — all of it dangling, since the suite and those rows no longer exist. BC-QA-031-FOLLOWUP-2 corrected the claim, not the coverage: these routes are **not** covered by any sweep or invariant today. The rows below are real, ID'd placeholders — status **untested** — so the gap is trackable by ID (not just a bare count) and a future re-audit can drive each one to a result the same way any other row here is driven to `verified`/`open` in the coverage ledger. They intentionally do NOT restate the retired dual-currency invariants (those genuinely no longer apply, since the BGN/EUR display feature is gone) — the invariant that actually needs deriving and checking is today's plain money-correctness contract for each surface (values match underlying ledger/wallet state, EUR-consistent, no stale display artifacts left over from the removed feature).
+
+Two of the routes below (`GET /settings/payout-thresholds/history`, `PUT /settings/system`) previously carried a *lone* `matrix:INV-CUR-025` / `INV-CUR-026` reference (no other tag), so they lost their only coverage outright. `GET /settings/payout-thresholds` and `POST /transactions/adjust` also carried an `INV-CUR-*` reference but kept a second, still-valid tag (`INV-FIN-009` / `INV-FIN-010` respectively) — those two simply had the dead half of the tag dropped and are NOT part of this gap.
+
+| ID | Invariant | Spec ref | Surface | How to verify |
+|----|-----------|----------|---------|---------------|
+| INV-CURGAP-001 | Cashback admin GET responses (entries, entries export, payout-thresholds, rates, rates/current, stats, per-subscriber, summary, per-partner receipts) return money-accurate, EUR-only figures matching underlying ledger state. *(untested — no sweep/matrix row since CUR retirement.)* | impl | GET /cashback/entries, /entries/export, /payout-thresholds, /rates, /rates/current, /stats, /subscriber/:userId, /summary, /:partnerId/:month/receipts | runtime probe (pending) |
+| INV-CURGAP-002 | Admin dashboard GET aggregate figures are money-accurate, EUR-only. *(untested — no sweep/matrix row since CUR retirement.)* | impl | GET /dashboard/ | runtime probe (pending) |
+| INV-CURGAP-003 | Finance admin GET responses (export, invoices, payout-thresholds, periods, report-partners, reporting-periods, reports) are money-accurate, EUR-only. *(untested — no sweep/matrix row since CUR retirement.)* | impl | GET /finance/export, /invoices, /payout-thresholds, /periods, /report-partners, /reporting-periods, /reports | runtime probe (pending) |
+| INV-CURGAP-004 | Payouts admin list GET is money-accurate, EUR-only. *(untested — no sweep/matrix row since CUR retirement.)* | impl | GET /payouts/ | runtime probe (pending) |
+| INV-CURGAP-005 | Subscribers admin GET responses (list, export, per-user, per-user cashback/login-history/refund-preview) are money-accurate, EUR-only. *(untested — no sweep/matrix row since CUR retirement.)* | impl | GET /subscribers/, /export, /:userId, /:userId/cashback, /:userId/login-history, /:userId/refund-preview | runtime probe (pending) |
+| INV-CURGAP-006 | Subscriptions admin GET responses (list, export, pending, per-user history) are money-accurate, EUR-only. *(untested — no sweep/matrix row since CUR retirement.)* | impl | GET /subscriptions/, /export, /pending, /user/:userId/history | runtime probe (pending) |
+| INV-CURGAP-007 | Transactions admin GET responses (list, business, business partner-risk, business stats, stats) are money-accurate, EUR-only. *(untested — no sweep/matrix row since CUR retirement.)* | impl | GET /transactions/, /business, /business/partner-risk/:partnerId, /business/stats, /stats | runtime probe (pending) |
+| INV-CURGAP-008 | `GET /settings/payout-thresholds/history` and `PUT /settings/system` retain money-accurate behaviour now that the retired `currency-display-mode` contract (former INV-CUR-025/026, which also covered a `GET /settings/currency-display-mode` route removed along with the feature) no longer applies. *(untested — sole coverage was the retired INV-CUR-025/026; no replacement assigned yet.)* | impl | GET /settings/payout-thresholds/history; PUT /settings/system | runtime probe (pending) |
+
+---
+
 ## SM — State machines (Part 1, §1.1–§1.7; §1.3 transitions; §3.x). One row per legal/illegal transition.
 
 ### SM-CASH — Cashback (§1.3, §3.4)

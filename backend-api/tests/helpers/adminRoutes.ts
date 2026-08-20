@@ -73,12 +73,28 @@ export function adminRoutes(app: any): EnumeratedRoute[] {
   return out;
 }
 
-export const COVERAGE_TAGS = ['sweep:CUR', 'sweep:INPUT', 'review'] as const;
+/**
+ * Sweep classes that are valid `sweep:<CLASS>` coverage tags, mapped to the
+ * suite file (relative to `tests/integration/`) that actually implements the
+ * sweep. `admin-endpoint-coverage.test.ts` asserts every mapped file exists on
+ * disk — this is the check that stops a deleted suite from silently leaving a
+ * dangling coverage claim behind (BC-QA-031 deleted
+ * `admin-currency-leak-sweep.test.ts` but left 37 `sweep:CUR`/`matrix:INV-CUR-*`
+ * claims standing until BC-QA-031-FOLLOWUP-2 caught and fixed it). Adding a
+ * new sweep class means adding it here AND writing the suite file — the two
+ * cannot drift apart without the coverage test failing.
+ */
+export const SWEEP_SUITE_FILES: Record<string, string> = {
+  INPUT: 'admin-uuid-500-sweep.test.ts',
+};
+
+export const COVERAGE_TAGS = ['sweep:INPUT', 'review'] as const;
 export type CoverageTag = (typeof COVERAGE_TAGS)[number];
 
 /**
  * Valid coverage classifications for a manifest entry:
- *   - `sweep:CUR` / `sweep:INPUT` — covered by an exhaustive class sweep
+ *   - `sweep:INPUT` — covered by an exhaustive class sweep (see
+ *     `SWEEP_SUITE_FILES` for the suite each `sweep:<CLASS>` name resolves to)
  *   - `matrix:INV-XXX[,INV-YYY]` — covered by named invariant-matrix row(s),
  *     checked by re-audit (use when no sweep covers the route's risk)
  *   - `review` — accounted-for but NOT yet mapped to a sweep OR an invariant
@@ -87,40 +103,34 @@ export type CoverageTag = (typeof COVERAGE_TAGS)[number];
 export function isValidCoverageTag(tag: string): boolean {
   if ((COVERAGE_TAGS as readonly string[]).includes(tag)) return true;
   // Invariant IDs may carry a multi-segment class name (e.g. INV-SM-CASH-002,
-  // INV-SM-DISP-004) in addition to the single-segment families (INV-CUR-026).
+  // INV-SM-DISP-004) in addition to the single-segment families (INV-FIN-010).
   return /^matrix:INV-[A-Z]+(-[A-Z]+)*-\d+(\s*,\s*INV-[A-Z]+(-[A-Z]+)*-\d+)*$/i.test(tag);
 }
 
-const MONEY_ROUTER =
-  /^\/api\/admin\/(transactions|payouts|finance|cashback|subscribers|subscriptions|dashboard|wallet)\b/;
-
 /**
  * Default coverage classification for a route, used to bootstrap the manifest:
- *   - a money-returning GET → `sweep:CUR`
- *   - any `:param` route   → covered by admin-uuid-500-sweep (INPUT)
- *   - everything else (e.g. non-money list GETs, POST bodies) → `review`:
+ *   - any `:param` route → covered by admin-uuid-500-sweep (INPUT)
+ *   - everything else (money-returning GETs included) → `review`:
  *     NOT covered by an exhaustive sweep, so it must map to an invariant-matrix
  *     row and be checked by a re-audit. (This is exactly the class the
  *     subscriber null-wallet 500 lived in — a list GET no sweep gated.)
  *
- * ⚠ BC-QA-031 — the `sweep:CUR` tag names a suite that NO LONGER EXISTS.
- *
- * It used to mean "covered by admin-currency-leak-sweep.test.ts", which was deleted
- * along with the dual-currency display feature. The 33 routes carrying that tag in
- * `tests/admin-endpoint-manifest.json` — and the 4 carrying `matrix:INV-CUR-*`,
- * whose matrix rows were removed with the CUR class — are therefore **UNSWEPT**.
- * Read them as untested, not as suite-covered: `admin-endpoint-coverage.test.ts`
- * checks that a tag is PRESENT, not that it still resolves to anything, so it
- * passes over all 37 without complaint.
- *
- * Re-tagging them is tracked as **BC-QA-031-FOLLOWUP-2** ("Re-tag 33 admin manifest
- * routes claiming coverage from the deleted admin-currency-leak-sweep"). Until that
- * task lands, `classifyRoute` below still mints `sweep:CUR` for every new
- * money-returning admin GET, so the count grows rather than holds. This is a
- * recorded, tracked gap — not an open judgement call and not a deferral.
+ * There used to be a third branch here minting `sweep:CUR` for every
+ * money-returning admin GET, naming `admin-currency-leak-sweep.test.ts`. That
+ * suite was deleted in BC-QA-031 along with the dual-currency display feature
+ * it policed, which left the tag dangling for new routes too — every route
+ * added after BC-QA-031 and before BC-QA-031-FOLLOWUP-2 would have kept
+ * acquiring a coverage claim from a suite that no longer existed. The branch is
+ * removed rather than replaced: there is no successor sweep, so a fresh
+ * money-returning GET now falls through to `review` like any other route with
+ * no exhaustive-sweep coverage, and picks up real coverage only when a human
+ * maps it to a `matrix:INV-XXX` row. The 33 pre-existing routes that carried
+ * `sweep:CUR` (plus the 2 that carried a lone now-removed `matrix:INV-CUR-*`
+ * reference) were re-tagged in `tests/admin-endpoint-manifest.json` and given
+ * real, untested `INV-CURGAP-*` rows in `docs/specs/admin-invariant-matrix.md`
+ * as part of BC-QA-031-FOLLOWUP-2.
  */
 export function classifyRoute(r: EnumeratedRoute): CoverageTag {
-  if (r.method === 'GET' && MONEY_ROUTER.test(r.path)) return 'sweep:CUR';
   if (r.path.includes(':')) return 'sweep:INPUT';
   return 'review';
 }

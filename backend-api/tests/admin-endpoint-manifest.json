@@ -140,7 +140,7 @@
     {
       "method": "GET",
       "path": "/api/admin/cashback/:partnerId/:month/receipts",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-001"
     },
     {
       "method": "POST",
@@ -155,7 +155,7 @@
     {
       "method": "GET",
       "path": "/api/admin/cashback/entries",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-001"
     },
     {
       "method": "POST",
@@ -185,17 +185,17 @@
     {
       "method": "GET",
       "path": "/api/admin/cashback/entries/export",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-001"
     },
     {
       "method": "GET",
       "path": "/api/admin/cashback/payout-thresholds",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-001"
     },
     {
       "method": "GET",
       "path": "/api/admin/cashback/rates",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-001"
     },
     {
       "method": "POST",
@@ -205,7 +205,7 @@
     {
       "method": "GET",
       "path": "/api/admin/cashback/rates/current",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-001"
     },
     {
       "method": "DELETE",
@@ -215,17 +215,17 @@
     {
       "method": "GET",
       "path": "/api/admin/cashback/stats",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-001"
     },
     {
       "method": "GET",
       "path": "/api/admin/cashback/subscriber/:userId",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-001"
     },
     {
       "method": "GET",
       "path": "/api/admin/cashback/summary",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-001"
     },
     {
       "method": "GET",
@@ -325,17 +325,17 @@
     {
       "method": "GET",
       "path": "/api/admin/dashboard/",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-002"
     },
     {
       "method": "GET",
       "path": "/api/admin/finance/export",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-003"
     },
     {
       "method": "GET",
       "path": "/api/admin/finance/invoices",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-003"
     },
     {
       "method": "PATCH",
@@ -365,22 +365,22 @@
     {
       "method": "GET",
       "path": "/api/admin/finance/payout-thresholds",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-003"
     },
     {
       "method": "GET",
       "path": "/api/admin/finance/periods",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-003"
     },
     {
       "method": "GET",
       "path": "/api/admin/finance/report-partners",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-003"
     },
     {
       "method": "GET",
       "path": "/api/admin/finance/reporting-periods",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-003"
     },
     {
       "method": "POST",
@@ -405,7 +405,7 @@
     {
       "method": "GET",
       "path": "/api/admin/finance/reports",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-003"
     },
     {
       "method": "GET",
@@ -820,7 +820,7 @@
     {
       "method": "GET",
       "path": "/api/admin/payouts/",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-004"
     },
     {
       "method": "PATCH",
@@ -925,7 +925,7 @@
     {
       "method": "GET",
       "path": "/api/admin/settings/payout-thresholds",
-      "coverage": "matrix:INV-FIN-009,INV-CUR-025"
+      "coverage": "matrix:INV-FIN-009"
     },
     {
       "method": "PUT",
@@ -935,7 +935,7 @@
     {
       "method": "GET",
       "path": "/api/admin/settings/payout-thresholds/history",
-      "coverage": "matrix:INV-CUR-025"
+      "coverage": "matrix:INV-CURGAP-008"
     },
     {
       "method": "GET",
@@ -945,7 +945,7 @@
     {
       "method": "PUT",
       "path": "/api/admin/settings/system",
-      "coverage": "matrix:INV-CUR-026"
+      "coverage": "matrix:INV-CURGAP-008"
     },
     {
       "method": "GET",
@@ -955,12 +955,12 @@
     {
       "method": "GET",
       "path": "/api/admin/subscribers/",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-005"
     },
     {
       "method": "GET",
       "path": "/api/admin/subscribers/:userId",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-005"
     },
     {
       "method": "DELETE",
@@ -975,12 +975,12 @@
     {
       "method": "GET",
       "path": "/api/admin/subscribers/:userId/cashback",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-005"
     },
     {
       "method": "GET",
       "path": "/api/admin/subscribers/:userId/login-history",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-005"
     },
     {
       "method": "PATCH",
@@ -1000,7 +1000,7 @@
     {
       "method": "GET",
       "path": "/api/admin/subscribers/:userId/refund-preview",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-005"
     },
     {
       "method": "POST",
@@ -1020,12 +1020,12 @@
     {
       "method": "GET",
       "path": "/api/admin/subscribers/export",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-005"
     },
     {
       "method": "GET",
       "path": "/api/admin/subscriptions/",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-006"
     },
     {
       "method": "PATCH",
@@ -1050,12 +1050,12 @@
     {
       "method": "GET",
       "path": "/api/admin/subscriptions/export",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-006"
     },
     {
       "method": "GET",
       "path": "/api/admin/subscriptions/pending",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-006"
     },
     {
       "method": "DELETE",
@@ -1070,37 +1070,37 @@
     {
       "method": "GET",
       "path": "/api/admin/subscriptions/user/:userId/history",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-006"
     },
     {
       "method": "GET",
       "path": "/api/admin/transactions/",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-007"
     },
     {
       "method": "POST",
       "path": "/api/admin/transactions/adjust",
-      "coverage": "matrix:INV-FIN-010,INV-CUR-021"
+      "coverage": "matrix:INV-FIN-010"
     },
     {
       "method": "GET",
       "path": "/api/admin/transactions/business",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-007"
     },
     {
       "method": "GET",
       "path": "/api/admin/transactions/business/partner-risk/:partnerId",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-007"
     },
     {
       "method": "GET",
       "path": "/api/admin/transactions/business/stats",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-007"
     },
     {
       "method": "GET",
       "path": "/api/admin/transactions/stats",
-      "coverage": "sweep:CUR"
+      "coverage": "matrix:INV-CURGAP-007"
     },
     {
       "method": "GET",
