@@ -22,11 +22,28 @@
  * `review`-tagged routes are intentionally allowed (they are accounted-for but
  * NOT exhaustively swept) — they must map to an invariant-matrix row and be
  * checked by a re-audit. The test reports their count so the gap stays visible.
+ *
+ * A SEPARATE assertion below closes a distinct gap: a `sweep:<CLASS>` tag being
+ * *present* on an entry (checked above via `isValidCoverageTag`) says nothing
+ * about whether the suite it names still exists. BC-QA-031 deleted
+ * `admin-currency-leak-sweep.test.ts` and left 37 `sweep:CUR` / dangling
+ * `matrix:INV-CUR-*` entries claiming coverage from it, undetected, until
+ * BC-QA-031-FOLLOWUP-2 caught it by hand. The "every sweep:<CLASS> tag resolves
+ * to a suite file on disk" test below makes that check automatic and
+ * unconditional on any human noticing, for every current and future sweep
+ * class in `SWEEP_SUITE_FILES`.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { createTestApp } from '../setup';
-import { adminRoutes, classifyRoute, routeKey, COVERAGE_TAGS, isValidCoverageTag } from '../helpers/adminRoutes';
+import {
+  adminRoutes,
+  classifyRoute,
+  routeKey,
+  COVERAGE_TAGS,
+  isValidCoverageTag,
+  SWEEP_SUITE_FILES,
+} from '../helpers/adminRoutes';
 
 const MANIFEST_PATH = path.join(__dirname, '..', 'admin-endpoint-manifest.json');
 
@@ -105,6 +122,51 @@ describe('admin-endpoint-coverage: every admin route is accounted for in the man
     }
     if (badTag.length) {
       problems.push(`Unknown coverage tag(s) (allowed: ${COVERAGE_TAGS.join(', ')}, matrix:INV-XXX):\n  ${badTag.join('\n  ')}`);
+    }
+
+    expect(problems.join('\n\n')).toBe('');
+  });
+
+  it('every sweep:<CLASS> tag used in the manifest resolves to a suite file that actually exists on disk', () => {
+    // This does NOT depend on the live app / manifest-diff logic above — it is
+    // a pure filesystem check, deliberately independent of `createTestApp()`,
+    // so it stays meaningful even if the app fails to boot. It reads the
+    // manifest that's committed on disk, not a live-derived one, since the
+    // committed manifest is the artifact a stale claim would hide in.
+    if (!fs.existsSync(MANIFEST_PATH)) {
+      // Nothing to check yet — the other test in this file will bootstrap it.
+      return;
+    }
+    const manifest: { routes: ManifestEntry[] } = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'));
+
+    const usedClasses = new Set(
+      manifest.routes
+        .map((e) => e.coverage)
+        .filter((c) => c.startsWith('sweep:'))
+        .map((c) => c.slice('sweep:'.length))
+    );
+
+    const problems: string[] = [];
+    for (const cls of usedClasses) {
+      const suiteFile = SWEEP_SUITE_FILES[cls];
+      if (!suiteFile) {
+        problems.push(
+          `sweep:${cls} is used in the manifest but has no entry in SWEEP_SUITE_FILES (tests/helpers/adminRoutes.ts) ` +
+            `— either register the suite file that covers it, or re-tag the affected route(s).`
+        );
+        continue;
+      }
+      const suitePath = path.join(__dirname, suiteFile);
+      if (!fs.existsSync(suitePath)) {
+        problems.push(
+          `sweep:${cls} names suite file '${suiteFile}' (resolved: ${suitePath}) which does NOT exist on disk. ` +
+            `The suite was deleted (or renamed) but a coverage claim naming it was left standing in ` +
+            `tests/admin-endpoint-manifest.json — re-tag the affected route(s) to an honest classification ` +
+            `(e.g. 'review' or a real 'matrix:INV-XXX' row) instead of leaving a dangling sweep reference. ` +
+            `(This is exactly the BC-QA-031 bug that BC-QA-031-FOLLOWUP-2 fixed by hand — this assertion exists ` +
+            `so the next deletion fails the build instead of silently leaving dangling coverage claims again.)`
+        );
+      }
     }
 
     expect(problems.join('\n\n')).toBe('');
