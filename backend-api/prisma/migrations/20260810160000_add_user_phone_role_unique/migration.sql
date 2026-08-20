@@ -93,7 +93,11 @@
 -- database emits: verified against a scratch database, a partial-index
 -- violation raises
 --   ERROR: duplicate key value violates unique constraint "User_phone_role_key"
---   DETAIL: Key (phone, role)=(+359888123456, USER) already exists.
+--   DETAIL: Key (phone, role)=(+359XXXXXXXXX, USER) already exists.
+-- (+359XXXXXXXXX throughout this file is a non-dialable stand-in. Do not paste
+-- a real number into a comment here: this repository is public and source is
+-- permanent, which is strictly worse than the log exposure this file's own
+-- redaction rule exists to prevent.)
 --
 -- HOWEVER — measured, not assumed — on prisma@7.7.0 driving
 -- @prisma/adapter-pg (this app's client, see src/lib/prisma.ts) the P2002
@@ -199,12 +203,49 @@
 -- `RAISE NOTICE`, or a Postgres error DETAIL may carry a phone, an email, a
 -- name or a user id. Aggregate over them instead.
 --
--- Race note: the pre-flight SELECT does not itself lock "User", so in
--- principle a concurrent INSERT could introduce a new duplicate between the
--- check and the CREATE INDEX. That would make CREATE INDEX fail with 23505 —
--- safe (nothing is written), just less legible. In the production apply this
--- window does not exist at all: the API is not running, so there are no
--- writers.
+-- Race note — CLOSED by the LOCK TABLE below, and it had to be.
+-- The earlier version of this file observed that the pre-flight SELECT takes
+-- no lock, so a row committed between the check and the CREATE INDEX would
+-- make the index build fail 23505, and dismissed that as "safe, just less
+-- legible". That dismissal was wrong, for a reason the rest of this header
+-- already spells out: a 23505 from CREATE UNIQUE INDEX carries the colliding
+-- values in its DETAIL line —
+--   DETAIL: Key (phone, role)=(+359XXXXXXXXX, USER) is duplicated.
+-- — and `prisma migrate deploy` prints that DETAIL, twice (once as `DETAIL:`
+-- and again inside the `DbError { … detail: Some(…) }` struct it dumps). Under
+-- `release_command` that lands in the PUBLIC Actions log. So the race was not
+-- merely inelegant; it was a second, unguarded path to exactly the leak the
+-- redacted RAISE above exists to prevent, and the guard cannot help because it
+-- has already passed by then.
+--
+-- `LOCK TABLE "User" IN SHARE MODE` as the very first statement closes it.
+-- SHARE conflicts with ROW EXCLUSIVE (INSERT/UPDATE/DELETE) but not with other
+-- SHARE holders or with readers, so it blocks writers for the rest of the
+-- transaction while leaving reads alone — and CREATE INDEX takes SHARE anyway,
+-- so this acquires the same lock a few statements earlier and holds it across
+-- the pre-flight. Cost: nothing. After it, the state the pre-flight inspects is
+-- the state the index build sees, so the build cannot discover a duplicate the
+-- check did not.
+--
+-- In the production apply the window is empty regardless (the API is not
+-- running during release_command, so there are no writers) — but the previous
+-- release IS still serving while release_command runs, so writers are live in
+-- the general case, and this file must not depend on the app being down.
+--
+-- NOT CLOSED HERE, and worth knowing before step 5: the same channel is open in
+-- 20260819120100_backfill_and_constrain_payment_provider, whose two
+-- `ALTER TABLE … ADD CONSTRAINT … UNIQUE` statements would print
+-- `Key (paymentProvider, providerOrderId)=(…)` on failure. `migrate deploy`
+-- applies it in the same release. Measured read-only against production
+-- 2026-08-20: zero duplicate providerOrderId groups, so it cannot fire today.
+-- Left alone deliberately — that file belongs to BC-MYPOS-004's surface, not to
+-- this outage repair; the remedy is the same one line at the top of it.
+
+-- Hold "User" still for the whole migration: the pre-flight below and the index
+-- build at the end must see the same rows, or a raced duplicate reaches the
+-- public release log through Postgres's own 23505 DETAIL. See "Race note" above.
+-- SHARE blocks writers, admits readers, and is the same lock CREATE INDEX takes.
+LOCK TABLE "User" IN SHARE MODE;
 
 DO $$
 DECLARE

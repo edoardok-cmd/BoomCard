@@ -57,8 +57,14 @@
  * The index predicate is `btrim(phone) <> ''` only — it does NOT exclude
  * `"deletedAt" IS NOT NULL`. A dedupe that skipped soft-deleted rows would
  * leave collisions behind and the migration would still fail. In production
- * there is exactly one such group (`+359876107153` / USER) where BOTH rows are
- * soft-deleted, and it is invisible to any "live rows only" query.
+ * there is exactly one such group — a single USER phone, both of whose rows
+ * are soft-deleted — and it is invisible to any "live rows only" query.
+ *
+ * (The number itself is deliberately not written here. This file's own rule,
+ * below, is that no phone number may appear in its output; a phone number in
+ * its SOURCE is worse, because this repository is public and source is
+ * permanent. Every illustrative number in this file and in the migration is
+ * the non-dialable placeholder +359XXXXXXXXX.)
  *
  * MODES
  * -----
@@ -170,13 +176,42 @@ const PLACEHOLDER_PREFIX = 'BCQA051-DUP-';
 // destructive production script routinely ends up pasted into a ticket, a chat
 // message, an agent transcript or a CI log, and this repository is public.
 //
-// The redacted form is a stable 8-hex-character digest, so two lines about the
-// same value are still visibly about the same value (you can group and count
-// and correlate) without the value itself being recoverable from the output.
+// The same rule applies to this file's SOURCE, which is a stronger constraint
+// than the output rule because source is permanent: use +359XXXXXXXXX when an
+// illustration needs a phone-shaped thing.
+//
+// WHAT THE TOKEN GUARANTEES, AND WHAT IT DOES NOT
+// -----------------------------------------------
+// Tokens are keyed with a random 32-byte key generated once per process and
+// never written anywhere. Concretely:
+//
+//   GUARANTEED  Within a single run, the same input always produces the same
+//               token. That is the whole point: a reader can see that one
+//               phone spans a USER group and a PARTNER group, count groups,
+//               and match a line in the plan to a line in the verification
+//               error, without any value appearing.
+//   GUARANTEED  A token cannot be reversed to its input, because the key is
+//               random per run and is never emitted. The keyspace an attacker
+//               would have to search is the key's 256 bits, not the phone's.
+//   NOT OFFERED Tokens do NOT correlate across runs. Two invocations produce
+//               different tokens for the same phone, by design. If you need to
+//               follow a specific row between runs, use the before-image file.
+//
+// This used to be an UNKEYED sha256 prefix, with a comment claiming the value
+// was "not recoverable from the output". That claim was false and it was
+// load-bearing, which makes it a defect rather than a comment nit. A Bulgarian
+// mobile number is drawn from roughly 3x10^7 possibilities, so an unkeyed
+// digest of one is a lookup table, not a redaction: review round 2 recovered
+// the exact number from an 8-hex token in 17.1 seconds over 30M candidates,
+// with a unique preimage. Keying it removes the enumeration entirely — there
+// is nothing to enumerate against without the key.
+//
 // The real values live in the before-image file, which is written 0600 outside
-// the working tree — that is the one artefact allowed to hold them.
+// any working tree — that is the one artefact allowed to hold them.
+const REDACTION_KEY = crypto.randomBytes(32);
+
 function digest(value) {
-  return crypto.createHash('sha256').update(String(value)).digest('hex').slice(0, 8);
+  return crypto.createHmac('sha256', REDACTION_KEY).update(String(value)).digest('hex').slice(0, 8);
 }
 
 function redactPhone(phone, showValues) {
@@ -239,6 +274,45 @@ function resolveOutPath(argsOut, dbName) {
 // ─── argument parsing ───────────────────────────────────────────────────────
 
 const OPERATIONS = ['dedupe', 'rollback'];
+
+// ─── --help ─────────────────────────────────────────────────────────────────
+//
+// The header block IS the documentation, so --help renders it. It used to do
+// that with `readFileSync(__filename).split('*/')[0]`, which terminates at the
+// FIRST `*/` in the file — and line 2 is `/* eslint-disable no-console */`. So
+// --help printed the shebang and half an eslint pragma: 50 bytes. That mattered
+// most exactly when it broke, because --commit now takes a mandatory operation
+// name and an operator reaching for --help to check the syntax before touching
+// production got nothing.
+//
+// Anchor on the JSDoc block's own delimiters instead, and refuse to print a
+// help text that has silently lost its content — a wrong --help is worse than
+// an obviously broken one.
+const HELP_ANCHORS = ['RUNBOOK', '--commit dedupe', '--show-values', 'ROLLBACK ORDERING'];
+
+function renderHelp(source) {
+  const src = source !== undefined ? source : fs.readFileSync(__filename, 'utf8');
+  const start = src.indexOf('/**');
+  const end = start === -1 ? -1 : src.indexOf('*/', start + 3);
+  if (start === -1 || end === -1) {
+    return 'help unavailable: could not locate the header block in this file.';
+  }
+  const body = src
+    .slice(start + 3, end)
+    .split('\n')
+    .map((line) => line.replace(/^\s*\* ?/, ''))
+    .join('\n')
+    .trim();
+
+  const missing = HELP_ANCHORS.filter((a) => !body.includes(a));
+  if (missing.length > 0) {
+    return (
+      `help is incomplete — the header block rendered without: ${missing.join(', ')}.\n` +
+      `Read ${__filename} directly; do not run a destructive operation from a partial help text.`
+    );
+  }
+  return body;
+}
 
 // Every value-taking flag goes through this. Previously the parser used a bare
 // `argv[++i]`, which silently yielded `undefined` when the value was missing —
@@ -552,7 +626,7 @@ async function runCommit(client, work) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    console.log(fs.readFileSync(__filename, 'utf8').split('*/')[0]);
+    console.log(renderHelp());
     return 0;
   }
 
@@ -735,7 +809,7 @@ async function doRollback(client, args) {
   for (const r of beforeImage.rows) {
     if (typeof r.id !== 'string' || typeof r.phone !== 'string') {
       throw new Error(
-        `before-image row ${JSON.stringify(r.id)} is missing a string id/phone — refusing to ` +
+        `before-image row ${redactId(r.id, args.showValues)} is missing a string id/phone — refusing to ` +
           'restore from a file that cannot reproduce the exact prior state.',
       );
     }
