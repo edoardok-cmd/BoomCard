@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams, Link, Navigate } from 'react-router-dom';
 import styled from 'styled-components';
 import Button from '../components/common/Button/Button';
@@ -130,9 +130,39 @@ const CompleteProfilePage: React.FC = () => {
   const [emailConflict, setEmailConflict] = useState(false);
   const [accountCreated, setAccountCreated] = useState(false);
 
+  // BC-QA-007 — self-service resend when the (30-min) complete-profile link
+  // has expired, instead of the previous dead end that told the user to
+  // contact support. `linkExpired` is set from the AUTH_COMPLETE_PROFILE_TOKEN_EXPIRED
+  // `code` the backend now returns from POST /auth/complete-profile (see
+  // routes/auth.routes.ts) so it can be told apart from other 400s.
+  const [linkExpired, setLinkExpired] = useState(false);
+  const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent'>('idle');
+  const [resendError, setResendError] = useState<string | null>(null);
+  // 60s cooldown UI — mirrors VerifyEmailPage.tsx's resendCooldownUntil/Secs
+  // pattern for the analogous email-verification-link resend, the only other
+  // self-service "resend an expired auth link" flow in this app.
+  const [resendCooldownUntil, setResendCooldownUntil] = useState<number | null>(null);
+  const [resendCooldownSecs, setResendCooldownSecs] = useState(0);
+
   // BC-QA-015 — shared scroll-to-first-error + focus mechanism.
   const formRef = useRef<HTMLFormElement>(null);
   const { markAttempt } = useScrollToFirstError(formRef);
+
+  useEffect(() => {
+    if (!resendCooldownUntil) return;
+    const tick = () => {
+      const remaining = Math.ceil((resendCooldownUntil - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setResendCooldownUntil(null);
+        setResendCooldownSecs(0);
+      } else {
+        setResendCooldownSecs(remaining);
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [resendCooldownUntil]);
 
   // HIGH fix (review r2ad HIGH-1): already-authenticated users must not reach
   // this page. If they do, their existing session tokens would be silently
@@ -218,11 +248,42 @@ const CompleteProfilePage: React.FC = () => {
     } catch (err: any) {
       if (err?.response?.status === 409) {
         setEmailConflict(true);
+      } else if (err?.response?.data?.code === 'AUTH_COMPLETE_PROFILE_TOKEN_EXPIRED') {
+        // BC-QA-007 — was previously indistinguishable from any other 400 and
+        // fell through to the generic apiError message below, which had no
+        // actionable next step (spec gap: "contact support").
+        setLinkExpired(true);
       } else {
         const msg = err?.response?.data?.message || t('errors.somethingWentWrong');
         setApiError(msg);
       }
       setIsSubmitting(false);
+    }
+  };
+
+  const handleResendLink = async () => {
+    if (!token) return;
+    if (resendCooldownUntil && Date.now() < resendCooldownUntil) return;
+    setResendStatus('sending');
+    setResendError(null);
+    try {
+      // Public, unauthenticated endpoint (routes/auth.routes.ts) — the
+      // caller's only identifier is the (already expired) token from this
+      // page's own URL. Response shape is always the same regardless of
+      // whether it matched a real pending checkout (enumeration-safe), so
+      // the UI always shows the neutral "check your email" confirmation —
+      // it must not branch on the result to avoid re-introducing an
+      // enumeration side channel at this layer.
+      await apiService.post('/auth/resend-complete-profile-link', { token });
+      setResendStatus('sent');
+      setResendCooldownUntil(Date.now() + 60_000);
+    } catch {
+      setResendStatus('idle');
+      setResendError(
+        language === 'bg'
+          ? 'Възникна грешка. Моля, опитайте отново по-късно.'
+          : 'Something went wrong. Please try again later.',
+      );
     }
   };
 
@@ -242,6 +303,64 @@ const CompleteProfilePage: React.FC = () => {
           >
             {t('completeProfilePage.goToBoomCard')}
           </Button>
+        </Card>
+      </PageContainer>
+    );
+  }
+
+  // BC-QA-007 — self-service recovery for an expired (30-min) complete-profile
+  // link. Previously this state was indistinguishable from any other submit
+  // error and left the user with no path forward but contacting support.
+  // Localized inline (language === 'bg' ? … : …), matching the pattern
+  // VerifyEmailPage.tsx already uses for its own expired-link resend flow —
+  // this file's own t()/locales/{bg,en}.ts keys are the primary pattern here,
+  // but adding new keys to locales/bg.ts and locales/en.ts is outside this
+  // task's owned files (backend-owned change), so this reuses the
+  // already-established second in-app localization pattern instead of
+  // hardcoding English-only strings. See the task report for this flagged
+  // as a gap for whoever owns those locale files.
+  if (linkExpired) {
+    const resendCopy = {
+      title: language === 'bg' ? 'Връзката е изтекла' : 'Link expired',
+      message: language === 'bg'
+        ? 'Връзката за завършване на профила е валидна 30 минути и вече е изтекла. Натиснете бутона по-долу, за да получите нова връзка на имейла си.'
+        : 'Your profile-completion link is valid for 30 minutes and has expired. Click the button below to get a new one sent to your email.',
+      sentMessage: language === 'bg'
+        ? 'Ако връзката е била валидна, вече изпратихме нова на имейла ви. Проверете входящата си поща (и папката за спам).'
+        : "If your link was valid, we've sent a new one to your email. Check your inbox (and spam folder).",
+      resendButton: language === 'bg' ? 'Изпрати нова връзка' : 'Resend link',
+      resending: language === 'bg' ? 'Изпращане...' : 'Sending...',
+      resendAgain: language === 'bg' ? 'Изпрати отново' : 'Resend again',
+      backToLogin: language === 'bg' ? 'Към вход' : 'Go to login',
+    };
+    return (
+      <PageContainer>
+        <Card>
+          <Title>{resendCopy.title}</Title>
+          <AlertBox $variant={resendStatus === 'sent' ? 'info' : 'error'}>
+            {resendStatus === 'sent' ? resendCopy.sentMessage : resendCopy.message}
+          </AlertBox>
+          {resendError && <AlertBox $variant="error">{resendError}</AlertBox>}
+          <Button
+            variant="primary"
+            size="large"
+            fullWidth
+            onClick={handleResendLink}
+            disabled={resendStatus === 'sending' || (!!resendCooldownUntil && resendCooldownSecs > 0)}
+          >
+            {resendStatus === 'sending'
+              ? resendCopy.resending
+              : resendCooldownSecs > 0
+                ? `${resendCopy.resendAgain} (${resendCooldownSecs}s)`
+                : resendStatus === 'sent'
+                  ? resendCopy.resendAgain
+                  : resendCopy.resendButton}
+          </Button>
+          <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+            <Link to="/login" style={{ color: 'inherit', fontWeight: 600 }}>
+              {resendCopy.backToLogin}
+            </Link>
+          </div>
         </Card>
       </PageContainer>
     );

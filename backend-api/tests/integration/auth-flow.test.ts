@@ -13,6 +13,7 @@ import { createTestUser, cleanupTestUser, authRequest } from '../helpers/test-ut
 import { bgnToEur } from '../../src/utils/currency';
 import { AuthService } from '../../src/services/auth.service';
 import { genTestPhone } from '../helpers/test-utils';
+import { drainDetached } from '../../src/utils/detach';
 
 describe('Authentication Flow (F01)', () => {
   const createdUserIds: string[] = [];
@@ -21,6 +22,13 @@ describe('Authentication Flow (F01)', () => {
     for (const id of createdUserIds) {
       await cleanupTestUser(id);
     }
+    // BC-QA-007 — clean up the PendingSubscription rows the resend-link tests
+    // create directly (createPaidPendingSubscription above leaves its own rows
+    // uncleaned already; this scopes only to the new tests' email prefix so it
+    // does not change that pre-existing behaviour).
+    await prisma.pendingSubscription.deleteMany({
+      where: { email: { contains: 'resend-' } },
+    }).catch(() => {});
     // BC-QA-042's currency_transition_window_open restore hook was removed by
     // BC-QA-031: the 3 dual-currency data-export tests it protected are gone,
     // along with the SystemSetting row itself, so there is no global state left
@@ -521,6 +529,267 @@ describe('Authentication Flow (F01)', () => {
         expect(res.body.message).toContain('already exists');
       },
     );
+  });
+
+  // ─── Complete-profile link resend (BC-QA-007) ───────────────────
+
+  describe('POST /api/auth/resend-complete-profile-link (BC-QA-007)', () => {
+    let resendPlanId: string;
+
+    beforeAll(async () => {
+      const existingPlan = await prisma.plan.findFirst({ where: { planCode: 'BASIC' } });
+      if (existingPlan) {
+        resendPlanId = existingPlan.id;
+      } else {
+        const plan = await prisma.plan.create({
+          data: {
+            planCode: 'BASIC',
+            displayName: 'Test Complete Profile Plan',
+            displayNameBg: 'Тестов план',
+            isActive: true,
+            hasWeeklyOption: true,
+            hasMonthlyOption: true,
+            hasYearlyOption: true,
+            priceWeeklyEur: 399,
+            priceMonthlyEur: 999,
+            priceYearlyEur: 8999,
+            cashbackRate: 0.05,
+          },
+        });
+        resendPlanId = plan.id;
+      }
+    });
+
+    async function createPendingSubscription(opts: {
+      emailPrefix: string;
+      tokenExpiresAt: Date;
+      expiresAt?: Date;
+      status?: 'PAID' | 'COMPLETED';
+    }) {
+      const token = crypto.randomBytes(32).toString('hex');
+      const pending = await prisma.pendingSubscription.create({
+        data: {
+          email: `${opts.emailPrefix}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}@boomcard.bg`,
+          planId: resendPlanId,
+          billingPeriod: 'monthly',
+          language: 'en',
+          payseraOrderId: `TEST-ORDER-RESEND-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+          status: opts.status || 'PAID',
+          token,
+          tokenExpiresAt: opts.tokenExpiresAt,
+          paidAt: new Date(),
+          expiresAt: opts.expiresAt || new Date(Date.now() + 24 * 60 * 60 * 1000),
+        },
+      });
+      return { token, pending };
+    }
+
+    it('rejects a missing token with 400', async () => {
+      const res = await request(app)
+        .post('/api/auth/resend-complete-profile-link')
+        .send({});
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('rotates the token and lets the fresh token complete the profile after the original expired', async () => {
+      const { token: oldToken, pending } = await createPendingSubscription({
+        emailPrefix: 'resend-expired',
+        tokenExpiresAt: new Date(Date.now() - 60 * 1000), // already expired
+      });
+
+      // Sanity: the expired token is correctly rejected by /complete-profile
+      // with the BC-QA-007 error code before we exercise the resend path.
+      const expiredAttempt = await request(app)
+        .post('/api/auth/complete-profile')
+        .send({ token: oldToken, password: 'SecurePass123!', lang: 'en' });
+      expect(expiredAttempt.status).toBe(400);
+      expect(expiredAttempt.body.code).toBe('AUTH_COMPLETE_PROFILE_TOKEN_EXPIRED');
+
+      const resendRes = await request(app)
+        .post('/api/auth/resend-complete-profile-link')
+        .send({ token: oldToken });
+      expect(resendRes.status).toBe(200);
+      expect(resendRes.body.success).toBe(true);
+
+      // The resend dispatch is fire-and-forget (detachImmediate) — drain it
+      // before inspecting the row it mutates.
+      await drainDetached();
+
+      const refreshed = await prisma.pendingSubscription.findUnique({ where: { id: pending.id } });
+      expect(refreshed?.token).toBeTruthy();
+      expect(refreshed?.token).not.toBe(oldToken);
+      expect(refreshed?.tokenExpiresAt).toBeTruthy();
+      expect(refreshed!.tokenExpiresAt!.getTime()).toBeGreaterThan(Date.now());
+
+      // The rotated-out old token no longer works...
+      const staleAttempt = await request(app)
+        .post('/api/auth/complete-profile')
+        .send({ token: oldToken, password: 'SecurePass123!', lang: 'en' });
+      expect(staleAttempt.status).toBe(400);
+
+      // ...but the fresh one completes the profile successfully.
+      const freshAttempt = await request(app)
+        .post('/api/auth/complete-profile')
+        .send({ token: refreshed!.token, password: 'SecurePass123!', lang: 'en' });
+      expect(freshAttempt.status).toBe(201);
+      expect(freshAttempt.body.success).toBe(true);
+      if (freshAttempt.body?.data?.user?.id) createdUserIds.push(freshAttempt.body.data.user.id);
+
+      // A LinkResendLog row was written for the reissue (spec §10.4 pattern,
+      // mirrored from resendEmailVerification / forgotPassword's existing
+      // PendingSubscription-resend branch).
+      const logRow = await prisma.linkResendLog.findFirst({
+        where: { linkType: 'COMPLETE_PROFILE', subjectId: pending.id },
+      });
+      expect(logRow).toBeTruthy();
+    });
+
+    it('returns the same neutral 200 response for a token that matches no PendingSubscription', async () => {
+      const res = await request(app)
+        .post('/api/auth/resend-complete-profile-link')
+        .send({ token: `nonexistent-${crypto.randomBytes(16).toString('hex')}` });
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      await drainDetached();
+    });
+
+    it('never reaches the PendingSubscription lookup for a malformed (non-64-hex) token — distinguishes the COMPLETE_PROFILE_TOKEN_RE short-circuit from a coincidental DB-miss (BC-QA-007 round-2 F3 regression)', async () => {
+      // The test above ("returns the same neutral 200 response...") sends a
+      // token shaped `nonexistent-<32 hex chars>`, which does NOT match
+      // COMPLETE_PROFILE_TOKEN_RE (64 lowercase hex chars) — but it only
+      // asserts the outward `{ success: true }` response, which is identical
+      // whether F3's regex short-circuit fires or the malformed token simply
+      // falls through to a DB lookup that also (coincidentally) finds no row.
+      // Spy on the DB call the regex guard exists to skip, so a regression
+      // that removes the short-circuit shows up here even though the outward
+      // response would stay green.
+      const findFirstSpy = jest.spyOn(prisma.pendingSubscription, 'findFirst');
+      try {
+        const res = await request(app)
+          .post('/api/auth/resend-complete-profile-link')
+          .send({ token: `nonexistent-${crypto.randomBytes(16).toString('hex')}` });
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        // The resend dispatch (when it runs at all) is fire-and-forget via
+        // detachImmediate — drain before asserting on the spy so a call that
+        // WOULD happen (if the regex guard were removed) has had the chance
+        // to actually fire before we check it never did.
+        await drainDetached();
+
+        expect(findFirstSpy).not.toHaveBeenCalled();
+      } finally {
+        findFirstSpy.mockRestore();
+      }
+    });
+
+    it('enforces a per-token cooldown: a second immediate resend does not rotate the token again', async () => {
+      const { token: oldToken, pending } = await createPendingSubscription({
+        emailPrefix: 'resend-cooldown',
+        tokenExpiresAt: new Date(Date.now() + 20 * 60 * 1000), // still valid
+      });
+
+      const first = await request(app)
+        .post('/api/auth/resend-complete-profile-link')
+        .send({ token: oldToken });
+      expect(first.status).toBe(200);
+      await drainDetached();
+
+      const afterFirst = await prisma.pendingSubscription.findUnique({ where: { id: pending.id } });
+      expect(afterFirst?.token).not.toBe(oldToken);
+
+      // Immediately repeat with the SAME (now stale) token the caller still
+      // has — the 60s per-token cooldown should make this a no-op rather than
+      // a second rotation, and the response shape must still be identical.
+      const second = await request(app)
+        .post('/api/auth/resend-complete-profile-link')
+        .send({ token: oldToken });
+      expect(second.status).toBe(200);
+      expect(second.body.success).toBe(true);
+      await drainDetached();
+
+      const afterSecond = await prisma.pendingSubscription.findUnique({ where: { id: pending.id } });
+      expect(afterSecond?.token).toBe(afterFirst?.token);
+    });
+
+    it('resolves a stale, already-rotated token to the live subscription once the cooldown window elapses (BC-QA-007 F2 regression)', async () => {
+      // Regression for review finding F2: the browser tab that loaded the
+      // page only ever knows the ORIGINAL token from the URL — the resend
+      // response is deliberately neutral and never reveals the freshly
+      // rotated one. Before the fix, clicking "Resend again" with that
+      // original token after the cooldown cleared looked up a token that had
+      // already been rotated away by the first successful resend, matched no
+      // row, and silently no-op'd (no second email) while still returning
+      // `{ success: true }`.
+      const { token: oldToken, pending } = await createPendingSubscription({
+        emailPrefix: 'resend-stale-after-cooldown',
+        tokenExpiresAt: new Date(Date.now() + 20 * 60 * 1000),
+      });
+
+      const realDateNow = Date.now.bind(Date);
+      const nowSpy = jest.spyOn(Date, 'now');
+      try {
+        // First resend: rotates token0 -> token1 and sends the first email.
+        const first = await request(app)
+          .post('/api/auth/resend-complete-profile-link')
+          .send({ token: oldToken });
+        expect(first.status).toBe(200);
+        await drainDetached();
+
+        const afterFirst = await prisma.pendingSubscription.findUnique({ where: { id: pending.id } });
+        expect(afterFirst?.token).toBeTruthy();
+        expect(afterFirst?.token).not.toBe(oldToken);
+
+        // Advance past the 60s per-token cooldown window. Only Date.now() is
+        // mocked (offset from the real clock) — setImmediate/DB I/O used by
+        // the detached dispatch keep running on the real clock underneath.
+        nowSpy.mockImplementation(() => realDateNow() + 61_000);
+
+        // Second resend from the SAME tab, still submitting the ORIGINAL
+        // pre-rotation token.
+        const second = await request(app)
+          .post('/api/auth/resend-complete-profile-link')
+          .send({ token: oldToken });
+        expect(second.status).toBe(200);
+        expect(second.body.success).toBe(true);
+        await drainDetached();
+
+        const afterSecond = await prisma.pendingSubscription.findUnique({ where: { id: pending.id } });
+        // A second rotation actually happened — proof the stale original
+        // token resolved through the alias chain to the still-live one
+        // instead of silently missing.
+        expect(afterSecond?.token).toBeTruthy();
+        expect(afterSecond?.token).not.toBe(afterFirst?.token);
+        expect(afterSecond?.token).not.toBe(oldToken);
+
+        // A second LinkResendLog row was written — proof a second email
+        // dispatch actually occurred, not just a bookkeeping-only rotation.
+        const logRows = await prisma.linkResendLog.findMany({
+          where: { linkType: 'COMPLETE_PROFILE', subjectId: pending.id },
+        });
+        expect(logRows.length).toBeGreaterThanOrEqual(2);
+      } finally {
+        nowSpy.mockRestore();
+      }
+    });
+
+    it('does not rotate a token for a PendingSubscription that already COMPLETED', async () => {
+      const { token, pending } = await createPendingSubscription({
+        emailPrefix: 'resend-completed',
+        tokenExpiresAt: new Date(Date.now() + 20 * 60 * 1000),
+        status: 'COMPLETED',
+      });
+
+      const res = await request(app)
+        .post('/api/auth/resend-complete-profile-link')
+        .send({ token });
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      await drainDetached();
+
+      const unchanged = await prisma.pendingSubscription.findUnique({ where: { id: pending.id } });
+      expect(unchanged?.token).toBe(token);
+    });
   });
 
   // ─── Login ────────────────────────────────────────────────────
