@@ -201,7 +201,7 @@ describe('payment-provider.ts', () => {
     describe('refund', () => {
       it('throws with clear message', async () => {
         await expect(
-          provider.refund({ transactionId: 'tx-1' })
+          provider.refund({ transactionId: 'tx-1', amount: 100, currency: 'EUR', orderId: 'order-1' })
         ).rejects.toThrow(
           'Paysera does not support programmatic refunds via this API'
         );

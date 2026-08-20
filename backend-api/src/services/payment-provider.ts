@@ -76,8 +76,35 @@ export interface VerifiedWebhookResult {
 export interface RefundParams {
   /** The provider's transaction/order id to refund. */
   transactionId: string;
-  /** Partial refund amount in minor units (cents); omit for a full refund. */
-  amount?: number;
+  /**
+   * Refund amount in minor units (cents). REQUIRED — widened from optional
+   * (BC-MYPOS-003-FOLLOWUP-1, item 1) because myPOS's `IPCRefund` has no
+   * "refund everything" mode: a full refund must pass the original captured
+   * amount explicitly, so `MyPOSService.refund` cannot accept an omitted
+   * amount. Paysera's adapter (`payseraPaymentProvider.refund` below) never
+   * reads any field off `params` — it unconditionally throws, since Paysera
+   * exposes no programmatic refund endpoint — so requiring this field here
+   * does not narrow what Paysera's implementation can accept; it costs
+   * nothing at the only other call site and buys a contract every current
+   * and future provider can actually satisfy.
+   */
+  amount: number;
+  /**
+   * ISO currency of the ORIGINAL transaction. REQUIRED for the same reason
+   * as `amount`: `MyPOSService.refund` needs it to build `IPCRefund`'s
+   * signed request, and Paysera's adapter ignores it either way.
+   */
+  currency: string;
+  /**
+   * Caller-supplied unique id for THIS refund request. REQUIRED and MUST BE
+   * STABLE across retries of the same logical refund — generating a fresh
+   * id per retry would turn a retry into a second, distinct refund against
+   * the provider. `MyPOSService.refund` maps this onto myPOS's `OrderID`
+   * and enforces the retry-stability requirement by throwing when it is
+   * missing; Paysera's adapter does not use it (it has no refund endpoint
+   * to address one against).
+   */
+  orderId: string;
   reason?: string;
 }
 

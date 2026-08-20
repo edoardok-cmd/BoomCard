@@ -20,9 +20,11 @@
  */
 
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import axios from 'axios';
 import { MyPOSService, MyPOSCheckoutSession } from '../../src/services/mypos.service';
-import type { PaymentProvider } from '../../src/services/payment-provider';
+import type { PaymentProvider, RefundParams } from '../../src/services/payment-provider';
 import { logger } from '../../src/utils/logger';
 
 // ---------------------------------------------------------------------------
@@ -1143,6 +1145,96 @@ describe('MyPOSService', () => {
   });
 
   // =========================================================================
+  // resolveVerificationKey — the `BEGIN CERTIFICATE` branch
+  // (BC-MYPOS-003-FOLLOWUP-1, item 4)
+  // =========================================================================
+
+  /**
+   * Every other test in this file configures `MYPOS_PUBLIC_CERT` with a bare
+   * RSA public key (`-----BEGIN PUBLIC KEY-----`, from `generateKeypair()`),
+   * which only ever exercises `resolveVerificationKey`'s
+   * `crypto.createPublicKey(pem)` branch. The `pem.includes('BEGIN
+   * CERTIFICATE')` branch — `new crypto.X509Certificate(pem).publicKey` — is
+   * what myPOS actually issues in production (an X.509 certificate, not a
+   * bare key), and it was previously unreachable by any unit test: Node's
+   * `crypto` module has no `createCertificate`/self-signing API, so it
+   * cannot be generated in-process the way the rest of this file generates
+   * its RSA keypairs.
+   *
+   * The fixture pair below closes that gap: a real, valid, self-signed X.509
+   * certificate plus its matching private key, generated once via
+   * `openssl req -x509 ...` and checked in under `tests/unit/fixtures/` (see
+   * that directory for the exact generation command and the fingerprint).
+   * Both are throwaway test-only material with no relationship to any real
+   * myPOS store or credential.
+   */
+  describe('resolveVerificationKey — BEGIN CERTIFICATE branch', () => {
+    const FIXTURES_DIR = path.join(__dirname, 'fixtures');
+    const selfSignedCertPem = fs.readFileSync(
+      path.join(FIXTURES_DIR, 'mypos-test-self-signed-cert.pem'),
+      'utf8'
+    );
+    const selfSignedKeyPem = fs.readFileSync(path.join(FIXTURES_DIR, 'mypos-test-self-signed-key.pem'), 'utf8');
+
+    /**
+     * A fresh instance configured with the CERTIFICATE as `MYPOS_PUBLIC_CERT`.
+     * Deliberately NOT the outer `service` — `MyPOSService` reads `MYPOS_*`
+     * env vars once, in its constructor (`loadConfigFromEnv`), so mutating
+     * `process.env` after the outer `beforeEach` already built `service`
+     * would have no effect on it and every assertion below would silently
+     * run against the bare-public-key config instead of the certificate,
+     * passing the "rejects" cases for the wrong reason.
+     */
+    let certService: MyPOSService;
+
+    beforeEach(() => {
+      process.env.MYPOS_PUBLIC_CERT = selfSignedCertPem;
+      certService = new MyPOSService();
+    });
+
+    it('sanity check: the fixture is genuinely a certificate, not a bare key', () => {
+      expect(selfSignedCertPem).toContain('-----BEGIN CERTIFICATE-----');
+      expect(selfSignedCertPem).not.toContain('-----BEGIN PUBLIC KEY-----');
+      // And it parses as a real X.509 certificate with an RSA public key —
+      // confirms the fixture itself, independent of MyPOSService.
+      const parsed = new crypto.X509Certificate(selfSignedCertPem);
+      expect(parsed.publicKey.asymmetricKeyType).toBe('rsa');
+    });
+
+    it('verifies a genuinely-signed notify through the BEGIN CERTIFICATE branch', async () => {
+      const payload = buildSignedNotify({}, selfSignedKeyPem);
+
+      const result = await certService.verifyAndParseWebhook(payload);
+
+      expect(result.status).toBe('success');
+      expect(result.orderId).toBe('BOOM-1234567890-abcd');
+    });
+
+    it('still rejects a bad signature when verifying through a certificate', async () => {
+      // Signed with an unrelated keypair, NOT the certificate's own key —
+      // must be rejected by resolveVerificationKey's certificate branch.
+      const payload = buildSignedNotify({}, attackerKeys.privateKey);
+
+      await expect(certService.verifyAndParseWebhook(payload)).rejects.toThrow(/invalid signature/);
+    });
+
+    it('still rejects a tampered field when verifying through a certificate', async () => {
+      const payload = buildSignedNotify({}, selfSignedKeyPem);
+      payload.Amount = '999999.00';
+
+      await expect(certService.verifyAndParseWebhook(payload)).rejects.toThrow(/invalid signature/);
+    });
+
+    it('still fails closed on unusable certificate material', async () => {
+      process.env.MYPOS_PUBLIC_CERT = '-----BEGIN CERTIFICATE-----\nbm90LWEtcmVhbC1jZXJ0\n-----END CERTIFICATE-----';
+      const unusable = new MyPOSService();
+      const payload = buildSignedNotify({}, selfSignedKeyPem);
+
+      await expect(unusable.verifyAndParseWebhook(payload)).rejects.toThrow(/verification key is unusable/);
+    });
+  });
+
+  // =========================================================================
   // mapStatus
   // =========================================================================
 
@@ -1561,20 +1653,56 @@ describe('MyPOSService', () => {
       expect(typeof service.getPaymentStatus).toBe('function');
     });
 
-    it('documents the known refund narrowing: an interface-typed call compiles, then throws', async () => {
-      // This is the runtime half of the limitation stated in the service
-      // header: TS method parameters are bivariant, so `MyPOSService.refund`
-      // narrowing `RefundParams` (mandatory `amount`, plus mandatory `currency`
-      // and `orderId`) still satisfies the compile-time assignability pin. A
-      // caller programming against the interface therefore type-checks and
-      // fails at call time. Widening `RefundParams` lives in
-      // payment-provider.ts (outside this task's files) and is filed as a
-      // follow-up; when it lands, this test is the one to revisit.
+    it('refund no longer narrows the PaymentProvider contract: a full interface-typed call succeeds', async () => {
+      // BC-MYPOS-003-FOLLOWUP-1 (item 1) widened `RefundParams` in
+      // payment-provider.ts to declare `amount`, `currency` and `orderId` as
+      // REQUIRED — exactly what `MyPOSService.refund` already required via
+      // `MyPOSRefundParams`. Before that widening, an interface-typed caller
+      // could write `p.refund({ transactionId, amount })` (omitting
+      // `currency`/`orderId`): that compiled cleanly against the old
+      // `RefundParams` and threw at runtime — the bivariance trap described
+      // in this file's header comment above `MyPOSService`. Post-widening,
+      // that object literal no longer satisfies `RefundParams` at all
+      // (TypeScript would reject it for missing required properties), so
+      // there is nothing left to narrow: this test instead proves the
+      // POSITIVE case — a genuinely `RefundParams`-shaped object, built with
+      // no knowledge of `MyPOSRefundParams`, drives a real refund end to end
+      // through the interface.
+      const refundXml = `<?xml version="1.0" encoding="utf-8"?>\n<IPCRefund><Status>0</Status><StatusMsg>Success</StatusMsg><IPC_Trnref>RFD-777</IPC_Trnref><Amount>50.00</Amount></IPCRefund>`;
+      const post = jest.spyOn(axios, 'post').mockResolvedValue({ status: 200, data: refundXml } as any);
+
+      const asInterface: PaymentProvider = service;
+      // Deliberately typed as the INTERFACE's own `RefundParams`, not the
+      // concrete `MyPOSRefundParams` — the point being proven is that the
+      // interface alone is now sufficient.
+      const refundParams: RefundParams = {
+        transactionId: 'TRN-9988776655',
+        amount: 5000,
+        currency: 'BGN',
+        orderId: 'REFUND-BOOM-3',
+      };
+
+      const result = await asInterface.refund(refundParams);
+
+      expect(result.refundId).toBe('RFD-777');
+      expect(result.status).toBe('success');
+      expect(post).toHaveBeenCalledTimes(1);
+    });
+
+    it('MyPOSService.refund still defensively validates a missing orderId at runtime, for a caller that bypasses the type system', async () => {
+      // The widened interface makes it impossible to OMIT `orderId` while
+      // staying type-safe, but `MyPOSService.refund` keeps its own runtime
+      // guard rather than relying solely on the type system — defense in
+      // depth against a caller that reaches this method via `as any`, a
+      // partially-typed integration point, or a future interface change.
+      // This documents that the runtime validation the original narrowing
+      // test exercised is still genuinely present, just no longer reachable
+      // through a type-correct `PaymentProvider`-typed call.
       const asInterface: PaymentProvider = service;
 
-      await expect(asInterface.refund({ transactionId: 'TRN-1', amount: 100 })).rejects.toThrow(
-        /retry-stable orderId/
-      );
+      await expect(
+        asInterface.refund({ transactionId: 'TRN-1', amount: 100, currency: 'BGN' } as any)
+      ).rejects.toThrow(/retry-stable orderId/);
     });
 
     it('returns a CheckoutSession-compatible object', async () => {
