@@ -12,6 +12,7 @@
  */
 
 import { Router, Response } from 'express';
+import bcrypt from 'bcryptjs';
 import { asyncHandler } from '../middleware/error.middleware';
 import { authenticate, authorize, optionalAuthenticate, AuthRequest } from '../middleware/auth.middleware';
 import { requireActivePartnerForWritesAuthed } from '../middleware/partnerStatus.middleware';
@@ -2048,7 +2049,6 @@ router.post(
     const result = await prisma.$transaction(async (tx) => {
       // Each onboarded partner gets its own dedicated PARTNER user account,
       // even if another account (user or partner) shares the same email/phone.
-      const bcrypt = await import('bcryptjs');
       const tempPassword = await bcrypt.hash(
         Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-10).toUpperCase() + '!1',
         10
