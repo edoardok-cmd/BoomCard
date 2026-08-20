@@ -25,30 +25,36 @@
  * The compile-time assertion at the bottom of this file checks that the class
  * is ASSIGNABLE to `PaymentProvider` without touching payment-provider.ts. Read
  * that narrowly — it guarantees that every interface method EXISTS with a
- * compatible return type, and it does NOT guarantee that an interface-typed
- * caller can actually call them:
+ * compatible return type; it does NOT by itself guarantee that an
+ * interface-typed caller can actually call every method the way it expects,
+ * because TypeScript method parameters are BIVARIANT: a method whose
+ * parameter type NARROWS the interface's still satisfies the assertion.
  *
- *   TypeScript method parameters are BIVARIANT, so a method that NARROWS its
- *   parameter type still satisfies the assertion. `refund` does exactly that:
- *   the interface declares `RefundParams` (`{ transactionId; amount?; reason? }`)
- *   while `MyPOSService.refund` requires `MyPOSRefundParams` — `amount` is
- *   mandatory, and `currency` and `orderId` are additional mandatory fields the
- *   interface never declares. A caller holding a `PaymentProvider` and writing
- *   `p.refund({ transactionId, amount })` therefore COMPILES CLEANLY and THROWS
- *   AT RUNTIME. No other method narrows. Only the runtime half of that is
- *   pinned by a test (the narrowing case in the "PaymentProvider contract"
- *   block); the compile half is pinned by NOTHING, because tsconfig.json
- *   excludes every `.test.ts` file from the project typecheck and jest runs
- *   ts-jest with `diagnostics.warnOnly`, so a type error in a test file fails
- *   nothing at all. Consequence for whoever
- *   widens `RefundParams`: that test will keep passing rather than failing to
- *   compile, so it must be revisited by hand — nothing will flag it.
+ * `refund` used to be exactly that trap (BC-MYPOS-003 review F1): the
+ * interface originally declared `RefundParams` as
+ * `{ transactionId; amount?; reason? }`, while `MyPOSService.refund` always
+ * required `MyPOSRefundParams` — `amount` mandatory, plus `currency` and
+ * `orderId` as additional mandatory fields the interface never declared. A
+ * caller holding a `PaymentProvider` and writing
+ * `p.refund({ transactionId, amount })` compiled cleanly and threw at
+ * runtime, and the compile-time assertion at the bottom of this file could
+ * not catch it for the bivariance reason above.
  *
- * The genuine fix is widening `RefundParams` in payment-provider.ts, which is
- * outside this task's target files and is filed as a follow-up; until it lands,
- * callers must construct refunds against `MyPOSRefundParams` (the concrete
- * type), not against the interface. `refund` fails loudly and moves no money in
- * this state, which is why it ships this way rather than blocking.
+ * BC-MYPOS-003-FOLLOWUP-1 (item 1) closed this the genuine way: `RefundParams`
+ * in `payment-provider.ts` now declares `amount`, `currency` and `orderId` as
+ * REQUIRED, matching exactly what `MyPOSRefundParams` (below) already
+ * required — so `MyPOSRefundParams extends RefundParams` no longer narrows
+ * anything, and an interface-typed caller supplying all three fields now
+ * both compiles AND succeeds against this adapter (subject to the usual
+ * config/amount/network failure modes, all of which still throw). Paysera's
+ * adapter (`payseraPaymentProvider.refund` in payment-provider.ts) is
+ * unaffected: it never reads any field off `params` and unconditionally
+ * throws, since Paysera exposes no programmatic refund endpoint, so
+ * requiring these three fields on the shared interface costs that adapter
+ * nothing. The "PaymentProvider contract" test block in
+ * tests/unit/mypos.service.test.ts was revisited by hand for this change —
+ * see the comment on that test for what it verifies now that the narrowing
+ * is gone.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * DESIGN INPUTS
@@ -1255,12 +1261,48 @@ export class MyPOSService {
    * POST a signed IPC request as `application/x-www-form-urlencoded` and parse
    * the XML response into a flat field map.
    *
-   * The RESPONSE signature is intentionally NOT verified: unlike the inbound
-   * notify (which arrives unauthenticated from the public internet), this
-   * response comes back on a TLS connection WE opened to the myPOS host, so it
-   * is already origin-authenticated. Treating a signature-parse quirk as a
-   * failed refund would be the more dangerous failure mode here. Documented as
-   * a deliberate limitation in the BC-MYPOS-003 report.
+   * DECISION (BC-MYPOS-003-FOLLOWUP-1, item 3) — outbound IPC responses
+   * (`refund()`, `reverse()`, `getPaymentStatus()`, all of which funnel
+   * through this method) are NOT signature-verified, and that stays the
+   * stance. Reasoning, made explicit here rather than left as a comment
+   * fragment:
+   *
+   *   - The threat the inbound-notify signature check defends against is a
+   *     forged REQUEST arriving unauthenticated from the public internet at
+   *     a URL any client can reach — that is why `verifyAndParseWebhook`
+   *     fails closed on a bad/missing `Signature` before trusting anything
+   *     in the payload (see that method's doc comment).
+   *   - This method's response has a different provenance: it is the body
+   *     returned on an outbound HTTPS connection THIS PROCESS opened to
+   *     `getEndpoint()`, over TLS, with certificate validation on (axios's
+   *     default; nothing here disables it). Origin authentication is
+   *     already provided by TLS — an attacker able to inject or rewrite
+   *     this response without also breaking TLS (a compromised CA,
+   *     stolen/misissued cert, or a box already inside our TLS trust
+   *     boundary) could just as easily tamper with a "verified" signature
+   *     field too, since myPOS's response signing key is not pinned or
+   *     independently distributed to us the way `MYPOS_PUBLIC_CERT` is for
+   *     the inbound path. Adding response-signature verification would not
+   *     close that residual threat model; it would only add a second parser
+   *     that can itself fail.
+   *   - The concrete failure mode of getting this wrong the OTHER way is
+   *     worse than skipping it: `refund`/`reverse`/`getPaymentStatus` are
+   *     all money- or state-reporting calls that already throw on a
+   *     non-success `Status` (see each method). If a genuine, successful
+   *     refund response failed a signature check because of a field-order
+   *     assumption this adapter got wrong (the same class of risk flagged
+   *     as ASSUMPTION A4 above), verifying it would turn a completed refund
+   *     into a reported failure — the caller would see an exception on
+   *     money that already moved. That is a strictly worse outcome than
+   *     trusting a TLS-authenticated response body.
+   *   - Nothing here currently even extracts a `Signature` field from these
+   *     responses (`readXmlField(response, 'Signature')` is not called
+   *     anywhere in `refund`/`reverse`/`getPaymentStatus`); confirming
+   *     whether myPOS's IPC responses carry one at all, and revisiting this
+   *     decision if myPOS documentation or sandbox observation (BC-MYPOS-011)
+   *     later shows a materially different threat model (e.g. a documented
+   *     MITM-capable intermediary between BoomCard and myPOS), is future
+   *     work — not something this task had the sandbox access to settle.
    */
   private async postIpcRequest(fields: Record<string, string>, operation: string): Promise<Record<string, string>> {
     const endpoint = this.getEndpoint();
