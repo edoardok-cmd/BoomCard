@@ -4,6 +4,7 @@
 
 import crypto from 'crypto';
 import { PayseraService } from '../../src/services/paysera.service';
+import { PAYSERA_LIVE_PUBLIC_KEY_PEM } from '../../src/services/paysera-public-key';
 import { logger } from '../../src/utils/logger';
 
 describe('PayseraService', () => {
@@ -17,8 +18,26 @@ describe('PayseraService', () => {
     testMode: true,
   };
 
+  /**
+   * Throwaway RSA keypair standing in for Paysera's. The public half is fed to
+   * the service via PAYSERA_PUBLIC_KEY; the private half signs `data` in the
+   * ss2/ss3 tests exactly the way Paysera does.
+   */
+  let rsa: crypto.KeyPairKeyObjectResult;
+  let testPublicKeyPem: string;
+
+  /** URL-safe base64, as Paysera encodes the ss2/ss3 field itself. */
+  const toSafeB64 = (buf: Buffer): string =>
+    buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_');
+
+  /** Sign the raw `data` string the way Paysera does: RSA PKCS#1 v1.5. */
+  const signData = (data: string, digest: 'sha1' | 'sha256'): string =>
+    toSafeB64(crypto.sign(digest, Buffer.from(data, 'utf-8'), rsa.privateKey));
+
   beforeAll(() => {
     originalEnv = { ...process.env };
+    rsa = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+    testPublicKeyPem = rsa.publicKey.export({ type: 'spki', format: 'pem' }) as string;
   });
 
   beforeEach(() => {
@@ -159,35 +178,191 @@ describe('PayseraService', () => {
       expect(result).toBe(false);
     });
 
-    it('should verify valid callback with both MD5 and SHA-256 signatures', async () => {
-      const data = Buffer.from(JSON.stringify({ test: 'data' })).toString('base64');
-      const ss1 = crypto
-        .createHash('md5')
-        .update(`${data}${mockConfig.signPassword}`)
-        .digest('hex');
-      const ss2 = crypto
-        .createHash('sha256')
-        .update(`${data}${mockConfig.signPassword}`)
-        .digest('hex');
+    /**
+     * ss2/ss3 are NOT `sha256(data + signPassword)` — that scheme does not exist
+     * anywhere in Paysera's protocol; the tests that used to assert it here were
+     * fiction (BC-QA-031-FOLLOWUP-7). Paysera signs the raw `data` string with
+     * ITS OWN RSA private key and URL-safe-base64-encodes the result:
+     *   ss2 => RSA PKCS#1 v1.5 over a SHA-1 digest
+     *   ss3 => the same over a SHA-256 digest (preferred when both are sent)
+     * Source: paysera/lib-webtopay, WebToPay_Sign_SSOpenSslSignChecker
+     * (SIGN_TYPE_TO_HASH_ALGO_MAP + decodeSafeUrlBase64 + openssl_verify).
+     */
+    describe('RSA ss2/ss3 signatures', () => {
+      const data = Buffer.from(
+        new URLSearchParams({ projectid: '123456', orderid: 'RSA-1', status: '1' }).toString()
+      )
+        .toString('base64')
+        .replace(/\//g, '_')
+        .replace(/\+/g, '-');
 
-      const callback = { data, ss1, ss2 };
-      const result = await payseraService.verifyCallback(callback);
+      const validSs1 = () =>
+        crypto.createHash('md5').update(`${data}${mockConfig.signPassword}`).digest('hex');
 
-      expect(result).toBe(true);
-    });
+      /** Build a service that trusts the throwaway test keypair. */
+      const serviceWithTestKey = (mode?: string): PayseraService => {
+        process.env.PAYSERA_PUBLIC_KEY = testPublicKeyPem;
+        if (mode) process.env.PAYSERA_SS2_MODE = mode;
+        else delete process.env.PAYSERA_SS2_MODE;
+        return new PayseraService();
+      };
 
-    it('should reject callback with invalid SHA-256 signature', async () => {
-      const data = Buffer.from(JSON.stringify({ test: 'data' })).toString('base64');
-      const ss1 = crypto
-        .createHash('md5')
-        .update(`${data}${mockConfig.signPassword}`)
-        .digest('hex');
-      const ss2 = 'invalid-sha256-signature';
+      it('accepts a genuine RSA-SHA1 ss2 signature over data', async () => {
+        const service = serviceWithTestKey();
+        const result = await service.verifyCallback({
+          data,
+          ss1: validSs1(),
+          ss2: signData(data, 'sha1'),
+        });
+        expect(result).toBe(true);
+      });
 
-      const callback = { data, ss1, ss2 };
-      const result = await payseraService.verifyCallback(callback);
+      it('accepts a genuine RSA-SHA256 ss3 signature over data', async () => {
+        const service = serviceWithTestKey();
+        const result = await service.verifyCallback({
+          data,
+          ss1: validSs1(),
+          ss3: signData(data, 'sha256'),
+        });
+        expect(result).toBe(true);
+      });
 
-      expect(result).toBe(false);
+      it('prefers ss3 over ss2 when both are present (rejects a bad ss3 beside a good ss2)', async () => {
+        const service = serviceWithTestKey();
+        const result = await service.verifyCallback({
+          data,
+          ss1: validSs1(),
+          ss2: signData(data, 'sha1'),
+          ss3: signData('some-other-data', 'sha256'),
+        });
+        expect(result).toBe(false);
+      });
+
+      it('rejects an ss2 signed over different data (tampered payload)', async () => {
+        const service = serviceWithTestKey();
+        const result = await service.verifyCallback({
+          data,
+          ss1: validSs1(),
+          ss2: signData(`${data}TAMPERED`, 'sha1'),
+        });
+        expect(result).toBe(false);
+      });
+
+      it('rejects an ss2 produced with the wrong digest (sha256 bytes in the ss2 field)', async () => {
+        const service = serviceWithTestKey();
+        const result = await service.verifyCallback({
+          data,
+          ss1: validSs1(),
+          ss2: signData(data, 'sha256'), // ss2 must be SHA-1
+        });
+        expect(result).toBe(false);
+      });
+
+      it('rejects an ss2 signed by a different (attacker) RSA key', async () => {
+        const service = serviceWithTestKey();
+        const attacker = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+        const forged = toSafeB64(
+          crypto.sign('sha1', Buffer.from(data, 'utf-8'), attacker.privateKey)
+        );
+        const result = await service.verifyCallback({ data, ss1: validSs1(), ss2: forged });
+        expect(result).toBe(false);
+      });
+
+      it('rejects a garbage (non-signature) ss2 value', async () => {
+        const service = serviceWithTestKey();
+        const result = await service.verifyCallback({
+          data,
+          ss1: validSs1(),
+          ss2: 'invalid-signature-value',
+        });
+        expect(result).toBe(false);
+      });
+
+      it('rejects a bad ss1 even when ss2 is perfectly valid (ss1 is a hard gate)', async () => {
+        const service = serviceWithTestKey();
+        const result = await service.verifyCallback({
+          data,
+          ss1: 'invalid-signature',
+          ss2: signData(data, 'sha1'),
+        });
+        expect(result).toBe(false);
+      });
+
+      it('accepts an ss1-only callback when no ss2/ss3 is present (default enforce mode)', async () => {
+        const service = serviceWithTestKey();
+        const result = await service.verifyCallback({ data, ss1: validSs1() });
+        expect(result).toBe(true);
+      });
+
+      it('rejects an ss1-only callback under PAYSERA_SS2_MODE=require', async () => {
+        const service = serviceWithTestKey('require');
+        const result = await service.verifyCallback({ data, ss1: validSs1() });
+        expect(result).toBe(false);
+      });
+
+      it('still verifies a genuine ss2 under PAYSERA_SS2_MODE=require', async () => {
+        const service = serviceWithTestKey('require');
+        const result = await service.verifyCallback({
+          data,
+          ss1: validSs1(),
+          ss2: signData(data, 'sha1'),
+        });
+        expect(result).toBe(true);
+      });
+
+      it('falls back to ss1 only when no public key could be loaded', async () => {
+        // An explicitly configured but unparseable key is deliberately NOT
+        // replaced by the bundled key — the service ends up with no key at all.
+        process.env.PAYSERA_PUBLIC_KEY = 'this-is-not-a-pem';
+        delete process.env.PAYSERA_SS2_MODE;
+        const service = new PayseraService();
+
+        // ss1 valid + unverifiable ss2 => accepted on ss1 alone (documented rule 3)
+        await expect(
+          service.verifyCallback({ data, ss1: validSs1(), ss2: signData(data, 'sha1') })
+        ).resolves.toBe(true);
+        // ...but ss1 still gates absolutely.
+        await expect(
+          service.verifyCallback({ data, ss1: 'invalid-signature', ss2: signData(data, 'sha1') })
+        ).resolves.toBe(false);
+      });
+
+      it('rejects when no public key could be loaded under PAYSERA_SS2_MODE=require', async () => {
+        process.env.PAYSERA_PUBLIC_KEY = 'this-is-not-a-pem';
+        process.env.PAYSERA_SS2_MODE = 'require';
+        const service = new PayseraService();
+        const result = await service.verifyCallback({
+          data,
+          ss1: validSs1(),
+          ss2: signData(data, 'sha1'),
+        });
+        expect(result).toBe(false);
+      });
+
+      it('PAYSERA_SS2_MODE=off skips the RSA check but keeps ss1 as a hard gate', async () => {
+        const service = serviceWithTestKey('off');
+        await expect(
+          service.verifyCallback({ data, ss1: validSs1(), ss2: 'garbage' })
+        ).resolves.toBe(true);
+        await expect(
+          service.verifyCallback({ data, ss1: 'invalid-signature', ss2: signData(data, 'sha1') })
+        ).resolves.toBe(false);
+      });
+
+      it('verifies against the bundled Paysera public key by default (no env override)', async () => {
+        delete process.env.PAYSERA_PUBLIC_KEY;
+        delete process.env.PAYSERA_PUBLIC_KEY_PATH;
+        delete process.env.PAYSERA_SS2_MODE;
+        const service = new PayseraService();
+
+        // Our throwaway key is NOT Paysera's, so its signature must be rejected
+        // — proving the bundled key is genuinely loaded and used, not ignored.
+        await expect(
+          service.verifyCallback({ data, ss1: validSs1(), ss2: signData(data, 'sha1') })
+        ).resolves.toBe(false);
+        // An ss1-only callback is still accepted.
+        await expect(service.verifyCallback({ data, ss1: validSs1() })).resolves.toBe(true);
+      });
     });
   });
 
@@ -467,6 +642,194 @@ describe('PayseraService', () => {
       const queryString = Buffer.from(base64, 'base64').toString();
       const urlParams = new URLSearchParams(queryString);
       expect(urlParams.get('test')).toBeNull();
+    });
+  });
+
+  /**
+   * BC-QA-031-FOLLOWUP-7 review F1 — the IDENTITY of the bundled key.
+   *
+   * The other tests that touch the bundled certificate only prove that it
+   * parses and that it is genuinely consulted; ANY parseable key satisfies
+   * them, so swapping in an unrelated valid certificate left the whole suite
+   * green. That failure mode is silent and lands on money: under the default
+   * PAYSERA_SS2_MODE=enforce a wrong or stale key makes every genuine
+   * ss2/ss3-carrying callback fail verification, handleCallback throws, and the
+   * callback route replies with the webhook ack anyway to suppress Paysera's
+   * retries — so a paid order is dropped permanently with only a log line.
+   *
+   * The digests below are Paysera's published live callback-signing key
+   * (https://www.paysera.com/download/public.key, fetched 2026-08-20). This is
+   * the executable form of the provenance claim that used to live only in a
+   * comment in paysera-public-key.ts. If Paysera rotates the key, this is what
+   * goes red: replace the constant and both digests together, and see that
+   * module's ROTATION section for the levers that end the outage meanwhile.
+   */
+  describe('bundled Paysera public key identity', () => {
+    /** `openssl x509 -noout -fingerprint -sha256` over the bundled certificate. */
+    const EXPECTED_CERT_SHA256 =
+      'AA:EB:A5:7B:AF:8F:77:9D:BE:06:FB:94:17:67:02:36:' +
+      'F4:60:0B:E2:BC:59:D8:27:AE:6E:23:83:DA:12:82:8C';
+    /** SHA-256 over the SubjectPublicKeyInfo DER — the key itself, not its wrapper. */
+    const EXPECTED_SPKI_SHA256 =
+      '457d34b44ac72ee2331c491e5d25ba9ed2839a4409b67c4ea91d02abea73c330';
+
+    const spkiSha256 = (key: crypto.KeyObject): string =>
+      crypto
+        .createHash('sha256')
+        .update(key.export({ type: 'spki', format: 'der' }) as Buffer)
+        .digest('hex');
+
+    it('is the exact certificate Paysera publishes', () => {
+      const cert = new crypto.X509Certificate(PAYSERA_LIVE_PUBLIC_KEY_PEM);
+      expect(cert.fingerprint256).toBe(EXPECTED_CERT_SHA256);
+    });
+
+    it('carries the exact public key callback signatures are verified against', () => {
+      const cert = new crypto.X509Certificate(PAYSERA_LIVE_PUBLIC_KEY_PEM);
+      expect(cert.publicKey.asymmetricKeyType).toBe('rsa');
+      expect(spkiSha256(cert.publicKey)).toBe(EXPECTED_SPKI_SHA256);
+    });
+
+    it('is the key the service actually loads when no override is configured', () => {
+      delete process.env.PAYSERA_PUBLIC_KEY;
+      delete process.env.PAYSERA_PUBLIC_KEY_PATH;
+      const service = new PayseraService();
+
+      // Reaching into the private field is deliberate: the point of this
+      // assertion is that the DEFAULT resolution path ends at that exact key,
+      // which no public API exposes.
+      const loaded = (service as unknown as { publicKey: crypto.KeyObject | null }).publicKey;
+      expect(loaded).not.toBeNull();
+      expect(spkiSha256(loaded as crypto.KeyObject)).toBe(EXPECTED_SPKI_SHA256);
+    });
+  });
+
+  /**
+   * BC-QA-031-FOLLOWUP-7 item 1. The service used to fall back to '' for both
+   * signing inputs and merely warn. With signPassword='' the ss1 gate collapses
+   * to `ss1 === md5(data)`, which any anonymous caller can compute — a complete
+   * callback-forgery bypass, not a degraded check. In production that must now
+   * be a hard boot failure; dev/test keep warn-and-continue.
+   */
+  describe('Fail-closed on a missing signing secret (production)', () => {
+    const inProduction = <T>(fn: () => T): T => {
+      const previous = process.env.NODE_ENV;
+      // NODE_ENV is readonly in @types/node's ProcessEnv typing.
+      (process.env as Record<string, string | undefined>).NODE_ENV = 'production';
+      try {
+        return fn();
+      } finally {
+        (process.env as Record<string, string | undefined>).NODE_ENV = previous;
+      }
+    };
+
+    it('throws when PAYSERA_PROJECT_ID is missing in production', () => {
+      delete process.env.PAYSERA_PROJECT_ID;
+      inProduction(() => {
+        expect(() => new PayseraService()).toThrow(/PAYSERA_PROJECT_ID/);
+        expect(() => new PayseraService()).toThrow(/Refusing to start/);
+      });
+    });
+
+    it('throws when PAYSERA_SIGN_PASSWORD is missing in production', () => {
+      delete process.env.PAYSERA_SIGN_PASSWORD;
+      inProduction(() => {
+        expect(() => new PayseraService()).toThrow(/PAYSERA_SIGN_PASSWORD/);
+      });
+    });
+
+    it('throws when PAYSERA_SIGN_PASSWORD is set but empty in production', () => {
+      process.env.PAYSERA_SIGN_PASSWORD = '';
+      inProduction(() => {
+        expect(() => new PayseraService()).toThrow(/PAYSERA_SIGN_PASSWORD/);
+      });
+    });
+
+    it('names both variables when both are missing in production', () => {
+      delete process.env.PAYSERA_PROJECT_ID;
+      delete process.env.PAYSERA_SIGN_PASSWORD;
+      inProduction(() => {
+        expect(() => new PayseraService()).toThrow(/PAYSERA_PROJECT_ID and PAYSERA_SIGN_PASSWORD/);
+      });
+    });
+
+    it('does not throw in production when both credentials are present', () => {
+      inProduction(() => {
+        expect(() => new PayseraService()).not.toThrow();
+      });
+    });
+
+    it('only warns (does not throw) outside production', () => {
+      const warnSpy = jest.spyOn(logger, 'warn');
+      delete process.env.PAYSERA_PROJECT_ID;
+      delete process.env.PAYSERA_SIGN_PASSWORD;
+      (process.env as Record<string, string | undefined>).NODE_ENV = 'development';
+
+      expect(() => new PayseraService()).not.toThrow();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Paysera credentials not configured')
+      );
+    });
+
+    /** The message of the boot failure, asserting that one actually happened. */
+    const messageFromFailedBoot = (): string =>
+      inProduction(() => {
+        try {
+          // eslint-disable-next-line no-new
+          new PayseraService();
+        } catch (err: any) {
+          return err.message as string;
+        }
+        throw new Error('expected the constructor to throw, but it returned');
+      });
+
+    /*
+     * Review F3. The earlier version of this assertion emptied
+     * PAYSERA_SIGN_PASSWORD to trigger the throw and then checked the message
+     * did not contain the password — but with the password empty the service
+     * holds no password to leak, so it held for every possible implementation
+     * (a mutation interpolating this.config into the message stayed green).
+     * Each case below triggers the failure with the OTHER variable missing, so
+     * the secret under test is genuinely present in the config the message is
+     * built from. This matters because the message is passed to logger.error
+     * and surfaces in deploy output.
+     */
+    it('does not leak the signing password it holds when the project id is missing', () => {
+      const password = 'live-signing-password-must-not-be-logged';
+      process.env.PAYSERA_SIGN_PASSWORD = password;
+      delete process.env.PAYSERA_PROJECT_ID;
+
+      const message = messageFromFailedBoot();
+      expect(message).toMatch(/PAYSERA_PROJECT_ID/);
+      expect(message).not.toContain(password);
+    });
+
+    it('does not leak the project id it holds when the signing password is missing', () => {
+      const projectId = 'project-id-must-not-be-logged-987654';
+      process.env.PAYSERA_PROJECT_ID = projectId;
+      delete process.env.PAYSERA_SIGN_PASSWORD;
+
+      const message = messageFromFailedBoot();
+      expect(message).toMatch(/PAYSERA_SIGN_PASSWORD/);
+      expect(message).not.toContain(projectId);
+    });
+
+    /*
+     * Review F5. The non-production half of this behaviour is covered above
+     * ("falls back to ss1 only when no public key could be loaded"); the
+     * production half — refusing to boot rather than silently verifying against
+     * a key the operator did not ask for — had no test, so disabling the throw
+     * left the suite green. Credentials are present here (beforeEach), so the
+     * failure can only come from key loading, not the credential check.
+     */
+    it('throws in production when an explicitly configured public key cannot be parsed', () => {
+      process.env.PAYSERA_PUBLIC_KEY = 'this-is-not-a-pem';
+      inProduction(() => {
+        expect(() => new PayseraService()).toThrow(
+          /Failed to load the Paysera callback public key/
+        );
+        expect(() => new PayseraService()).toThrow(/PAYSERA_PUBLIC_KEY/);
+      });
     });
   });
 });
