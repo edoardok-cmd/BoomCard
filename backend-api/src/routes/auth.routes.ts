@@ -1385,7 +1385,16 @@ router.post(
     }
 
     if (!pending.tokenExpiresAt || pending.tokenExpiresAt < new Date()) {
-      return res.status(400).json({ success: false, message: 'Registration token has expired' });
+      // BC-QA-007 — distinct `code` so the frontend can tell "expired" apart
+      // from other 400s (bad password, etc.) and show the self-service resend
+      // UI instead of a generic error / "contact support" dead end. Mirrors
+      // AUTH_REGISTRATION_TOKEN_EXPIRED's role for the email-verification
+      // token family (services/auth.service.ts verifyEmail).
+      return res.status(400).json({
+        success: false,
+        message: 'Registration token has expired',
+        code: 'AUTH_COMPLETE_PROFILE_TOKEN_EXPIRED',
+      });
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
@@ -1633,6 +1642,58 @@ router.post(
       },
     });
   }),
+);
+
+/**
+ * POST /api/auth/resend-complete-profile-link — BC-QA-007
+ *
+ * Self-service resend for the post-payment complete-profile link (spec: the
+ * link is valid 30 minutes; before this endpoint, expiry dead-ended the user
+ * to "contact support" with no independent recovery path). Public, no
+ * authentication — the flow has no session yet by construction (see the
+ * /complete-profile handler above). The caller identifies which pending
+ * checkout to refresh with the token from their (possibly already expired)
+ * link, since that's the only thing the frontend has; no email/orderId is
+ * accepted or required.
+ *
+ * Rate limiting mirrors /request-email-verification above exactly (same
+ * family of public, token/email-driven resend endpoint):
+ *   - `authRateLimiter` (5 req/15min per IP/user) is registered on this
+ *     route the same way it is on every sibling in this family, via
+ *     applyRateLimiters() (config/security.config.ts) — see the entry there
+ *     (BC-QA-007 round 2, F1). That registration is production-only by
+ *     design (a no-op outside NODE_ENV=production), which is exactly why it
+ *     is NOT also mounted directly on this route: `authRateLimiter`'s own
+ *     `skip` only excludes 'development', not 'test', so mounting it inline
+ *     here in addition would start tripping 429s in this route's own
+ *     integration tests after 5 calls.
+ *   - the app-level global limiters (server.ts: unauthGlobalLimiter 100/min
+ *     per IP, authGlobalLimiter 300/min per authenticated user) already wrap
+ *     every /api/ route, this one included, and are always active regardless
+ *     of NODE_ENV.
+ *   - a 60s per-token cooldown inside AuthService.resendCompleteProfileLink
+ *     (completeProfileResendCache), mirroring the cadence already
+ *     established for /resend-email-verification's per-email
+ *     verificationResendCache, per the task brief.
+ *
+ * Response is intentionally the same `{ success: true }` shape whether or
+ * not `token` matched a real, still-live PendingSubscription — this cannot
+ * be used to enumerate accounts/payments (same posture as
+ * /request-email-verification above).
+ */
+router.post(
+  '/resend-complete-profile-link',
+  asyncHandler(async (req: Request, res: Response) => {
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'token is required' });
+    }
+    await AuthService.resendCompleteProfileLink(token);
+    res.json({
+      success: true,
+      message: 'If your registration link is still valid, a new one has been sent to your email.',
+    });
+  })
 );
 
 /**

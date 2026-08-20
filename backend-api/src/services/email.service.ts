@@ -2406,8 +2406,8 @@ ${isBg ? 'Въпроси? Свържете се с нас на' : 'Questions? Co
       : `Your <strong>${planName}</strong> subscription is active. Click the button below to set your password and access your BoomCard account.`;
     const btnLabel = isBg ? 'Завършете настройката' : 'Complete Account Setup';
     const expiry = isBg
-      ? 'Връзката е валидна <strong>30 минути</strong>. Ако изтече, свържете се с нас за нова.'
-      : "This link expires in <strong>30 minutes</strong>. If it expires, contact us and we'll send a new one.";
+      ? 'Връзката е валидна <strong>30 минути</strong>. Ако изтече, върнете се на същата връзка — ще можете да поискате нова направо от страницата.'
+      : "This link expires in <strong>30 minutes</strong>. If it expires, just return to this link — you'll be able to request a new one right from the page.";
     const questions = isBg ? 'Въпроси?' : 'Questions?';
 
     const html = `<!DOCTYPE html>

@@ -102,3 +102,71 @@ describe('Payment rate limiter wiring (BC-QA-002 regression)', () => {
     expect(res.status).not.toBe(429);
   });
 });
+
+/**
+ * Regression test for BC-QA-007 round-2 finding F1 (MEDIUM).
+ *
+ * Root cause: round-1's fix added `authRateLimiter` for
+ * POST /api/auth/resend-complete-profile-link's doc comment claim, but round
+ * 1 never actually registered it in `applyRateLimiters()` (src/config/
+ * security.config.ts). Round 2 added the missing
+ * `app.use('/api/auth/resend-complete-profile-link', authRateLimiter)` line,
+ * but round-2 review found no test anywhere in the repo actually exercises
+ * `applyRateLimiters()`'s registration path for this route: the implementer's
+ * own `resend-complete-profile-link` suite (tests/integration/
+ * auth-flow.test.ts) runs entirely under NODE_ENV=test, where
+ * `applyRateLimiters()` itself is an early-return no-op (see its own
+ * top-of-function `isProduction` gate) — so reverting the added line left
+ * every one of those tests green.
+ *
+ * Mirrors the pattern established above for BC-QA-002 (paymentRateLimiter):
+ * force NODE_ENV=production, call the real `applyRateLimiters(app)` against a
+ * minimal Express app carrying only the real auth router, and assert the
+ * configured budget (`AUTH_RATE_LIMIT_MAX_REQUESTS`, default 5 req/15min) is
+ * actually enforced end-to-end through the registration path — not just the
+ * route handler in isolation.
+ */
+describe('Auth resend-complete-profile-link rate limiter wiring (BC-QA-007 F1 regression)', () => {
+  const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
+  let app: express.Express;
+
+  beforeAll(async () => {
+    process.env.NODE_ENV = 'production';
+    // Same module-load-safety guarantee as the describe block above — auth
+    // routes/services are pulled in transitively and some (e.g. email/notify
+    // services) read these under production mode.
+    process.env.FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:19006';
+    process.env.API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3025';
+
+    const { applyRateLimiters } = await import('../../src/config/security.config');
+    const authRouter = (await import('../../src/routes/auth.routes')).default;
+
+    app = express();
+    app.use(express.json());
+    applyRateLimiters(app);
+    app.use('/api/auth', authRouter);
+  });
+
+  afterAll(() => {
+    process.env.NODE_ENV = ORIGINAL_NODE_ENV;
+  });
+
+  const AUTH_RATE_LIMIT_MAX = parseInt(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS || '5');
+
+  it(`rate-limits POST /api/auth/resend-complete-profile-link to the configured auth budget (${AUTH_RATE_LIMIT_MAX} req/15min) once applyRateLimiters() actually registers it`, async () => {
+    for (let i = 0; i < AUTH_RATE_LIMIT_MAX; i++) {
+      const res = await request(app)
+        .post('/api/auth/resend-complete-profile-link')
+        .send({});
+      // A missing token 400s well past the limiter (see auth.routes.ts) — any
+      // status OTHER than 429 proves this attempt was NOT rate-limited.
+      expect(res.status).not.toBe(429);
+      expect(res.status).toBe(400);
+    }
+
+    const overBudget = await request(app)
+      .post('/api/auth/resend-complete-profile-link')
+      .send({});
+    expect(overBudget.status).toBe(429);
+  });
+});
