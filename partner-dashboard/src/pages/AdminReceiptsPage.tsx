@@ -363,10 +363,9 @@ export const AdminReceiptsPage: React.FC = () => {
       cancel: 'Cancel', confirm: 'Confirm & Credit',
       statPending: 'Pending', statApproved: 'Confirmed',
       statReview: 'Needs Review', statRejected: 'Rejected',
-      // BC-QA-031: receipt.service.ts `formatReceipt()` converts
-      // totalAmount/cashbackAmount with bgnToEur() before GET
-      // /api/receipts/admin/all responds, so this total is EUR.
-      statCashback: 'Cashback Credited (EUR)',
+      // BC-QA-031 round 6: GET /api/receipts/admin/all sends `includeInternal:
+      // true`, so formatReceipt() returns the raw row and this total is BGN.
+      statCashback: 'Cashback Credited (BGN)',
       bulkApprove: 'Bulk Approve', bulkReject: 'Bulk Reject', clearSelection: 'Clear',
       bulkRejectTitle: 'Bulk Reject Receipts',
       bulkSelected: (n: number) => `${n} receipt${n === 1 ? '' : 's'} selected`,
@@ -386,7 +385,7 @@ export const AdminReceiptsPage: React.FC = () => {
       cancel: 'Отказ', confirm: 'Потвърди и кредитирай',
       statPending: 'Чакащи', statApproved: 'Потвърдени',
       statReview: 'За преглед', statRejected: 'Отхвърлени',
-      statCashback: 'Кредитиран кешбек (€)',
+      statCashback: 'Кредитиран кешбек (лв.)',
       bulkApprove: 'Масово одобрение', bulkReject: 'Масово отхвърляне', clearSelection: 'Изчисти',
       bulkRejectTitle: 'Масово отхвърляне',
       bulkSelected: (n: number) => `${n} бележк${n === 1 ? 'а' : 'и'} избран${n === 1 ? 'а' : 'и'}`,
@@ -675,17 +674,25 @@ export const AdminReceiptsPage: React.FC = () => {
                     </ReceiptMeta>
                   </div>
 
-                  {/* BC-QA-031: both scalars arrive already converted to EUR —
-                      receipt.service.ts `formatReceipt()` runs bgnToEur() over
-                      Receipt.totalAmount and Receipt.cashbackAmount before
-                      GET /api/receipts/admin/all responds. */}
+                  {/* BC-QA-031 round 6: these scalars are RAW BGN, not EUR.
+                      GET /api/receipts/admin/all passes `includeInternal: true`
+                      (receipts.enhanced.routes.ts), and receipt.service.ts's
+                      formatReceipt() returns `base` on that flag — short-circuiting
+                      BEFORE the bgnToEur() block that converts totalAmount /
+                      cashbackAmount for user-facing callers. An earlier comment here
+                      claimed the opposite; labelling these € showed a BGN figure
+                      under a Euro sign. The admin review write path is symmetric
+                      with this (verifiedAmount is stored as BGN), so the correct fix
+                      is to label them BGN — converting the display without also
+                      converting POST /:id/review would halve every approved
+                      receipt's persisted amount and its recomputed cashback. */}
                   <Amount>
-                    {receipt.totalAmount != null ? `€${receipt.totalAmount.toFixed(2)}` : '—'}
+                    {receipt.totalAmount != null ? `${receipt.totalAmount.toFixed(2)} лв.` : '—'}
                   </Amount>
 
                   <Cashback>
                     {receipt.cashbackAmount > 0
-                      ? `€${receipt.cashbackAmount.toFixed(2)} (${(receipt.cashbackPercent || 0).toFixed(1)}%)`
+                      ? `${receipt.cashbackAmount.toFixed(2)} лв. (${(receipt.cashbackPercent || 0).toFixed(1)}%)`
                       : '—'}
                   </Cashback>
 

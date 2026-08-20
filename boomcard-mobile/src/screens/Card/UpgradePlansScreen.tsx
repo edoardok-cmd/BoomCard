@@ -22,7 +22,6 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
 import apiClient from '../../api/client';
 import { Plan } from '../../services/plans.service';
-import { APP_CONFIG } from '../../constants/config';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = Math.min(SCREEN_WIDTH - 48, 340);
@@ -179,7 +178,9 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
     });
   };
 
-  const convertEURToBGN = (eur: number) => +(eur * APP_CONFIG.EUR_EXCHANGE_RATE).toFixed(2);
+  // BC-QA-031 r5-F7: the local EUR→BGN converter and the dual `X лв. / €Y`
+  // price render were removed. `plan.pricing.*` already arrives in EUR from
+  // plans.routes.ts, so it is displayed verbatim.
 
   // Max yearly discount across all plans with yearly billing — drives the savings badge
   const maxYearlyDiscount = plans
@@ -218,7 +219,6 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
       periodLabel = t('subscription.perMonth');
     }
 
-    const priceBGN = priceEUR ? convertEURToBGN(priceEUR) : 0;
     const colors = getCardColors(isDarkMode)[plan.cardType];
     const features = language === 'bg' ? plan.featuresBg : plan.features;
     const planName = language === 'bg' ? plan.displayNameBg : plan.displayName;
@@ -301,9 +301,6 @@ const UpgradePlansScreen = ({ navigation, route }: any) => {
           <View style={styles.cardBottom}>
             <Text style={[styles.cardHolder, { color: colors.text }]}>{planName}</Text>
             <View style={styles.cardPriceContainer}>
-              <Text style={[styles.cardPriceBGN, { color: colors.price, opacity: 0.85 }]}>
-                {priceBGN.toFixed(2)} {language === 'bg' ? 'лв.' : 'BGN'} /
-              </Text>
               <Text style={[styles.cardPriceEUR, { color: colors.price }]}>
                 €{priceEUR}
               </Text>
@@ -657,9 +654,6 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
   },
   cardPriceContainer: {
     alignItems: 'flex-end',
-  },
-  cardPriceBGN: {
-    fontSize: 12,
   },
   cardPriceEUR: {
     fontSize: 22,

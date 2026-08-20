@@ -25,6 +25,33 @@ export function bgnToEur(amountBgn: number): number {
 }
 
 /**
+ * Convert a EUR amount BACK to BGN at the same fixed currency-board rate.
+ *
+ * This is the WRITE-side counterpart of {@link bgnToEur}, and it exists because
+ * BC-QA-031 converted GET responses to EUR without touching the write handlers
+ * on the same resources. Where an admin form is seeded from a converted GET and
+ * submitted back, the value was persisted verbatim as BGN — silently halving it
+ * on every save, and (for receipts) recomputing cashback from the halved figure.
+ *
+ * The storage unit is unchanged: money columns remain BGN-denominated, exactly
+ * as `bgnToEur`'s header describes. What this restores is the symmetry the API
+ * boundary is supposed to have — EUR out via `bgnToEur`, EUR in via `eurToBgn`,
+ * BGN in the database on both sides.
+ *
+ * Apply it at the ROUTE boundary (where `bgnToEur` is applied on the way out),
+ * not inside services: services operate in the storage unit, and converting
+ * there would double-convert any internal caller that already holds BGN.
+ *
+ * `bgnToEur(eurToBgn(x))` is NOT exactly `x` — each direction rounds to 2dp, so
+ * a round trip can move by a cent. That is inherent to storing a converted unit
+ * and is the strongest argument for migrating these columns to EUR outright;
+ * see the round-6 report's migration recommendation.
+ */
+export function eurToBgn(amountEur: number): number {
+  return r2(amountEur * EUR_TO_BGN_RATE);
+}
+
+/**
  * Convert ONE stored amount to EUR according to the currency it is stored in.
  *
  * `Transaction.currency` is genuinely mixed, so a blanket `bgnToEur()` over that

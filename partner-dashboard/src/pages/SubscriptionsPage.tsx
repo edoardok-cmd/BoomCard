@@ -4,7 +4,6 @@ import { motion } from 'framer-motion';
 import GenericPage from '../components/templates/GenericPage';
 import Button from '../components/common/Button/Button';
 import { useLanguage } from '../contexts/LanguageContext';
-import { convertEURToBGN } from '../utils/helpers';
 import { Plan, plansService } from '../services/plans.service';
 import styled from 'styled-components';
 
@@ -536,8 +535,9 @@ const SubscriptionsPage: React.FC = () => {
             const eurPrice = isLitePlan
               ? plan.pricing.weekly
               : (billingPeriod === 'yearly' ? plan.pricing.yearly : plan.pricing.monthly);
-            const bgnPrice = eurPrice != null ? convertEURToBGN(eurPrice) : null;
-            const bgnLabel = language === 'bg' ? 'лв.' : 'BGN';
+            // BC-QA-031 r5-F7: the dual `X лв. / €Y` render was removed.
+            // `plan.pricing.*` is already EUR (plans.routes.ts emits
+            // priceMonthlyEur / 100), so it is displayed verbatim.
             const priceLabel = isLitePlan
               ? (language === 'bg' ? '/седмица' : '/week')
               : (billingPeriod === 'yearly'
@@ -587,9 +587,9 @@ const SubscriptionsPage: React.FC = () => {
                       {planName.toUpperCase()}
                     </CardHolderName>
                     <CardPriceDisplay $type={planType}>
-                      {eurPrice != null && bgnPrice != null ? (
+                      {eurPrice != null ? (
                         <>
-                          <span style={{ fontSize: '0.9rem', opacity: 0.85 }}>{bgnPrice.toFixed(2)} {bgnLabel} /</span> €{eurPrice}
+                          €{eurPrice}
                           <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>
                             {priceLabel}
                           </span>

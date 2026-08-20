@@ -351,11 +351,24 @@ export const ReceiptAnalyticsWidget: React.FC = () => {
           <StatValue>{analytics.totalReceipts}</StatValue>
         </StatCard>
 
-        {/* BC-QA-031: `totalAmount`/`averageAmount` come from
-            receiptsApiService.getUserStats() → GET /api/receipts/stats, where
-            receipt.service.ts `getUserReceiptStats()` converts both with
-            bgnToEur(); `totalCashback` is summed from receipt rows that
-            `formatReceipt()` already converted. All three are EUR. */}
+        {/* BC-QA-031 — provenance, corrected in round 6:
+            `totalCashback` IS EUR. It is derived here from
+            receiptsApiService.getReceipts() → GET /api/receipts/v2, which does
+            NOT pass `includeInternal`, so receipt.service.ts `formatReceipt()`
+            reaches its bgnToEur() block and converts the rows.
+
+            `totalAmount` / `averageAmount` are a different matter and their
+            label is currently moot: they are read off
+            receiptsApiService.getUserStats() → GET /api/receipts/v2/stats/user,
+            which is served by `getUserSubmissionStats()` — a submission-COUNT
+            endpoint that returns { submissionsToday, submissionsThisMonth,
+            totalSubmissions, dailyLimit, monthlyLimit, remaining* } and no
+            money fields at all. `ReceiptStatsResponse` in receipt.types.ts
+            declares them anyway, so the mismatch is invisible to tsc. The
+            round-5 comment here named GET /api/receipts/stats
+            (`getUserReceiptStats()`, which does convert) — that is a DIFFERENT
+            route on a different router. Reported as a caveat on this pass; the
+            component has no mount site, so nothing ships broken today. */}
         <StatCard>
           <StatLabel>{content.totalCashback}</StatLabel>
           <StatValue>

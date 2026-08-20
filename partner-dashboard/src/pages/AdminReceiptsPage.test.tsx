@@ -7,14 +7,35 @@ import { ReceiptStatus } from '../types/receipt.types';
 import { LanguageProvider } from '../contexts/LanguageContext';
 
 /**
- * BC-QA-031 impl-r5 F1 (found by the enumeration sweep the round-5 brief asked
- * for, beyond the sites the reviewer listed).
+ * BC-QA-031 — admin receipts list currency labels.
  *
- * GET /api/receipts/admin/all is served by receipt.service.ts `getReceipts()`,
- * which maps every row through `formatReceipt()`; that converts
- * Receipt.totalAmount and Receipt.cashbackAmount with bgnToEur(). The page
- * rendered both under a hardcoded `лв` suffix and labelled its credited-cashback
- * stat card "Cashback Credited (BGN)" / "Кредитиран кешбек (лв)".
+ * HISTORY, because this test asserted the OPPOSITE one round ago and the
+ * correction matters more than the assertion:
+ *
+ * In round 5 I traced GET /api/receipts/v2/admin/all to
+ * `receipt.service.ts getReceipts()` → `formatReceipt()`, saw the bgnToEur()
+ * block at the end of `formatReceipt`, and concluded the admin list was EUR —
+ * so I relabelled the page € and wrote this test to pin that. That trace was
+ * WRONG. `formatReceipt()` short-circuits first:
+ *
+ *     if (opts.includeInternal) return base;   // receipt.service.ts:624
+ *
+ * and `/admin/all` sets `includeInternal: true`
+ * (receipts.enhanced.routes.ts:346). The admin list therefore returns the RAW
+ * BGN row and never reaches the conversion block. The backend specialist caught
+ * this in round 6 and reverted the page to `лв.`; I re-verified both the
+ * short-circuit and the caller and agree.
+ *
+ * The write path is symmetric and is what makes BGN the right answer rather
+ * than merely the honest one: `handleApprove` posts
+ * `verifiedAmount: receipt.totalAmount` to POST /:id/review, which stores it as
+ * BGN. Labelling the display € without converting the write would have halved
+ * every approved receipt's persisted amount.
+ *
+ * The two sibling surfaces I fixed in the same round are NOT affected and stay
+ * €, re-verified here: `ReceiptReviewDashboard` reads GET /api/receipts (base
+ * router, no `includeInternal`) so `formatReceipt` does convert, and
+ * `getUserReceiptStats()` converts explicitly in its own return.
  */
 
 vi.mock('../services/receipts-api.service', async () => {
@@ -61,7 +82,7 @@ const renderPage = (language: 'en' | 'bg' = 'en') => {
   );
 };
 
-describe('AdminReceiptsPage — EUR receipt amounts (BC-QA-031 r5-F1)', () => {
+describe('AdminReceiptsPage — raw BGN receipt amounts (BC-QA-031 r6 correction)', () => {
   beforeEach(() => {
     (receiptsApiService.getAllReceipts as ReturnType<typeof vi.fn>).mockResolvedValue({
       success: true,
@@ -75,26 +96,26 @@ describe('AdminReceiptsPage — EUR receipt amounts (BC-QA-031 r5-F1)', () => {
     localStorage.clear();
   });
 
-  it('renders the amount and cashback cells with a € prefix, never лв (English)', async () => {
+  it('renders the amount and cashback cells as BGN — the unit the endpoint actually returns (English)', async () => {
     const { container } = renderPage('en');
 
     await waitFor(() => expect(screen.getByText('Test Merchant')).toBeInTheDocument());
 
-    expect(screen.getByText('€21.73')).toBeInTheDocument();
-    expect(screen.getByText('€1.09 (5.0%)')).toBeInTheDocument();
-    expect(container.textContent).not.toMatch(/лв/);
-    // The credited-cashback stat card header.
-    expect(screen.getByText('Cashback Credited (EUR)')).toBeInTheDocument();
-    expect(container.textContent).not.toMatch(/Cashback Credited \(BGN\)/);
+    expect(screen.getByText('21.73 лв.')).toBeInTheDocument();
+    expect(screen.getByText('1.09 лв. (5.0%)')).toBeInTheDocument();
+    // No € anywhere: a Euro sign here would claim a conversion that
+    // `formatReceipt`'s includeInternal short-circuit never performs.
+    expect(container.textContent).not.toMatch(/€/);
+    expect(screen.getByText('Cashback Credited (BGN)')).toBeInTheDocument();
   });
 
-  it('renders no лв marker in Bulgarian either', async () => {
+  it('renders BGN in Bulgarian too, with no € marker', async () => {
     const { container } = renderPage('bg');
 
     await waitFor(() => expect(screen.getByText('Test Merchant')).toBeInTheDocument());
 
-    expect(screen.getByText('€21.73')).toBeInTheDocument();
-    expect(container.textContent).not.toMatch(/лв/);
-    expect(screen.getByText('Кредитиран кешбек (€)')).toBeInTheDocument();
+    expect(screen.getByText('21.73 лв.')).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/€/);
+    expect(screen.getByText('Кредитиран кешбек (лв.)')).toBeInTheDocument();
   });
 });

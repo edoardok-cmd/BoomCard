@@ -7,17 +7,27 @@ import { ReceiptStatus } from '../../types/receipt.types';
 import { LanguageProvider } from '../../contexts/LanguageContext';
 
 /**
- * BC-QA-031 impl-r5 F1 (enumeration sweep).
+ * BC-QA-031 — receipt analytics widget currency labels.
  *
- * This widget renders `receiptsApiService.getUserStats()` — GET
- * /api/receipts/stats, whose handler `receipt.service.ts getUserReceiptStats()`
- * converts totalAmount and averageAmount with bgnToEur() — plus a cashback
- * total derived from receipt rows that `formatReceipt()` already converted. All
- * three were rendered with a `лв` suffix.
+ * What this test genuinely pins is `totalCashback`. That value is computed in
+ * the widget from receiptsApiService.getReceipts() → GET /api/receipts/v2,
+ * which does not pass `includeInternal`, so receipt.service.ts
+ * `formatReceipt()` reaches its bgnToEur() block and the rows are EUR. The `лв`
+ * suffix there was wrong and is fixed.
  *
- * The widget currently has no mount site in the app (it is exported from
- * `components/widgets/index.tsx` and imported nowhere else), so this test is
- * what keeps the labels honest if it is ever wired up.
+ * CAVEAT on the other two figures, corrected in round 6: `totalAmount` and
+ * `averageAmount` are read from receiptsApiService.getUserStats() → GET
+ * /api/receipts/v2/stats/user, which is `getUserSubmissionStats()` — a
+ * submission-COUNT endpoint that returns no money fields whatsoever. The
+ * `stats` fixture below therefore describes `ReceiptStatsResponse` as the
+ * frontend type DECLARES it, not as the endpoint actually behaves; at runtime
+ * those two fields are `undefined` and `.toFixed(2)` would throw. That is a
+ * pre-existing defect independent of currency, reported as a caveat.
+ *
+ * The widget has no mount site (exported from `components/widgets/index.tsx`,
+ * imported nowhere), so nothing ships broken today — this test keeps the
+ * labels honest if it is ever wired up, and the fixture comment keeps the
+ * endpoint mismatch from being forgotten.
  */
 
 vi.mock('../../services/receipts-api.service', async () => {
@@ -81,7 +91,7 @@ describe('ReceiptAnalyticsWidget — EUR receipt stats (BC-QA-031 r5-F1)', () =>
     localStorage.clear();
   });
 
-  it('renders every money stat with a € prefix and no лв suffix', async () => {
+  it('renders the EUR-backed cashback total with a € prefix and no лв suffix', async () => {
     const { container } = renderWidget();
 
     // totalCashback = 200 * 0.05 = 10.00

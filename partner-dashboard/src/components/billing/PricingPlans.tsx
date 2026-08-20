@@ -4,7 +4,6 @@ import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { Check, Zap, Star, TrendingUp } from 'lucide-react';
 import Button from '../common/Button/Button';
-import { convertBGNToEUR } from '../../utils/helpers';
 
 const PlansContainer = styled.div`
   max-width: 1200px;
@@ -175,11 +174,12 @@ const PriceAmount = styled.div`
   gap: 0.5rem;
 `;
 
-const Currency = styled.span`
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #374151;
-`;
+/*
+ * BC-QA-031 r5-F7: the `Currency` styled-span that rendered the `лв.` / `BGN`
+ * label beside the price was removed with the dual-currency display. The EUR
+ * figure carries its own `€` prefix inside <Amount>, so no separate currency
+ * element is needed.
+ */
 
 const Amount = styled.span`
   font-size: 3rem;
@@ -278,9 +278,23 @@ interface Plan {
   description: string;
   icon: React.ReactNode;
   iconColor: string;
-  priceBGN: {
+  /**
+   * BC-QA-031 r5-F7: this catalogue used to be denominated in BGN
+   * (`priceBGN`), with the EUR figure derived at render time via
+   * convertBGNToEUR(). The dual BGN/EUR display was removed, so the catalogue
+   * is stored directly in EUR and the values below are exactly what
+   * convertBGNToEUR() produced from the old BGN figures — the rendered price
+   * is unchanged.
+   *   starter      57 BGN -> 29.14 EUR   |  570/12 = 48 BGN -> 24.54 EUR
+   *   professional 155 BGN -> 79.25 EUR  | 1550/12 = 129 BGN -> 65.96 EUR
+   *   enterprise   389 BGN -> 198.89 EUR | 3890/12 = 324 BGN -> 165.66 EUR
+   * `annualPerMonth` replaces the old `Math.round(annual / 12)` arithmetic,
+   * which rounded the BGN figure before converting; precomputing it preserves
+   * that rounding order exactly.
+   */
+  priceEUR: {
     monthly: number;
-    annual: number;
+    annualPerMonth: number;
   };
   features: string[];
   featured?: boolean;
@@ -289,12 +303,15 @@ interface Plan {
 
 interface PricingPlansProps {
   onSelectPlan?: (planId: string, billing: 'monthly' | 'annual') => void;
-  language?: 'en' | 'bg';
+  // BC-QA-031 r5-F7: the `language` prop is gone. Its only use was choosing
+  // between the `лв.` and `BGN` spellings of the currency label, which the
+  // dual-currency removal deleted. Plan names and feature copy already come
+  // from the `useLanguage()` context via `t()`, so the prop was redundant for
+  // everything else. It had no callers.
 }
 
 export const PricingPlans: React.FC<PricingPlansProps> = ({
   onSelectPlan,
-  language = 'en',
 }) => {
   const { t } = useLanguage();
   const [isAnnual, setIsAnnual] = useState(false);
@@ -306,9 +323,9 @@ export const PricingPlans: React.FC<PricingPlansProps> = ({
       description: t('pricing.starterDesc'),
       icon: <Zap />,
       iconColor: '#6366f1',
-      priceBGN: {
-        monthly: 57,
-        annual: 570,
+      priceEUR: {
+        monthly: 29.14,
+        annualPerMonth: 24.54,
       },
       features: [
         t('pricing.transactions100'),
@@ -325,9 +342,9 @@ export const PricingPlans: React.FC<PricingPlansProps> = ({
       description: t('pricing.professionalDesc'),
       icon: <Star />,
       iconColor: '#000000',
-      priceBGN: {
-        monthly: 155,
-        annual: 1550,
+      priceEUR: {
+        monthly: 79.25,
+        annualPerMonth: 65.96,
       },
       features: [
         t('pricing.transactions1000'),
@@ -349,9 +366,9 @@ export const PricingPlans: React.FC<PricingPlansProps> = ({
       description: t('pricing.enterpriseDesc'),
       icon: <TrendingUp />,
       iconColor: '#8b5cf6',
-      priceBGN: {
-        monthly: 389,
-        annual: 3890,
+      priceEUR: {
+        monthly: 198.89,
+        annualPerMonth: 165.66,
       },
       features: [
         t('pricing.unlimitedTransactions'),
@@ -426,23 +443,20 @@ export const PricingPlans: React.FC<PricingPlansProps> = ({
             <PlanName>{plan.name}</PlanName>
             <PlanDescription>{plan.description}</PlanDescription>
 
+            {/* BC-QA-031 r5-F7: EUR only. The `X лв. / €Y` dual render and its
+                `<Currency>` label are gone; the EUR figure is unchanged. */}
             <PlanPrice>
               <PriceAmount>
                 <Amount>
-                  {isAnnual
-                    ? Math.round(plan.priceBGN.annual / 12)
-                    : plan.priceBGN.monthly}
+                  €{isAnnual ? plan.priceEUR.annualPerMonth : plan.priceEUR.monthly}
                 </Amount>
-                <Currency>{language === 'bg' ? 'лв.' : 'BGN'}</Currency>
                 <Period>
-                  / €{isAnnual
-                    ? convertBGNToEUR(Math.round(plan.priceBGN.annual / 12))
-                    : convertBGNToEUR(plan.priceBGN.monthly)} /{t('pricing.month')}
+                  /{t('pricing.month')}
                 </Period>
               </PriceAmount>
               {isAnnual && (
                 <OldPrice>
-                  {plan.priceBGN.monthly} {language === 'bg' ? 'лв.' : 'BGN'} / €{convertBGNToEUR(plan.priceBGN.monthly)}/{t('pricing.month')} {t('pricing.monthly_billing')}
+                  €{plan.priceEUR.monthly}/{t('pricing.month')} {t('pricing.monthly_billing')}
                 </OldPrice>
               )}
             </PlanPrice>

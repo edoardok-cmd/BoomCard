@@ -27,7 +27,6 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { plansService, Plan } from '../../services/plans.service';
 import { paymentService } from '../../services/payment.service';
 import apiClient from '../../api/client';
-import { APP_CONFIG } from '../../constants/config';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = Math.min(SCREEN_WIDTH - 48, 340);
@@ -106,7 +105,9 @@ const CheckoutScreen = ({ navigation, route }: any) => {
     fetchPlan();
   }, [planId]);
 
-  const convertEURToBGN = (eur: number) => +(eur * APP_CONFIG.EUR_EXCHANGE_RATE).toFixed(2);
+  // BC-QA-031 r5-F7: the local EUR→BGN converter and every dual `X лв. / €Y`
+  // render on this screen were removed. `plan.pricing.*` already arrives in EUR
+  // from plans.routes.ts, so it is displayed verbatim.
 
   const getPrice = (): number | null => {
     if (!plan) return null;
@@ -156,7 +157,6 @@ const CheckoutScreen = ({ navigation, route }: any) => {
   };
 
   const priceEUR = getPrice();
-  const priceBGN = priceEUR ? convertEURToBGN(priceEUR) : 0;
   const upgradeCreditPct = plan ? getUpgradeCreditPercent(plan.cardType) : null;
   // Credit amount deducted from the upgrade price, and the net amount the user actually pays.
   // Only available when the current plan price was passed from UpgradePlansScreen.
@@ -310,9 +310,6 @@ const CheckoutScreen = ({ navigation, route }: any) => {
               <View style={styles.cardBottom}>
                 <Text style={[styles.cardHolder, { color: colors.text }]}>{planName}</Text>
                 <View style={styles.cardPriceArea}>
-                  <Text style={[styles.cardPriceBGN, { color: colors.price, opacity: 0.85 }]}>
-                    {priceBGN.toFixed(2)} {language === 'bg' ? 'лв.' : 'BGN'} /
-                  </Text>
                   <Text style={[styles.cardPriceEUR, { color: colors.price }]}>€{priceEUR}</Text>
                   <Text style={[styles.cardPricePeriod, { color: colors.price, opacity: 0.8 }]}>
                     {getPeriodSuffix()}
@@ -384,16 +381,10 @@ const CheckoutScreen = ({ navigation, route }: any) => {
                     €{priceEUR}
                   </Text>
                   <Text style={styles.totalPrice}>€{netAmount.toFixed(2)}</Text>
-                  <Text style={styles.totalPriceBGN}>
-                    {convertEURToBGN(netAmount).toFixed(2)} {language === 'bg' ? 'лв.' : 'BGN'}
-                  </Text>
                 </>
               ) : (
                 <>
                   <Text style={styles.totalPrice}>€{priceEUR}</Text>
-                  <Text style={styles.totalPriceBGN}>
-                    {priceBGN.toFixed(2)} {language === 'bg' ? 'лв.' : 'BGN'}
-                  </Text>
                 </>
               )}
               <Text style={styles.totalPricePeriod}>{getPeriodSuffix()}</Text>
@@ -636,9 +627,6 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
   cardPriceArea: {
     alignItems: 'flex-end',
   },
-  cardPriceBGN: {
-    fontSize: 11,
-  },
   cardPriceEUR: {
     fontSize: 24,
     fontWeight: '400',
@@ -677,11 +665,6 @@ const getStyles = (theme: any, isDarkMode: boolean) => StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: theme.colors.onSurface,
-  },
-  totalPriceBGN: {
-    fontSize: 13,
-    color: theme.colors.onSurfaceVariant,
-    marginTop: 2,
   },
   totalPricePeriod: {
     fontSize: 11,

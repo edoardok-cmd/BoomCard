@@ -168,9 +168,18 @@ export const APP_CONFIG = {
   SUPPORTED_LANGUAGES: ['bg', 'en'],
 
   // Currency
+  // BC-QA-031 r5-F7: `EUR_EXCHANGE_RATE` (1.95583) was removed. Its only
+  // consumers were the local `convertEURToBGN` helpers on UpgradePlansScreen,
+  // PlanSelectionScreen and CheckoutScreen, which existed solely to render the
+  // dual `X лв. / €Y` plan price that this change deletes. Plan prices arrive
+  // from the backend already in EUR, so nothing converts any more.
+  //
+  // `CURRENCY` / `CURRENCY_SYMBOL` stay: they are the default for
+  // `utils/format.ts formatCurrency()`, which labels genuinely BGN-denominated
+  // values (sticker-scan bill and cashback amounts, which the backend does not
+  // convert). They are not part of the dual-display layer.
   CURRENCY: 'BGN',
   CURRENCY_SYMBOL: 'лв',
-  EUR_EXCHANGE_RATE: 1.95583, // Fixed rate: 1 EUR = 1.95583 BGN
 
   // OCR Configuration
   OCR: {

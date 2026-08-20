@@ -26,7 +26,7 @@ import { Router, Response } from 'express';
 import { FraudRuleTier, SubscriptionPlan } from '@prisma/client';
 import { invalidatePayoutThresholdCache, getPayoutThresholdBGN } from '../utils/payoutThreshold';
 import { invalidateSystemSettingCache } from '../utils/systemSettings';
-import { bgnToEur } from '../utils/currency';
+import { bgnToEur, eurToBgn } from '../utils/currency';
 import { authenticate, authorize, requirePermission, requireActiveAdmin, AuthRequest } from '../middleware/auth.middleware';
 import { auditMiddleware } from '../middleware/audit.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
@@ -154,12 +154,18 @@ router.put(
 
     const adminName = await resolveAdminName(req.user!.id);
 
+    // The submitted amounts are EUR: GET /payout-thresholds returns
+    // `minAmount: bgnToEur(...)` and the admin editor is seeded from that
+    // response, so an untouched form posts back the EUR figure it was given.
+    // PayoutThreshold.minAmount is BGN-denominated storage, so convert on the
+    // way in — otherwise every save rewrote the threshold to ~51% of itself
+    // and the next GET halved it again (BC-QA-031 round 6, A1).
     const created = await prisma.$transaction(
       entries.map(([plan, amount]) =>
         prisma.payoutThreshold.create({
           data: {
             plan,
-            minAmount: Math.round(amount * 100) / 100,
+            minAmount: eurToBgn(amount),
             createdBy: req.user!.id,
             createdByName: adminName,
             notes: notes ?? null,

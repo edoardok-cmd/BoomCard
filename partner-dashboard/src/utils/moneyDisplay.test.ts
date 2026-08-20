@@ -15,8 +15,18 @@
  * end-to-end render path is pinned by DashboardPage.test.tsx.
  */
 import { describe, it, expect } from 'vitest';
-import { formatEUR, BGN_TO_EUR_RATE } from './helpers';
+import { formatEUR } from './helpers';
 import { formatThresholdTitle } from './adminAlertCatalog';
+
+/**
+ * BC-QA-031 r5-F7: `BGN_TO_EUR_RATE` was deleted from `helpers.ts` along with
+ * the rest of the dual-currency layer, so the rate is spelled out here instead
+ * of imported. This is the DEFECT's constant, kept local to the test that
+ * describes the defect — importing it back into production code is what this
+ * task removed. The self-check on the next line pins the arithmetic so the
+ * literal cannot drift.
+ */
+const DEFECT_BGN_TO_EUR_RATE = 1.95583;
 
 describe('formatEUR (BC-QA-031 F1)', () => {
   it('renders a backend EUR scalar verbatim, applying no conversion', () => {
@@ -28,7 +38,7 @@ describe('formatEUR (BC-QA-031 F1)', () => {
   it('does NOT divide by the BGN→EUR rate', () => {
     // The defect's output for the same inputs, spelled out so a reintroduced
     // division fails here rather than silently shipping.
-    const halved = (n: number) => `€${(n / BGN_TO_EUR_RATE).toFixed(2)}`;
+    const halved = (n: number) => `€${(n / DEFECT_BGN_TO_EUR_RATE).toFixed(2)}`;
     expect(halved(42.5)).toBe('€21.73'); // guards the arithmetic in this test
     expect(formatEUR(42.5)).not.toBe(halved(42.5));
     expect(formatEUR(7)).not.toBe(halved(7));

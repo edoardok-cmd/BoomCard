@@ -7,7 +7,6 @@ import { useLanguage } from '../contexts/LanguageContext';
 import ClientCTA from '../components/common/ClientCTA/ClientCTA';
 import Button from '../components/common/Button/Button';
 import { plansService, Plan } from '../services/plans.service';
-import { convertEURToBGN } from '../utils/helpers';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -740,9 +739,9 @@ const PricingPublicPage: React.FC = () => {
               periodLabel = language === 'bg' ? '/месец' : '/month';
             }
 
-            // Calculate BGN price
-            const displayPriceBGN = displayPriceEUR ? convertEURToBGN(displayPriceEUR) : 0;
-            const bgnLabel = language === 'bg' ? 'лв.' : 'BGN';
+            // BC-QA-031 r5-F7: the dual `X лв. / €Y` render was removed.
+            // `plan.pricing.*` is already EUR (plans.routes.ts emits
+            // priceMonthlyEur / 100), so it is displayed verbatim.
 
             // Get features based on language
             const features = language === 'bg' ? plan.featuresBg : plan.features;
@@ -785,7 +784,7 @@ const PricingPublicPage: React.FC = () => {
                       {language === 'bg' ? plan.displayNameBg : plan.displayName}
                     </CardHolderName>
                     <CardPriceDisplay $type={plan.cardType}>
-                      <span style={{ fontSize: '0.9rem', opacity: 0.85 }}>{displayPriceBGN.toFixed(2)} {bgnLabel} /</span> €{displayPriceEUR}
+€{displayPriceEUR}
                       <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>
                         {periodLabel}
                       </span>

@@ -200,15 +200,30 @@ const ConfirmBtn = styled.button`
 `;
 
 const PLANS = [
-  { key: 'BASIC'   as const, name: 'Basic',              hint: 'Абонати с Basic план',              accent: palette.info, color: palette.info },
-  { key: 'PREMIUM' as const, name: 'Premium месечен',    hint: 'Premium месечен абонамент',          accent: palette.accent, color: palette.accent },
-  { key: 'LIGHT'   as const, name: 'Premium седмичен',   hint: 'Premium седмичен абонамент',         accent: palette.success, color: palette.success },
+  { key: 'BASIC'           as const, name: 'Basic',            hint: 'Абонати с Basic план',       accent: palette.info, color: palette.info },
+  { key: 'PREMIUM_MONTHLY' as const, name: 'Premium месечен',  hint: 'Premium месечен абонамент',  accent: palette.accent, color: palette.accent },
+  { key: 'PREMIUM_WEEKLY'  as const, name: 'Premium седмичен', hint: 'Premium седмичен абонамент', accent: palette.success, color: palette.success },
 ] as const;
 
-type Plan = 'BASIC' | 'PREMIUM' | 'LIGHT';
+// BC-QA-031 round 6: these MUST be the SubscriptionPlan enum values the API
+// actually uses. The page previously used 'PREMIUM'/'LIGHT', which the GET never
+// returns (so both editors silently fell back to SEED_DEFAULTS) and which
+// PUT /admin/settings/payout-thresholds rejects outright — its validPlans set is
+// {BASIC, PREMIUM_WEEKLY, PREMIUM_MONTHLY}, so every save 400'd on the first
+// unknown key and no threshold could be edited at all.
+type Plan = 'BASIC' | 'PREMIUM_MONTHLY' | 'PREMIUM_WEEKLY';
 
-// Correct seed values: BASIC 20 EUR, PREMIUM 15 EUR, LIGHT 10 EUR × 1.95583 BGN/EUR
-const SEED_DEFAULTS: Record<Plan, string> = { BASIC: '39.12', PREMIUM: '29.34', LIGHT: '19.56' };
+// The shared adminSettings.service types this endpoint's keys as the legacy
+// 'BASIC' | 'LIGHT' | 'PREMIUM' triple, which is what let the mismatch above ship
+// silently. Narrow it locally to the enum values the API really uses; correcting
+// the shared type is a separate change (it is referenced by other admin pages).
+type PayoutThresholdsByPlan = Partial<Record<Plan, { minAmount: number; notes: string | null; updatedAt: string | null }>>;
+
+// Fallbacks used only when the API returns no row for a plan. This editor works
+// in EUR (GET returns bgnToEur(...), PUT converts back with eurToBgn), so these
+// are the EUR figures — previously they were the BGN constants 39.12/29.34/19.56,
+// which seeded the form with roughly double the real threshold.
+const SEED_DEFAULTS: Record<Plan, string> = { BASIC: '20.00', PREMIUM_MONTHLY: '15.00', PREMIUM_WEEKLY: '10.00' };
 
 // Warn and require confirmation when any threshold drops below this floor
 const LOW_THRESHOLD_FLOOR = 5;
@@ -231,10 +246,11 @@ export default function AdminSettingsThresholdsPage() {
 
   useEffect(() => {
     if (!data?.data) return;
+    const byPlan = data.data as unknown as PayoutThresholdsByPlan;
     setAmounts({
-      BASIC:   String(data.data.BASIC?.minAmount   ?? SEED_DEFAULTS.BASIC),
-      PREMIUM: String(data.data.PREMIUM?.minAmount ?? SEED_DEFAULTS.PREMIUM),
-      LIGHT:   String(data.data.LIGHT?.minAmount   ?? SEED_DEFAULTS.LIGHT),
+      BASIC:           String(byPlan.BASIC?.minAmount           ?? SEED_DEFAULTS.BASIC),
+      PREMIUM_MONTHLY: String(byPlan.PREMIUM_MONTHLY?.minAmount ?? SEED_DEFAULTS.PREMIUM_MONTHLY),
+      PREMIUM_WEEKLY:  String(byPlan.PREMIUM_WEEKLY?.minAmount  ?? SEED_DEFAULTS.PREMIUM_WEEKLY),
     });
   }, [data]);
 
@@ -242,10 +258,10 @@ export default function AdminSettingsThresholdsPage() {
     mutationFn: () =>
       adminSettingsService.savePayoutThresholds(
         {
-          BASIC:   parseFloat(amounts.BASIC),
-          PREMIUM: parseFloat(amounts.PREMIUM),
-          LIGHT:   parseFloat(amounts.LIGHT),
-        },
+          BASIC:           parseFloat(amounts.BASIC),
+          PREMIUM_MONTHLY: parseFloat(amounts.PREMIUM_MONTHLY),
+          PREMIUM_WEEKLY:  parseFloat(amounts.PREMIUM_WEEKLY),
+        } as unknown as Parameters<typeof adminSettingsService.savePayoutThresholds>[0],
         notes || undefined,
       ),
     onSuccess: () => {
