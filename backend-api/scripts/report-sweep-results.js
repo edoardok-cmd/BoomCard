@@ -151,6 +151,12 @@ const JEST_SWEEP_MAP = {
   'system-email-idempotency':                path.join(INTEGRATION, 'system-email-idempotency.test.ts'),
   'public-data-exposure-sweep':              path.join(INTEGRATION, 'public-data-exposure-sweep.test.ts'),
   'public-input-500-sweep':                  path.join(INTEGRATION, 'public-input-500-sweep.test.ts'),
+  // Not a route sweep — it walks the `docs/` corpus and fails when dual-currency
+  // requirement text appears without a dated BC-QA-031 supersession marker. It is
+  // registered here for the same reason the route sweeps are: an unregistered
+  // sweep is one nothing runs, which is exactly how the retired CUR sweeps stayed
+  // listed while their live replacements stayed invisible. Deterministic, DB-free.
+  'spec-corpus-dual-currency-sweep':         path.join(INTEGRATION, 'spec-corpus-dual-currency-sweep.test.ts'),
 };
 
 // app-route-ownership is a manifest check, not a jest test

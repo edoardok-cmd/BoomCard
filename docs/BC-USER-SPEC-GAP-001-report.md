@@ -364,9 +364,11 @@ Overall the favorites backend is functionally adequate for the spec requirements
 - **Severity:** HIGH
 - **Type:** GAP
 - **File:line:** `src/services/wallet.service.ts:100-115`
-- **Spec rule (§17):** During BGN→EUR transition window: all amounts displayed in both BGN and EUR simultaneously. After transition: BGN hidden, EUR only.
+- **Spec rule (§17)** *(as it stood on 2026-06-04; superseded 2026-08-20, BC-QA-031 — see the Update below)*: During BGN→EUR transition window: all amounts displayed in both BGN and EUR simultaneously. After transition: BGN hidden, EUR only.
 - **Finding:** The wallet service returned `payoutThresholdEUR` alongside BGN values, but there was no transition-window feature flag or mode switch controlling whether the app shows dual-currency or EUR-only. Display was hardcoded to include both values with no `CURRENCY_TRANSITION_MODE` setting — no mechanism to switch modes without a code deployment, a GAP for the mode-switching requirement.
 - **Status:** RESOLVED (fix: `src/services/wallet.service.ts:100-115` (`// F-021`) — a `CURRENCY_TRANSITION_MODE` env var (default `'dual'`) now controls the display mode; when set to dual the balance response includes both BGN and EUR, and the mode can be switched (e.g. to EUR-only after the transition window closes) by configuration rather than a code change, satisfying the §17 conditional-display requirement, 2026-06-04)
+
+- **Update (2026-08-20, BC-QA-031):** SUPERSEDED — neither the spec rule quoted above nor the resolution below it describes the shipped system any more. Bulgaria's BGN→EUR transition window has closed and the dual-currency display feature was removed in full: `CURRENCY_TRANSITION_MODE` no longer exists anywhere in the tree, there is no `currency_transition_window_open` setting, no `currencyDisplay.ts` module, and `wallet.service.ts` returns a single EUR scalar per money field unconditionally. `docs/specs/08-user-spec-extracted.md` §17 was rewritten in the same task and is the current requirement; the text above is kept as the record of what was assessed and decided on 2026-06-04, not as a description of current behaviour. Do not go looking for the env var — it is gone, and re-adding it would reintroduce the feature this task removed.
 
 ---
 

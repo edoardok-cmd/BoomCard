@@ -23,7 +23,7 @@ on:
 
 jobs:
   admin-spec-sweeps:
-    name: Exhaustive admin-spec sweeps (currency-leak + uuid-500)
+    name: Deterministic spec gates (uuid-500, endpoint coverage, route ownership, docs corpus)
     runs-on: ubuntu-latest
 
     services:
@@ -80,6 +80,14 @@ jobs:
       # `display:{bgn,eur}` envelope left to police on the admin surface. The file
       # is deleted, not renamed; there is no admin-side replacement to add here.
       #
+      # spec-corpus-dual-currency-sweep is not an admin-route sweep. It is here
+      # because this is the ONLY workflow in the repo that invokes jest without
+      # `continue-on-error`, and it carries no `paths:` filter, so it runs on every
+      # push and PR to a protected branch — which is what a standing guard needs.
+      # It is deterministic, touches no database and adds a few seconds. The job
+      # name above was widened to say so rather than leaving the addition to look
+      # like an admin sweep.
+      #
       # Deliberately NO --passWithNoTests: if every pattern below is ever deleted,
       # jest exits 1 on "0 matches" and the gate fails loudly instead of silently
       # passing an empty run. (Note that jest exits 0 when SOME patterns match, so a
@@ -93,4 +101,5 @@ jobs:
           tests/integration/admin-uuid-500-sweep.test.ts
           tests/integration/admin-endpoint-coverage.test.ts
           tests/integration/app-route-ownership.test.ts
+          tests/integration/spec-corpus-dual-currency-sweep.test.ts
           --runInBand --ci

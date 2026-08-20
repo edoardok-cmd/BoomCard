@@ -29,27 +29,26 @@ on:
       # Sweep test files
       - 'backend-api/tests/integration/**sweep*.test.ts'
       - 'backend-api/tests/integration/**sweep*.test.js'
-      # Invariant matrices
-      - 'docs/specs/admin-invariant-matrix.md'
-      - 'docs/specs/partner-spec-invariant-matrix.md'
-      - 'docs/specs/user-invariant-matrix.md'
+      # Requirement documents and invariant matrices.
+      # Widened from three named matrices to the whole directory (BC-QA-031):
+      # spec-corpus-dual-currency-sweep polices docs/specs/0*.md — the numbered
+      # requirement set — and an edit there previously reached NO workflow at all,
+      # which is how 08-user-spec-extracted.md kept a live dual-display
+      # requirement through seven audit rounds.
+      - 'docs/specs/**'
       # Route ownership manifests
       - 'backend-api/tests/app-route-ownership-manifest.json'
       - 'backend-api/tests/admin-endpoint-manifest.json'
-      # Convergence plan itself
-      - 'docs/specs/boomcard-convergence-plan.md'
 
   pull_request:
     branches: [main, master]
     paths:
       - 'backend-api/tests/integration/**sweep*.test.ts'
       - 'backend-api/tests/integration/**sweep*.test.js'
-      - 'docs/specs/admin-invariant-matrix.md'
-      - 'docs/specs/partner-spec-invariant-matrix.md'
-      - 'docs/specs/user-invariant-matrix.md'
+      # Requirement documents and invariant matrices (see the push trigger above).
+      - 'docs/specs/**'
       - 'backend-api/tests/app-route-ownership-manifest.json'
       - 'backend-api/tests/admin-endpoint-manifest.json'
-      - 'docs/specs/boomcard-convergence-plan.md'
 
 jobs:
   boomcard-convergence-ui-sync:
@@ -136,7 +135,8 @@ jobs:
           # User / subscriber sweeps (BC-QA-031 replacements)
           for f in \
             "user-internal-field-leak-sweep.test.ts" \
-            "subscriber-internal-field-introspect-sweep.test.ts"; do
+            "subscriber-internal-field-introspect-sweep.test.ts" \
+            "spec-corpus-dual-currency-sweep.test.ts"; do
             if [ ! -f "$INTEGRATION/$f" ]; then
               MISSING+=("$INTEGRATION/$f")
             fi

@@ -28,6 +28,8 @@
  * decision (`04`), and the dated client deliverables (`01`, `02`). Deleting those
  * would falsify what was specified and decided at the time.
  *
+ * Corpus: every `*.md` under `docs/` (see the SPECS constant for why not wider).
+ *
  * The rule is instead: any dual-display requirement text must carry a dated
  * BC-QA-031 supersession marker NEARBY, so a reader cannot land on a live-voice
  * requirement without immediately seeing that it no longer holds. New unmarked
@@ -37,7 +39,28 @@
 import fs from 'fs';
 import path from 'path';
 
-const SPECS = path.join(__dirname, '..', '..', '..', 'docs', 'specs');
+/**
+ * The corpus is all of `docs/`, recursively — NOT just `docs/specs/`.
+ *
+ * It started as `docs/specs/*.md` and that let one live-voice site through:
+ * `docs/BC-USER-SPEC-GAP-001-report.md` still quoted §17's dual-display rule as
+ * the live spec rule AND reported a `CURRENCY_TRANSITION_MODE` env var — deleted
+ * by this task — as the shipped resolution.
+ *
+ * The widening was measured rather than assumed, because a wider net over a repo
+ * full of historical reports can cost more in false positives than it buys:
+ *   docs/specs/  21 files →  7 marked, 0 unmarked
+ *   docs/**      50 files →  9 marked, 0 unmarked  (+1 true positive, 0 false)
+ *   whole repo  350 files →  8 marked, 6 unmarked  (5 of them audit artifacts)
+ *
+ * `docs/**` costs nothing and catches a real one. The repo-wide option was
+ * rejected: five of its six extra hits are dated review files under
+ * `backend-api/.claude/reviews/`, which are an append-only audit trail. Demanding
+ * that past review rounds be edited to satisfy a present-day check would falsify
+ * the record, and the set grows with every review — a check that nags about
+ * immutable history is a check somebody disables.
+ */
+const SPECS = path.join(__dirname, '..', '..', '..', 'docs');
 
 /**
  * A line counts as dual-display requirement text only when BOTH a dual signal and
@@ -74,8 +97,24 @@ function classify(line: string): string | null {
   return DUAL_SIGNALS.find((p) => p.re.test(line))?.label ?? null;
 }
 
-/** The dated supersession marker that makes a historical occurrence safe to keep. */
-const MARKER = /BC-QA-031/;
+/**
+ * The dated supersession marker that makes a historical occurrence safe to keep.
+ *
+ * The task id ALONE is not enough, and an earlier revision of this constant was
+ * just `/BC-QA-031/` while this file's header and the commit message both said
+ * the marker must be dated — so a note reading only "(see BC-QA-031)" beside a
+ * live-voice requirement would have passed a check documented to reject it. The
+ * date is the part that tells a reader when the supersession happened and lets
+ * them cross-check it against the commit history; a bare id does not.
+ *
+ * Both orderings occur in the corpus and both are accepted:
+ *   **Update (2026-08-20, BC-QA-031):** …        (date first)
+ *   … has been removed (BC-QA-031, 2026-08-20)   (id first)
+ * The 40-character budget keeps the two on the same line, so a date elsewhere in
+ * a table row cannot vouch for an unrelated id.
+ */
+const MARKER =
+  /BC-QA-031[^\n]{0,40}\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2}[^\n]{0,40}BC-QA-031/;
 
 /**
  * How far from the offending line the marker may sit. Three lines each way covers
@@ -95,14 +134,21 @@ interface Hit {
 function specFiles(): string[] {
   if (!fs.existsSync(SPECS)) {
     throw new Error(
-      `spec-corpus-dual-currency-sweep cannot find the spec corpus at ${SPECS}. ` +
+      `spec-corpus-dual-currency-sweep cannot find the docs corpus at ${SPECS}. ` +
         'This suite guards documentation that lives outside backend-api; run it from a full checkout.',
     );
   }
-  return fs
-    .readdirSync(SPECS)
-    .filter((f) => f.endsWith('.md'))
-    .sort();
+  const out: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith('.md')) out.push(path.relative(SPECS, full));
+    }
+  };
+  walk(SPECS);
+  return out.sort();
 }
 
 /** Every dual-display occurrence in the corpus, with its marker status. */
@@ -126,7 +172,7 @@ function scan(): { marked: Hit[]; unmarked: Hit[] } {
 describe('[SPEC-CORPUS sweep] dual-currency requirement text carries a supersession marker', () => {
   it('the corpus is present and non-trivial', () => {
     // Guards the whole suite against silently passing because the path drifted.
-    expect(specFiles().length).toBeGreaterThanOrEqual(15);
+    expect(specFiles().length).toBeGreaterThanOrEqual(40);
   });
 
   it('the pattern set still matches real dual-display phrasing in both alphabets', () => {
@@ -188,7 +234,7 @@ describe('[SPEC-CORPUS sweep] dual-currency requirement text carries a supersess
         ? 'all superseded'
         : 'Dual-currency requirement text with no BC-QA-031 supersession marker within ' +
           `${MARKER_WINDOW} lines:\n\n` +
-          unmarked.map((h) => `  - docs/specs/${h.file}:${h.line}  [${h.label}]\n      ${h.text}`).join('\n') +
+          unmarked.map((h) => `  - docs/${h.file}:${h.line}  [${h.label}]\n      ${h.text}`).join('\n') +
           '\n\nThe BGN→EUR transition window has closed and the dual-currency display feature was\n' +
           'removed in BC-QA-031. A reader must never land on a requirement mandating simultaneous\n' +
           'BGN+EUR display without seeing, in the same breath, that it no longer holds.\n\n' +
