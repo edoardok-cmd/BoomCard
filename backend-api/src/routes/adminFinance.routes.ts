@@ -23,7 +23,7 @@ import * as XLSX from 'xlsx';
 import { Prisma, ReportingPeriodStatus, ScanStatus } from '@prisma/client';
 import { adminCashbackService } from '../services/adminCashback.service';
 import { parsePagination } from '../utils/pagination';
-import { bgnToEur } from '../utils/currency';
+import { bgnToEur, toEur, displayCurrency } from '../utils/currency';
 
 const router = Router();
 
@@ -1740,8 +1740,12 @@ router.get(
         } catch { return ''; }
       };
 
-      // Stored amount is BGN-denominated — convert to EUR before export
-      // (BC-QA-031 — EUR-only responses).
+      // Stored amount is denominated in the payout row's own currency — convert
+      // to EUR before export (BC-QA-031 — EUR-only responses), keyed on the row
+      // rather than assumed BGN (BC-QA-031-FOLLOWUP-1 impl-r1 F3): the CSV's
+      // `currency` column must state the unit its `amount` column is actually
+      // in, which a hardcoded 'EUR' beside an unconditional `bgnToEur` cannot
+      // guarantee once the write guard admits EUR on this column.
       rows = payoutsExp.map(p => ({
         id: p.id,
         subscriberName: [p.wallet.user.firstName, p.wallet.user.lastName].filter(Boolean).join(' ') || '',
@@ -1749,8 +1753,8 @@ router.get(
         phone: p.wallet.user.phone ?? '',
         iban: p.wallet.payoutIban ?? '',
         beneficiaryName: p.wallet.payoutBeneficiaryName ?? '',
-        amount: bgnToEur(Math.abs(p.amount)),
-        currency: 'EUR',
+        amount: toEur(Math.abs(p.amount), p.currency),
+        currency: displayCurrency(p.currency),
         status: PAYOUT_STATUS_BG[p.status] ?? p.status,
         description: p.description ?? '',
         requestedAt: p.createdAt.toISOString(),
@@ -1858,7 +1862,14 @@ router.get(
       phone: 'Телефон',
       iban: 'IBAN',
       beneficiaryName: 'Получател',
-      amount: 'Сума (€)',
+      // No `(€)` in the header (BC-QA-031-FOLLOWUP-1 task-r1 F5): the adjacent
+      // "Валута" column now states each row's OWN currency via
+      // `displayCurrency(p.currency)`, so a legacy row can legitimately export a
+      // USD magnitude here. A euro-denominated header over that figure is the
+      // same amount/label disagreement this task removes everywhere else — and
+      // a CSV is the artifact most likely to be read outside the app, where the
+      // currency column is the only thing disambiguating it.
+      amount: 'Сума',
       currency: 'Валута',
       status: 'Статус',
       description: 'Бележка',

@@ -8,6 +8,7 @@
 import { PrismaClient } from '@prisma/client';
 import fs from 'fs';
 import path from 'path';
+import { assertAcceptedCurrency } from '../src/utils/currency';
 
 const prisma = new PrismaClient();
 
@@ -169,9 +170,19 @@ async function importData(data: MigrationData) {
     // 7. Transactions
     console.log('Importing transactions...');
     for (const transaction of data.transactions) {
-      await prisma.transaction.create({
-        data: cleanRelations(transaction),
-      });
+      // BC-QA-031-FOLLOWUP-1 — this script builds its own PrismaClient (see the
+      // top of the file), so it does NOT inherit the accepted-currency guard
+      // that `src/lib/prisma.ts` installs on the shared client. Check
+      // explicitly: a bulk import is precisely how a mislabelled row could be
+      // reintroduced in bulk after the write paths were narrowed. Failing loud
+      // is correct here — the operator must decide what an out-of-domain legacy
+      // row should become before it lands in a database whose read paths
+      // denominate everything in EUR.
+      const row = cleanRelations(transaction);
+      if (row.currency !== undefined && row.currency !== null) {
+        assertAcceptedCurrency(row.currency, `import transaction ${row.id ?? '(no id)'}`);
+      }
+      await prisma.transaction.create({ data: row });
     }
     console.log(`✓ Imported ${data.transactions.length} transactions`);
 

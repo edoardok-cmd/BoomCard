@@ -5,7 +5,7 @@ import { auditMiddleware } from '../middleware/audit.middleware';
 import { prisma } from '../lib/prisma';
 import { deriveCashbackEntryStatus } from '../services/adminCashback.service';
 import { parsePagination } from '../utils/pagination';
-import { bgnToEur, toEur, toEurOrNull, sumMixedCurrencyToEur } from '../utils/currency';
+import { bgnToEur, toEur, toEurOrNull, displayCurrency, foldMixedCurrencyToEur } from '../utils/currency';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -119,14 +119,23 @@ router.get('/', requirePermission('transactions.read'), async (req, res, next) =
       prisma.walletTransaction.count({ where }),
     ]);
 
-    // Stored amount/balanceBefore/balanceAfter are BGN-denominated — convert to
-    // EUR before returning (BC-QA-031 — EUR-only responses).
+    // Stored amount/balanceBefore/balanceAfter are denominated in the row's own
+    // `WalletTransaction.currency` — normally BGN (`@default("BGN")`, and every
+    // writer either omits the column or copies `wallet.currency`) — so convert
+    // to EUR before returning (BC-QA-031 — EUR-only responses).
+    //
+    // Keyed on the row rather than converting unconditionally and asserting
+    // 'EUR' (BC-QA-031-FOLLOWUP-1 impl-r1 F3). The accepted-currency guard now
+    // admits EUR on this column too, so "always BGN" is a schema-default habit,
+    // not an invariant: a EUR-stored row would have been halved by a blanket
+    // `bgnToEur` and then labelled EUR — the same defect this task fixed on
+    // `Transaction`, one column over.
     const transactionsEur = transactions.map(tx => ({
       ...tx,
-      amount: bgnToEur(tx.amount),
-      balanceBefore: bgnToEur(tx.balanceBefore),
-      balanceAfter: bgnToEur(tx.balanceAfter),
-      currency: 'EUR',
+      amount: toEur(tx.amount, tx.currency),
+      balanceBefore: toEur(tx.balanceBefore, tx.currency),
+      balanceAfter: toEur(tx.balanceAfter, tx.currency),
+      currency: displayCurrency(tx.currency),
     }));
 
     res.json({ transactions: transactionsEur, total, page: pageNum, limit: take });
@@ -140,31 +149,58 @@ router.get('/stats', requirePermission('transactions.read'), async (req, res, ne
   try {
     const baseWhere = buildWhere(req.query);
 
-    const [volumeResult, cashbackResult, withdrawalResult] = await Promise.all([
-      prisma.walletTransaction.aggregate({
+    // groupBy(['currency']) rather than a flat aggregate
+    // (BC-QA-031-FOLLOWUP-1 task-r1 F1). These three figures are rendered beside
+    // the GET /api/admin/transactions grid, whose ROWS this task made
+    // currency-honest at :126-140 — so a flat `_sum` here produced a card
+    // reading `totalVolume: 156.02` next to rows reading `50 USD / 40 EUR /
+    // 10 EUR / 100 EUR`, the exact self-contradiction
+    // `foldMixedCurrencyToEur`'s docblock says the fold exists to prevent.
+    // An unconvertible subtotal is excluded and reported, never divided by the
+    // BGN peg and labelled EUR.
+    const [volumeGroups, cashbackGroups, withdrawalGroups] = await Promise.all([
+      prisma.walletTransaction.groupBy({
+        by: ['currency'],
         where: baseWhere,
         _sum: { amount: true },
+        _count: { _all: true },
       }),
-      prisma.walletTransaction.aggregate({
+      prisma.walletTransaction.groupBy({
+        by: ['currency'],
         where: { ...baseWhere, type: 'CASHBACK_CREDIT', status: 'COMPLETED' },
         _sum: { amount: true },
+        _count: { _all: true },
       }),
-      prisma.walletTransaction.aggregate({
+      prisma.walletTransaction.groupBy({
+        by: ['currency'],
         where: { ...baseWhere, type: 'WITHDRAWAL', status: 'COMPLETED' },
         _sum: { amount: true },
+        _count: { _all: true },
       }),
     ]);
 
-    const totalVolume = volumeResult._sum.amount ?? 0;
-    const totalCashback = cashbackResult._sum.amount ?? 0;
-    const totalWithdrawals = withdrawalResult._sum.amount ?? 0;
+    const toSubtotals = (groups: Array<{ currency: string | null; _sum: { amount: number | null }; _count: { _all: number } }>) =>
+      groups.map((g) => ({ currency: g.currency, amount: g._sum.amount, count: g._count._all }));
 
-    // Stored totals are BGN-denominated — convert to EUR before returning
-    // (BC-QA-031 — EUR-only responses).
+    const volume = foldMixedCurrencyToEur(toSubtotals(volumeGroups));
+    const cashback = foldMixedCurrencyToEur(toSubtotals(cashbackGroups));
+    const withdrawals = foldMixedCurrencyToEur(toSubtotals(withdrawalGroups));
+
+    const excludedCurrencies = Array.from(
+      new Set([
+        ...volume.excludedCurrencies,
+        ...cashback.excludedCurrencies,
+        ...withdrawals.excludedCurrencies,
+      ]),
+    ).sort();
+
     res.json({
-      totalVolume: bgnToEur(totalVolume),
-      totalCashback: bgnToEur(totalCashback),
-      totalWithdrawals: bgnToEur(totalWithdrawals),
+      totalVolume: volume.total,
+      totalCashback: cashback.total,
+      totalWithdrawals: withdrawals.total,
+      // Rows these totals could not account for (legacy pre-narrowing rows).
+      excludedCount: volume.excludedCount,
+      excludedCurrencies,
     });
   } catch (error) {
     next(error);
@@ -267,14 +303,16 @@ router.post('/adjust', requirePermission('transactions.write'), async (req, res,
     req.auditAction = 'transaction.wallet-adjust';
     req.auditObjectType = 'transaction';
     req.auditObjectId = userId;
-    // Stored amount/balanceBefore/balanceAfter are BGN-denominated — convert to
-    // EUR before returning (BC-QA-031 — EUR-only responses).
+    // Stored amount/balanceBefore/balanceAfter are denominated in the row's own
+    // currency (copied from `wallet.currency` at :239) — convert to EUR before
+    // returning (BC-QA-031 — EUR-only responses), keyed on that row rather than
+    // assumed BGN (BC-QA-031-FOLLOWUP-1 impl-r1 F3).
     res.status(201).json({
       ...created,
-      amount: bgnToEur(created.amount),
-      balanceBefore: bgnToEur(created.balanceBefore),
-      balanceAfter: bgnToEur(created.balanceAfter),
-      currency: 'EUR',
+      amount: toEur(created.amount, created.currency),
+      balanceBefore: toEur(created.balanceBefore, created.currency),
+      balanceAfter: toEur(created.balanceAfter, created.currency),
+      currency: displayCurrency(created.currency),
     });
   } catch (error) {
     if (validationError) {
@@ -602,11 +640,21 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
           }
         : null;
       // Every money column on this row is denominated in the row's own
-      // Transaction.currency, which is genuinely mixed — convert only the
-      // BGN-denominated rows (BC-QA-031 — EUR-only responses). `currency` is
-      // then relabelled 'EUR' so the row's amounts and its own label agree;
-      // previously it passed through raw via `...rest`, so a converted EUR
-      // amount could ship under a 'BGN' label.
+      // Transaction.currency, whose accepted domain is {BGN, EUR} — convert
+      // only the BGN-denominated rows (BC-QA-031 — EUR-only responses). The
+      // row's `currency` is then restated so its amounts and its own label
+      // agree; previously it passed through raw via `...rest`, so a converted
+      // EUR amount could ship under a 'BGN' label.
+      //
+      // The label is computed by `displayCurrency()` rather than hardcoded
+      // 'EUR' (BC-QA-031-FOLLOWUP-1). For every row in the accepted domain the
+      // two are identical. They differ only for a LEGACY row written before the
+      // domain was narrowed — USD/GBP/PLN/CZK/RON — which `toEur()` cannot
+      // convert (no FX source) and therefore returns unchanged: labelling that
+      // magnitude 'EUR' is what made a 100.00 USD top-up read as EUR 100.00 in
+      // this very grid, against a true value near EUR 92. Such a row now keeps
+      // its own code, so an admin sees a foreign-currency row instead of an
+      // inflated euro one.
       //
       // `margin` is DERIVED FIRST, THEN CONVERTED — not derived from the
       // converted inputs. It is computed above (see the `const margin` block)
@@ -622,7 +670,7 @@ router.get('/business', requirePermission('transactions.read'), async (req, res,
         ...rest,
         partner: partnerOut,
         venue: venueOut,
-        currency: 'EUR',
+        currency: displayCurrency(rowCurrency),
         amount: toEur(amount, rowCurrency),
         marginAmount: toEurOrNull(marginAmount, rowCurrency),
         cashbackAmount: toEurOrNull(cashbackAmountResolved, rowCurrency),
@@ -751,20 +799,34 @@ router.get('/business/stats', requirePermission('transactions.read'), async (req
 
     // Fold the per-currency subtotals into EUR totals (BC-QA-031 — EUR-only
     // responses). Each subtotal is converted according to its own currency
-    // before being summed; see sumMixedCurrencyToEur.
-    const count = agg.reduce((n, g) => n + g._count._all, 0);
-    const totalVolumeEur = sumMixedCurrencyToEur(
-      agg.map((g) => ({ currency: g.currency, amount: g._sum.amount })),
+    // before being summed; see foldMixedCurrencyToEur.
+    //
+    // The fold EXCLUDES any subtotal it has no rate for (a legacy row written
+    // before the accepted domain was narrowed). `count` must therefore be the
+    // fold's own `includedCount`, not the raw row count
+    // (BC-QA-031-FOLLOWUP-1 impl-r1 F4): dividing a reduced total by a full
+    // count silently corrupts `averageValue`, and rendering a row count beside
+    // a total that does not cover those rows makes the card contradict itself.
+    // `excludedCount`/`excludedCurrencies` ride along so a client can say so.
+    const volume = foldMixedCurrencyToEur(
+      agg.map((g) => ({ currency: g.currency, amount: g._sum.amount, count: g._count._all })),
     );
+    const count = volume.includedCount;
+    const totalVolumeEur = volume.total;
     // averageValue is recomputed from the converted total rather than taken from
-    // a DB `_avg`, which would have averaged across mixed currency units.
+    // a DB `_avg`, which would have averaged across mixed currency units. Both
+    // sides of the division now describe the same set of rows.
     const averageValueEur = count > 0 ? Math.round((totalVolumeEur / count) * 100) / 100 : 0;
     // Transaction.cashbackAmount rides the same row currency. The receipt-side
     // fallback has no currency column of its own (Receipt stores BGN), so it is
     // converted as BGN.
-    const totalCashbackEur =
-      sumMixedCurrencyToEur(agg.map((g) => ({ currency: g.currency, amount: g._sum.cashbackAmount }))) +
-      bgnToEur(fallbackAgg._sum.cashbackAmount ?? 0);
+    // Folded (not `sumMixedCurrencyToEur`) so its exclusions are REPORTED
+    // rather than silently dropped, like every other total on this response
+    // (BC-QA-031-FOLLOWUP-1 task-r1 F1).
+    const cashbackFold = foldMixedCurrencyToEur(
+      agg.map((g) => ({ currency: g.currency, amount: g._sum.cashbackAmount, count: g._count._all })),
+    );
+    const totalCashbackEur = cashbackFold.total + bgnToEur(fallbackAgg._sum.cashbackAmount ?? 0);
 
     res.json({
       count,
@@ -772,6 +834,10 @@ router.get('/business/stats', requirePermission('transactions.read'), async (req
       totalVolume: totalVolumeEur,
       averageValue: averageValueEur,
       totalCashback: Math.round((totalCashbackEur + Number.EPSILON) * 100) / 100,
+      excludedCount: volume.excludedCount,
+      excludedCurrencies: Array.from(
+        new Set([...volume.excludedCurrencies, ...cashbackFold.excludedCurrencies]),
+      ).sort(),
     });
   } catch (error) {
     next(error);

@@ -20,7 +20,7 @@ import {
 } from '../constants/receipt.constants';
 import { getSystemSettingInt, getSystemSettingFloat } from '../utils/systemSettings';
 import { detach } from '../utils/detach';
-import { bgnToEur, toEur } from '../utils/currency';
+import { bgnToEur, toEur, displayCurrency, RESPONSE_CURRENCY } from '../utils/currency';
 
 /**
  * Receipt Item structure (parsed from OCR)
@@ -683,10 +683,20 @@ class ReceiptService {
     } = base;
     // Receipt.totalAmount / Receipt.cashbackAmount are BGN-denominated (the
     // Receipt model has no currency column), so they convert unconditionally.
-    // The nested Transaction row does NOT: Transaction.currency is genuinely
-    // mixed, so it converts via toEur() and its currency field is stripped
-    // rather than shipped, preserving the pre-existing wire shape
-    // (BC-QA-031 — EUR-only responses).
+    // The nested Transaction row does NOT: Transaction.currency is BGN-or-EUR,
+    // so it converts via toEur() and its currency field is stripped rather than
+    // shipped, preserving the pre-existing wire shape (BC-QA-031 — EUR-only
+    // responses).
+    //
+    // The one exception is a LEGACY out-of-domain row (BC-QA-031-FOLLOWUP-1).
+    // Stripping the label is only honest while the amount is expressible in the
+    // response's implicit EUR; a USD row that toEur() could not convert would
+    // otherwise ship its raw magnitude with no code at all, which reads as EUR
+    // to every consumer. For those rows — and only those — the true code is
+    // included, so the shape is unchanged for every row the domain admits.
+    // (Receipt-linked transactions are written by sticker.service with a
+    // hardcoded 'BGN', so this branch is unreachable for rows created by the
+    // current code; it exists for rows that predate the narrowing.)
     return {
       ...safe,
       totalAmount: safe.totalAmount != null ? bgnToEur(safe.totalAmount) : undefined,
@@ -696,12 +706,14 @@ class ReceiptService {
           const { currency: txCurrency, ...txRest } = safe.transaction as typeof safe.transaction & {
             currency?: string | null;
           };
+          const label = displayCurrency(txCurrency);
           return {
             ...txRest,
             amount: toEur(safe.transaction.amount, txCurrency),
             ...(safe.transaction.cashbackAmount != null && {
               cashbackAmount: toEur(safe.transaction.cashbackAmount, txCurrency),
             }),
+            ...(label !== RESPONSE_CURRENCY && { currency: label }),
           };
         })(),
       }),

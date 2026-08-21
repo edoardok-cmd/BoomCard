@@ -31,6 +31,7 @@ import fs from 'fs';
 import axios from 'axios';
 import { XMLParser } from 'fast-xml-parser';
 import { logger } from '../utils/logger';
+import { ACCEPTED_CURRENCIES } from '../utils/currency';
 import { PAYSERA_LIVE_PUBLIC_KEY_PEM } from './paysera-public-key';
 
 // ============================================
@@ -1056,8 +1057,44 @@ export class PayseraService {
     return amount > 0 && amount <= 1000000; // Max 10,000 EUR in cents
   }
 
+  /**
+   * The currencies the PAYSERA GATEWAY can process.
+   *
+   * ⚠ THIS IS NOT AN ACCEPTANCE GATE, and must never be used as one — that is
+   * exactly the mistake BC-QA-031-FOLLOWUP-1 fixed. `POST /api/payments/create`
+   * used to validate the caller's currency against this list and store it
+   * verbatim on `Transaction.currency`, but BoomCard has no FX rate source and
+   * every read path converts/labels in EUR, so a USD row shipped its raw
+   * magnitude under a EUR label.
+   *
+   * This method reports a PROVIDER CAPABILITY (a fact about Paysera). What
+   * BoomCard is willing to store is an APPLICATION POLICY, and it is narrower:
+   * see {@link getAcceptedCurrencies} / `ACCEPTED_CURRENCIES` in
+   * `src/utils/currency.ts`. Keep the two apart — widening the app policy to
+   * match this list again would reintroduce the defect.
+   */
   static getSupportedCurrencies(): string[] {
     return ['EUR', 'USD', 'GBP', 'PLN', 'CZK', 'RON', 'BGN'];
+  }
+
+  /**
+   * The currencies BOOMCARD accepts — the intersection of what the gateway can
+   * process and what this application can store and display truthfully.
+   *
+   * Delegates to the single source of truth (`ACCEPTED_CURRENCIES`) rather than
+   * repeating the codes, so the checkout metadata this service publishes and
+   * the guard the write paths apply cannot drift apart.
+   *
+   * Two coherence properties this must keep — both asserted in
+   * `tests/unit/paysera.service.test.ts` rather than claimed here, so that a
+   * future edit to either list or to {@link getSupportedPaymentMethods} fails a
+   * test instead of quietly falsifying a comment:
+   *   1. every accepted currency is one the gateway can actually process;
+   *   2. every payment method this service advertises is quoted in an accepted
+   *      currency.
+   */
+  static getAcceptedCurrencies(): string[] {
+    return [...ACCEPTED_CURRENCIES];
   }
 
   static getSupportedPaymentMethods(): PayseraPaymentMethod[] {

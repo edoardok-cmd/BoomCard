@@ -20,7 +20,7 @@ import { z } from 'zod';
 import { paymentRateLimiter } from '../middleware/security.middleware';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
-import { bgnToEur } from '../utils/currency';
+import { ACCEPTED_CURRENCIES, bgnToEur, normalizeCurrency, toBgn, toDisplayMoney } from '../utils/currency';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production'
   ? (() => { throw new Error('FRONTEND_URL must be set in production'); })()
@@ -66,8 +66,10 @@ const router = Router();
  *                 example: "Wallet top-up"
  *               currency:
  *                 type: string
+ *                 enum: [BGN, EUR]
  *                 example: "BGN"
- *                 default: "BGN"
+ *                 default: "EUR"
+ *                 description: "Accepted currencies are BGN and EUR only. Any other code is rejected with 400."
  *               paymentMethod:
  *                 type: string
  *                 example: "hanzaee"
@@ -133,10 +135,27 @@ router.post(
       });
     }
 
-    if (!PayseraService.getSupportedCurrencies().includes(currency)) {
+    // BC-QA-031-FOLLOWUP-1 — reject at write time.
+    //
+    // This used to validate against `PayseraService.getSupportedCurrencies()`
+    // (the Paysera library's own default list, wider than ours) and then store the
+    // caller's code verbatim on `Transaction.currency`. Nothing downstream
+    // could honestly consume that: `toEur()` converts only BGN, and the three
+    // read paths that call it label the row 'EUR' — so a 100.00 USD top-up was
+    // reported as 100.00 EUR, ~8 EUR more than the payment was worth, and the
+    // same magnitude was folded into admin lifetime totals.
+    //
+    // Paysera's capability list is not BoomCard's product decision: no
+    // BoomCard surface offers a USD/GBP/PLN/CZK/RON picker and there is no FX
+    // rate source in this codebase. The accepted domain is therefore the app's
+    // own `ACCEPTED_CURRENCIES` ({BGN, EUR}), which is exactly the domain the
+    // conversion and labelling helpers can represent truthfully. Anything else
+    // is refused here, before the row exists.
+    const acceptedCurrency = normalizeCurrency(currency);
+    if (acceptedCurrency === null) {
       return res.status(400).json({
         success: false,
-        message: `Currency ${currency} not supported`,
+        message: `Currency ${currency} not supported. Supported currencies: ${ACCEPTED_CURRENCIES.join(', ')}.`,
       });
     }
 
@@ -160,7 +179,9 @@ router.post(
           userId: user.id,
           type: TransactionType.WALLET_TOPUP,
           amount: amount,
-          currency: currency,
+          // Normalised (trimmed/upper-cased) so the stored column is canonical
+          // — 'eur' and 'EUR' must not become two different stored values.
+          currency: acceptedCurrency,
           status: TransactionStatus.PENDING,
           paymentMethod: 'BANK_TRANSFER',
           description: description || 'Payment',
@@ -180,7 +201,7 @@ router.post(
       const payment = await paymentProvider.createCheckout({
         orderId,
         amount: PayseraService.amountToCents(amount),
-        currency,
+        currency: acceptedCurrency,
         description: description || 'Payment',
         acceptUrl,
         cancelUrl,
@@ -301,12 +322,58 @@ async function handlePaymentCallback(req: Request, res: Response) {
           return res.send(paymentProvider.getWebhookAckResponse());
         }
 
+        // BC-QA-031-FOLLOWUP-1 (impl-r1 F1) — CONVERT INTO THE LEDGER'S UNIT.
+        //
+        // `Transaction.amount` is denominated in `Transaction.currency`, and
+        // `createPaymentSchema` DEFAULTS that to EUR (:109), so the ordinary
+        // top-up is EUR-priced. `Wallet.balance` / `WalletTransaction.amount`
+        // are BGN-denominated (`Wallet.currency @default("BGN")`) and every read
+        // of them applies `bgnToEur`. Passing the EUR magnitude straight into
+        // `credit()` therefore under-credited by the peg: a 100.00 EUR top-up
+        // moved the balance by 100 stored BGN, which the wallet screen renders
+        // as EUR 51.13. `toBgn` is the write-side mirror of the `toEur` used on
+        // every read of this column.
+        //
+        // A legacy row whose currency predates the write-side narrowing has no
+        // rate and so cannot be credited in any unit. Refuse it the same way the
+        // Stripe handlers refuse an unaccepted provider currency — ack the
+        // callback (Paysera retries forever otherwise, and a retry cannot change
+        // the stored currency), write nothing, and alert an operator.
+        const ledgerCurrency = normalizeCurrency(transaction.currency);
+        if (ledgerCurrency === null) {
+          logger.error(
+            `[paysera] REFUSING to credit order ${result.orderId}: transaction ${transaction.id} is stored in ` +
+              `${String(transaction.currency).toUpperCase()}, outside the accepted domain ` +
+              `(${ACCEPTED_CURRENCIES.join('/')}), and there is no rate to convert it into the BGN wallet ledger. ` +
+              `No wallet credit was made and the payment was left un-completed for manual reconciliation.`,
+          );
+          detach(
+            notificationService.notifyAdminOps({
+              opsType: 'paysera_unsupported_currency',
+              title: 'Paysera top-up in an unsupported currency',
+              message:
+                `Order ${result.orderId} settled against transaction ${transaction.id}, which is stored in ` +
+                `${String(transaction.currency).toUpperCase()}. BoomCard accepts ${ACCEPTED_CURRENCIES.join(', ')} ` +
+                `only and has no conversion rate, so the wallet was NOT credited. Reconcile this payment manually.`,
+              severity: 'critical',
+              fields: [
+                { label: 'Order', value: result.orderId },
+                { label: 'Transaction', value: transaction.id },
+                { label: 'Currency', value: String(transaction.currency).toUpperCase() },
+                { label: 'Amount', value: String(transaction.amount) },
+              ],
+            }),
+            (err) => logger.error('Failed to post paysera unsupported-currency admin-ops alert:', err),
+          );
+          return res.send(paymentProvider.getWebhookAckResponse());
+        }
+
         // Credit wallet FIRST — atomically via walletService (lock-safe, correct audit trail).
         // We mark the payment Transaction COMPLETED only after the credit succeeds so that
         // if the credit throws, Paysera will retry the callback and we will retry the credit.
         const { wallet } = await walletService.credit({
           userId: transaction.userId,
-          amount: transaction.amount,
+          amount: toBgn(transaction.amount, ledgerCurrency),
           type: WalletTransactionType.TOP_UP,
           description: `Зареждане: ${result.orderId}`,
           transactionId: transaction.id,
@@ -361,11 +428,20 @@ async function handlePaymentCallback(req: Request, res: Response) {
             logger.error('Failed to send payment confirmation email:', error);
           });
 
-          // Send wallet update notification
+          // Send wallet update notification.
+          // `sendWalletUpdate` renders BOTH `newBalance` and `changeAmount` with a
+          // literal " BGN" suffix (email.service.ts:796,804), so both must be in
+          // the wallet's storage unit. `newBalance` already is. `changeAmount`
+          // was `transaction.amount` — a EUR figure on the default path — so the
+          // email announced "+100.00 BGN" for a 100.00 EUR top-up. It now carries
+          // the amount actually credited (BC-QA-031-FOLLOWUP-1 impl-r1 F1). The
+          // free-text description keeps the amount the user really paid AND names
+          // its currency explicitly, so it stays true.
+          const creditedBgn = toBgn(transaction.amount, ledgerCurrency);
           detach(emailService.sendWalletUpdate(transaction.user.email, {
             customerName: txFullName || transaction.user.email.split('@')[0],
             newBalance: wallet.balance,
-            changeAmount: transaction.amount,
+            changeAmount: creditedBgn,
             transactionType: 'credit',
             description: `Портфейлът ви е зареден с ${transaction.amount.toFixed(2)} ${transaction.currency}`,
             date: new Date(),
@@ -563,21 +639,25 @@ router.get(
         });
       }
 
-      // Transaction.amount is stored in Transaction.currency, which is genuinely
-      // mixed: the schema default is BGN, but POST /api/payments/create stores
-      // whatever currency the caller passed (defaulting to EUR). Convert ONLY the
+      // Transaction.amount is stored in Transaction.currency, whose accepted
+      // domain is {BGN, EUR}: the schema default is BGN and POST
+      // /api/payments/create now stores only an accepted code. Convert ONLY the
       // BGN-denominated case — an already-EUR-native amount passes through
-      // unchanged. (BC-QA-031 — EUR-only responses; same guard as
-      // POST /verify-redirect below.)
+      // unchanged. (BC-QA-031 — EUR-only responses.)
+      //
+      // `toDisplayMoney` replaces the old inline check plus a hardcoded 'EUR'
+      // label (BC-QA-031-FOLLOWUP-1): the literal was only true while every row
+      // was in the domain, and a LEGACY USD/GBP/PLN/CZK/RON row — which this
+      // endpoint could not convert — used to ship its raw magnitude as euros.
+      // Such a row now keeps its own code.
+      const money = toDisplayMoney(transaction.amount, transaction.currency);
       res.json({
         success: true,
         data: {
           orderId,
           status: transaction.status.toLowerCase(),
-          amount: transaction.currency === 'BGN'
-            ? bgnToEur(transaction.amount)
-            : transaction.amount,
-          currency: 'EUR',
+          amount: money.amount,
+          currency: money.currency,
           createdAt: transaction.createdAt,
         },
       });
@@ -626,18 +706,19 @@ router.get(
         },
       });
 
-      // Transaction.amount is stored in Transaction.currency, which is genuinely
-      // mixed: the schema default is BGN, but POST /api/payments/create stores
-      // whatever currency the caller passed (defaulting to EUR). Convert ONLY the
-      // BGN-denominated rows — already-EUR-native amounts pass through unchanged.
-      // (BC-QA-031 — EUR-only responses; same guard as POST /verify-redirect.)
+      // Transaction.amount is stored in Transaction.currency, whose accepted
+      // domain is {BGN, EUR}. Convert ONLY the BGN-denominated rows —
+      // already-EUR-native amounts pass through unchanged (BC-QA-031 — EUR-only
+      // responses) — and take the label from the row via `toDisplayMoney`
+      // rather than hardcoding 'EUR' (BC-QA-031-FOLLOWUP-1), so a LEGACY
+      // out-of-domain row written before the narrowing is reported under its
+      // own code instead of having its unconverted magnitude called euros.
       res.json({
         success: true,
         data: transactions.map(t => ({
           id: t.id,
           orderId: t.metadata ? (JSON.parse(t.metadata as string) as any)?.orderId : undefined,
-          amount: t.currency === 'BGN' ? bgnToEur(t.amount) : t.amount,
-          currency: 'EUR',
+          ...toDisplayMoney(t.amount, t.currency),
           status: t.status.toLowerCase(),
           description: t.description,
           createdAt: t.createdAt,
@@ -668,8 +749,23 @@ router.get(
  */
 router.get('/methods', asyncHandler(async (req: Request, res: Response) => {
   const country = (req.query.country as string) || 'bg';
-  const currency = (req.query.currency as string) || 'EUR';
+  const requestedCurrency = (req.query.currency as string) || 'EUR';
   const amount = parseInt(req.query.amount as string) || 1000;
+
+  // BC-QA-031-FOLLOWUP-1 — this endpoint is the checkout's own metadata, so it
+  // must advertise the currencies BoomCard will actually accept on
+  // POST /api/payments/create, not the wider set Paysera's library can process.
+  // Publishing the wider list told a client it could pay in USD and the create
+  // call then rejected it; quoting methods priced in an unaccepted currency
+  // would be the same incoherence one step earlier, so an out-of-domain
+  // `?currency=` is refused rather than silently served as EUR.
+  const currency = normalizeCurrency(requestedCurrency);
+  if (currency === null) {
+    return res.status(400).json({
+      success: false,
+      message: `Currency ${requestedCurrency} not supported. Supported currencies: ${ACCEPTED_CURRENCIES.join(', ')}.`,
+    });
+  }
 
   try {
     const methods = await payseraService.fetchPaymentMethods(country, currency, amount);
@@ -678,7 +774,7 @@ router.get('/methods', asyncHandler(async (req: Request, res: Response) => {
       success: true,
       data: {
         methods,
-        currencies: PayseraService.getSupportedCurrencies(),
+        currencies: PayseraService.getAcceptedCurrencies(),
         country,
         currency,
       },
@@ -690,7 +786,7 @@ router.get('/methods', asyncHandler(async (req: Request, res: Response) => {
       success: true,
       data: {
         methods: PayseraService.getSupportedPaymentMethods(),
-        currencies: PayseraService.getSupportedCurrencies(),
+        currencies: PayseraService.getAcceptedCurrencies(),
         country,
         currency,
         fallback: true,

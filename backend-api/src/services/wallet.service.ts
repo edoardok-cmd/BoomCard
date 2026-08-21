@@ -15,7 +15,7 @@ import { reasonIndicatesIbanProblem } from '../utils/payoutFailureReason';
 import { resolvePayoutEligibility } from './payoutEligibility.service';
 import { RISK_HOLD_FLOOR_SCORE } from './userRisk.service';
 import { validateIBAN, ValidationError } from '../utils/validation';
-import { bgnToEur } from '../utils/currency';
+import { bgnToEur, toEur, displayCurrency, foldMixedCurrencyToEur } from '../utils/currency';
 
 // ── User-facing payout-status masking (Spec §3.2 / §3.7) ─────────────────────
 // Spec §3.7 (line 461): on the SECOND failed payout the record routes to manual
@@ -172,33 +172,55 @@ export class WalletService {
           subscription.currentPeriodEnd > walletNow)
       );
 
-    const pendingAgg = await prisma.walletTransaction.aggregate({
+    // groupBy(['currency']) rather than a flat aggregate: these two figures are
+    // returned as EUR money on GET /api/wallet/balance, and a `_sum` across a
+    // column that may hold a legacy non-BGN row is not convertible as a whole
+    // (BC-QA-031-FOLLOWUP-1 task-r1 F1). The fold converts what it can and
+    // excludes what it cannot, instead of dividing a foreign magnitude by the
+    // BGN peg. New rows are BGN-only by write policy, so for a clean database
+    // these are numerically identical to the previous flat aggregates.
+    const pendingGroups = await prisma.walletTransaction.groupBy({
+      by: ['currency'],
       where: { walletId: wallet.id, cashbackStatus: { in: [CashbackEntryStatus.PENDING, CashbackEntryStatus.TRIAL_PENDING] } },
       _sum: { amount: true },
+      _count: { _all: true },
     });
-    const computedPendingBalance = pendingAgg._sum.amount ?? 0;
+    const pendingFold = foldMixedCurrencyToEur(
+      pendingGroups.map((g) => ({ currency: g.currency, amount: g._sum.amount, count: g._count._all })),
+    );
 
     const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    const expiringAgg = await prisma.walletTransaction.aggregate({
+    const expiringGroups = await prisma.walletTransaction.groupBy({
+      by: ['currency'],
       where: {
         walletId: wallet.id,
         cashbackStatus: CashbackEntryStatus.CLEARED,
         cashbackExpiresAt: { lte: sevenDaysFromNow, gt: new Date() },
       },
       _sum: { amount: true },
+      _count: { _all: true },
     });
-    const expiringBalance = expiringAgg._sum.amount ?? 0;
+    const expiringFold = foldMixedCurrencyToEur(
+      expiringGroups.map((g) => ({ currency: g.currency, amount: g._sum.amount, count: g._count._all })),
+    );
 
     const hasIban = !!wallet.payoutIban && wallet.payoutIban.trim().length > 0;
 
-    // Stored balances are BGN-denominated; convert to EUR before returning
-    // (BC-QA-031 — dual-currency display removed, EUR-only responses).
+    // Stored balances are denominated in `Wallet.currency`; convert to EUR
+    // before returning (BC-QA-031 — dual-currency display removed, EUR-only
+    // responses), keyed on that column rather than converting unconditionally
+    // and asserting 'EUR' (BC-QA-031-FOLLOWUP-1 impl-r1 F3).
+    //
+    // `payoutThreshold` is deliberately NOT keyed on it: `getPayoutThresholdBGN`
+    // returns BGN by contract regardless of what any wallet row holds, so it
+    // stays an unconditional `bgnToEur`.
     const response = {
-      balance: bgnToEur(wallet.balance),
-      availableBalance: bgnToEur(wallet.availableBalance),
-      pendingBalance: bgnToEur(computedPendingBalance),
-      expiringBalance: bgnToEur(expiringBalance),
-      currency: 'EUR',
+      balance: toEur(wallet.balance, wallet.currency),
+      availableBalance: toEur(wallet.availableBalance, wallet.currency),
+      // Already EUR — the folds above converted each per-currency subtotal.
+      pendingBalance: pendingFold.total,
+      expiringBalance: expiringFold.total,
+      currency: displayCurrency(wallet.currency),
       isLocked: wallet.isLocked,
       lastUpdated: wallet.updatedAt,
       payoutThreshold: bgnToEur(threshold),
@@ -219,6 +241,18 @@ export class WalletService {
    * Credit wallet (add funds)
    * CASHBACK_CREDIT transactions automatically receive a dynamic expiry window
    * (default 60 days, configurable via the cashback_expiry_days system setting).
+   *
+   * ⚠ UNIT CONTRACT (BC-QA-031-FOLLOWUP-1 impl-r1 F1): `amount` MUST already be
+   * denominated in the wallet's STORAGE unit — BGN (`Wallet.currency
+   * @default("BGN")`; every read of these columns applies `bgnToEur`). This
+   * method takes no currency and cannot detect a mis-denominated caller: it
+   * increments the column by whatever number it is given. A caller holding an
+   * externally-denominated amount (a payment in `Transaction.currency`, a
+   * Stripe `paymentIntent.amount / 100`) must convert at its own boundary with
+   * `toBgn(amount, currency)` from `src/utils/currency.ts` — the write-side
+   * mirror of the `toEur` applied on the way out. Passing a EUR magnitude
+   * straight through is what made a 100.00 EUR top-up worth EUR 51.13 of
+   * balance; `payments.paysera.routes.ts` and `stripe.service.ts` now convert.
    */
   async credit(params: {
     userId: string;
@@ -397,7 +431,7 @@ export class WalletService {
       throw err;
     }
 
-    logger.info(`Credited ${amount} BGN to wallet ${wallet.id}. Type: ${type}${isTrialPending ? ' [TRIAL_PENDING]' : ''}${cashbackExpiresAt ? `. Expires: ${cashbackExpiresAt.toISOString()}` : ''}`);
+    logger.info(`Credited ${amount} ${wallet.currency} to wallet ${wallet.id}. Type: ${type}${isTrialPending ? ' [TRIAL_PENDING]' : ''}${cashbackExpiresAt ? `. Expires: ${cashbackExpiresAt.toISOString()}` : ''}`);
 
     // Payout-ready notification: fire when the credit crosses the payout threshold
     // for this user's plan (pre-credit below, post-credit above). Non-fatal.
@@ -507,7 +541,7 @@ export class WalletService {
       return [updated, txRecord] as const;
     });
 
-    logger.info(`Debited ${amount} BGN from wallet ${wallet.id}. Type: ${type}`);
+    logger.info(`Debited ${amount} ${wallet.currency} from wallet ${wallet.id}. Type: ${type}`);
 
     return {
       wallet: updatedWallet,
@@ -586,7 +620,7 @@ export class WalletService {
       });
     });
 
-    logger.info(`Voided ${amount} BGN of TRIAL_PENDING cashback from wallet ${wallet.id}`);
+    logger.info(`Voided ${amount} ${wallet.currency} of TRIAL_PENDING cashback from wallet ${wallet.id}`);
   }
 
   /**
@@ -1508,14 +1542,19 @@ export class WalletService {
           }
         }
         const isEscalated = parsedMeta?.escalatedSecondFailure === true;
-        // Stored amount/balanceBefore/balanceAfter are BGN-denominated; convert
-        // to EUR before returning (BC-QA-031 — EUR-only responses).
+        const rowCurrency = (rest as { currency?: string | null }).currency;
+        // Stored amount/balanceBefore/balanceAfter are denominated in the row's
+        // own `WalletTransaction.currency`; convert to EUR before returning
+        // (BC-QA-031 — EUR-only responses), keyed on that row rather than
+        // converting unconditionally and asserting 'EUR'
+        // (BC-QA-031-FOLLOWUP-1 impl-r1 F3 — the accepted-currency guard admits
+        // EUR on this column, so a EUR row must not be halved and relabelled).
         return {
           ...rest,
-          amount: bgnToEur(rest.amount),
-          balanceBefore: bgnToEur(rest.balanceBefore),
-          balanceAfter: bgnToEur(rest.balanceAfter),
-          currency: 'EUR',
+          amount: toEur(rest.amount, rowCurrency),
+          balanceBefore: toEur(rest.balanceBefore, rowCurrency),
+          balanceAfter: toEur(rest.balanceAfter, rowCurrency),
+          currency: displayCurrency(rowCurrency),
           description: isWithdrawal && isEscalated ? null : description,
           metadata: isWithdrawal ? null : metadata,
           voidedReason: (() => {

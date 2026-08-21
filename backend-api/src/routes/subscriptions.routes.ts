@@ -8,7 +8,7 @@ import { prisma } from '../lib/prisma';
 import { payseraService } from '../services/paysera.service';
 import crypto from 'crypto';
 import { logger } from '../utils/logger';
-import { toEur } from '../utils/currency';
+import { toDisplayMoney } from '../utils/currency';
 
 const router = Router();
 
@@ -236,19 +236,27 @@ router.get('/history', authenticate, asyncHandler(async (req: AuthRequest, res: 
       },
     });
 
-    // Transaction.amount is stored in Transaction.currency, which is genuinely
-    // mixed (schema default BGN; POST /api/payments/create stores a
-    // caller-supplied currency defaulting to EUR; Stripe writes EUR rows) —
-    // convert ONLY the BGN-denominated rows (BC-QA-031 — EUR-only responses).
-    // The T9 synthetic entry below is genuinely EUR-native (plan prices) and is
-    // deliberately NOT converted.
+    // Transaction.amount is stored in Transaction.currency, whose accepted
+    // domain is {BGN, EUR} (schema default BGN; POST /api/payments/create and
+    // the Stripe webhooks both write within that domain) — convert ONLY the
+    // BGN-denominated rows (BC-QA-031 — EUR-only responses). The T9 synthetic
+    // entry below is genuinely EUR-native (plan prices) and is deliberately NOT
+    // converted.
+    //
+    // The label comes from `toDisplayMoney` rather than a literal 'EUR'
+    // (BC-QA-031-FOLLOWUP-1): a hardcoded label is only true while every row is
+    // in the domain, and legacy rows written before the domain was narrowed can
+    // still be USD/GBP/PLN/CZK/RON. Such a row has no conversion rate, so it is
+    // reported at its own magnitude under its OWN currency code — an honest
+    // foreign-currency row — instead of a foreign magnitude wearing a EUR label.
     const history = transactions.map(t => {
       const meta = t.metadata ? JSON.parse(t.metadata as string) : {};
+      const money = toDisplayMoney(t.amount, t.currency);
       return {
         id: t.id,
         date: t.createdAt.toISOString(),
-        amount: toEur(t.amount, t.currency),
-        currency: 'EUR',
+        amount: money.amount,
+        currency: money.currency,
         status: t.status.toLowerCase(),
         description: t.description,
         orderId: meta.orderId,

@@ -9,7 +9,7 @@ import { Router, Response } from 'express';
 import { authenticate, authorize, requirePermission, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { prisma } from '../lib/prisma';
-import { bgnToEur, sumMixedCurrencyToEur } from '../utils/currency';
+import { bgnToEur, foldMixedCurrencyToEur } from '../utils/currency';
 
 const router = Router();
 
@@ -116,17 +116,22 @@ router.get(
       // is genuinely mixed (schema default BGN; POST /api/payments/create stores
       // a caller-supplied currency defaulting to EUR; Stripe writes EUR rows), so
       // a single `_sum.finalAmount` would add BGN and EUR magnitudes together
-      // before any conversion could run. sumMixedCurrencyToEur() converts each
+      // before any conversion could run. foldMixedCurrencyToEur() converts each
       // per-currency subtotal, then folds (BC-QA-031 — EUR-only responses).
+      // `_count` rides along so the fold can report how many rows its total
+      // actually covers — `todayAvg` divides by that, not by the raw row count
+      // (BC-QA-031-FOLLOWUP-1 impl-r1 F4).
       prisma.transaction.groupBy({
         by: ['currency'],
         where: { createdAt: { gte: todayStart }, status: 'COMPLETED' },
         _sum: { finalAmount: true },
+        _count: { _all: true },
       }),
       prisma.transaction.groupBy({
         by: ['currency'],
         where: { status: 'COMPLETED' },
         _sum: { finalAmount: true },
+        _count: { _all: true },
       }),
 
       // Кешбек — 4 metrics per spec §3.1: начислен, одобрен, изчакващ, изтичащ
@@ -140,31 +145,38 @@ router.get(
       // PROCESSING rows cannot reach cashbackStatus=PAID by lifecycle invariants (PAID
       // requires CLEARED→LOCKED→PAID, all via status=COMPLETED), so the pending sub-query
       // need not repeat the cashbackStatus filter.
-      prisma.walletTransaction.aggregate({
+      prisma.walletTransaction.groupBy({
+        by: ['currency'],
         where: {
           type: 'CASHBACK_CREDIT',
           status: { in: ['COMPLETED', 'TRIAL_PENDING', 'PENDING', 'PROCESSING'] },
           cashbackStatus: { not: 'PAID' },
         },
         _sum: { amount: true },
+        _count: { _all: true },
       }),
-      prisma.walletTransaction.aggregate({
+      prisma.walletTransaction.groupBy({
+        by: ['currency'],
         where: {
           type: 'CASHBACK_CREDIT',
           status: 'COMPLETED',
           cashbackStatus: { not: 'PAID' },
         },
         _sum: { amount: true },
+        _count: { _all: true },
       }),
-      prisma.walletTransaction.aggregate({
+      prisma.walletTransaction.groupBy({
+        by: ['currency'],
         where: { type: 'CASHBACK_CREDIT', status: { in: ['TRIAL_PENDING', 'PENDING', 'PROCESSING'] } },
         _sum: { amount: true },
+        _count: { _all: true },
       }),
       // "Изтичащ" = CLEARED entries expiring within 7 days that are still actionable.
       // Excludes LOCKED (in-flight payout — being processed, not at expiry risk) and
       // PAID (already settled — markPaid() leaves cashbackExpiresAt intact, so without
       // this guard paid entries with a future expiry date would inflate the figure).
-      prisma.walletTransaction.aggregate({
+      prisma.walletTransaction.groupBy({
+        by: ['currency'],
         where: {
           type: 'CASHBACK_CREDIT',
           status: 'COMPLETED',
@@ -172,12 +184,13 @@ router.get(
           cashbackExpiresAt: { gte: now, lte: sevenDaysLater },
         },
         _sum: { amount: true },
+        _count: { _all: true },
       }),
 
       // Кешбек §3.1 — count + amount per cashbackStatus. Scoped to CASHBACK_CREDIT
       // (the cashback-bearing wallet rows that carry a cashbackStatus). One query.
       prisma.walletTransaction.groupBy({
-        by: ['cashbackStatus'],
+        by: ['cashbackStatus', 'currency'],
         where: { type: 'CASHBACK_CREDIT', cashbackStatus: { not: null } },
         _count: { _all: true },
         _sum: { amount: true },
@@ -201,9 +214,11 @@ router.get(
       // Финанси §6.1 — subscriber payout queue.
       // WITHDRAWAL amounts are stored negative (wallet.service.ts:436), so we negate
       // the sum to surface a positive BGN figure for the dashboard.
-      prisma.walletTransaction.aggregate({
+      prisma.walletTransaction.groupBy({
+        by: ['currency'],
         where: { type: 'WITHDRAWAL', status: { in: ['PENDING', 'PROCESSING'] } },
         _sum: { amount: true },
+        _count: { _all: true },
       }),
       prisma.walletTransaction.count({
         where: { type: 'WITHDRAWAL', status: { in: ['PENDING', 'PROCESSING'] } },
@@ -241,16 +256,41 @@ router.get(
     // Per-currency subtotals converted then folded — see the groupBy above.
     // These are already EUR, so the response emits them directly rather than
     // running bgnToEur() over them a second time.
-    const todayVolumeEur = sumMixedCurrencyToEur(
-      todayTxVolume.map((g) => ({ currency: g.currency, amount: g._sum.finalAmount })),
+    //
+    // `todayAvg` divides by the fold's `includedCount`, NOT by `todayTxCount`
+    // (BC-QA-031-FOLLOWUP-1 impl-r1 F4). The fold drops any subtotal it has no
+    // rate for, so dividing by the full row count produced an "average" that was
+    // neither the mean of the included rows nor the mean of all of them — a
+    // derived figure corrupted by an exclusion the caller could not see.
+    // `todayTransactions` stays the true full count (a count of rows is honest
+    // regardless of currency); the excluded figures below explain the gap.
+    const todayVolume = foldMixedCurrencyToEur(
+      todayTxVolume.map((g) => ({ currency: g.currency, amount: g._sum.finalAmount, count: g._count?._all })),
     );
-    const totalVolumeEur = sumMixedCurrencyToEur(
-      totalTxVolume.map((g) => ({ currency: g.currency, amount: g._sum.finalAmount })),
+    const totalVolume = foldMixedCurrencyToEur(
+      totalTxVolume.map((g) => ({ currency: g.currency, amount: g._sum.finalAmount, count: g._count?._all })),
     );
-    const todayAvgEur = todayTxCount > 0
-      ? parseFloat((todayVolumeEur / todayTxCount).toFixed(2))
+    const todayVolumeEur = todayVolume.total;
+    const totalVolumeEur = totalVolume.total;
+    const todayAvgEur = todayVolume.includedCount > 0
+      ? parseFloat((todayVolumeEur / todayVolume.includedCount).toFixed(2))
       : 0;
-    const payoutsDue = Math.abs(payoutsDueAgg._sum.amount ?? 0);
+    /** Fold one cashback tile's per-currency subtotals into a EUR figure. */
+    const foldTile = (
+      groups: Array<{ currency: string | null; _sum: { amount: number | null }; _count: { _all: number } }>,
+    ) =>
+      foldMixedCurrencyToEur(
+        groups.map((g) => ({ currency: g.currency, amount: g._sum.amount ?? 0, count: g._count._all })),
+      );
+    const accruedFold = foldTile(accruedCashback);
+    const approvedFold = foldTile(approvedCashback);
+    const pendingFold = foldTile(pendingCashback);
+    const expiringFold = foldTile(expiringCashback);
+    // Same fold (impl-r4 F12). WITHDRAWAL amounts are stored negative, so the
+    // absolute value is taken per subtotal before folding.
+    const payoutsDueFold = foldMixedCurrencyToEur(
+      payoutsDueAgg.map((g) => ({ currency: g.currency, amount: Math.abs(g._sum.amount ?? 0), count: g._count._all })),
+    );
 
     // §3.1 cashback status breakdown — zero-fill all 7 canonical statuses so the
     // tile always renders every state even when no rows exist for it.
@@ -263,13 +303,22 @@ router.get(
       'EXPIRED',
       'VOIDED',
     ] as const;
+    // Folded per currency (BC-QA-031-FOLLOWUP-1 impl-r4 F12): the groupBy key is
+    // ['cashbackStatus','currency'], so each status re-folds its own subtotals and
+    // an unconvertible legacy row is excluded from the EUR figure rather than
+    // divided by the BGN peg. `count` comes from the fold, so a status's count
+    // always describes the rows its amount covers.
     const cashbackStatusBreakdown = CASHBACK_STATUSES.map((status) => {
-      const row = cashbackStatusGroups.find((g) => g.cashbackStatus === status);
-      const amount = row?._sum?.amount ?? 0;
+      const fold = foldMixedCurrencyToEur(
+        cashbackStatusGroups
+          .filter((g) => g.cashbackStatus === status)
+          .map((g) => ({ currency: g.currency, amount: g._sum?.amount ?? 0, count: g._count?._all ?? 0 })),
+      );
       return {
         status,
-        count: row?._count?._all ?? 0,
-        amount: bgnToEur(amount),
+        count: fold.includedCount,
+        amount: fold.total,
+        excludedCount: fold.excludedCount,
       };
     });
 
@@ -298,13 +347,33 @@ router.get(
           todayVolume: todayVolumeEur,
           todayAvg: todayAvgEur,
           totalVolume: totalVolumeEur,
+          // How many rows the two volume figures could NOT account for, and in
+          // which currencies (impl-r1 F4). Zero for any database without legacy
+          // pre-narrowing rows, which is every database the current write paths
+          // can produce. Surfacing it in the UI is frontend work, filed separately.
+          todayExcludedCount: todayVolume.excludedCount,
+          totalExcludedCount: totalVolume.excludedCount,
+          excludedCurrencies: Array.from(
+            new Set([...todayVolume.excludedCurrencies, ...totalVolume.excludedCurrencies]),
+          ).sort(),
         },
+        // Each tile folds its own per-currency subtotals (impl-r4 F12). These are
+        // already EUR, so no second conversion is applied.
         cashback: {
-          accrued: bgnToEur(accruedCashback._sum.amount ?? 0),
-          approved: bgnToEur(approvedCashback._sum.amount ?? 0),
-          pending: bgnToEur(pendingCashback._sum.amount ?? 0),
-          expiringSoon: bgnToEur(expiringCashback._sum.amount ?? 0),
+          accrued: accruedFold.total,
+          approved: approvedFold.total,
+          pending: pendingFold.total,
+          expiringSoon: expiringFold.total,
           statusBreakdown: cashbackStatusBreakdown,
+          excludedCount:
+            accruedFold.excludedCount + approvedFold.excludedCount
+            + pendingFold.excludedCount + expiringFold.excludedCount,
+          excludedCurrencies: Array.from(new Set([
+            ...accruedFold.excludedCurrencies,
+            ...approvedFold.excludedCurrencies,
+            ...pendingFold.excludedCurrencies,
+            ...expiringFold.excludedCurrencies,
+          ])).sort(),
         },
         partners: {
           active: activePartners,
@@ -312,8 +381,10 @@ router.get(
           locations: activeLocations,
         },
         finance: {
-          payoutsDue: bgnToEur(payoutsDue),
+          // Already EUR — folded per currency above (impl-r4 F12).
+          payoutsDue: payoutsDueFold.total,
           payoutsDueCount,
+          payoutsDueExcludedCount: payoutsDueFold.excludedCount,
           partnerReceivables: bgnToEur(partnerReceivablesAmt),
           margin: bgnToEur(marginAmt),
         },

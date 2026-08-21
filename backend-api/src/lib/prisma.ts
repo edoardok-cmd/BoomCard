@@ -4,6 +4,7 @@ import { Pool, type PoolClient } from 'pg';
 import dotenv from 'dotenv';
 import path from 'path';
 import { logger } from '../utils/logger';
+import { assertCurrencyInDomain, CURRENCY_DOMAIN_BY_MODEL } from '../utils/currency';
 
 // Load environment variables from .env file (only needed for local development;
 // in production, env vars are injected by the hosting platform)
@@ -265,12 +266,12 @@ function assertSafeSchemaName(schemaName: string): void {
  * override is requested (verified in
  * tests/unit/prisma.scratchSchema.test.ts).
  *
- * "Exactly like a normal PrismaClient" includes the `withSoftDelete`
- * extension applied to the default `prisma` singleton below (BC-QA-037
- * impl-r1 MEDIUM #2): the returned client is wrapped with the same
- * extension, so `User.findMany`/`findFirst` soft-delete filtering behaves
- * identically to production instead of silently diverging for anyone who
- * queries `User` through a scratch client.
+ * "Exactly like a normal PrismaClient" includes every extension applied to
+ * the default `prisma` singleton below — `withSoftDelete` (BC-QA-037 impl-r1
+ * MEDIUM #2) and `withCurrencyGuard` (BC-QA-031-FOLLOWUP-1) — applied in the
+ * same order, so `User.findMany`/`findFirst` soft-delete filtering and the
+ * accepted-currency write guard both behave identically to production instead
+ * of silently diverging for anyone who queries through a scratch client.
  */
 export function createScratchSchemaClient(schemaName: string): PrismaClient {
   assertSafeSchemaName(schemaName);
@@ -297,12 +298,139 @@ export function createScratchSchemaClient(schemaName: string): PrismaClient {
     disposeExternalPool: true,
   });
 
-  return withSoftDelete(
-    new PrismaClient({
-      adapter,
-      log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
-    }),
+  return withCurrencyGuard(
+    withSoftDelete(
+      new PrismaClient({
+        adapter,
+        log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+      }),
+    ),
   );
+}
+
+/**
+ * BC-QA-031-FOLLOWUP-1 — a BACKSTOP behind the currency domain, with known limits.
+ *
+ * `src/utils/currency.ts` narrows each money column BoomCard writes to its own
+ * accepted domain (`CURRENCY_DOMAIN_BY_MODEL`), and each individual write path
+ * enforces that for itself with a message appropriate to its caller (a 400 on
+ * the request-body path, a refuse-and-alert on the Stripe webhook paths). Those
+ * per-path checks are what actually close the hole. This extension is a second
+ * line of defence for the ordinary `prisma.<model>.<op>(...)` call shape: a
+ * write site added later that never heard of this task still cannot persist an
+ * out-of-domain `currency` THROUGH THAT SHAPE — it throws
+ * `UnsupportedCurrencyError` (an `AppError` carrying 400) before the query
+ * reaches the database.
+ *
+ * THE DOMAINS ARE PER COLUMN, and deliberately not uniform (task-r1 F3):
+ *   - `Transaction.currency`      → {BGN, EUR}. It records what a customer PAID.
+ *   - `Wallet.currency`           → {BGN}.
+ *   - `WalletTransaction.currency`→ {BGN}.
+ * The wallet columns are the ledger's own unit and its arithmetic is
+ * unconditionally BGN (`walletService.credit`/`debit` take no currency at all),
+ * so admitting EUR there admits a value the ledger cannot honour — measured as
+ * a ~96% over-credit before this narrowing. Reads are deliberately WIDER than
+ * writes on all three columns, because legacy rows predating the narrowing must
+ * still be displayed honestly rather than rejected.
+ *
+ * ⚠ WHAT IT DOES **NOT** COVER (measured, not assumed — impl-r1 F2 landed a USD
+ * row through the first hole and a GBP row through the second):
+ *
+ *   - NESTED WRITES. Prisma query extensions fire for the operation invoked on
+ *     the model client, not for relations written inside it, so
+ *     `prisma.user.update({ data: { transactions: { create: { currency: 'USD' }
+ *     } } })` bypasses this guard entirely. There is no extension-level fix for
+ *     that; it is a property of where Prisma dispatches extensions.
+ *   - ANY OPERATION NOT LISTED in `CURRENCY_GUARDED_WRITES`. The list is
+ *     enumerated by hand and Prisma has added operations over time
+ *     (`createManyAndReturn` / `updateManyAndReturn` were missing until F2).
+ *     A future Prisma release adding another write shape reopens the same gap.
+ *   - RAW SQL (`$executeRaw`, `$queryRaw`) — by design; the legacy-row tests
+ *     rely on that escape hatch to reproduce pre-narrowing rows.
+ *
+ * Therefore: do NOT describe this as a database invariant, and do not let a
+ * caller skip its own validation because "the guard will catch it". The only
+ * genuinely structural version of this constraint is a Postgres `CHECK` on
+ * `Transaction.currency`, `Wallet.currency` and `WalletTransaction.currency`,
+ * which is a migration and belongs to the db-engineer (recommended as a
+ * follow-up by BC-QA-031-FOLLOWUP-1; not written here, out of glob).
+ *
+ * Scope is deliberately narrow in three further ways:
+ *   - READS are untouched. Legacy rows written before the narrowing still
+ *     exist and must remain readable; `toEur`/`displayCurrency` report them
+ *     under their own currency label instead of relabelling them EUR.
+ *   - An ABSENT `currency` is untouched, so the schema's `@default("BGN")`
+ *     keeps applying to the many writers that never mention the column.
+ *   - The value is validated, never rewritten. Normalising case inside a
+ *     query extension would silently mutate caller data at a layer no caller
+ *     can see; call sites normalise explicitly via `normalizeCurrency`.
+ *
+ * The enumerated operations are pinned by
+ * `tests/integration/bc-qa-031-followup-1-write-rejection.test.ts`, which also
+ * records both bypasses above as explicit, asserted limitations rather than
+ * leaving them to be rediscovered.
+ */
+const CURRENCY_GUARDED_WRITES = [
+  'create',
+  'createMany',
+  'createManyAndReturn',
+  'update',
+  'updateMany',
+  'updateManyAndReturn',
+  'upsert',
+] as const;
+
+function assertCurrencyInPayload(payload: unknown, context: string, domain: readonly string[]): void {
+  if (payload === null || typeof payload !== 'object') return;
+  const rows = Array.isArray(payload) ? payload : [payload];
+  for (const row of rows) {
+    if (row === null || typeof row !== 'object') continue;
+    if (!('currency' in row)) continue;
+    const raw = (row as { currency?: unknown }).currency;
+    // Prisma accepts both `currency: 'EUR'` and the `currency: { set: 'EUR' }`
+    // update form; unwrap the latter so both spellings are guarded.
+    const value =
+      raw !== null && typeof raw === 'object' && 'set' in (raw as Record<string, unknown>)
+        ? (raw as { set?: unknown }).set
+        : raw;
+    // `undefined` means the field was not supplied (schema default applies);
+    // `null` cannot be stored in these non-nullable columns and is left to
+    // Prisma's own validation to reject with its usual message.
+    if (value === undefined || value === null) continue;
+    assertCurrencyInDomain(value, context, domain);
+  }
+}
+
+function guardForModel(modelKey: string) {
+  // The accepted domain is PER COLUMN, not global (task-r1 F3): `Transaction`
+  // records what a customer paid and is {BGN, EUR}; the two wallet columns are
+  // the ledger's own unit and are BGN alone, because `walletService`'s
+  // arithmetic is unconditionally BGN. See `CURRENCY_DOMAIN_BY_MODEL`.
+  const domain = CURRENCY_DOMAIN_BY_MODEL[modelKey];
+  return Object.fromEntries(
+    CURRENCY_GUARDED_WRITES.map((operation) => [
+      operation,
+      async ({ model, args, query }: { model: string; args: unknown; query: (a: unknown) => unknown }) => {
+        const container = args as { data?: unknown; create?: unknown; update?: unknown };
+        const context = `prisma ${model}.${operation}`;
+        assertCurrencyInPayload(container?.data, context, domain);
+        // `upsert` carries two independent payloads, neither of which is `data`.
+        assertCurrencyInPayload(container?.create, context, domain);
+        assertCurrencyInPayload(container?.update, context, domain);
+        return query(args);
+      },
+    ]),
+  );
+}
+
+function withCurrencyGuard(client: PrismaClient): PrismaClient {
+  return client.$extends({
+    query: {
+      transaction: guardForModel('transaction'),
+      wallet: guardForModel('wallet'),
+      walletTransaction: guardForModel('walletTransaction'),
+    },
+  }) as unknown as PrismaClient;
 }
 
 function withSoftDelete(client: PrismaClient): PrismaClient {
@@ -333,7 +461,7 @@ function withSoftDelete(client: PrismaClient): PrismaClient {
   }) as unknown as PrismaClient;
 }
 
-export const prisma = globalForPrisma.prisma || withSoftDelete(createPrismaClient());
+export const prisma = globalForPrisma.prisma || withCurrencyGuard(withSoftDelete(createPrismaClient()));
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 

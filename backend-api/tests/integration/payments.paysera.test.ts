@@ -130,8 +130,17 @@ describe('Paysera Payment Routes', () => {
       expect(response.body.data.currency).toBeTruthy();
     });
 
-    it('should support multiple currencies', async () => {
-      const currencies = ['BGN', 'EUR', 'USD', 'GBP'];
+    // BC-QA-031-FOLLOWUP-1: this case used to assert that USD and GBP were
+    // accepted alongside BGN and EUR, because the route validated against
+    // `PayseraService.getSupportedCurrencies()` — Paysera's own, wider
+    // library default — and stored the caller's code verbatim. That is the
+    // defect this task fixed: nothing downstream could convert a USD row, and
+    // every read path labelled it 'EUR', so a 100.00 USD top-up was reported as
+    // 100.00 EUR. The accepted domain is now the application's own {BGN, EUR}.
+    // The rejection half is pinned in
+    // tests/integration/bc-qa-031-followup-1-write-rejection.test.ts.
+    it('supports the accepted currencies (BGN and EUR)', async () => {
+      const currencies = ['BGN', 'EUR'];
 
       for (const currency of currencies) {
         const response = await authRequest(authToken)

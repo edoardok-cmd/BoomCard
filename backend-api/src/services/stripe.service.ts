@@ -6,6 +6,7 @@ import { walletService } from './wallet.service';
 import { notificationService } from './notification.service';
 import { emailService } from './email.service';
 import { detach } from '../utils/detach';
+import { ACCEPTED_CURRENCIES, assertAcceptedCurrency, normalizeCurrency, toBgn } from '../utils/currency';
 
 /**
  * Stripe Service for Payment Processing
@@ -86,16 +87,26 @@ class StripeService {
     amount: number;
     currency: string;
   }> {
-    try {
-      const { amount, currency = 'bgn', userId, email, description, metadata } = params;
+    // BC-QA-031-FOLLOWUP-1 — outside the try/catch on purpose: the catch below
+    // rewrites every failure as a generic 500 "Failed to create payment", which
+    // would hide a caller's out-of-domain currency behind a server error. A
+    // PaymentIntent created in a currency BoomCard cannot store becomes an
+    // unwritable `Transaction` row the moment the webhook fires, so it is
+    // refused here as the 400 it is. `POST /api/payments/intents` performs the
+    // same check first with a friendlier body — but that route is DORMANT (its
+    // router is imported in server.ts and never mounted, so it 404s; task-r1
+    // F4), which makes this assertion the only live gate on this method.
+    const { amount, currency = 'BGN', userId, email, description, metadata } = params;
+    const acceptedCurrency = assertAcceptedCurrency(currency, 'stripeService.createPaymentIntent');
 
+    try {
       // Get or create customer
       const customerId = await this.getOrCreateCustomer(userId, email);
 
       // Create payment intent
       const paymentIntent = await this.stripe.paymentIntents.create({
         amount: Math.round(amount * 100), // Stripe expects amount in cents/stotinki
-        currency: currency.toLowerCase(),
+        currency: acceptedCurrency.toLowerCase(),
         customer: customerId,
         description,
         metadata: {
@@ -108,7 +119,7 @@ class StripeService {
         },
       });
 
-      logger.info(`Created payment intent ${paymentIntent.id} for ${amount} ${currency}`);
+      logger.info(`Created payment intent ${paymentIntent.id} for ${amount} ${acceptedCurrency}`);
 
       return {
         paymentIntentId: paymentIntent.id,
@@ -402,6 +413,78 @@ class StripeService {
   }
 
   /**
+   * BC-QA-031-FOLLOWUP-1 — the provider-driven half of "reject at write time".
+   *
+   * Stripe reports the currency of an event as fact; it is not caller input we
+   * can 400. But a currency outside `ACCEPTED_CURRENCIES` is still one this
+   * application cannot store honestly: `toEur()` has no rate for it and every
+   * read path denominates in EUR, which is precisely how a USD payment came to
+   * be reported as an equal number of euros.
+   *
+   * WHY NOT RETURN AN ERROR TO STRIPE. Failing the webhook would make Stripe
+   * retry the same event for days and eventually disable the endpoint, taking
+   * every OTHER event down with it — a self-inflicted outage in response to a
+   * misconfigured product price. And retrying cannot help: the currency will be
+   * identical on every delivery.
+   *
+   * WHY NOT WRITE THE ROW ANYWAY. Writing it under its true code would leave a
+   * row no read path can total, and writing it as EUR is the defect itself.
+   *
+   * So the handler acknowledges the event, writes nothing, logs at error level
+   * and raises an admin-ops alert naming the payment and its currency. The
+   * money is still visible and reconcilable in the Stripe dashboard, which is
+   * where an operator has to act anyway (refund it, or reprice the product in
+   * BGN/EUR). This can only trigger if a Stripe price/product is configured in
+   * a currency BoomCard does not accept, so an alert is the correct severity:
+   * it is a configuration fault, not a payment fault.
+   *
+   * Returns the normalised currency, or `null` when the caller must abort
+   * WITHOUT writing (and without any wallet side effect).
+   */
+  private async acceptProviderCurrency(params: {
+    currency: string | null | undefined;
+    context: string;
+    reference: string;
+    amountMinor: number;
+  }): Promise<string | null> {
+    const normalized = normalizeCurrency(params.currency);
+    if (normalized !== null) return normalized;
+
+    const reported = (params.currency ?? '(none)').toString().toUpperCase();
+    logger.error(
+      `[stripe] REFUSING to record ${params.context} ${params.reference}: currency ${reported} is outside ` +
+        `BoomCard's accepted domain (${ACCEPTED_CURRENCIES.join('/')}) and there is no conversion rate for it. ` +
+        `No Transaction row and no wallet movement were written. Reconcile this payment in the Stripe dashboard.`,
+    );
+
+    try {
+      await notificationService.notifyAdminOps({
+        opsType: 'stripe_unsupported_currency',
+        title: 'Stripe payment in an unsupported currency',
+        message:
+          `${params.context} ${params.reference} arrived in ${reported}, which BoomCard does not accept ` +
+          `(accepted: ${ACCEPTED_CURRENCIES.join(', ')}). It was NOT recorded — no transaction row, no wallet ` +
+          `credit — because there is no rate to convert it with. Reconcile it in Stripe and reprice the ` +
+          `product in BGN or EUR.`,
+        severity: 'critical',
+        fields: [
+          { label: 'Reference', value: params.reference },
+          { label: 'Currency', value: reported },
+          { label: 'Amount (minor units)', value: String(params.amountMinor) },
+          { label: 'Context', value: params.context },
+        ],
+        actionUrl: `https://dashboard.stripe.com/payments/${params.reference}`,
+      });
+    } catch (err) {
+      // The refusal itself already succeeded and is logged above; a failed
+      // alert must not turn into an unhandled rejection in a webhook handler.
+      logger.error('[stripe] Failed to post unsupported-currency admin-ops alert:', err);
+    }
+
+    return null;
+  }
+
+  /**
    * Handle successful payment
    */
   private async handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent): Promise<void> {
@@ -419,6 +502,16 @@ class StripeService {
     const isTopUp = type === 'TOP_UP';
     const txType = isTopUp ? 'WALLET_TOPUP' : (type || 'PURCHASE');
 
+    // Checked BEFORE the upsert and before the wallet credit below: refusing
+    // after a credit would leave the wallet moved with no transaction row.
+    const acceptedCurrency = await this.acceptProviderCurrency({
+      currency: paymentIntent.currency,
+      context: 'payment_intent.succeeded',
+      reference: paymentIntent.id,
+      amountMinor: paymentIntent.amount,
+    });
+    if (acceptedCurrency === null) return;
+
     try {
       // Upsert transaction — atomic on the unique stripePaymentId to eliminate the
       // TOCTOU race between findFirst and create when Stripe retries the webhook.
@@ -430,7 +523,7 @@ class StripeService {
           status: 'COMPLETED',
           amount: paymentIntent.amount / 100,
           finalAmount: paymentIntent.amount / 100,
-          currency: paymentIntent.currency.toUpperCase(),
+          currency: acceptedCurrency,
           paymentMethod: 'CARD',
           stripePaymentId: paymentIntent.id,
           paymentIntentId: paymentIntent.id,
@@ -462,12 +555,20 @@ class StripeService {
           }
 
           const amount = paymentIntent.amount / 100;
+          // BC-QA-031-FOLLOWUP-1 (impl-r1 F1) — `amount` is denominated in the
+          // PaymentIntent's currency, which may be EUR, while `Wallet.balance`
+          // and `WalletTransaction.amount` are BGN-denominated and are read back
+          // through `bgnToEur`. Crediting the EUR magnitude verbatim under-credited
+          // by the peg (a 100.00 EUR top-up showed as EUR 51.13 of balance).
+          // `acceptedCurrency` is already normalised by the gate at the top of
+          // this handler, so `toBgn` cannot throw here.
+          const amountBgn = toBgn(amount, acceptedCurrency);
 
           // Credit creates a COMPLETED walletTransaction inside its own
           // nested transaction — safe because Prisma flattens nested calls.
           await walletService.credit({
             userId,
-            amount,
+            amount: amountBgn,
             type: 'TOP_UP',
             description: 'Wallet top-up via card payment',
             stripePaymentIntentId: paymentIntent.id,
@@ -485,7 +586,12 @@ class StripeService {
             },
           });
 
-          logger.info(`Credited ${amount} BGN to wallet for user ${userId}`);
+          // Log BOTH units explicitly: the figure the user paid with its own
+          // currency, and the figure that actually landed in the BGN ledger.
+          // The old line asserted "BGN" over a value whose unit it did not know.
+          logger.info(
+            `Credited ${amountBgn} BGN (paid ${amount} ${acceptedCurrency}) to wallet for user ${userId}`,
+          );
         }, { isolationLevel: 'Serializable' });
       }
 
@@ -506,6 +612,16 @@ class StripeService {
 
     if (!userId) return;
 
+    // Same domain gate as the success path — a FAILED row is still a row, and
+    // it is read by the same admin grids and totals.
+    const acceptedCurrency = await this.acceptProviderCurrency({
+      currency: paymentIntent.currency,
+      context: 'payment_intent.payment_failed',
+      reference: paymentIntent.id,
+      amountMinor: paymentIntent.amount,
+    });
+    if (acceptedCurrency === null) return;
+
     try {
       // Upsert transaction — atomic on unique stripePaymentId (same rationale as
       // handlePaymentSucceeded). Also handles the retry-after-success case: if the
@@ -518,7 +634,7 @@ class StripeService {
           status: 'FAILED',
           amount: paymentIntent.amount / 100,
           finalAmount: paymentIntent.amount / 100,
-          currency: paymentIntent.currency.toUpperCase(),
+          currency: acceptedCurrency,
           paymentMethod: 'CARD',
           stripePaymentId: paymentIntent.id,
           paymentIntentId: paymentIntent.id,
@@ -547,7 +663,7 @@ class StripeService {
         userId,
         paymentIntentId: paymentIntent.id,
         amount: paymentIntent.amount / 100,
-        currency: paymentIntent.currency.toUpperCase(),
+        currency: acceptedCurrency,
       }).catch((err: unknown) => logger.error('Failed to send payment-failed notification:', err));
 
       logger.info(`Transaction marked as failed for payment ${paymentIntent.id}`);
@@ -637,6 +753,19 @@ class StripeService {
   private async handleRefund(charge: Stripe.Charge): Promise<void> {
     logger.info(`Refund processed: ${charge.id}`);
 
+    // A REFUND row is a Transaction row like any other, and the wallet credit
+    // below moves a BGN-denominated balance — neither is possible for a charge
+    // in a currency with no rate. Gate before both. In practice this can only
+    // fire for a refund of a LEGACY out-of-domain charge, since no new payment
+    // in such a currency can be recorded any more.
+    const acceptedCurrency = await this.acceptProviderCurrency({
+      currency: charge.currency,
+      context: 'charge.refunded',
+      reference: charge.id,
+      amountMinor: charge.amount_refunded,
+    });
+    if (acceptedCurrency === null) return;
+
     try {
       // Find original transaction
       const transaction = await prisma.transaction.findFirst({
@@ -667,7 +796,7 @@ class StripeService {
           status: 'COMPLETED',
           amount: refundAmount,
           finalAmount: refundAmount,
-          currency: charge.currency.toUpperCase(),
+          currency: acceptedCurrency,
           paymentMethod: 'CARD',
           stripePaymentId: refundKey,
           metadata: JSON.stringify({
@@ -702,7 +831,11 @@ class StripeService {
           }
           await walletService.credit({
             userId: transaction.userId,
-            amount: refundAmount,
+            // Same unit mismatch as the TOP_UP path (BC-QA-031-FOLLOWUP-1
+            // impl-r1 F1): `refundAmount` is denominated in `charge.currency`,
+            // the wallet ledger is BGN. Refunding a EUR charge used to return
+            // ~51% of its value to the balance.
+            amount: toBgn(refundAmount, acceptedCurrency),
             type: 'REFUND',
             description: `Refund ${refundKey} for payment ${charge.payment_intent}`,
             metadata: { chargeId: charge.id, refundId: latestRefund?.id },
@@ -710,7 +843,9 @@ class StripeService {
         }, { isolationLevel: 'Serializable' });
       }
 
-      logger.info(`Refund transaction created for ${refundAmount} BGN (${refundKey})`);
+      logger.info(
+        `Refund transaction created for ${refundAmount} ${acceptedCurrency} (${refundKey})`,
+      );
     } catch (error) {
       logger.error(`Error handling refund: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -967,6 +1102,19 @@ class StripeService {
   private async handleInvoicePaymentSucceeded(invoice: Stripe.Invoice): Promise<void> {
     logger.info(`Invoice paid: ${invoice.id}`);
 
+    // This handler is where the widest provider-driven currency could enter:
+    // `invoice.currency` is whatever the Stripe PRICE is denominated in, so a
+    // product mispriced in USD would have written USD rows here. A missing
+    // currency keeps the historical BGN default; anything out of domain is
+    // refused, alerted, and not written.
+    const acceptedCurrency = await this.acceptProviderCurrency({
+      currency: invoice.currency ?? 'BGN',
+      context: 'invoice.payment_succeeded',
+      reference: invoice.id ?? '(unknown invoice)',
+      amountMinor: invoice.amount_paid ?? 0,
+    });
+    if (acceptedCurrency === null) return;
+
     try {
       const subscriptionId = invoice.subscription as string | null;
       if (!subscriptionId) return; // One-off invoice, handled by payment_intent.succeeded
@@ -1004,7 +1152,7 @@ class StripeService {
             status: 'COMPLETED',
             amount,
             finalAmount: amount,
-            currency: (invoice.currency ?? 'bgn').toUpperCase(),
+            currency: acceptedCurrency,
             paymentMethod: 'CARD',
             stripePaymentId: invoiceStripePaymentId,
             paymentIntentId: (invoice.payment_intent as string) ?? null,
@@ -1032,7 +1180,7 @@ class StripeService {
                 customerName: dbSub.user.firstName || 'Customer',
                 orderId: invoiceStripePaymentId,
                 amount,
-                currency: (invoice.currency ?? 'bgn').toUpperCase(),
+                currency: acceptedCurrency,
                 date: new Date(),
               },
               lang,

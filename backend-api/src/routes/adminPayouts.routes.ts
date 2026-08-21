@@ -12,7 +12,7 @@ import { runWithConcurrency } from '../utils/concurrency';
 import { parsePagination } from '../utils/pagination';
 import { detach } from '../utils/detach';
 import { reasonIndicatesIbanProblem } from '../utils/payoutFailureReason';
-import { bgnToEur } from '../utils/currency';
+import { bgnToEur, toEur, displayCurrency, foldMixedCurrencyToEur } from '../utils/currency';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN'));
@@ -82,27 +82,51 @@ function subGateMessage(gate: SubGateResult): string {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-// Stored WalletTransaction/Wallet monetary fields are BGN-denominated;
-// convert to EUR before a payout row goes into any API response
-// (BC-QA-031 — dual-currency display removed, EUR-only responses).
+// Stored WalletTransaction/Wallet monetary fields are denominated in the row's
+// own currency column; convert to EUR before a payout row goes into any API
+// response (BC-QA-031 — dual-currency display removed, EUR-only responses).
+//
+// Keyed on the row's `currency` rather than converting unconditionally and
+// asserting 'EUR' (BC-QA-031-FOLLOWUP-1 impl-r1 F3). In practice these rows are
+// BGN — that is the schema default and every writer either omits the column or
+// copies `wallet.currency` — but the accepted-currency guard added by this task
+// admits EUR on the same column, so "always BGN" is a habit rather than an
+// invariant, and a blanket `bgnToEur` would halve a EUR row and then label the
+// halved figure EUR. `toEur`/`displayCurrency` cannot disagree with each other.
+//
+// `wallet.availableBalance`/`pendingBalance` are `Wallet` columns and take
+// `Wallet.currency`, which is a different column from the payout row's own —
+// hence the separate `walletCurrency` lookup rather than reusing `payout.currency`.
+//
+// `wallet.currency` is REQUIRED on the parameter type, not optional (task-r3).
+// A caller whose query omits the column is now a COMPILE ERROR rather than a
+// silent degradation: with it optional, the list handler's hand-picked `select`
+// left `walletCurrency === undefined`, `toEur` fell through to its
+// null-means-BGN branch, and an 80.00 GBP balance was served as 40.9 with no
+// label (task-r2 F1). Re-introducing that omission now fails `tsc` with
+// "Property 'currency' is missing ... but required" at the offending call site,
+// so the invariant is enforced by the compiler instead of by remembering.
 function toEurPayout<T extends {
   amount: number;
   balanceBefore?: number | null;
   balanceAfter?: number | null;
   currency?: string;
-  wallet?: { availableBalance?: number; pendingBalance?: number } & Record<string, unknown>;
+  wallet?: { availableBalance?: number; pendingBalance?: number; currency: string } & Record<string, unknown>;
 }>(payout: T): T {
+  const rowCurrency = payout.currency;
+  const walletCurrency = payout.wallet?.currency;
   return {
     ...payout,
-    amount: bgnToEur(payout.amount),
-    ...(payout.balanceBefore != null && { balanceBefore: bgnToEur(payout.balanceBefore) }),
-    ...(payout.balanceAfter != null && { balanceAfter: bgnToEur(payout.balanceAfter) }),
-    ...(payout.currency !== undefined && { currency: 'EUR' }),
+    amount: toEur(payout.amount, rowCurrency),
+    ...(payout.balanceBefore != null && { balanceBefore: toEur(payout.balanceBefore, rowCurrency) }),
+    ...(payout.balanceAfter != null && { balanceAfter: toEur(payout.balanceAfter, rowCurrency) }),
+    ...(payout.currency !== undefined && { currency: displayCurrency(rowCurrency) }),
     ...(payout.wallet && {
       wallet: {
         ...payout.wallet,
-        ...(payout.wallet.availableBalance !== undefined && { availableBalance: bgnToEur(payout.wallet.availableBalance) }),
-        ...(payout.wallet.pendingBalance !== undefined && { pendingBalance: bgnToEur(payout.wallet.pendingBalance) }),
+        ...(payout.wallet.availableBalance !== undefined && { availableBalance: toEur(payout.wallet.availableBalance, walletCurrency) }),
+        ...(payout.wallet.pendingBalance !== undefined && { pendingBalance: toEur(payout.wallet.pendingBalance, walletCurrency) }),
+        ...(payout.wallet.currency !== undefined && { currency: displayCurrency(walletCurrency) }),
       },
     }),
   };
@@ -259,7 +283,18 @@ router.get(
             currency: true, status: true, description: true, createdAt: true, metadata: true,
             wallet: {
               select: {
-                id: true, availableBalance: true, pendingBalance: true,
+                // `currency` is REQUIRED here (BC-QA-031-FOLLOWUP-1 task-r2 F1).
+                // `toEurPayout` converts the nested wallet balances keyed on
+                // `payout.wallet.currency`; omitting it from this select made
+                // that key permanently `undefined`, so `toEur` degraded to an
+                // unconditional `bgnToEur` and the conditional-spread label
+                // never fired. Live result: an 80.00 GBP wallet balance was
+                // rendered as 40.9 with no currency field beside it. Every
+                // other `toEurPayout` call site uses `include: { wallet: true }`
+                // and was therefore correct — this list handler is the only one
+                // that hand-picks columns, which is exactly why the other sites'
+                // passing tests hid it.
+                id: true, availableBalance: true, pendingBalance: true, currency: true,
                 payoutIban: true, payoutBeneficiaryName: true,
                 user: {
                   select: {
@@ -279,69 +314,135 @@ router.get(
         }),
         prisma.walletTransaction.count({ where }),
         prisma.walletTransaction.count({ where: { type: 'WITHDRAWAL', status: 'PENDING' } }),
-        prisma.walletTransaction.aggregate({ where: { type: 'WITHDRAWAL', status: 'PENDING' }, _sum: { amount: true } }),
+        prisma.walletTransaction.groupBy({ by: ['currency'], where: { type: 'WITHDRAWAL', status: 'PENDING' }, _sum: { amount: true }, _count: { _all: true } }),
         prisma.walletTransaction.count({ where: { type: 'WITHDRAWAL', status: 'PROCESSING' } }),
-        prisma.walletTransaction.aggregate({ where: { type: 'WITHDRAWAL', status: 'PROCESSING' }, _sum: { amount: true } }),
+        prisma.walletTransaction.groupBy({ by: ['currency'], where: { type: 'WITHDRAWAL', status: 'PROCESSING' }, _sum: { amount: true }, _count: { _all: true } }),
         prisma.walletTransaction.count({ where: { type: 'WITHDRAWAL', status: 'COMPLETED' } }),
-        prisma.walletTransaction.aggregate({ where: { type: 'WITHDRAWAL', status: 'COMPLETED' }, _sum: { amount: true } }),
+        prisma.walletTransaction.groupBy({ by: ['currency'], where: { type: 'WITHDRAWAL', status: 'COMPLETED' }, _sum: { amount: true }, _count: { _all: true } }),
         prisma.walletTransaction.count({ where: { type: 'WITHDRAWAL', status: 'RISK_HOLD' } }),
         prisma.walletTransaction.count({ where: { type: 'WITHDRAWAL', status: 'FAILED' } }),
-        prisma.walletTransaction.aggregate({ where: { type: 'WITHDRAWAL', status: 'FAILED' }, _sum: { amount: true } }),
+        prisma.walletTransaction.groupBy({ by: ['currency'], where: { type: 'WITHDRAWAL', status: 'FAILED' }, _sum: { amount: true }, _count: { _all: true } }),
         prisma.walletTransaction.count({ where: { type: 'WITHDRAWAL' } }),
         // Filter-aware breakdown (respects search + date but not status)
         prisma.walletTransaction.groupBy({
-          by: ['status'],
+          by: ['status', 'currency'],
           where: whereBase,
           _count: { _all: true },
           _sum: { amount: true },
         }),
       ]);
 
-      const fgb = (s: string) => filteredGroupBy.find(g => g.status === s);
-      const filteredSummary = {
-        pendingCount:    fgb('PENDING')?._count._all    ?? 0,
-        pendingTotal:    Math.abs(fgb('PENDING')?._sum.amount    ?? 0),
-        processingCount: fgb('PROCESSING')?._count._all ?? 0,
-        processingTotal: Math.abs(fgb('PROCESSING')?._sum.amount ?? 0),
-        completedCount:  fgb('COMPLETED')?._count._all  ?? 0,
-        completedTotal:  Math.abs(fgb('COMPLETED')?._sum.amount  ?? 0),
-        riskHoldCount:   fgb('RISK_HOLD')?._count._all  ?? 0,
-        failedCount:     fgb('FAILED')?._count._all     ?? 0,
-        failedTotal:     Math.abs(fgb('FAILED')?._sum.amount     ?? 0),
-        cancelledCount:  fgb('CANCELLED')?._count._all  ?? 0,
-        totalCount:      filteredGroupBy.reduce((acc, g) => acc + g._count._all, 0),
-      };
+      // BC-QA-031-FOLLOWUP-1 task-r1 F1 — these summary totals sit in the SAME
+      // response body as the `payouts[]` rows, which `toEurPayout` already
+      // reports currency-honestly. Before this, `summary.completedTotal` read
+      // 66.47 beside rows reading `-70 USD` and `-30.68 EUR`: a flat `_sum`
+      // over a mixed column, divided by the BGN peg. Every total now folds its
+      // per-currency subtotals and excludes what it has no rate for; the counts
+      // beside them come from the fold's own `includedCount` so a count and its
+      // total always describe the same rows.
+      /** Per-status subtotals from a groupBy(['status','currency']) result. */
+      const fgbSubtotals = (status: string) =>
+        filteredGroupBy
+          .filter(g => g.status === status)
+          .map(g => ({ currency: g.currency, amount: Math.abs(g._sum.amount ?? 0), count: g._count._all }));
+      const fgbFold = (status: string) => foldMixedCurrencyToEur(fgbSubtotals(status));
+      const fgbCount = (status: string) =>
+        filteredGroupBy.filter(g => g.status === status).reduce((acc, g) => acc + g._count._all, 0);
 
-      const pendingTotalBgn    = Math.abs(pendingTotal._sum.amount    ?? 0);
-      const processingTotalBgn = Math.abs(processingTotal._sum.amount ?? 0);
-      const completedTotalBgn  = Math.abs(completedTotal._sum.amount  ?? 0);
-      const failedTotalBgn     = Math.abs(failedTotal._sum.amount     ?? 0);
+      const fPending = fgbFold('PENDING');
+      const fProcessing = fgbFold('PROCESSING');
+      const fCompleted = fgbFold('COMPLETED');
+      const fFailed = fgbFold('FAILED');
 
-      // filteredSummary totals are also BGN-denominated aggregates — convert to EUR.
       const filteredSummaryEur = {
-        ...filteredSummary,
-        pendingTotal: bgnToEur(filteredSummary.pendingTotal),
-        processingTotal: bgnToEur(filteredSummary.processingTotal),
-        completedTotal: bgnToEur(filteredSummary.completedTotal),
-        failedTotal: bgnToEur(filteredSummary.failedTotal),
+        pendingCount:    fPending.includedCount,
+        pendingTotal:    fPending.total,
+        processingCount: fProcessing.includedCount,
+        processingTotal: fProcessing.total,
+        completedCount:  fCompleted.includedCount,
+        completedTotal:  fCompleted.total,
+        riskHoldCount:   fgbCount('RISK_HOLD'),
+        failedCount:     fFailed.includedCount,
+        failedTotal:     fFailed.total,
+        cancelledCount:  fgbCount('CANCELLED'),
+        totalCount:      filteredGroupBy.reduce((acc, g) => acc + g._count._all, 0),
+        // Per-status exclusions, mirroring `summary` (impl-r4 F11).
+        pendingExcludedCount:    fPending.excludedCount,
+        processingExcludedCount: fProcessing.excludedCount,
+        completedExcludedCount:  fCompleted.excludedCount,
+        failedExcludedCount:     fFailed.excludedCount,
+        excludedCount:
+          fPending.excludedCount + fProcessing.excludedCount + fCompleted.excludedCount + fFailed.excludedCount,
+        excludedCurrencies: Array.from(new Set([
+          ...fPending.excludedCurrencies,
+          ...fProcessing.excludedCurrencies,
+          ...fCompleted.excludedCurrencies,
+          ...fFailed.excludedCurrencies,
+        ])).sort(),
       };
+
+      /** Same fold for the unfiltered, status-scoped groupBy results. */
+      const foldStatusGroups = (
+        groups: Array<{ currency: string | null; _sum: { amount: number | null }; _count: { _all: number } }>,
+      ) =>
+        foldMixedCurrencyToEur(
+          groups.map(g => ({ currency: g.currency, amount: Math.abs(g._sum.amount ?? 0), count: g._count._all })),
+        );
+
+      const pendingFold    = foldStatusGroups(pendingTotal);
+      const processingFold = foldStatusGroups(processingTotal);
+      const completedFold  = foldStatusGroups(completedTotal);
+      const failedFold     = foldStatusGroups(failedTotal);
+      const summaryExcludedCurrencies = Array.from(new Set([
+        ...pendingFold.excludedCurrencies,
+        ...processingFold.excludedCurrencies,
+        ...completedFold.excludedCurrencies,
+        ...failedFold.excludedCurrencies,
+      ])).sort();
 
       res.json({
         payouts: payouts.map(toEurPayout),
         total,
         page: pageNum,
         limit: limitNum,
+        // Counts come from the folds, exactly as `filteredSummary` does
+        // (BC-QA-031-FOLLOWUP-1 impl-r4 F11).
+        //
+        // These two objects are rendered by the SAME admin card —
+        // `AdminPayoutsPage` picks between them with
+        // `displaySummary = (search || dateFilter) ? filteredSummary : summary`
+        // — so an asymmetry between them is not a subtlety, it is a number that
+        // changes as the admin types. With one COMPLETED USD row and one
+        // COMPLETED BGN row, `summary.completedCount` said 2 beside a total
+        // covering 1 row, and typing in the search box flipped it to 1 for the
+        // same data. That is impl-r1 F4's count-vs-total divergence again.
+        //
+        // The previous comment offered `<status>Count - excludedCount` as a
+        // reconstruction. That was arithmetically FALSE: `excludedCount` is one
+        // figure summed across all four statuses, so with exclusions in two
+        // statuses (`pendingCount 1, completedCount 2, excludedCount 2`) it
+        // yields 0 for a total covering 1 row, and -1 for pending. Per-status
+        // `excluded*` figures are reported instead, so the relationship is
+        // stated rather than reconstructed.
         summary: {
-          pendingCount,
-          pendingTotal: bgnToEur(pendingTotalBgn),
-          processingCount,
-          processingTotal: bgnToEur(processingTotalBgn),
-          completedCount,
-          completedTotal: bgnToEur(completedTotalBgn),
+          pendingCount: pendingFold.includedCount,
+          pendingTotal: pendingFold.total,
+          pendingExcludedCount: pendingFold.excludedCount,
+          processingCount: processingFold.includedCount,
+          processingTotal: processingFold.total,
+          processingExcludedCount: processingFold.excludedCount,
+          completedCount: completedFold.includedCount,
+          completedTotal: completedFold.total,
+          completedExcludedCount: completedFold.excludedCount,
           riskHoldCount,
-          failedCount,
-          failedTotal: bgnToEur(failedTotalBgn),
+          failedCount: failedFold.includedCount,
+          failedTotal: failedFold.total,
+          failedExcludedCount: failedFold.excludedCount,
           totalCount,
+          excludedCount:
+            pendingFold.excludedCount + processingFold.excludedCount
+            + completedFold.excludedCount + failedFold.excludedCount,
+          excludedCurrencies: summaryExcludedCurrencies,
         },
         filteredSummary: filteredSummaryEur,
       });

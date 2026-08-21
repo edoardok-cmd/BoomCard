@@ -37,8 +37,17 @@ const SRC = path.join(__dirname, '..', '..', 'src');
 const ROUTES = path.join(SRC, 'routes');
 const SERVICES = path.join(SRC, 'services');
 
-/** Read-side conversion helpers: BGN storage → EUR on the wire. */
-const READ_CONV = /\b(bgnToEur|toEur|toEurOrNull|sumMixedCurrencyToEur)\s*\(/;
+/**
+ * Read-side conversion helpers: BGN storage → EUR on the wire.
+ *
+ * `toDisplayMoney` was added by BC-QA-031-FOLLOWUP-1: it converts exactly like
+ * `toEur` and additionally returns the truthful currency label to pair with the
+ * converted amount (a hardcoded `currency: 'EUR'` beside a `toEur()` call was
+ * how a legacy USD row shipped its raw magnitude as euros). It must be listed
+ * here, or a route that migrates from `toEur` to it would silently drop out of
+ * this sweep's file set and lose its registry classification.
+ */
+const READ_CONV = /\b(bgnToEur|toEur|toEurOrNull|toDisplayMoney|sumMixedCurrencyToEur|foldMixedCurrencyToEur)\s*\(/;
 /** Write-side conversion helper: EUR on the wire → BGN storage. */
 const WRITE_CONV = /\beurToBgn\s*\(/;
 
@@ -163,6 +172,16 @@ const REGISTRY: Record<string, Entry> = {
       'request: prices come from the Plan row and Stripe/Paysera, and the bodies carry plan ids, ' +
       'flags and reasons. So no client-supplied amount is persisted through this file.',
   },
+  'routes/cards.routes.ts': {
+    symmetry: 'server-derived',
+    why:
+      'GET /:id/statistics folds the card cashback subtotals to EUR at the route boundary ' +
+      '(BC-QA-031-FOLLOWUP-1 task-r2 F14). This router declares five write handlers ' +
+      '(POST /, /:id/upgrade, /:id/deactivate, /:id/activate, /validate) and not one takes a money ' +
+      'amount from the request: their bodies are `newTier` (enum), `reason` (string) and ' +
+      '`cardNumber` (string), and POST / takes no body at all. So no client-supplied amount is ' +
+      'persisted through this file and there is no read/write unit to keep symmetric.',
+  },
   'routes/payments.paysera.routes.ts': {
     symmetry: 'symmetric-bgn',
     why:
@@ -254,12 +273,28 @@ const REGISTRY: Record<string, Entry> = {
   },
 };
 
+/**
+ * Strip `//` and block comments before matching (BC-QA-031-FOLLOWUP-1).
+ *
+ * `READ_CONV` is matched against raw source, so a comment that merely NAMES one
+ * of the helpers — e.g. a docblock explaining why a Stripe webhook refuses a
+ * currency `toEur()` has no rate for — used to enrol that file in the registry
+ * as if it converted money. That teaches contributors to word comments around
+ * the tool instead of fixing code, and it is a false positive either way.
+ * Sibling sweep `money-label-literal-sweep.test.ts` uses the same treatment.
+ */
+function stripComments(src: string): string {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+}
+
 function filesWithReadConversion(): string[] {
   const out: string[] = [];
   for (const [dir, label] of [[ROUTES, 'routes'], [SERVICES, 'services']] as const) {
     for (const f of fs.readdirSync(dir)) {
       if (!f.endsWith('.ts')) continue;
-      const body = fs.readFileSync(path.join(dir, f), 'utf-8');
+      const body = stripComments(fs.readFileSync(path.join(dir, f), 'utf-8'));
       if (READ_CONV.test(body)) out.push(`${label}/${f}`);
     }
   }
