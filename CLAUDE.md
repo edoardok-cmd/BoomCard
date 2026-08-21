@@ -187,19 +187,56 @@ checkout with:
 
 It is idempotent — safe to re-run any time, and a no-op when the links are
 already correct. Override the harness location with `AGENTX_REVIEWS_DIR=...` if
-your Agent X workspace is elsewhere.
+your Agent X workspace is elsewhere. `--check` verifies without creating
+anything.
 
 **Run it after any `git checkout`/`git revert` that crosses a commit which
 touched these paths** — git silently replaces a symlink with a real directory
 rather than following it, which quietly re-opens the leak.
 
-The same script is the **leak detector**. If it finds a real directory where a
-symlink belongs, it prints the file count, exits non-zero, and tells you how to
-reconcile those files into the harness. It never deletes them. This is exactly
-how the pre-BC-QA-061 state looked: 80 review files stranded in
+Exit codes: `0` fine, `1` usage error / unexpected object in the way,
+`2` leak detected, `3` harness dir not found, `4` (`--check`) a link is missing
+or points elsewhere.
+
+### If it reports a leak
+
+A real directory where a symlink belongs means review files have been written
+outside the harness. **Do not just delete it** — those files are often the only
+copy, and a same-name file already in the harness is frequently a *different
+document* (21 of the 80 files recovered by BC-QA-061 were exactly that, so any
+plain `cp` either overwrites one side or silently skips it).
+
+```bash
+./scripts/link-claude-reviews.sh --reconcile
+```
+
+The reconciler examines every file recursively (not just `*.md`), copies only
+the ones with no counterpart in the harness, verifies each copy byte-for-byte,
+and **never deletes or overwrites anything**. It then lists what it could not
+decide automatically:
+
+- **same name, different content** — land the leaked copy as `<base>-z.md`. That
+  still parses to the same task and round, so `pick_latest` groups it with its
+  sibling and the round's verdict aggregates strictest-wins, keeping both
+  documents readable by the gate.
+- **nested files** — the harness reviews dir is flat and the gate parses
+  basenames, so these need a deliberate destination.
+
+Re-run `--reconcile` after resolving them. It prints the `rm -rf` removal
+command **only** once every single file is verified byte-identical in the
+harness — so following its output verbatim cannot lose a file.
+
+This is exactly how the pre-BC-QA-061 state looked: 80 review files stranded in
 `backend-api/.claude/reviews/` and `boomcard-mobile/.claude/reviews/`, committed
 to git and unreadable by every verdict engine, because the old `.gitignore` rule
 `.claude/reviews` contains a slash and so matched the repo root only.
+
+### Tests
+
+`./scripts/test-link-claude-reviews.sh` — self-contained (throwaway repo and
+harness under `$TMPDIR`; never touches the real ones). Run it after any edit to
+the linker: the symlinks it manages are gitignored, so a regression there is
+invisible to `git status` and to every completion gate.
 
 ---
 
