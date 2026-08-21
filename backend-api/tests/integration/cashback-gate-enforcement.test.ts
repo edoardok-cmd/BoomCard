@@ -35,6 +35,65 @@ function generateUniqueScanId(testName: string): string {
   return `${testName}_${timestamp}_${random}`.substring(0, 255);
 }
 
+/**
+ * Create test fixtures (Venue, Card, Sticker) required for StickerScan records.
+ */
+async function createStickerScanFixtures(userId: string) {
+  // Create a test partner (required for venue)
+  const partner = await prisma.partner.create({
+    data: {
+      userId,
+      businessName: `Test Partner ${Date.now()}-${Math.random()}`,
+      category: 'Restaurant',
+      status: 'ACTIVE',
+      verifiedAt: new Date(),
+      discountRate: 5,
+    },
+  });
+
+  const venue = await prisma.venue.create({
+    data: {
+      partnerId: partner.id,
+      name: `Test Venue ${Date.now()}-${Math.random()}`,
+      address: 'Test Address',
+      city: 'Sofia',
+      latitude: 42.6977,
+      longitude: 23.3219,
+    },
+  });
+
+  // Create a sticker location (required for sticker)
+  const stickerLocation = await prisma.stickerLocation.create({
+    data: {
+      venueId: venue.id,
+      name: 'Test Location',
+      locationType: 'TABLE',
+      locationNumber: '001',
+    },
+  });
+
+  const card = await prisma.card.create({
+    data: {
+      userId,
+      cardNumber: `TEST_${Date.now()}_${Math.random()}`,
+      type: 'PREMIUM_WEEKLY',
+      status: 'ACTIVE',
+      qrCode: `QR_CARD_${Date.now()}_${Math.random()}`,
+    },
+  });
+
+  const sticker = await prisma.sticker.create({
+    data: {
+      venueId: venue.id,
+      locationId: stickerLocation.id,
+      stickerId: `STICKER_${Date.now()}_${Math.random()}`,
+      qrCode: `QR_${Date.now()}_${Math.random()}`,
+    },
+  });
+
+  return { venue, card, sticker };
+}
+
 describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
   const createdUserIds: string[] = [];
 
@@ -60,11 +119,27 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
       // Create ACTIVE subscription
       await createTestSubscription(user.id, 'PREMIUM_WEEKLY');
 
+      // Create test fixtures (venue, card, sticker)
+      const { venue, card, sticker } = await createStickerScanFixtures(user.id);
+
+      // Create StickerScan record with randomized ID
+      const scanId = generateUniqueScanId('scan-active');
+      await prisma.stickerScan.create({
+        data: {
+          id: scanId,
+          userId: user.id,
+          stickerId: sticker.id,
+          venueId: venue.id,
+          cardId: card.id,
+          billAmount: 10,
+        },
+      });
+
       // recordPendingForRiskReview should succeed
       const result = await cashbackLifecycleService.recordPendingForRiskReview({
         userId: user.id,
         amount: 10,
-        stickerScanId: 'test-scan-1',
+        stickerScanId: scanId,
       });
 
       expect(result).toBeDefined();
@@ -87,11 +162,27 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
         },
       });
 
+      // Create test fixtures (venue, card, sticker)
+      const { venue, card, sticker } = await createStickerScanFixtures(user.id);
+
+      // Create StickerScan record with randomized ID
+      const scanId = generateUniqueScanId('scan-trialing');
+      await prisma.stickerScan.create({
+        data: {
+          id: scanId,
+          userId: user.id,
+          stickerId: sticker.id,
+          venueId: venue.id,
+          cardId: card.id,
+          billAmount: 10,
+        },
+      });
+
       // recordPendingForRiskReview should succeed
       const result = await cashbackLifecycleService.recordPendingForRiskReview({
         userId: user.id,
         amount: 10,
-        stickerScanId: generateUniqueScanId('scan-trialing'),
+        stickerScanId: scanId,
       });
 
       expect(result).toBeDefined();
@@ -116,11 +207,27 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
         },
       });
 
+      // Create test fixtures (venue, card, sticker)
+      const { venue, card, sticker } = await createStickerScanFixtures(user.id);
+
+      // Create StickerScan record with randomized ID
+      const scanId = generateUniqueScanId('scan-cancelled-within');
+      await prisma.stickerScan.create({
+        data: {
+          id: scanId,
+          userId: user.id,
+          stickerId: sticker.id,
+          venueId: venue.id,
+          cardId: card.id,
+          billAmount: 10,
+        },
+      });
+
       // recordPendingForRiskReview should succeed
       const result = await cashbackLifecycleService.recordPendingForRiskReview({
         userId: user.id,
         amount: 10,
-        stickerScanId: generateUniqueScanId('scan-cancelled-within'),
+        stickerScanId: scanId,
       });
 
       expect(result).toBeDefined();
@@ -145,12 +252,28 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
         },
       });
 
+      // Create test fixtures (venue, card, sticker)
+      const { venue, card, sticker } = await createStickerScanFixtures(user.id);
+
+      // Create StickerScan record with randomized ID
+      const scanId = generateUniqueScanId('scan-past-due');
+      await prisma.stickerScan.create({
+        data: {
+          id: scanId,
+          userId: user.id,
+          stickerId: sticker.id,
+          venueId: venue.id,
+          cardId: card.id,
+          billAmount: 10,
+        },
+      });
+
       // recordPendingForRiskReview should throw
       await expect(
         cashbackLifecycleService.recordPendingForRiskReview({
           userId: user.id,
           amount: 10,
-          stickerScanId: generateUniqueScanId('scan-past-due'),
+          stickerScanId: scanId,
         })
       ).rejects.toThrow('Cannot create cashback: account scanning is blocked');
     });
@@ -171,12 +294,28 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
         },
       });
 
+      // Create test fixtures (venue, card, sticker)
+      const { venue, card, sticker } = await createStickerScanFixtures(user.id);
+
+      // Create StickerScan record with randomized ID
+      const scanId = generateUniqueScanId('scan-unpaid');
+      await prisma.stickerScan.create({
+        data: {
+          id: scanId,
+          userId: user.id,
+          stickerId: sticker.id,
+          venueId: venue.id,
+          cardId: card.id,
+          billAmount: 10,
+        },
+      });
+
       // recordPendingForRiskReview should throw
       await expect(
         cashbackLifecycleService.recordPendingForRiskReview({
           userId: user.id,
           amount: 10,
-          stickerScanId: generateUniqueScanId('scan-unpaid'),
+          stickerScanId: scanId,
         })
       ).rejects.toThrow('Cannot create cashback: account scanning is blocked');
     });
@@ -197,12 +336,28 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
         },
       });
 
+      // Create test fixtures (venue, card, sticker)
+      const { venue, card, sticker } = await createStickerScanFixtures(user.id);
+
+      // Create StickerScan record with randomized ID
+      const scanId = generateUniqueScanId('scan-incomplete');
+      await prisma.stickerScan.create({
+        data: {
+          id: scanId,
+          userId: user.id,
+          stickerId: sticker.id,
+          venueId: venue.id,
+          cardId: card.id,
+          billAmount: 10,
+        },
+      });
+
       // recordPendingForRiskReview should throw
       await expect(
         cashbackLifecycleService.recordPendingForRiskReview({
           userId: user.id,
           amount: 10,
-          stickerScanId: generateUniqueScanId('scan-incomplete'),
+          stickerScanId: scanId,
         })
       ).rejects.toThrow('Cannot create cashback: account scanning is blocked');
     });
@@ -223,12 +378,28 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
         },
       });
 
+      // Create test fixtures (venue, card, sticker)
+      const { venue, card, sticker } = await createStickerScanFixtures(user.id);
+
+      // Create StickerScan record with randomized ID
+      const scanId = generateUniqueScanId('scan-incomplete-expired');
+      await prisma.stickerScan.create({
+        data: {
+          id: scanId,
+          userId: user.id,
+          stickerId: sticker.id,
+          venueId: venue.id,
+          cardId: card.id,
+          billAmount: 10,
+        },
+      });
+
       // recordPendingForRiskReview should throw
       await expect(
         cashbackLifecycleService.recordPendingForRiskReview({
           userId: user.id,
           amount: 10,
-          stickerScanId: generateUniqueScanId('scan-incomplete-expired'),
+          stickerScanId: scanId,
         })
       ).rejects.toThrow('Cannot create cashback: account scanning is blocked');
     });
@@ -249,12 +420,28 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
         },
       });
 
+      // Create test fixtures (venue, card, sticker)
+      const { venue, card, sticker } = await createStickerScanFixtures(user.id);
+
+      // Create StickerScan record with randomized ID
+      const scanId = generateUniqueScanId('scan-paused');
+      await prisma.stickerScan.create({
+        data: {
+          id: scanId,
+          userId: user.id,
+          stickerId: sticker.id,
+          venueId: venue.id,
+          cardId: card.id,
+          billAmount: 10,
+        },
+      });
+
       // recordPendingForRiskReview should throw
       await expect(
         cashbackLifecycleService.recordPendingForRiskReview({
           userId: user.id,
           amount: 10,
-          stickerScanId: generateUniqueScanId('scan-paused'),
+          stickerScanId: scanId,
         })
       ).rejects.toThrow('Cannot create cashback: account scanning is blocked');
     });
@@ -275,12 +462,28 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
         },
       });
 
+      // Create test fixtures (venue, card, sticker)
+      const { venue, card, sticker } = await createStickerScanFixtures(user.id);
+
+      // Create StickerScan record with randomized ID
+      const scanId = generateUniqueScanId('scan-expired');
+      await prisma.stickerScan.create({
+        data: {
+          id: scanId,
+          userId: user.id,
+          stickerId: sticker.id,
+          venueId: venue.id,
+          cardId: card.id,
+          billAmount: 10,
+        },
+      });
+
       // recordPendingForRiskReview should throw
       await expect(
         cashbackLifecycleService.recordPendingForRiskReview({
           userId: user.id,
           amount: 10,
-          stickerScanId: generateUniqueScanId('scan-expired'),
+          stickerScanId: scanId,
         })
       ).rejects.toThrow('Cannot create cashback: account scanning is blocked');
     });
@@ -301,12 +504,28 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
         },
       });
 
+      // Create test fixtures (venue, card, sticker)
+      const { venue, card, sticker } = await createStickerScanFixtures(user.id);
+
+      // Create StickerScan record with randomized ID
+      const scanId = generateUniqueScanId('scan-failed-payment');
+      await prisma.stickerScan.create({
+        data: {
+          id: scanId,
+          userId: user.id,
+          stickerId: sticker.id,
+          venueId: venue.id,
+          cardId: card.id,
+          billAmount: 10,
+        },
+      });
+
       // recordPendingForRiskReview should throw
       await expect(
         cashbackLifecycleService.recordPendingForRiskReview({
           userId: user.id,
           amount: 10,
-          stickerScanId: generateUniqueScanId('scan-failed-payment'),
+          stickerScanId: scanId,
         })
       ).rejects.toThrow('Cannot create cashback: account scanning is blocked');
     });
@@ -329,12 +548,28 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
         },
       });
 
+      // Create test fixtures (venue, card, sticker)
+      const { venue, card, sticker } = await createStickerScanFixtures(user.id);
+
+      // Create StickerScan record with randomized ID
+      const scanId = generateUniqueScanId('scan-cancelled-post');
+      await prisma.stickerScan.create({
+        data: {
+          id: scanId,
+          userId: user.id,
+          stickerId: sticker.id,
+          venueId: venue.id,
+          cardId: card.id,
+          billAmount: 10,
+        },
+      });
+
       // recordPendingForRiskReview should throw
       await expect(
         cashbackLifecycleService.recordPendingForRiskReview({
           userId: user.id,
           amount: 10,
-          stickerScanId: generateUniqueScanId('scan-cancelled-post'),
+          stickerScanId: scanId,
         })
       ).rejects.toThrow('Cannot create cashback: account scanning is blocked');
     });
@@ -347,8 +582,23 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
 
       await createTestSubscription(user.id, 'PREMIUM_WEEKLY');
 
+      // Create test fixtures (venue, card, sticker)
+      const { venue, card, sticker } = await createStickerScanFixtures(user.id);
+
       // Generate a unique scan ID and use it for both calls
       const scanId = generateUniqueScanId('scan-idempotent');
+
+      // Create StickerScan record
+      await prisma.stickerScan.create({
+        data: {
+          id: scanId,
+          userId: user.id,
+          stickerId: sticker.id,
+          venueId: venue.id,
+          cardId: card.id,
+          billAmount: 10,
+        },
+      });
 
       // Create first record
       const result1 = await cashbackLifecycleService.recordPendingForRiskReview({
@@ -374,12 +624,28 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
       // Delete the default subscription (if any)
       await prisma.subscription.deleteMany({ where: { userId: user.id } });
 
+      // Create test fixtures (venue, card, sticker)
+      const { venue, card, sticker } = await createStickerScanFixtures(user.id);
+
+      // Create StickerScan record
+      const scanId = generateUniqueScanId('scan-no-sub');
+      await prisma.stickerScan.create({
+        data: {
+          id: scanId,
+          userId: user.id,
+          stickerId: sticker.id,
+          venueId: venue.id,
+          cardId: card.id,
+          billAmount: 10,
+        },
+      });
+
       // recordPendingForRiskReview should throw (no subscription = blocked)
       await expect(
         cashbackLifecycleService.recordPendingForRiskReview({
           userId: user.id,
           amount: 10,
-          stickerScanId: generateUniqueScanId('scan-no-sub'),
+          stickerScanId: scanId,
         })
       ).rejects.toThrow();
     });
