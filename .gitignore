@@ -89,4 +89,10 @@ tasks/
 # ROOT and did NOT ignore subproject review dirs -- backend-api/.claude/reviews
 # and boomcard-mobile/.claude/reviews got tracked with 80 review files that the
 # Agent X completion gates never read. `**/` ignores every nesting level.
+#
+# These paths are symlinks into the Agent X harness reviews dir. They are
+# absolute machine-specific paths, so they are ignored rather than committed.
+# Recreate them in a fresh checkout (and after any checkout/revert that crosses
+# these paths) with:  ./scripts/link-claude-reviews.sh
+# That script is also the leak detector -- see CLAUDE.md "Where review files go".
 **/.claude/reviews

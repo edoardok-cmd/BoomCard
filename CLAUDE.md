@@ -162,6 +162,47 @@ mcp__playwright__browser_console_messages()
 
 ---
 
+## Where review files go
+
+**Every** agent review file — `<task-id>-impl-r<N>.md`, `<task-id>-task-r<N>.md`,
+`<task-id>-reaudit-r<N>.md`, coverage ledgers — belongs in the **Agent X harness
+reviews directory**, not in this repo. That is the only directory the completion
+gates read: `finish-task.py`, `reconcile-task-status.py`, and the dashboard's
+`reviewIndex.ts`. A review file written anywhere else is invisible to all three,
+so the task it belongs to can never be gated on it.
+
+To make that automatic, `.claude/reviews` is a **symlink** into the harness — at
+the repo root *and* in `backend-api/` and `boomcard-mobile/`. The subprojects need
+their own links because reviewer subagents `cd` into them to run tests, so a
+relative `.claude/reviews/` write from there would otherwise land in the
+subproject.
+
+The symlinks are absolute, machine-specific paths, so they are gitignored
+(`**/.claude/reviews`) and are **not** in the repo. Recreate them in a fresh
+checkout with:
+
+```bash
+./scripts/link-claude-reviews.sh
+```
+
+It is idempotent — safe to re-run any time, and a no-op when the links are
+already correct. Override the harness location with `AGENTX_REVIEWS_DIR=...` if
+your Agent X workspace is elsewhere.
+
+**Run it after any `git checkout`/`git revert` that crosses a commit which
+touched these paths** — git silently replaces a symlink with a real directory
+rather than following it, which quietly re-opens the leak.
+
+The same script is the **leak detector**. If it finds a real directory where a
+symlink belongs, it prints the file count, exits non-zero, and tells you how to
+reconcile those files into the harness. It never deletes them. This is exactly
+how the pre-BC-QA-061 state looked: 80 review files stranded in
+`backend-api/.claude/reviews/` and `boomcard-mobile/.claude/reviews/`, committed
+to git and unreadable by every verdict engine, because the old `.gitignore` rule
+`.claude/reviews` contains a slash and so matched the repo root only.
+
+---
+
 ## Core Principles
 
 - **Simplicity First**: Make every change as simple as possible. Minimal code impact.
