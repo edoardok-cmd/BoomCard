@@ -10,6 +10,8 @@
     "start": "node dist/server.js",
     "start:worker": "node dist/worker.js",
     "deploy": "node prisma/auto-baseline.js && node_modules/.bin/prisma migrate deploy",
+    "typecheck:tests": "node scripts/typecheck-tests.js",
+    "pretest": "npm run typecheck:tests",
     "test": "jest --coverage",
     "test:watch": "jest --watch",
     "test:setup": "NODE_ENV=test npx prisma migrate deploy",

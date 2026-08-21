@@ -104,9 +104,49 @@ function discardConnection(pool: Pool, client: PoolClient): void {
   });
 }
 
+/**
+ * BC-QA-060 -- `disposeExternalPool: true` here (confirmed by bisection, not
+ * guessed): without it, `@prisma/adapter-pg` treats `pool` as caller-owned and
+ * never closes it on `$disconnect()`, so the pool's live TCP connections to
+ * Postgres stay open forever. In production that was silently masked by the
+ * `globalForPrisma` singleton (the pool is meant to be opened once and live
+ * for the whole process, only ever "disconnected" right before
+ * `process.exit()` in the SIGINT/SIGTERM handlers below -- so an unclosed
+ * pool was never observable there). But it also meant those SIGINT/SIGTERM
+ * handlers' `await prisma.$disconnect()` was never actually closing anything.
+ *
+ * It IS observable in the Jest unit suite: `tests/setup.ts` imports this
+ * module and calls `prisma.$connect()` / `prisma.$disconnect()` once per test
+ * file, and Jest's per-file test environment gives each file its own
+ * `global` (the `globalForPrisma` cache doesn't actually survive across
+ * files the way the comment above assumes -- confirmed with a throwaway
+ * counter probe), so every file was opening a brand-new `pg.Pool` that
+ * `$disconnect()` then failed to close. With `maxWorkers: 1`, those pools
+ * accumulate live sockets in the SAME worker process across every file it
+ * runs, and jest-worker's own graceful shutdown (`tests/setup.ts` never
+ * `process.exit()`s itself -- jest-worker just removes its IPC listener and
+ * waits for Node's event loop to drain naturally) then has nothing to wait
+ * for: the leaked pool sockets keep the loop non-empty, so the worker never
+ * exits on its own and jest-worker force-kills it 500ms later, printing "A
+ * worker process has failed to exit gracefully". Reproduced by bisection:
+ * disabled every other candidate (SIGINT/SIGTERM handlers, winston File
+ * transports, the supertest persistent-server mock) one at a time with the
+ * warning still firing; only removing `tests/setup.ts` entirely, or adding
+ * this flag, made it disappear -- 3/3 clean reruns of
+ * `npx jest tests/unit/paysera.service.test.ts tests/unit/mypos.service.test.ts`
+ * after the fix, `--detectOpenHandles` clean too.
+ *
+ * `disposeExternalPool: true` tells the adapter it owns the pool and should
+ * actually call `pool.end()` on `$disconnect()`, matching what
+ * `createScratchSchemaClient` below already does for its own dedicated pool
+ * (see its comment: "let Prisma close it on $disconnect() instead of leaking
+ * pool connections across tests"). This also fixes a latent production bug:
+ * the SIGINT/SIGTERM graceful-shutdown handlers now genuinely close the pool
+ * before `process.exit(0)` instead of a no-op.
+ */
 function createPrismaClient(): PrismaClient {
   const pool = buildPool(process.env.DATABASE_URL as string);
-  const adapter = new PrismaPg(pool);
+  const adapter = new PrismaPg(pool, { disposeExternalPool: true });
   return new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
@@ -143,16 +183,31 @@ function assertSafeSchemaName(schemaName: string): void {
  * Next.js-style hot reload doesn't leak a new pg.Pool on every reload. That
  * caching has a side effect that isn't obvious from `createPrismaClient()`
  * in isolation: `global` SURVIVES `jest.resetModules()` (resetModules only
- * clears Node's *require cache* -- it never touches `global`). So once ANY
- * test file in a given Jest worker has imported this module once (in
- * practice: `tests/setup.ts`'s own top-level `import { prisma } from
- * '../src/lib/prisma'`, using the base `.env.test` DATABASE_URL with no
- * schema override), EVERY later import of `../lib/prisma` in that same
- * worker -- no matter how many times `jest.resetModules()` runs, and no
- * matter what `process.env.DATABASE_URL` gets mutated to afterward --
- * returns that exact same cached PrismaClient, backed by the exact same
- * pg.Pool, built from whatever DATABASE_URL was current the FIRST time the
- * module was ever evaluated in that process. Mutating `process.env.DATABASE_URL`
+ * clears Node's *require cache* -- it never touches `global`). So once THIS
+ * test file has imported this module once (in practice: `tests/setup.ts`'s
+ * own top-level `import { prisma } from '../src/lib/prisma'`, using the
+ * base `.env.test` DATABASE_URL with no schema override), EVERY later
+ * import of `../lib/prisma` *within that same file* -- no matter how many
+ * times `jest.resetModules()` runs, and no matter what
+ * `process.env.DATABASE_URL` gets mutated to afterward -- returns that
+ * exact same cached PrismaClient, backed by the exact same pg.Pool, built
+ * from whatever DATABASE_URL was current the FIRST time the module was
+ * ever evaluated in that file's module registry.
+ *
+ * CORRECTED (BC-QA-060 impl-r1 M1): this paragraph used to claim the
+ * persistence spans *every test file in a given Jest worker*, not just
+ * re-imports within one file. That broader claim was never actually
+ * verified and is false under this project's Jest config (`maxWorkers: 1`,
+ * default test environment): Jest gives each test file its own `global`
+ * (a fresh per-file sandbox/module registry), even when multiple files
+ * share the same worker process, so `globalForPrisma.prisma` does NOT
+ * survive from one file to the next -- confirmed with a throwaway two-file
+ * probe (see the BC-QA-060 comment on `createPrismaClient` below for that
+ * evidence). The scratch-schema-client bug this comment documents is real,
+ * but it only manifests WITHIN a single file's own `jest.resetModules()` +
+ * re-import sequence, not across files.
+ *
+ * Mutating `process.env.DATABASE_URL`
  * after that point -- whether via Prisma's own `?schema=<name>` convention or
  * the Postgres `options=-c search_path=<name>` trick -- has ZERO effect on
  * that already-open pool's physical connections; an existing pg.Pool does
