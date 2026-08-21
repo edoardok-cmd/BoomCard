@@ -15,6 +15,26 @@ import { prisma } from '../../src/lib/prisma';
 import { cashbackLifecycleService } from '../../src/services/cashbackLifecycle.service';
 import { createTestUser, createTestSubscription } from '../helpers/test-utils';
 
+/**
+ * Generate a unique Stripe subscription ID for testing.
+ * Prevents unique constraint violations across test runs.
+ */
+function generateUniqueSubscriptionId(testName: string): string {
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(7);
+  return `${testName}_${timestamp}_${random}`.substring(0, 255);
+}
+
+/**
+ * Generate a unique sticker scan ID for testing.
+ * Prevents foreign key constraint violations.
+ */
+function generateUniqueScanId(testName: string): string {
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(7);
+  return `${testName}_${timestamp}_${random}`.substring(0, 255);
+}
+
 describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
   const createdUserIds: string[] = [];
 
@@ -61,7 +81,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.TRIALING,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_trialing_test',
+          stripeSubscriptionId: generateUniqueSubscriptionId('trialing'),
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
@@ -71,7 +91,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
       const result = await cashbackLifecycleService.recordPendingForRiskReview({
         userId: user.id,
         amount: 10,
-        stickerScanId: 'test-scan-trialing',
+        stickerScanId: generateUniqueScanId('scan-trialing'),
       });
 
       expect(result).toBeDefined();
@@ -89,7 +109,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.CANCELLED,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_cancelled_within_period',
+          stripeSubscriptionId: generateUniqueSubscriptionId('cancelled-within'),
           currentPeriodStart: new Date(),
           currentPeriodEnd: futureEnd,
           cancelAtPeriodEnd: true,
@@ -100,7 +120,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
       const result = await cashbackLifecycleService.recordPendingForRiskReview({
         userId: user.id,
         amount: 10,
-        stickerScanId: 'test-scan-cancelled-within',
+        stickerScanId: generateUniqueScanId('scan-cancelled-within'),
       });
 
       expect(result).toBeDefined();
@@ -119,7 +139,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.PAST_DUE,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_past_due_test',
+          stripeSubscriptionId: generateUniqueSubscriptionId('past-due'),
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
@@ -130,7 +150,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
         cashbackLifecycleService.recordPendingForRiskReview({
           userId: user.id,
           amount: 10,
-          stickerScanId: 'test-scan-past-due',
+          stickerScanId: generateUniqueScanId('scan-past-due'),
         })
       ).rejects.toThrow('Cannot create cashback: account scanning is blocked');
     });
@@ -145,7 +165,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.UNPAID,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_unpaid_test',
+          stripeSubscriptionId: generateUniqueSubscriptionId('unpaid'),
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
@@ -156,7 +176,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
         cashbackLifecycleService.recordPendingForRiskReview({
           userId: user.id,
           amount: 10,
-          stickerScanId: 'test-scan-unpaid',
+          stickerScanId: generateUniqueScanId('scan-unpaid'),
         })
       ).rejects.toThrow('Cannot create cashback: account scanning is blocked');
     });
@@ -171,7 +191,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.INCOMPLETE,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_incomplete_test',
+          stripeSubscriptionId: generateUniqueSubscriptionId('incomplete'),
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
@@ -182,7 +202,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
         cashbackLifecycleService.recordPendingForRiskReview({
           userId: user.id,
           amount: 10,
-          stickerScanId: 'test-scan-incomplete',
+          stickerScanId: generateUniqueScanId('scan-incomplete'),
         })
       ).rejects.toThrow('Cannot create cashback: account scanning is blocked');
     });
@@ -197,7 +217,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.INCOMPLETE_EXPIRED,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_incomplete_expired_test',
+          stripeSubscriptionId: generateUniqueSubscriptionId('incomplete-expired'),
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
@@ -208,7 +228,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
         cashbackLifecycleService.recordPendingForRiskReview({
           userId: user.id,
           amount: 10,
-          stickerScanId: 'test-scan-incomplete-expired',
+          stickerScanId: generateUniqueScanId('scan-incomplete-expired'),
         })
       ).rejects.toThrow('Cannot create cashback: account scanning is blocked');
     });
@@ -223,7 +243,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.PAUSED,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_paused_test',
+          stripeSubscriptionId: generateUniqueSubscriptionId('paused'),
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
@@ -234,7 +254,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
         cashbackLifecycleService.recordPendingForRiskReview({
           userId: user.id,
           amount: 10,
-          stickerScanId: 'test-scan-paused',
+          stickerScanId: generateUniqueScanId('scan-paused'),
         })
       ).rejects.toThrow('Cannot create cashback: account scanning is blocked');
     });
@@ -249,7 +269,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.EXPIRED,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_expired_test',
+          stripeSubscriptionId: generateUniqueSubscriptionId('expired'),
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(),
         },
@@ -260,7 +280,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
         cashbackLifecycleService.recordPendingForRiskReview({
           userId: user.id,
           amount: 10,
-          stickerScanId: 'test-scan-expired',
+          stickerScanId: generateUniqueScanId('scan-expired'),
         })
       ).rejects.toThrow('Cannot create cashback: account scanning is blocked');
     });
@@ -275,7 +295,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.FAILED_PAYMENT,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_failed_payment_test',
+          stripeSubscriptionId: generateUniqueSubscriptionId('failed-payment'),
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
@@ -286,7 +306,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
         cashbackLifecycleService.recordPendingForRiskReview({
           userId: user.id,
           amount: 10,
-          stickerScanId: 'test-scan-failed-payment',
+          stickerScanId: generateUniqueScanId('scan-failed-payment'),
         })
       ).rejects.toThrow('Cannot create cashback: account scanning is blocked');
     });
@@ -302,7 +322,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.CANCELLED,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_cancelled_post_period',
+          stripeSubscriptionId: generateUniqueSubscriptionId('cancelled-post'),
           currentPeriodStart: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
           currentPeriodEnd: pastEnd,
           cancelAtPeriodEnd: true,
@@ -314,7 +334,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
         cashbackLifecycleService.recordPendingForRiskReview({
           userId: user.id,
           amount: 10,
-          stickerScanId: 'test-scan-cancelled-post',
+          stickerScanId: generateUniqueScanId('scan-cancelled-post'),
         })
       ).rejects.toThrow('Cannot create cashback: account scanning is blocked');
     });
@@ -327,18 +347,21 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
 
       await createTestSubscription(user.id, 'PREMIUM_WEEKLY');
 
+      // Generate a unique scan ID and use it for both calls
+      const scanId = generateUniqueScanId('scan-idempotent');
+
       // Create first record
       const result1 = await cashbackLifecycleService.recordPendingForRiskReview({
         userId: user.id,
         amount: 10,
-        stickerScanId: 'test-scan-idempotent',
+        stickerScanId: scanId,
       });
 
       // Create again with same stickerScanId (should return existing record)
       const result2 = await cashbackLifecycleService.recordPendingForRiskReview({
         userId: user.id,
         amount: 10,
-        stickerScanId: 'test-scan-idempotent',
+        stickerScanId: scanId,
       });
 
       expect(result1?.id).toBe(result2?.id);
@@ -356,7 +379,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
         cashbackLifecycleService.recordPendingForRiskReview({
           userId: user.id,
           amount: 10,
-          stickerScanId: 'test-scan-no-sub',
+          stickerScanId: generateUniqueScanId('scan-no-sub'),
         })
       ).rejects.toThrow();
     });

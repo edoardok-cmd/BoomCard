@@ -10,7 +10,30 @@
 import { prisma } from '../../src/lib/prisma';
 import { AuthService } from '../../src/services/auth.service';
 
-jest.mock('../../src/lib/prisma');
+jest.mock('../../src/lib/prisma', () => ({
+  prisma: {
+    user: {
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    },
+    refreshToken: {
+      findUnique: jest.fn(),
+      deleteMany: jest.fn(),
+    },
+    subscription: {
+      updateMany: jest.fn(),
+      update: jest.fn(),
+    },
+    pushToken: {
+      updateMany: jest.fn(),
+    },
+    loginHistory: {
+      create: jest.fn(),
+    },
+  },
+}));
 jest.mock('../../src/services/email.service');
 jest.mock('../../src/utils/logger', () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
