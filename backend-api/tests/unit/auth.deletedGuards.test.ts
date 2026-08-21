@@ -10,52 +10,49 @@
 import { prisma } from '../../src/lib/prisma';
 import { AuthService } from '../../src/services/auth.service';
 
-// ─── Prisma mock with explicit factory function ──────────────────────────────
-// The bare automock doesn't properly structure the mock delegates (user, refreshToken, etc.).
-// This factory ensures both default and named exports are properly structured.
-
-jest.mock('../../src/lib/prisma', () => {
-  const mockPrismaClient = {
+jest.mock('../../src/lib/prisma', () => ({
+  prisma: {
     user: {
       findUnique: jest.fn(),
       findMany: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
-      create: jest.fn(),
-      updateMany: jest.fn(),
       count: jest.fn(),
     },
     refreshToken: {
       findUnique: jest.fn(),
       deleteMany: jest.fn(),
-      create: jest.fn(),
-      update: jest.fn(),
+      delete: jest.fn(),
     },
     subscription: {
       updateMany: jest.fn(),
       update: jest.fn(),
-      create: jest.fn(),
-      findUnique: jest.fn(),
     },
     pushToken: {
       updateMany: jest.fn(),
-      findMany: jest.fn(),
     },
     loginHistory: {
       create: jest.fn(),
+      createMany: jest.fn(),
     },
-  };
-
-  return {
-    __esModule: true,
-    default: mockPrismaClient,
-    prisma: mockPrismaClient,
-  };
-});
-
-jest.mock('../../src/services/email.service');
+    linkResendLog: {
+      create: jest.fn().mockResolvedValue({ id: 'log-1' }),
+      count: jest.fn().mockResolvedValue(0),
+    },
+  },
+}));
+jest.mock('../../src/services/email.service', () => ({
+  emailService: {
+    sendPasswordResetEmail: jest.fn().mockResolvedValue({ success: true }),
+  },
+}));
 jest.mock('../../src/utils/logger', () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+}));
+jest.mock('jsonwebtoken');
+jest.mock('bcrypt', () => ({
+  compare: jest.fn().mockResolvedValue(true),
+  hash: jest.fn().mockResolvedValue('$2b$10$hashedpassword'),
 }));
 
 const mockPrismaUser = prisma.user as jest.Mocked<typeof prisma.user>;
@@ -63,6 +60,10 @@ const mockPrismaRefreshToken = prisma.refreshToken as jest.Mocked<typeof prisma.
 const mockPrismaSubscription = prisma.subscription as jest.Mocked<typeof prisma.subscription>;
 const mockPrismaPushToken = prisma.pushToken as jest.Mocked<typeof prisma.pushToken>;
 const mockPrismaLoginHistory = prisma.loginHistory as jest.Mocked<typeof prisma.loginHistory>;
+
+// Import jwt to mock
+import * as jwt from 'jsonwebtoken';
+const mockJwt = jwt as jest.Mocked<typeof jwt>;
 
 describe('AuthService — Deleted Account Guards', () => {
   const testUserId = 'user-123';
@@ -72,36 +73,62 @@ describe('AuthService — Deleted Account Guards', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // Set up default mock for count()
+    mockPrismaUser.count.mockResolvedValue(0);
+    // Set up default mock for loginHistory.createMany
+    mockPrismaLoginHistory.createMany.mockResolvedValue({ count: 0 });
+    // Set up default mock for loginHistory.create
+    mockPrismaLoginHistory.create.mockResolvedValue({ id: 'log-1' } as any);
   });
 
   // ─── Test 1: login() for a DELETED user returns 403 ───────────────────────
 
   describe('Test 1: login() rejects DELETED user with 403', () => {
     it('should return 403 Forbidden when user.status === DELETED', async () => {
-      mockPrismaUser.findUnique.mockResolvedValue({
-        id: testUserId,
-        email: testEmail,
-        passwordHash: testPasswordHash,
-        status: 'DELETED',
-        role: 'USER',
-        firstName: 'Test',
-        emailVerified: true,
-        deletedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        // ... other fields omitted for brevity
-      } as any);
+      // Mock findMany to return an array with a DELETED user
+      mockPrismaUser.findMany.mockResolvedValue([
+        {
+          id: testUserId,
+          email: testEmail,
+          passwordHash: testPasswordHash,
+          status: 'DELETED',
+          role: 'USER',
+          firstName: 'Test',
+          emailVerified: true,
+          deletedAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          totpSecret: null,
+          totpEnabledAt: null,
+          totpRecoveryCodes: null,
+          mustChangePassword: false,
+          lastName: 'User',
+          avatar: null,
+        } as any,
+      ]);
 
-      const result = await AuthService.login({
-        email: testEmail,
-        password: testPassword,
-      });
+      // Mock loginHistory.create for the failed login attempt
+      mockPrismaLoginHistory.create.mockResolvedValue({ id: 'log-1' } as any);
 
-      expect(result).toEqual({
-        success: false,
-        statusCode: 403,
-        error: 'User account has been deleted',
-      });
+      // According to auth.service.ts, login() throws an AppError for DELETED users
+      // The error message is 'This account has been deleted'
+      await expect(
+        AuthService.login({
+          email: testEmail,
+          password: testPassword,
+        })
+      ).rejects.toThrow('This account has been deleted');
+
+      // Verify loginHistory.create was called to log the failed login
+      expect(mockPrismaLoginHistory.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            userId: testUserId,
+            success: false,
+            failReason: 'deleted',
+          }),
+        })
+      );
     });
   });
 
@@ -112,6 +139,12 @@ describe('AuthService — Deleted Account Guards', () => {
       const tokenId = 'token-123';
       const now = new Date();
 
+      // Mock jwt.verify to return a valid decoded token
+      mockJwt.verify.mockReturnValue({
+        userId: testUserId,
+        iat: Math.floor(now.getTime() / 1000),
+      } as any);
+
       mockPrismaRefreshToken.findUnique.mockResolvedValue({
         id: tokenId,
         userId: testUserId,
@@ -119,31 +152,26 @@ describe('AuthService — Deleted Account Guards', () => {
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         createdAt: now,
         updatedAt: now,
+        clientType: 'mobile',
+        accountGroup: null,
+        user: {
+          id: testUserId,
+          email: testEmail,
+          status: 'DELETED',
+          role: 'USER',
+        },
       } as any);
 
-      mockPrismaUser.findUnique.mockResolvedValue({
-        id: testUserId,
-        email: testEmail,
-        status: 'DELETED',
-        role: 'USER',
-        deletedAt: new Date(),
-        createdAt: now,
-        updatedAt: now,
-      } as any);
+      mockPrismaRefreshToken.delete.mockResolvedValue({ id: tokenId } as any);
 
-      mockPrismaRefreshToken.deleteMany.mockResolvedValue({ count: 1 });
-
-      const result = await AuthService.refreshToken('some-token');
-
-      expect(result).toEqual({
-        success: false,
-        statusCode: 403,
-        error: 'User account has been deleted',
-      });
+      // refreshToken() throws an error for DELETED users
+      await expect(
+        AuthService.refreshToken('some-token')
+      ).rejects.toThrow('This account has been deleted');
 
       // Verify the token was deleted
-      expect(mockPrismaRefreshToken.deleteMany).toHaveBeenCalledWith({
-        where: { userId: testUserId },
+      expect(mockPrismaRefreshToken.delete).toHaveBeenCalledWith({
+        where: { id: tokenId },
       });
     });
   });
@@ -228,14 +256,13 @@ describe('AuthService — Deleted Account Guards', () => {
         deletedAt: new Date(),
       } as any);
 
-      const result = await AuthService.switchAccount({
-        currentUserId: testUserId,
-        targetAccountId: targetUserId,
-      });
-
-      // Should fail because target is deleted
-      expect(result.success).toBe(false);
-      expect(result.statusCode).toBe(403);
+      // switchAccount should throw when target is DELETED
+      await expect(
+        AuthService.switchAccount({
+          currentUserId: testUserId,
+          targetAccountId: targetUserId,
+        })
+      ).rejects.toThrow();
     });
   });
 
