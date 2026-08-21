@@ -9,6 +9,27 @@ import { logger } from '../utils/logger';
 import { prisma } from '../lib/prisma';
 import { getSystemSettingStr } from '../utils/systemSettings';
 
+// BC-QA-045-FOLLOWUP-2 (item 5) — mask a recipient address before it reaches
+// a log line. sendEmail's "delivery disabled" branch below logs every
+// recipient at info level; that guard (this.enabled — RESEND_API_KEY present
+// AND NODE_ENV === 'production') means delivery, and this log line, are
+// ACTIVE in dev/test/staging — so every recipient, including e.g. an erased
+// user's pre-erasure address on the account-deletion confirmation email
+// (auth.service.ts:deleteAccount), was written to logs outside production.
+// Mirrors the existing phone-masking convention (verify.service.ts:
+// `***${phoneNumber.slice(-4)}`) rather than inventing an unrelated shape.
+// Keeps the domain (useful for triage — "which mailbox/provider" — without
+// being personally identifying on its own) and masks the local part down to
+// its first character.
+function maskEmailForLog(email: string): string {
+  const at = email.indexOf('@');
+  if (at <= 0) return '***'; // malformed / no local part to mask meaningfully
+  const local = email.slice(0, at);
+  const domain = email.slice(at + 1);
+  const visible = local.slice(0, 1);
+  return `${visible}***@${domain}`;
+}
+
 // ============================================
 // Types & Interfaces
 // ============================================
@@ -340,7 +361,14 @@ export class EmailService {
   async sendEmail(options: EmailOptions): Promise<{ success: boolean; id?: string }> {
     try {
       if (!this.enabled) {
-        logger.info(`📧 [EMAIL DISABLED] Would send email to: ${options.to}`);
+        // BC-QA-045-FOLLOWUP-2 (item 5): log a masked recipient, not the raw
+        // address — this branch runs whenever delivery is disabled (dev/test/
+        // staging, not just production-with-no-key), so the raw `options.to`
+        // was previously written to logs on every non-production environment.
+        const maskedTo = Array.isArray(options.to)
+          ? options.to.map(maskEmailForLog).join(', ')
+          : maskEmailForLog(options.to);
+        logger.info(`📧 [EMAIL DISABLED] Would send email to: ${maskedTo}`);
         logger.info(`   Subject: ${options.subject}`);
         return { success: true, id: 'disabled-mode' };
       }

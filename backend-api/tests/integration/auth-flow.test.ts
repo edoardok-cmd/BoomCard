@@ -1346,9 +1346,20 @@ describe('Authentication Flow (F01)', () => {
       expect(dbUser!.lastName).toBe('User');
       expect(dbUser!.phone).not.toBe(originalPhone);
       expect(dbUser!.phone.startsWith('deleted_')).toBe(true);
-      // The phone sentinel is unique per erasure, so it must not embed any part
-      // of the real number it replaced.
-      expect(dbUser!.phone).not.toContain(originalPhone.replace('+', ''));
+      // BC-QA-045-FOLLOWUP-2 (item 7): the previous version of this check —
+      // `expect(dbUser!.phone).not.toContain(originalPhone.replace('+', ''))`
+      // — can never fail against a `deleted_<uuid>` sentinel (auth.service.ts
+      // deleteAccount: `phone: \`deleted_${erasureToken}\`` with `erasureToken =
+      // uuid()`, the `v4` export from the `uuid` package): the sentinel is
+      // exactly a random v4 UUID appended to a fixed prefix, so it cannot
+      // coincidentally embed a real phone number's digits regardless of
+      // whether the anonymization is correct. It read as a check but wasn't
+      // one. Assert the exact sentinel shape instead — this both proves the
+      // suffix is a well-formed v4 UUID (so it structurally cannot be a phone
+      // number) and would fail if that shape ever regressed.
+      expect(dbUser!.phone).toMatch(
+        /^deleted_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
 
       expect(dbUser!.status).toBe('DELETED');
 

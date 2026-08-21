@@ -442,11 +442,14 @@ router.patch(
     // middleware), and writes are already blocked for non-ACTIVE partners, so the
     // operational behavior (Inactive + read-only) is enforced; this marker makes
     // the state explicit and queryable.
-    // NB (BC-QA-045): nothing clears this marker. The clearing branch that used
-    // to live below only ran on a PATCH ONBOARDING → APPROVED transition, which
-    // no longer exists, and POST /:id/approve has never cleared it — so partners
-    // approved through the intended door were already unaffected by it. Filed
-    // separately; do not read the marker as self-clearing.
+    // NB (BC-QA-045, corrected BC-QA-045-FOLLOWUP-2): this marker is stale, not
+    // permanently stuck. It is written here and cleared in two places: POST
+    // /:id/approve clears it as soon as the partner leaves the onboarding stage
+    // (the only door to APPROVED), and setPartnerStatus (partner.service.ts)
+    // clears statusReason to null on every later transition to ACTIVE/ARCHIVED.
+    // So the marker is only accurate for the PENDING window between this
+    // ONBOARDING transition and approval — do not read it as valid outside that
+    // window, but it is not orphaned indefinitely either.
     const isOnboardingTransition =
       requestStatus === PartnerRequestStatus.ONBOARDING && current !== PartnerRequestStatus.ONBOARDING;
     const ONBOARDING_INACTIVE_MARKER = 'ONBOARDING_INACTIVE';
@@ -757,6 +760,17 @@ router.post(
         // Spec §3.2 — stamp onboarding completion the first time the partner
         // gets approved; later approvals (re-activation) don't bump it.
         ...(partner.onboardingCompletedAt ? {} : { onboardingCompletedAt: new Date() }),
+        // BC-QA-045-FOLLOWUP-2 (Item 1): clear the ONBOARDING_INACTIVE marker
+        // stamped on statusReason by the PATCH /status → ONBOARDING transition
+        // above. This route is the only door to APPROVED (partner.status is
+        // always PENDING here — see the guards above), so it is the correct
+        // owner of retiring that marker. Without this, statusReason stays
+        // 'ONBOARDING_INACTIVE' for the rest of the PENDING window between
+        // approval and activation-link consumption; setPartnerStatus already
+        // clears statusReason to null on every later transition to
+        // ACTIVE/ARCHIVED, so the marker was never permanently stuck — it was
+        // just stale here.
+        statusReason: null,
       },
       select: PARTNER_SELECT,
     });

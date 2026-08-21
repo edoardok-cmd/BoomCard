@@ -2064,7 +2064,17 @@ export class AuthService {
     // retention and their own access control, so that quietly re-published the
     // exact identifier the GDPR Art. 17 request existed to remove, and undid part
     // of this erasure for however long the log window is. The user id is
-    // sufficient to correlate the event and is not personal data on its own.
+    // sufficient to correlate the event, so it — not the address — is what goes
+    // to the log.
+    //
+    // BC-QA-045-FOLLOWUP-2 (item 6) — corrected: this is a SOFT delete, and the
+    // user id itself is NOT non-personal data. It remains the foreign key on the
+    // retained Subscription, AuditLog, and Receipt rows (kept for accounting/
+    // audit-trail requirements), so it stays LINKABLE to those records and is
+    // pseudonymised data under GDPR, not anonymised. Logging the id rather than
+    // the email is still the right call — it deliberately avoids re-publishing
+    // the directly-identifying address — and is retained here for referential
+    // integrity with those rows; it just isn't "not personal data".
     //
     // NB: the confirmation email above legitimately needs the original address —
     // it has to reach a mailbox — so `to: user.email` there is correct and must

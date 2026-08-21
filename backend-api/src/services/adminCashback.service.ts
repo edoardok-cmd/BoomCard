@@ -762,28 +762,16 @@ export async function getSubscriberCashbackEntries(
   // so a filtered view silently showed every other state too.
   //
   // Reuses the same buildStateWhere() the global listing uses, so the subscriber
-  // and global endpoints partition IDENTICALLY TO EACH OTHER. That is the only
-  // agreement claimed here. It is deliberately NOT a claim that buildStateWhere
-  // agrees with deriveCashbackEntryStatus(): the TrialPending branch does agree
-  // (checked in both directions), but at least two others provably do not, and
-  // both mis-partitions are pre-existing, untouched by BC-QA-045, and filed
-  // separately:
-  //
-  //   • Expired / Paid / Cleared — their LEGACY arms build `status: { notIn: [...] }`
-  //     from PENDING_RAW / NEVER_PAID_RAW / 'CANCELLED', none of which include
-  //     'TRIAL_PENDING'. So a legacy row (cashbackStatus null, cashbackPaidAt
-  //     null, raw status TRIAL_PENDING) whose cashbackExpiresAt has passed is
-  //     returned by the Expired filter while being LABELLED TrialPending.
-  //
-  //   • Voided / Locked — deriveCashbackEntryStatus maps a legacy raw status of
-  //     'ANNULLED' to 'Voided', but the Voided branch here is
-  //     `{ cashbackStatus: 'VOIDED' }` with NO legacy arm, while the Locked
-  //     branch's legacy arm admits `status: { in: ['ANNULLED', 'FAILED'] }`. So a
-  //     legacy ANNULLED row is LABELLED Voided, is absent from the Voided filter
-  //     entirely, and is returned by the Locked filter.
-  //
-  // Recorded here so this call site is not read as asserting an agreement that
-  // does not hold.
+  // and global endpoints partition IDENTICALLY TO EACH OTHER, and (as of
+  // BC-QA-045-FOLLOWUP-2) buildStateWhere's legacy arms are themselves derived
+  // from deriveCashbackEntryStatus's own precedence chain (legacyPrecedenceSteps(),
+  // defined alongside buildStateWhere below) rather than a hand-maintained
+  // exclusion list, so filter and label agree for every legacy-shape row —
+  // not just TrialPending, which is all the previous version of this comment
+  // could claim (two mislabelings, Expired/Paid/Cleared omitting TRIAL_PENDING
+  // and Voided/Locked disagreeing on legacy ANNULLED rows, were filed and
+  // fixed under that follow-up; see the coverage sweep in
+  // adminCashback.buildStateWhere.legacy-precedence.test.ts).
   const filterWhere = statusFilter ? await buildStateWhere(statusFilter, new Date()) : undefined;
   const listWhere: WTWhere = filterWhere
     ? { AND: [{ walletId: wallet.id, type: 'CASHBACK_CREDIT' as const }, filterWhere] }
@@ -885,167 +873,161 @@ export interface GlobalCashbackEntry extends SubscriberCashbackEntry {
 
 type WTWhere = NonNullable<Parameters<typeof prisma.walletTransaction.findMany>[0]>['where'];
 
-// Build a Prisma WHERE clause for the spec §4.4 derived state.
-// For Paid/Cleared we need to know each wallet's most recent completed withdrawal,
-// which is fetched up-front so the result can be expressed as a pure DB filter.
-async function buildStateWhere(
-  state: CashbackEntryStatus,
-  now: Date,
-): Promise<WTWhere> {
-  const PENDING_RAW = ['PENDING', 'PROCESSING', 'RISK_HOLD'] as const;
-  const NEVER_PAID_RAW = [...PENDING_RAW, 'ANNULLED', 'FAILED'] as const;
+// BC-QA-045-FOLLOWUP-2 (items 2/3): single source of truth for the legacy
+// (cashbackStatus IS NULL) fallback partitioning, mirroring
+// deriveCashbackEntryStatus's OWN precedence chain (see that function above,
+// the `if (entry.cashbackStatus) {...}` block's `else` path, lines ~705-716)
+// in the SAME order. Each entry below is one precedence step; a row belongs
+// to a step's state only if that step's own condition holds AND none of the
+// EARLIER steps' conditions hold — exactly how an if/else-if chain resolves.
+//
+// This replaces the hand-maintained `status: { notIn: [...] }` exclusion
+// list that used to live separately in each buildStateWhere branch. That
+// pattern produced two mislabeling bugs: the Expired/Paid/Cleared lists
+// omitted TRIAL_PENDING (so an expired legacy TRIAL_PENDING row was returned
+// by the Expired filter while rendering as "TrialPending"), and Voided had
+// no legacy arm at all while Locked wrongly admitted legacy ANNULLED rows
+// (so a legacy ANNULLED row rendered as "Voided" but was returned by the
+// Locked filter and never by the Voided filter). Deriving every branch from
+// this one ordered list — rather than re-deriving the exclusion set by hand
+// each time — is what prevents a third instance of the same bug: a future
+// change to deriveCashbackEntryStatus's legacy chain only needs to be
+// mirrored HERE, and every buildStateWhere branch stays in sync automatically.
+// Each step carries BOTH its own trigger condition (`cond`) and an
+// explicit, hand-verified null-safe negation of it (`notCond`) — NOT a
+// blanket `{ NOT: cond }`. `cashbackExpiresAt` is nullable, and SQL's
+// three-valued logic means `NOT (cashbackExpiresAt <= now)` stays UNKNOWN
+// (excluded from a WHERE) rather than becoming TRUE when the column is
+// NULL, even though a null-expiry row plainly never satisfies "expired".
+// The pre-existing `notExpired` pattern elsewhere in this file already
+// worked around exactly this by OR-ing in `cashbackExpiresAt: null`
+// explicitly rather than negating "expired" — `notCond` below applies that
+// same pattern generically so composing exclusions never depends on Prisma/
+// SQL negation of a nullable-field comparison.
+function legacyPrecedenceSteps(now: Date): { state: CashbackEntryStatus; cond: WTWhere; notCond: WTWhere }[] {
   const notExpired: WTWhere = {
     OR: [{ cashbackExpiresAt: null }, { cashbackExpiresAt: { gt: now } }],
   };
   const expired: WTWhere = { cashbackExpiresAt: { lte: now } };
+  const notCancelled: WTWhere = { status: { not: 'CANCELLED' as const } };
+  return [
+    // deriveCashbackEntryStatus: `if (entry.cashbackPaidAt) return 'Paid';`
+    { state: 'Paid', cond: { cashbackPaidAt: { not: null } }, notCond: { cashbackPaidAt: null } },
+    // `if (entry.status === 'TRIAL_PENDING') return 'TrialPending';`
+    { state: 'TrialPending', cond: { status: 'TRIAL_PENDING' as const }, notCond: { status: { not: 'TRIAL_PENDING' as const } } },
+    // `if (entry.status === 'PENDING' || 'PROCESSING' || 'RISK_HOLD') return 'Pending';`
+    {
+      state: 'Pending',
+      cond: { status: { in: ['PENDING', 'PROCESSING', 'RISK_HOLD'] as const } },
+      notCond: { status: { notIn: ['PENDING', 'PROCESSING', 'RISK_HOLD'] as const } },
+    },
+    // `if (entry.status === 'CANCELLED') return expired ? 'Expired' : 'Locked';`
+    // De Morgan on AND(status=CANCELLED, expired): NOT(A AND B) = NOT A OR NOT B,
+    // with "NOT expired" spelled as the null-safe `notExpired` positive form.
+    { state: 'Expired', cond: { AND: [{ status: 'CANCELLED' as const }, expired] }, notCond: { OR: [notCancelled, notExpired] } },
+    { state: 'Locked', cond: { AND: [{ status: 'CANCELLED' as const }, notExpired] }, notCond: { OR: [notCancelled, expired] } },
+    // `if (entry.status === 'ANNULLED') return 'Voided';`
+    { state: 'Voided', cond: { status: 'ANNULLED' as const }, notCond: { status: { not: 'ANNULLED' as const } } },
+    // `if (entry.status === 'FAILED') return 'Locked';`
+    { state: 'Locked', cond: { status: 'FAILED' as const }, notCond: { status: { not: 'FAILED' as const } } },
+    // `if (entry.cashbackExpiresAt && entry.cashbackExpiresAt <= now) return 'Expired';`
+    // notCond is the null-safe `notExpired` form, NOT `{ NOT: expired }`.
+    { state: 'Expired', cond: expired, notCond: notExpired },
+    // The remaining two deriveCashbackEntryStatus outcomes — `latestWithdrawalAt
+    // && entry.createdAt <= latestWithdrawalAt` → 'Paid', else 'Cleared' — need a
+    // per-wallet withdrawal-timing join and are NOT expressible as a per-row
+    // condition, so they are handled separately in buildStateWhere below
+    // ("fell through the whole chain" case) instead of as a step here.
+  ];
+}
 
-  // Prefer cashbackStatus when set and fall back to the legacy raw-status
-  // derivation so old rows still partition correctly.
-  // Two sources of truth per state:
-  //   (a) NEW: lifecycle column `cashbackStatus` is set (post-v1.1 writes)
-  //   (b) LEGACY: cashbackStatus is null — fall back to raw-status derivation
-  // OR the two so old rows continue to partition correctly during migration.
-  // Legacy branches require cashbackStatus IS NULL so a row that was later
-  // voided via the lifecycle service doesn't double-count under its legacy bucket.
+// Build the legacy (cashbackStatus IS NULL) WHERE for one of the precedence
+// steps above. Returns null if `targetState` never appears as a step outcome
+// (i.e. it only resolves via the "fell through the chain" Paid/Cleared case).
+function buildLegacyStateWhere(targetState: CashbackEntryStatus, now: Date): WTWhere | null {
   const legacyOnly: WTWhere = { cashbackStatus: null };
+  const steps = legacyPrecedenceSteps(now);
+  const matches = steps
+    .map((step, idx) => ({ step, idx }))
+    .filter(({ step }) => step.state === targetState);
+  if (matches.length === 0) return null;
 
-  // TrialPending — trial-period cashback that the scheduler resolves at trial
-  // end, not by the 60-day expiry rule.
-  //
-  // BC-QA-045: this branch used to be a bare `{ status: 'TRIAL_PENDING' }` — the
-  // ONLY state branch that read the legacy raw `status` column WITHOUT preferring
-  // the authoritative `cashbackStatus` lifecycle column, contrary to the contract
-  // documented directly above and implemented by every sibling branch below. The
-  // filter therefore disagreed with deriveCashbackEntryStatus(), which produces
-  // the LABEL the same rows are rendered with, in BOTH directions:
-  //
-  //   • MISSED  rows whose cashbackStatus is TRIAL_PENDING but whose raw status
-  //     is something else (the normal new-world shape — the lifecycle service
-  //     writes cashbackStatus and leaves `status` as the wallet-level value, e.g.
-  //     COMPLETED). Those render as "TrialPending" in the listing yet were
-  //     silently absent from the TrialPending filter.
-  //   • ADMITTED rows whose raw status is still TRIAL_PENDING but whose
-  //     cashbackStatus has since moved on (e.g. to PAID or VOIDED) and which
-  //     therefore render as that other state, plus legacy rows carrying a
-  //     cashbackPaidAt, which derive to Paid.
-  if (state === 'TrialPending') {
-    const legacy: WTWhere = {
-      AND: [
-        legacyOnly,
-        // deriveCashbackEntryStatus tests cashbackPaidAt BEFORE the legacy
-        // status === 'TRIAL_PENDING' test, so a paid-out legacy row is Paid.
-        { cashbackPaidAt: null },
-        { status: 'TRIAL_PENDING' as const },
-      ],
-    };
-    return { OR: [{ cashbackStatus: 'TRIAL_PENDING' as const }, legacy] };
+  const clauses: WTWhere[] = matches.map(({ step, idx }) => {
+    const priorExclusions: WTWhere[] = steps.slice(0, idx).map((s) => s.notCond);
+    return priorExclusions.length > 0
+      ? { AND: [legacyOnly, step.cond, ...priorExclusions] }
+      : { AND: [legacyOnly, step.cond] };
+  });
+  return clauses.length === 1 ? clauses[0] : { OR: clauses };
+}
+
+const NEW_WORLD_STATUS: Record<CashbackEntryStatus, PrismaCashbackEntryStatus> = {
+  Pending: PrismaCashbackEntryStatus.PENDING,
+  Cleared: PrismaCashbackEntryStatus.CLEARED,
+  Locked: PrismaCashbackEntryStatus.LOCKED,
+  Paid: PrismaCashbackEntryStatus.PAID,
+  Expired: PrismaCashbackEntryStatus.EXPIRED,
+  Voided: PrismaCashbackEntryStatus.VOIDED,
+  TrialPending: PrismaCashbackEntryStatus.TRIAL_PENDING,
+};
+
+// Build a Prisma WHERE clause for the spec §4.4 derived state.
+// For Paid/Cleared we need to know each wallet's most recent completed withdrawal,
+// which is fetched up-front so the result can be expressed as a pure DB filter.
+//
+// Prefer cashbackStatus when set and fall back to the legacy raw-status
+// derivation so old rows still partition correctly. Two sources of truth per
+// state: (a) NEW — lifecycle column `cashbackStatus` is set (post-v1.1
+// writes), (b) LEGACY — cashbackStatus is null, fall back to the
+// legacyPrecedenceSteps() chain above. OR the two so old rows continue to
+// partition correctly during migration.
+async function buildStateWhere(
+  state: CashbackEntryStatus,
+  now: Date,
+): Promise<WTWhere> {
+  const newWorld: WTWhere = { cashbackStatus: NEW_WORLD_STATUS[state] };
+
+  // Pending / Locked / Expired / Voided / TrialPending resolve entirely
+  // within the precedence chain — no per-wallet withdrawal join needed.
+  if (state !== 'Paid' && state !== 'Cleared') {
+    const legacy = buildLegacyStateWhere(state, now);
+    return legacy ? { OR: [newWorld, legacy] } : newWorld;
   }
 
-  // Voided is the only state that ONLY exists via the new lifecycle column.
-  // No legacy fallback — pre-lifecycle rows can never be Voided.
-  if (state === 'Voided') {
-    return { cashbackStatus: 'VOIDED' as const };
+  // Paid / Cleared: Paid also has a direct chain step (cashbackPaidAt set —
+  // step 0 above); both additionally need the "fell through the whole
+  // chain" outcome, split by the per-wallet withdrawal-timing rule
+  // (deriveCashbackEntryStatus's final two lines: Paid if the entry predates
+  // the wallet's most recent completed withdrawal, Cleared otherwise).
+  const legacyOnly: WTWhere = { cashbackStatus: null };
+  const steps = legacyPrecedenceSteps(now);
+  const fellThroughChain: WTWhere = {
+    AND: [legacyOnly, ...steps.map((s) => s.notCond)],
+  };
+
+  const lastPayouts = await prisma.walletTransaction.findMany({
+    where: { type: 'WITHDRAWAL', status: 'COMPLETED' },
+    orderBy: { createdAt: 'desc' },
+    distinct: ['walletId'],
+    select: { walletId: true, createdAt: true },
+  });
+  const withinLastPayout: WTWhere = {
+    OR: lastPayouts.map((p) => ({ walletId: p.walletId, createdAt: { lte: p.createdAt } })),
+  };
+
+  if (state === 'Paid') {
+    const paidByMarker = buildLegacyStateWhere('Paid', now); // chain step 0
+    const clauses: WTWhere[] = [newWorld, ...(paidByMarker ? [paidByMarker] : [])];
+    if (lastPayouts.length > 0) {
+      clauses.push({ AND: [fellThroughChain, withinLastPayout] });
+    }
+    return { OR: clauses };
   }
 
-  const newWorldStateUpper = state.toUpperCase() as 'PENDING' | 'CLEARED' | 'LOCKED' | 'PAID' | 'EXPIRED';
-  const newWorld: WTWhere = { cashbackStatus: newWorldStateUpper };
-
-  switch (state) {
-    case 'Pending': {
-      const legacy: WTWhere = {
-        AND: [
-          legacyOnly,
-          { cashbackPaidAt: null },
-          { status: { in: ['PENDING', 'PROCESSING', 'RISK_HOLD'] } },
-        ],
-      };
-      return { OR: [newWorld, legacy] };
-    }
-
-    case 'Locked': {
-      const legacy: WTWhere = {
-        AND: [
-          legacyOnly,
-          { cashbackPaidAt: null },
-          {
-            OR: [
-              { AND: [{ status: 'CANCELLED' as const }, notExpired] },
-              { status: { in: ['ANNULLED', 'FAILED'] as const } },
-            ],
-          },
-        ],
-      };
-      return { OR: [newWorld, legacy] };
-    }
-
-    case 'Expired': {
-      const legacy: WTWhere = {
-        AND: [
-          legacyOnly,
-          { cashbackPaidAt: null },
-          expired,
-          { status: { notIn: [...PENDING_RAW, 'ANNULLED', 'FAILED'] } },
-        ],
-      };
-      return { OR: [newWorld, legacy] };
-    }
-
-    case 'Paid':
-    case 'Cleared': {
-      const lastPayouts = await prisma.walletTransaction.findMany({
-        where: { type: 'WITHDRAWAL', status: 'COMPLETED' },
-        orderBy: { createdAt: 'desc' },
-        distinct: ['walletId'],
-        select: { walletId: true, createdAt: true },
-      });
-
-      if (state === 'Paid') {
-        const payoutOr: WTWhere[] = [{ AND: [legacyOnly, { cashbackPaidAt: { not: null } }] }];
-        if (lastPayouts.length > 0) {
-          payoutOr.push({
-            AND: [
-              legacyOnly,
-              { status: { notIn: [...NEVER_PAID_RAW, 'CANCELLED'] } },
-              notExpired,
-              {
-                OR: lastPayouts.map((p) => ({
-                  walletId: p.walletId,
-                  createdAt: { lte: p.createdAt },
-                })),
-              },
-            ],
-          });
-        }
-        return { OR: [newWorld, ...payoutOr] };
-      }
-
-      // Cleared (legacy): not explicitly paid and not covered by a wallet withdrawal
-      const baseCleared: WTWhere = {
-        AND: [
-          legacyOnly,
-          { cashbackPaidAt: null },
-          { status: { notIn: [...NEVER_PAID_RAW, 'CANCELLED'] } },
-          notExpired,
-        ],
-      };
-      if (lastPayouts.length === 0) return { OR: [newWorld, baseCleared] };
-      const legacyCleared: WTWhere = {
-        AND: [
-          baseCleared,
-          {
-            OR: [
-              { walletId: { notIn: lastPayouts.map((p) => p.walletId) } },
-              ...lastPayouts.map((p) => ({
-                walletId: p.walletId,
-                createdAt: { gt: p.createdAt },
-              })),
-            ],
-          },
-        ],
-      };
-      return { OR: [newWorld, legacyCleared] };
-    }
-  }
+  // Cleared: fell through the whole chain AND not within the wallet's most
+  // recent completed payout window (or there is no such payout at all).
+  if (lastPayouts.length === 0) return { OR: [newWorld, fellThroughChain] };
+  return { OR: [newWorld, { AND: [fellThroughChain, { NOT: withinLastPayout }] }] };
 }
 
 export async function getAllCashbackEntries(
