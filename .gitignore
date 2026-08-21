@@ -72,8 +72,13 @@ screenshots/
 # Test artifacts
 coverage/
 test-results/
+playwright-report/
 **/e2e/.report/
 **/e2e/.blob-report/
+
+# Verification-phase scratch files
+*-scratch.ts
+*-taskr*-scratch.*
 
 # Tesseract language data (downloaded at runtime)
 *.traineddata
