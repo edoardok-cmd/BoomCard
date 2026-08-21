@@ -85,4 +85,8 @@ playwright-report/
 
 # Claude task tracking
 tasks/
-.claude/reviews
+# BC-QA-061: `.claude/reviews` contains a slash, so it is anchored to the repo
+# ROOT and did NOT ignore subproject review dirs -- backend-api/.claude/reviews
+# and boomcard-mobile/.claude/reviews got tracked with 80 review files that the
+# Agent X completion gates never read. `**/` ignores every nesting level.
+**/.claude/reviews
