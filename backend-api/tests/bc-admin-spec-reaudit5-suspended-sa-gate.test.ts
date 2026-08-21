@@ -51,6 +51,17 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
   let adminId: string;
   let suspendedUserId: string;
 
+  // BC-QA-045-FOLLOWUP-3: this file previously had NO fixture cleanup at
+  // all beyond prisma.$disconnect() — every ACTIVE/SUSPENDED/etc. user it
+  // creates (most load-bearingly, the SUPER_ADMIN `superAdmin` fixture)
+  // leaked into the shared boomcard_test database. A leaked non-archived
+  // SUPER_ADMIN is exactly the fixture class that defeats
+  // sa-guard-races.test.ts DEFECT 3's "exactly 1 existing SUPER_ADMIN"
+  // bootstrap precondition. Track every user this file creates (beforeAll
+  // fixtures + each test's own inline fixtures) and delete them, and their
+  // audit-log rows, at the file boundary.
+  const createdUserIds: string[] = [];
+
   beforeAll(async () => {
     app = await createTestApp();
 
@@ -68,6 +79,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
       },
     });
     superAdminId = superAdmin.id;
+    createdUserIds.push(superAdmin.id);
     superAdminToken = generateTestToken(superAdmin.id, 'SUPER_ADMIN');
 
     // Create a standard ADMIN with default subscribers.write permission
@@ -85,6 +97,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
       },
     });
     adminId = admin.id;
+    createdUserIds.push(admin.id);
     adminToken = generateTestToken(admin.id, 'ADMIN', ['subscribers.write']);
 
     // Create a SUSPENDED subscriber (simulating password reset abuse lockout)
@@ -101,9 +114,24 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
       },
     });
     suspendedUserId = suspendedUser.id;
+    createdUserIds.push(suspendedUser.id);
   });
 
   afterAll(async () => {
+    if (createdUserIds.length) {
+      // AuditLog.actorUserId has no onDelete: Cascade, so clear rows this
+      // file's fixtures wrote (as actor or as object) before deleting the
+      // Users themselves.
+      await prisma.auditLog.deleteMany({
+        where: {
+          OR: [
+            { actorUserId: { in: createdUserIds } },
+            { objectId: { in: createdUserIds } },
+          ],
+        },
+      }).catch(() => {});
+      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } }).catch(() => {});
+    }
     await prisma.$disconnect();
   });
 
@@ -147,6 +175,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
           passwordHash: 'dummy-hash',
         },
       });
+      createdUserIds.push(testUser.id);
 
       // Clear the audit log first
       await prisma.auditLog.deleteMany({
@@ -191,6 +220,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
           passwordHash: 'dummy-hash',
         },
       });
+      createdUserIds.push(normalUser.id);
 
       // ACTIVE -> INACTIVE
       let res = await request(app)
@@ -224,6 +254,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
           passwordHash: 'dummy-hash',
         },
       });
+      createdUserIds.push(deletedUser.id);
 
       const res = await request(app)
         .patch(`/api/admin/subscribers/${deletedUser.id}/status`)
@@ -247,6 +278,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
           passwordHash: 'dummy-hash',
         },
       });
+      createdUserIds.push(archivedUser.id);
 
       const res = await request(app)
         .patch(`/api/admin/subscribers/${archivedUser.id}/status`)
@@ -272,6 +304,7 @@ describe('BC-ADMIN-SPEC-REAUDIT5-SUSPENDED-SA-GATE-1', () => {
           passwordHash: 'dummy-hash',
         },
       });
+      createdUserIds.push(suspendedForProfileTest.id);
 
       // Attempt to edit profile (should fail)
       const res = await request(app)

@@ -50,6 +50,18 @@ describe('BC-ADMIN-SPEC-REAUDIT3: PATCH /:id/status rejects REJECTED', () => {
   let adminToken: string;
   let adminUser: any;
 
+  // BC-QA-045-FOLLOWUP-3: this file previously had NO fixture cleanup at
+  // all beyond prisma.$disconnect() — the `adminUser` SUPER_ADMIN fixture
+  // and every partner USER fixture leaked into the shared boomcard_test
+  // database. A leaked non-archived SUPER_ADMIN is exactly the fixture
+  // class that defeats sa-guard-races.test.ts DEFECT 3's "exactly 1
+  // existing SUPER_ADMIN" bootstrap precondition. Track every user this
+  // file creates; deleting a User cascades its Partner row (and that
+  // Partner's ActivationLink / PartnerStatusChange rows — see
+  // prisma/schema.prisma onDelete: Cascade), so tracking users alone is
+  // enough to clean up the whole fixture tree.
+  const createdUserIds: string[] = [];
+
   beforeAll(async () => {
     // Create test admin
     adminUser = await prisma.user.create({
@@ -64,10 +76,25 @@ describe('BC-ADMIN-SPEC-REAUDIT3: PATCH /:id/status rejects REJECTED', () => {
         passwordHash: 'dummy-hash',
       },
     });
+    createdUserIds.push(adminUser.id);
     adminToken = generateTestToken(adminUser.id, 'SUPER_ADMIN');
   });
 
   afterAll(async () => {
+    if (createdUserIds.length) {
+      // AuditLog.actorUserId and PartnerRequestNote.authorId both have no
+      // onDelete: Cascade — clear rows this file's admin fixture wrote as
+      // actor/author before deleting the Users. Discovered by running this
+      // cleanup WITHOUT a swallowing .catch(): POST /:id/reject writes a
+      // PartnerRequestNote with authorId=adminUser.id, and without this the
+      // User.deleteMany below throws P2003
+      // (PartnerRequestNote_authorId_fkey) — which the original .catch(()
+      // => {}) was silently swallowing, so the SUPER_ADMIN fixture leaked
+      // every run despite this afterAll appearing to "handle" cleanup.
+      await prisma.auditLog.deleteMany({ where: { actorUserId: { in: createdUserIds } } }).catch(() => {});
+      await prisma.partnerRequestNote.deleteMany({ where: { authorId: { in: createdUserIds } } }).catch(() => {});
+      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } }).catch(() => {});
+    }
     await prisma.$disconnect();
   });
 
@@ -85,6 +112,7 @@ describe('BC-ADMIN-SPEC-REAUDIT3: PATCH /:id/status rejects REJECTED', () => {
         passwordHash: 'dummy-hash',
       },
     });
+    createdUserIds.push(partnerUser.id);
 
     const partner = await prisma.partner.create({
       data: {
@@ -122,6 +150,7 @@ describe('BC-ADMIN-SPEC-REAUDIT3: PATCH /:id/status rejects REJECTED', () => {
         passwordHash: 'dummy-hash',
       },
     });
+    createdUserIds.push(partnerUser.id);
 
     const partner = await prisma.partner.create({
       data: {
@@ -158,6 +187,7 @@ describe('BC-ADMIN-SPEC-REAUDIT3: PATCH /:id/status rejects REJECTED', () => {
         passwordHash: 'dummy-hash',
       },
     });
+    createdUserIds.push(partnerUser.id);
 
     const partner = await prisma.partner.create({
       data: {
@@ -243,6 +273,7 @@ describe('BC-ADMIN-SPEC-REAUDIT3: PATCH /:id/status rejects REJECTED', () => {
         passwordHash: 'dummy-hash',
       },
     });
+    createdUserIds.push(partnerUser.id);
 
     const partner = await prisma.partner.create({
       data: {

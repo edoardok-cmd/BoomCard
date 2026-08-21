@@ -76,9 +76,24 @@ describe('BC-ADMIN-SPEC-REAUDIT3-EXPIRE-LEGACY-LOCKED-2', () => {
   });
 
   afterAll(async () => {
-    // Cleanup test data - only delete transactions and wallets since user deletion has FK constraints
+    // BC-QA-045-FOLLOWUP-3: this previously stopped at wallets/transactions —
+    // "user deletion has FK constraints" — and left BOTH `superAdminUser` and
+    // `user` behind. superAdminUser in particular is exactly the leaked
+    // non-archived SUPER_ADMIN fixture class that defeats
+    // sa-guard-races.test.ts DEFECT 3's bootstrap precondition. The actual FK
+    // blocker is WalletTransaction.wallet (no onDelete: Cascade) — Wallet
+    // itself DOES cascade from User, but only once no WalletTransaction still
+    // references it — so transactions/wallet must still be deleted BEFORE the
+    // users, same order as before; this just continues on to delete the users.
     await prisma.walletTransaction.deleteMany({ where: { walletId } });
     await prisma.wallet.deleteMany({ where: { id: walletId } });
+    const ids = [superAdminUser.id, userId].filter(Boolean);
+    if (ids.length) {
+      // AuditLog.actorUserId has no onDelete: Cascade — the SUPER_ADMIN
+      // fixture drives admin routes under test, which may write audit rows.
+      await prisma.auditLog.deleteMany({ where: { actorUserId: { in: ids } } }).catch(() => {});
+      await prisma.user.deleteMany({ where: { id: { in: ids } } }).catch(() => {});
+    }
   });
 
   describe('expireEntry guard against legacy derived-Locked rows', () => {
