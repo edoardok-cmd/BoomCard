@@ -15,6 +15,11 @@ import { prisma } from '../../src/lib/prisma';
 import { cashbackLifecycleService } from '../../src/services/cashbackLifecycle.service';
 import { createTestUser, createTestSubscription } from '../helpers/test-utils';
 
+// ─── Unique fixture ID generator ──────────────────────────────────────
+// Prevents unique constraint violations from interrupted test runs
+const generateStripeSubscriptionId = () =>
+  `sub_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+
 describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
   const createdUserIds: string[] = [];
 
@@ -61,7 +66,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.TRIALING,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_trialing_test',
+          stripeSubscriptionId: generateStripeSubscriptionId(),
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
@@ -89,7 +94,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.CANCELLED,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_cancelled_within_period',
+          stripeSubscriptionId: generateStripeSubscriptionId(),
           currentPeriodStart: new Date(),
           currentPeriodEnd: futureEnd,
           cancelAtPeriodEnd: true,
@@ -119,7 +124,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.PAST_DUE,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_past_due_test',
+          stripeSubscriptionId: generateStripeSubscriptionId(),
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
@@ -145,7 +150,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.UNPAID,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_unpaid_test',
+          stripeSubscriptionId: generateStripeSubscriptionId(),
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
@@ -171,7 +176,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.INCOMPLETE,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_incomplete_test',
+          stripeSubscriptionId: generateStripeSubscriptionId(),
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
@@ -197,7 +202,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.INCOMPLETE_EXPIRED,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_incomplete_expired_test',
+          stripeSubscriptionId: generateStripeSubscriptionId(),
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
@@ -223,7 +228,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.PAUSED,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_paused_test',
+          stripeSubscriptionId: generateStripeSubscriptionId(),
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
@@ -249,7 +254,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.EXPIRED,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_expired_test',
+          stripeSubscriptionId: generateStripeSubscriptionId(),
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(),
         },
@@ -275,7 +280,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.FAILED_PAYMENT,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_failed_payment_test',
+          stripeSubscriptionId: generateStripeSubscriptionId(),
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
@@ -302,7 +307,7 @@ describe('Cashback Gate Enforcement (Spec §8.1 Rule #1)', () => {
           userId: user.id,
           status: SubscriptionStatus.CANCELLED,
           plan: 'PREMIUM_WEEKLY',
-          stripeSubscriptionId: 'sub_cancelled_post_period',
+          stripeSubscriptionId: generateStripeSubscriptionId(),
           currentPeriodStart: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
           currentPeriodEnd: pastEnd,
           cancelAtPeriodEnd: true,

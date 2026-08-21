@@ -10,7 +10,49 @@
 import { prisma } from '../../src/lib/prisma';
 import { AuthService } from '../../src/services/auth.service';
 
-jest.mock('../../src/lib/prisma');
+// ─── Prisma mock with explicit factory function ──────────────────────────────
+// The bare automock doesn't properly structure the mock delegates (user, refreshToken, etc.).
+// This factory ensures both default and named exports are properly structured.
+
+jest.mock('../../src/lib/prisma', () => {
+  const mockPrismaClient = {
+    user: {
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+      create: jest.fn(),
+      updateMany: jest.fn(),
+      count: jest.fn(),
+    },
+    refreshToken: {
+      findUnique: jest.fn(),
+      deleteMany: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    },
+    subscription: {
+      updateMany: jest.fn(),
+      update: jest.fn(),
+      create: jest.fn(),
+      findUnique: jest.fn(),
+    },
+    pushToken: {
+      updateMany: jest.fn(),
+      findMany: jest.fn(),
+    },
+    loginHistory: {
+      create: jest.fn(),
+    },
+  };
+
+  return {
+    __esModule: true,
+    default: mockPrismaClient,
+    prisma: mockPrismaClient,
+  };
+});
+
 jest.mock('../../src/services/email.service');
 jest.mock('../../src/utils/logger', () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
