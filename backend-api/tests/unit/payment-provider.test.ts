@@ -33,11 +33,26 @@ jest.mock('../../src/services/paysera.service', () => ({
   },
 }));
 
+// writeAudit / notificationService are exercised for real (fire-and-forget via
+// `detach`) by recordPayseraSignatureRejection — mock both so the observability
+// tests below don't touch a real DB or send a real notification.
+const writeAuditMock = jest.fn().mockResolvedValue(undefined);
+jest.mock('../../src/middleware/audit.middleware', () => ({
+  writeAudit: (...args: unknown[]) => writeAuditMock(...args),
+}));
+
+const notifyAdminOpsMock = jest.fn().mockResolvedValue(true);
+jest.mock('../../src/services/notification.service', () => ({
+  notificationService: { notifyAdminOps: (...args: unknown[]) => notifyAdminOpsMock(...args) },
+}));
+
 import { logger } from '../../src/utils/logger';
 import { payseraService } from '../../src/services/paysera.service';
 import {
   resolvePaymentProvider,
   PaymentProvider,
+  PayseraSignatureVerificationError,
+  recordPayseraSignatureRejection,
 } from '../../src/services/payment-provider';
 
 const loggerMock = logger as jest.Mocked<typeof logger>;
@@ -183,6 +198,39 @@ describe('payment-provider.ts', () => {
         expect(result).toEqual(expected);
       });
 
+      // BC-QA-031-FOLLOWUP-8 item 1 (closes FOLLOWUP-7 impl-r1 F2) — ss3 must
+      // reach the verifier alongside ss2, not just ss2. This is the caller-side
+      // half of "the documented last-field-wins preference is exercised, not
+      // just implemented in isolation": PayseraService.verifyCallback's own
+      // ss3-over-ss2 preference is unit-tested directly in
+      // paysera.service.test.ts ("prefers ss3 over ss2 when both are
+      // present"); THIS test proves the field that preference depends on
+      // actually arrives here from a caller instead of being silently dropped.
+      it('forwards ss3 alongside ss2 to payseraService.handleCallback', async () => {
+        const payload = { data: 'base64data', ss1: 'hash1', ss2: 'hash2', ss3: 'hash3' };
+        handleCallbackMock.mockResolvedValue({ orderId: 'order-1' } as any);
+
+        await provider.verifyAndParseWebhook(payload);
+
+        expect(handleCallbackMock).toHaveBeenCalledWith({
+          data: 'base64data',
+          ss1: 'hash1',
+          ss2: 'hash2',
+          ss3: 'hash3',
+        });
+      });
+
+      it('forwards ss3 even when ss2 is absent (ss3-only callback)', async () => {
+        const payload = { data: 'base64data', ss1: 'hash1', ss3: 'hash3' };
+        handleCallbackMock.mockResolvedValue({ orderId: 'order-1' } as any);
+
+        await provider.verifyAndParseWebhook(payload);
+
+        expect(handleCallbackMock).toHaveBeenCalledWith(
+          expect.objectContaining({ data: 'base64data', ss1: 'hash1', ss3: 'hash3' })
+        );
+      });
+
       it('throws on missing data', async () => {
         const payload = { ss1: 'hash1' };
         await expect(provider.verifyAndParseWebhook(payload)).rejects.toThrow(
@@ -195,6 +243,64 @@ describe('payment-provider.ts', () => {
         await expect(provider.verifyAndParseWebhook(payload)).rejects.toThrow(
           'Invalid callback data'
         );
+      });
+
+      it('wraps a rejected-signature failure in PayseraSignatureVerificationError', async () => {
+        handleCallbackMock.mockRejectedValue(new Error('Invalid callback signature'));
+
+        await expect(
+          provider.verifyAndParseWebhook({ data: 'base64data', ss1: 'hash1' })
+        ).rejects.toBeInstanceOf(PayseraSignatureVerificationError);
+      });
+
+      it('does NOT wrap an unrelated failure (e.g. a downstream parse error)', async () => {
+        handleCallbackMock.mockRejectedValue(new Error('Invalid project ID: bogus'));
+
+        await expect(
+          provider.verifyAndParseWebhook({ data: 'base64data', ss1: 'hash1' })
+        ).rejects.toThrow('Invalid project ID: bogus');
+        await expect(
+          provider.verifyAndParseWebhook({ data: 'base64data', ss1: 'hash1' })
+        ).rejects.not.toBeInstanceOf(PayseraSignatureVerificationError);
+      });
+    });
+
+    describe('verifyAndParseRedirect', () => {
+      // BC-QA-031-FOLLOWUP-8 item 1 / acceptance criterion 2. This is the
+      // route-adjacent proof that the exemption mechanism is actually wired:
+      // it must call handleCallback with the 'enforce' mode override rather
+      // than leaving the global PAYSERA_SS2_MODE (which could be 'require')
+      // to reject a call that structurally can never carry ss2/ss3.
+      it('calls handleCallback with the "enforce" mode override and no ss2/ss3', async () => {
+        handleCallbackMock.mockResolvedValue({ orderId: 'order-1' } as any);
+
+        await provider.verifyAndParseRedirect!({ data: 'base64data', ss1: 'hash1' });
+
+        expect(handleCallbackMock).toHaveBeenCalledWith(
+          { data: 'base64data', ss1: 'hash1' },
+          'enforce'
+        );
+      });
+
+      it('still requires ss1 — the hard gate is not weakened by the RSA exemption', async () => {
+        await expect(provider.verifyAndParseRedirect!({ data: 'base64data' })).rejects.toThrow(
+          'Invalid callback data'
+        );
+        expect(handleCallbackMock).not.toHaveBeenCalled();
+      });
+
+      it('still requires data', async () => {
+        await expect(provider.verifyAndParseRedirect!({ ss1: 'hash1' })).rejects.toThrow(
+          'Invalid callback data'
+        );
+      });
+
+      it('wraps a rejected-signature failure in PayseraSignatureVerificationError', async () => {
+        handleCallbackMock.mockRejectedValue(new Error('Invalid callback signature'));
+
+        await expect(
+          provider.verifyAndParseRedirect!({ data: 'base64data', ss1: 'invalid' })
+        ).rejects.toBeInstanceOf(PayseraSignatureVerificationError);
       });
     });
 
@@ -297,6 +403,42 @@ describe('payment-provider.ts', () => {
         expect(generateCallbackResponseMock).toHaveBeenCalled();
         expect(result).toBe('OK');
       });
+    });
+  });
+
+  // BC-QA-031-FOLLOWUP-8 item 4 — an RSA signature rejection must be
+  // observable, not just logged: a durable AuditLog row (read by
+  // scheduler.ts#checkPaymentFailureSpike) plus a near-real-time admin-ops
+  // notification.
+  describe('recordPayseraSignatureRejection', () => {
+    beforeEach(() => {
+      writeAuditMock.mockClear();
+      notifyAdminOpsMock.mockClear();
+    });
+
+    it('writes an AuditLog entry with the shared PAYSERA_SIGNATURE_REJECTED action', () => {
+      recordPayseraSignatureRejection({ route: '/api/payments/callback', dataPrefix: 'abc123' });
+
+      expect(writeAuditMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorUserId: null,
+          action: 'PAYSERA_SIGNATURE_REJECTED',
+          objectType: 'PayseraCallback',
+          after: expect.objectContaining({ route: '/api/payments/callback', dataPrefix: 'abc123' }),
+        })
+      );
+    });
+
+    it('sends a critical, cooldown-bounded admin-ops alert', () => {
+      recordPayseraSignatureRejection({ route: '/api/checkout/callback', dataPrefix: 'xyz789' });
+
+      expect(notifyAdminOpsMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          opsType: 'paysera_rsa_signature_rejected',
+          severity: 'critical',
+          cooldownHours: 1,
+        })
+      );
     });
   });
 });

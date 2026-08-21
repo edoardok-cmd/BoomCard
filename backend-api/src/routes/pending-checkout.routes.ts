@@ -7,6 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { asyncHandler } from '../middleware/error.middleware';
 import { payseraService } from '../services/paysera.service';
+import { recordPayseraSignatureRejection, SIGNATURE_REJECTION_MESSAGE } from '../services/payment-provider';
 import { emailService } from '../services/email.service';
 import prisma from '../lib/prisma';
 import { logger } from '../utils/logger';
@@ -310,9 +311,16 @@ router.get(
 // ============================================
 
 async function handleCheckoutCallback(req: Request, res: Response) {
+  // Paysera sends data, ss1, ss2, ss3 as GET query params. ss3 (RSA/SHA-256)
+  // must be forwarded alongside ss2 (RSA/SHA-1) — omitting it here silently
+  // downgraded a ss3-signing project to ss1-only verification
+  // (BC-QA-031-FOLLOWUP-7 impl-r1 F2, closed by BC-QA-031-FOLLOWUP-8). This
+  // handler calls payseraService.handleCallback directly rather than through
+  // the payment-provider.ts adapter (pre-existing — unrelated to this fix).
   const data = (req.query.data || req.body?.data) as string;
   const ss1 = (req.query.ss1 || req.body?.ss1) as string;
   const ss2 = (req.query.ss2 || req.body?.ss2) as string;
+  const ss3 = (req.query.ss3 || req.body?.ss3) as string;
 
   logger.info('Received Paysera checkout callback');
 
@@ -322,7 +330,7 @@ async function handleCheckoutCallback(req: Request, res: Response) {
   }
 
   try {
-    const result = await payseraService.handleCallback({ data, ss1, ss2 });
+    const result = await payseraService.handleCallback({ data, ss1, ss2, ss3 });
 
     logger.info(`Checkout callback: ${result.orderId} — status ${result.rawStatus} (${result.status})`);
 
@@ -400,7 +408,15 @@ async function handleCheckoutCallback(req: Request, res: Response) {
 
     return res.send(payseraService.generateCallbackResponse());
   } catch (error: any) {
-    logger.error('Error processing checkout callback:', error);
+    if (error?.message === SIGNATURE_REJECTION_MESSAGE) {
+      // BC-QA-031-FOLLOWUP-8 item 4 — see payments.paysera.routes.ts's
+      // handlePaymentCallback for the full rationale: make a rejected
+      // ss2/ss3 signature observable instead of only a log line.
+      logger.error(`Paysera checkout callback rejected — invalid RSA signature (ss2/ss3): ${error.message}`);
+      recordPayseraSignatureRejection({ route: '/api/checkout/callback', dataPrefix: data.slice(0, 64) });
+    } else {
+      logger.error('Error processing checkout callback:', error);
+    }
     // Still respond OK to prevent Paysera from retrying indefinitely
     return res.send(payseraService.generateCallbackResponse());
   }

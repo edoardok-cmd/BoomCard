@@ -311,6 +311,78 @@ describe('PayseraService', () => {
         expect(result).toBe(true);
       });
 
+      /**
+       * BC-QA-031-FOLLOWUP-8 items 1/2 (acceptance criterion 2 — verify-redirect
+       * is exempted from the RSA requirement "without weakening its existing
+       * ss1 check"). `verifyCallback`/`handleCallback`'s `modeOverride`
+       * parameter is the mechanism `payment-provider.ts#verifyAndParseRedirect`
+       * uses to force 'enforce' for that one caller regardless of a global
+       * PAYSERA_SS2_MODE=require. These tests exercise that mechanism directly
+       * at the layer where it actually lives, since payment-provider.ts's own
+       * tests only prove the CALL SHAPE (mocked), not that the override
+       * genuinely changes verification behaviour.
+       */
+      describe('modeOverride parameter (verify-redirect exemption mechanism)', () => {
+        it('an ss1-only callback that require mode would reject is accepted when modeOverride="enforce"', async () => {
+          const service = serviceWithTestKey('require');
+          // Without an override, require mode rejects an ss1-only callback
+          // (pinned by the existing "rejects an ss1-only callback under
+          // PAYSERA_SS2_MODE=require" test above).
+          await expect(service.verifyCallback({ data, ss1: validSs1() })).resolves.toBe(false);
+          // With the override, the SAME callback is accepted — the override
+          // genuinely changes the effective mode for that one call.
+          await expect(
+            service.verifyCallback({ data, ss1: validSs1() }, 'enforce')
+          ).resolves.toBe(true);
+        });
+
+        it('does not weaken ss1 — a bad ss1 still rejects even with modeOverride="enforce"', async () => {
+          const service = serviceWithTestKey('require');
+          await expect(
+            service.verifyCallback({ data, ss1: 'invalid-signature' }, 'enforce')
+          ).resolves.toBe(false);
+        });
+
+        it('leaves the instance-wide mode unaffected for calls without an override', async () => {
+          const service = serviceWithTestKey('require');
+          // One call WITH the override succeeds ss1-only...
+          await expect(
+            service.verifyCallback({ data, ss1: validSs1() }, 'enforce')
+          ).resolves.toBe(true);
+          // ...but a later call on the SAME instance, without an override,
+          // still uses the instance's own 'require' mode.
+          await expect(service.verifyCallback({ data, ss1: validSs1() })).resolves.toBe(false);
+        });
+
+        it('handleCallback threads modeOverride through to verifyCallback', async () => {
+          const service = serviceWithTestKey('require');
+          // handleCallback throws on a rejected signature; with the override it
+          // must reach the (parseable, matching) project-id check instead and
+          // resolve normally.
+          await expect(service.handleCallback({ data, ss1: validSs1() })).rejects.toThrow(
+            'Invalid callback signature'
+          );
+          const result = await service.handleCallback({ data, ss1: validSs1() }, 'enforce');
+          expect(result.orderId).toBe('RSA-1');
+        });
+
+        it('a genuine ss2/ss3 signature still verifies under an "enforce" override (not just ss1-only)', async () => {
+          const service = serviceWithTestKey('require');
+          await expect(
+            service.verifyCallback({ data, ss1: validSs1(), ss3: signData(data, 'sha256') }, 'enforce')
+          ).resolves.toBe(true);
+          // A TAMPERED ss3 must still be rejected under the override — the
+          // exemption only removes the "must carry a signature" requirement,
+          // it does not stop checking one that IS present.
+          await expect(
+            service.verifyCallback(
+              { data, ss1: validSs1(), ss3: signData(`${data}TAMPERED`, 'sha256') },
+              'enforce'
+            )
+          ).resolves.toBe(false);
+        });
+      });
+
       it('falls back to ss1 only when no public key could be loaded', async () => {
         // An explicitly configured but unparseable key is deliberately NOT
         // replaced by the bundled key — the service ends up with no key at all.
