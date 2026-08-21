@@ -11,7 +11,13 @@
  */
 
 import { fraudDetectionService } from '../../src/services/fraudDetection.service';
-import { userRiskService } from '../../src/services/userRisk.service';
+// NOTE: this file only tests fraudDetectionService. It used to also import
+// `userRiskService` from userRisk.service.ts, but that module doesn't (and
+// per the comments below, never did within this file) export a
+// `userRiskService` object -- it exports free functions instead
+// (computeRiskForUsers/persistRiskAssessments/bucketFor). The import was
+// unused dead code; the userRisk-specific assertions referenced in comments
+// below are explicitly placeholders ("real test in userRisk service").
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared mock state and Prisma mock

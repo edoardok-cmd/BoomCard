@@ -263,7 +263,7 @@ describe('Admin Help CHANGE Bucket Fragmentation Fix', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
-      const ticketMap = new Map(res.body.tickets.map((t: any) => [t.id, t]));
+      const ticketMap = new Map<string, any>(res.body.tickets.map((t: any): [string, any] => [t.id, t]));
 
       const support = ticketMap.get(supportTicket.id);
       expect(support.canonicalRequestType).toBe('Support');

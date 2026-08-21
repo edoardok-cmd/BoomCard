@@ -25,7 +25,7 @@ import {
 } from '../../src/services/cashbackLifecycle.service';
 import { stickerService } from '../../src/services/sticker.service';
 import { CashbackEntryStatus, WalletTransactionStatus } from '@prisma/client';
-import { genTestPhone } from '../helpers/test-utils';
+import { genTestPhone, createTestVenue, cleanupTestVenue } from '../helpers/test-utils';
 
 const PASSWORD = 'TestPass123!';
 
@@ -35,6 +35,25 @@ interface TestFixtures {
   walletId: string;
   scanId: string;
   transactionId: string;
+  venueId: string;
+}
+
+// markVoided()'s early-return branch (already-VOIDED entries) reads `existing`
+// via a narrow `select` that omits voidedByUserId/voidedReason, so its return
+// type is a union and TS can't statically know a freshly-CLEARED-then-voided
+// entry took the full-update branch that has them. These tests always drive
+// fresh CLEARED entries through markVoided exactly once, so the narrow branch
+// is genuinely unreachable here -- assert it at runtime (fails loudly instead
+// of silently) rather than reaching for `as any`.
+function assertHasVoidFields(
+  v: Awaited<ReturnType<typeof markVoided>>
+): asserts v is Awaited<ReturnType<typeof markVoided>> & { voidedByUserId: string; voidedReason: string } {
+  if (!('voidedByUserId' in v) || !('voidedReason' in v)) {
+    throw new Error(
+      'markVoided returned the narrow already-voided shape (voidedByUserId/voidedReason ' +
+        'missing) -- this test expects a fresh CLEARED entry to take the full-update branch.'
+    );
+  }
 }
 
 async function createTestFixtures(): Promise<TestFixtures> {
@@ -72,15 +91,28 @@ async function createTestFixtures(): Promise<TestFixtures> {
   // Create wallet for the user
   const wallet = await walletService.getOrCreateWallet(user.id);
 
+  // StickerScan requires a real venue/sticker/card (see prisma/schema.prisma)
+  // -- 'partnerId'/'scanData' aren't real columns on this model. Reuse the
+  // shared venue-fixture helper (admin as the arbitrary partner owner; this
+  // test doesn't exercise partner-ownership semantics) plus a card for the
+  // scanning user.
+  const { venue, sticker } = await createTestVenue(admin.id);
+  const card = await prisma.card.create({
+    data: {
+      userId: user.id,
+      cardNumber: `VOID-FALLBACK-${suffix}`,
+      qrCode: `https://boomcard.bg/card-qr/VOID-FALLBACK-${suffix}`,
+    },
+  });
+
   // Create a pending sticker scan (which will have an associated PENDING cashback entry)
   const scan = await prisma.stickerScan.create({
     data: {
-      partnerId: 'partner-void-test', // dummy partner
       userId: user.id,
-      scanData: {
-        url: 'https://example.com/sticker',
-        timestamp: new Date().toISOString(),
-      },
+      stickerId: sticker.id,
+      venueId: venue.id,
+      cardId: card.id,
+      billAmount: 25,
       status: 'PENDING', // Will have associated PENDING cashback entry
     },
   });
@@ -91,6 +123,8 @@ async function createTestFixtures(): Promise<TestFixtures> {
       walletId: wallet.id,
       type: 'CASHBACK_CREDIT',
       amount: 25,
+      balanceBefore: 0,
+      balanceAfter: 0,
       status: 'COMPLETED',
       cashbackStatus: CashbackEntryStatus.CLEARED, // State where markVoided can void it
       cashbackExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -105,20 +139,23 @@ async function createTestFixtures(): Promise<TestFixtures> {
     walletId: wallet.id,
     scanId: scan.id,
     transactionId: txn.id,
+    venueId: venue.id,
   };
 }
 
-async function cleanupFixtures(adminUserId: string, userId: string) {
+async function cleanupFixtures(adminUserId: string, userId: string, venueId: string) {
   // Delete all transactions
   await prisma.walletTransaction.deleteMany({ where: { wallet: { userId } } });
   // Delete sticker scans
   await prisma.stickerScan.deleteMany({ where: { userId } });
   // Delete wallet
   await prisma.wallet.deleteMany({ where: { userId } });
-  // Delete users
+  // Delete users (cascades the user's Card row)
   await prisma.user.deleteMany({
     where: { id: { in: [adminUserId, userId] } },
   });
+  // Delete the shared venue/sticker/partner fixture
+  await cleanupTestVenue(venueId);
 }
 
 describe('BC-ADMIN-SPEC-REAUDIT2-VOID-ACTOR-FALLBACK-1', () => {
@@ -129,7 +166,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-VOID-ACTOR-FALLBACK-1', () => {
   });
 
   afterAll(async () => {
-    await cleanupFixtures(fixtures.adminUserId, fixtures.regularUserId).catch(
+    await cleanupFixtures(fixtures.adminUserId, fixtures.regularUserId, fixtures.venueId).catch(
       () => {}
     );
   });
@@ -151,6 +188,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-VOID-ACTOR-FALLBACK-1', () => {
       });
 
       // Verify voidedByUserId is set to the explicit actor
+      assertHasVoidFields(voided);
       expect(voided.voidedByUserId).toBe(fixtures.adminUserId);
       expect(voided.cashbackStatus).toBe(CashbackEntryStatus.VOIDED);
       expect(voided.voidedReason).toBe('FRAUD');
@@ -163,6 +201,8 @@ describe('BC-ADMIN-SPEC-REAUDIT2-VOID-ACTOR-FALLBACK-1', () => {
           walletId: fixtures.walletId,
           type: 'CASHBACK_CREDIT',
           amount: 50,
+          balanceBefore: 0,
+          balanceAfter: 0,
           status: 'COMPLETED',
           cashbackStatus: CashbackEntryStatus.CLEARED,
           cashbackExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -170,18 +210,24 @@ describe('BC-ADMIN-SPEC-REAUDIT2-VOID-ACTOR-FALLBACK-1', () => {
         },
       });
 
-      // Call markVoided with null actorUserId (system-automated void)
+      // Call markVoided with null actorUserId (system-automated void).
+      // 'EXPIRED' is not a member of VOID_REASON_CATEGORIES (see
+      // assertVoidReasonCategory in cashbackLifecycle.service.ts) --
+      // SYSTEM_ERROR is the established category for this kind of
+      // internal/automated reconciliation void (see TRIAL_VOID_REASON's
+      // rationale in the same file).
       const voided = await markVoided({
         walletTransactionId: txn2.id,
-        reason: 'EXPIRED',
+        reason: 'SYSTEM_ERROR',
         actorUserId: null,
       });
 
       // Verify voidedByUserId falls back to SYSTEM_ACTOR_ID
+      assertHasVoidFields(voided);
       expect(voided.voidedByUserId).toBe(SYSTEM_ACTOR_ID);
       expect(voided.voidedByUserId).toBe('00000000-0000-0000-0000-000000000000');
       expect(voided.cashbackStatus).toBe(CashbackEntryStatus.VOIDED);
-      expect(voided.voidedReason).toBe('EXPIRED');
+      expect(voided.voidedReason).toBe('SYSTEM_ERROR');
     });
 
     it('should use SYSTEM_ACTOR_ID when actorUserId is not provided', async () => {
@@ -191,6 +237,8 @@ describe('BC-ADMIN-SPEC-REAUDIT2-VOID-ACTOR-FALLBACK-1', () => {
           walletId: fixtures.walletId,
           type: 'CASHBACK_CREDIT',
           amount: 75,
+          balanceBefore: 0,
+          balanceAfter: 0,
           status: 'COMPLETED',
           cashbackStatus: CashbackEntryStatus.CLEARED,
           cashbackExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -206,6 +254,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-VOID-ACTOR-FALLBACK-1', () => {
       });
 
       // Verify voidedByUserId falls back to SYSTEM_ACTOR_ID
+      assertHasVoidFields(voided);
       expect(voided.voidedByUserId).toBe(SYSTEM_ACTOR_ID);
       expect(voided.cashbackStatus).toBe(CashbackEntryStatus.VOIDED);
       expect(voided.voidedReason).toBe('FRAUD');
@@ -230,11 +279,23 @@ describe('BC-ADMIN-SPEC-REAUDIT2-VOID-ACTOR-FALLBACK-1', () => {
 
       const wallet = await walletService.getOrCreateWallet(user.id);
 
+      // See createTestFixtures() above for why this needs a real venue/sticker/card.
+      const { venue, sticker } = await createTestVenue(user.id);
+      const card = await prisma.card.create({
+        data: {
+          userId: user.id,
+          cardNumber: `VOID-FALLBACK-REJECT-${Date.now()}`,
+          qrCode: `https://boomcard.bg/card-qr/VOID-FALLBACK-REJECT-${Date.now()}`,
+        },
+      });
+
       const scan = await prisma.stickerScan.create({
         data: {
-          partnerId: 'partner-reject-test',
           userId: user.id,
-          scanData: { url: 'https://example.com', timestamp: new Date().toISOString() },
+          stickerId: sticker.id,
+          venueId: venue.id,
+          cardId: card.id,
+          billAmount: 100,
           status: 'PENDING',
         },
       });
@@ -244,6 +305,8 @@ describe('BC-ADMIN-SPEC-REAUDIT2-VOID-ACTOR-FALLBACK-1', () => {
           walletId: wallet.id,
           type: 'CASHBACK_CREDIT',
           amount: 100,
+          balanceBefore: 0,
+          balanceAfter: 0,
           status: 'COMPLETED',
           cashbackStatus: CashbackEntryStatus.CLEARED,
           cashbackExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -278,6 +341,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-VOID-ACTOR-FALLBACK-1', () => {
       await prisma.stickerScan.deleteMany({ where: { userId: user.id } });
       await prisma.wallet.deleteMany({ where: { userId: user.id } });
       await prisma.user.delete({ where: { id: user.id } });
+      await cleanupTestVenue(venue.id);
     });
   });
 
@@ -293,6 +357,8 @@ describe('BC-ADMIN-SPEC-REAUDIT2-VOID-ACTOR-FALLBACK-1', () => {
           walletId: fixtures.walletId,
           type: 'CASHBACK_CREDIT',
           amount: 60,
+          balanceBefore: 0,
+          balanceAfter: 0,
           status: 'COMPLETED',
           cashbackStatus: CashbackEntryStatus.CLEARED,
           cashbackExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -300,14 +366,16 @@ describe('BC-ADMIN-SPEC-REAUDIT2-VOID-ACTOR-FALLBACK-1', () => {
         },
       });
 
-      // Void via markVoided (direct path)
+      // Void via markVoided (direct path). See the SYSTEM_ERROR rationale
+      // above -- 'EXPIRED' is not a valid VOID_REASON_CATEGORIES member.
       const voided1 = await markVoided({
         walletTransactionId: txn1.id,
-        reason: 'EXPIRED',
+        reason: 'SYSTEM_ERROR',
         actorUserId: null,
       });
 
       // Both should have the fallback applied
+      assertHasVoidFields(voided1);
       expect(voided1.voidedByUserId).toBe(SYSTEM_ACTOR_ID);
       expect(voided1.voidedByUserId).not.toBeNull();
     });

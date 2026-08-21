@@ -28,7 +28,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import request from 'supertest';
-import app from '../../src/server';
+import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
 import {
   ingestInboundEmail,
@@ -194,7 +194,12 @@ describe('BC-ADMIN-SPEC-REAUDIT-TICKET-SHORTREF-1 — Collision Handling', () =>
       // and 3 (16 chars) all fail with P2002, and attempt 4 (32 chars) succeeds.
       let shortRefUpdateCount = 0;
       const originalUpdate = prisma.helpTicket.update;
-      const mockUpdate = jest.spyOn(prisma.helpTicket, 'update').mockImplementation(async (args) => {
+      // The mockImplementation callback is `async`, which always wraps its
+      // return in a plain Promise -- that can never structurally match
+      // Prisma's fluent Prisma__HelpTicketClient return shape (which has
+      // extra relation-fetch methods beyond `.then`). Cast to the real
+      // method type rather than loosen it to `any`.
+      const mockUpdate = jest.spyOn(prisma.helpTicket, 'update').mockImplementation((async (args: any) => {
         // Only intercept shortRef updates (not other ticket updates)
         if (args.data && 'shortRef' in args.data) {
           shortRefUpdateCount++;
@@ -211,7 +216,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-TICKET-SHORTREF-1 — Collision Handling', () =>
         }
         // Non-shortRef updates (like initial ticket creation) succeed normally
         return originalUpdate.call(prisma.helpTicket, args);
-      });
+      }) as unknown as typeof prisma.helpTicket.update);
 
       // Step 2: Ingest an email — this will:
       //   1. Create a new ticket
@@ -251,7 +256,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-TICKET-SHORTREF-1 — Collision Handling', () =>
         // Create a fresh mock that allows subsequent updates (for the reply creation)
         mockUpdate.mockRestore();
         jest.spyOn(prisma.helpTicket, 'update').mockImplementation(
-          async (args) => originalUpdate.call(prisma.helpTicket, args),
+          (async (args: any) => originalUpdate.call(prisma.helpTicket, args)) as unknown as typeof prisma.helpTicket.update,
         );
 
         const replyViaWidenedRef = await ingestInboundEmail({
@@ -292,7 +297,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-TICKET-SHORTREF-1 — Collision Handling', () =>
     try {
       // Mock prisma.helpTicket.update() to always throw P2002 (all 4 attempts fail)
       let updateCallCount = 0;
-      jest.spyOn(prisma.helpTicket, 'update').mockImplementation(async (args) => {
+      jest.spyOn(prisma.helpTicket, 'update').mockImplementation((async (args: any) => {
         // Only intercept shortRef updates (not other ticket updates)
         if (args.data && 'shortRef' in args.data) {
           updateCallCount++;
@@ -307,7 +312,7 @@ describe('BC-ADMIN-SPEC-REAUDIT-TICKET-SHORTREF-1 — Collision Handling', () =>
         // For non-shortRef operations (like create), fall through to real implementation
         const originalUpdate = prisma.helpTicket.update as any;
         return originalUpdate.call(prisma.helpTicket, args);
-      });
+      }) as unknown as typeof prisma.helpTicket.update);
 
       // Step 1: Attempt to ingest an email
       // This should:

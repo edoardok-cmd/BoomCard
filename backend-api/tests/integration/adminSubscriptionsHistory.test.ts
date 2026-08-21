@@ -8,7 +8,7 @@
  * 4. Unattributed payments (NULL subscriptionId) are handled gracefully
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import { prisma } from '../../src/lib/prisma';
 import { SubscriptionStatus, TransactionType, TransactionStatus, SubscriptionPlan } from '@prisma/client';
 import { genTestPhone } from '../helpers/test-utils';
@@ -55,7 +55,11 @@ describe('BC-ADMIN-AUDIT-FIX-006: Per-subscription payment history', () => {
     const sub2 = await prisma.subscription.create({
       data: {
         userId,
-        plan: SubscriptionPlan.PREMIUM,
+        // SubscriptionPlan has no plain PREMIUM member (only
+        // PREMIUM_WEEKLY/PREMIUM_MONTHLY -- see prisma/schema.prisma);
+        // PREMIUM_MONTHLY matches the same normalization test-utils.ts
+        // uses for the legacy 'PREMIUM' alias.
+        plan: SubscriptionPlan.PREMIUM_MONTHLY,
         status: SubscriptionStatus.ACTIVE,
         currentPeriodStart: sub2Start,
         currentPeriodEnd: sub2End,
@@ -104,11 +108,15 @@ describe('BC-ADMIN-AUDIT-FIX-006: Per-subscription payment history', () => {
       },
     });
 
-    // Transaction 4: Non-SUBSCRIPTION type (should not be backfilled)
+    // Transaction 4: Non-SUBSCRIPTION type (should not be backfilled).
+    // TransactionType has no OFFER_REDEMPTION member (see
+    // prisma/schema.prisma) -- LOYALTY_REDEMPTION is the closest existing
+    // "redemption" type and, like the original literal, is simply any
+    // non-SUBSCRIPTION type, which is all this test actually exercises.
     await prisma.transaction.create({
       data: {
         userId,
-        type: TransactionType.OFFER_REDEMPTION,
+        type: TransactionType.LOYALTY_REDEMPTION,
         status: TransactionStatus.COMPLETED,
         amount: 5.0,
         paymentMethod: 'CARD',
@@ -169,7 +177,7 @@ describe('BC-ADMIN-AUDIT-FIX-006: Per-subscription payment history', () => {
       const nonSubTxns = await prisma.transaction.findMany({
         where: {
           userId,
-          type: TransactionType.OFFER_REDEMPTION,
+          type: TransactionType.LOYALTY_REDEMPTION,
         },
       });
 

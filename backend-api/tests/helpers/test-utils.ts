@@ -170,7 +170,11 @@ export async function createTestSubscription(
   const subscription = await prisma.subscription.create({
     data: {
       userId,
-      plan,
+      // The SubscriptionPlan enum only has PREMIUM_WEEKLY/BASIC/PREMIUM_MONTHLY
+      // (see prisma/schema.prisma) -- 'PREMIUM' is a legacy alias several
+      // callers still pass, so normalize it to the real enum member the
+      // Subscription.plan column actually accepts.
+      plan: plan === 'PREMIUM' ? 'PREMIUM_MONTHLY' : plan,
       planId: planDetails.id,
       status,
       currentPeriodStart: now,

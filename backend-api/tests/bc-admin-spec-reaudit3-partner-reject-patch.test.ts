@@ -255,8 +255,12 @@ describe('BC-ADMIN-SPEC-REAUDIT3: PATCH /:id/status rejects REJECTED', () => {
       orderBy: { createdAt: 'desc' },
     });
     expect(auditEntry).toBeTruthy();
-    expect(auditEntry?.before.status).toBe(PartnerStatus.PENDING);
-    expect(auditEntry?.after.status).toBe(PartnerStatus.REJECTED);
+    // before/after are Prisma Json (JsonValue), so TS can't narrow a
+    // `.status` property off them directly -- assert on shape instead,
+    // matching the established pattern elsewhere in this suite (e.g.
+    // tests/unit/section5.adminPartnerFixes.test.ts).
+    expect(auditEntry?.before).toMatchObject({ status: PartnerStatus.PENDING });
+    expect(auditEntry?.after).toMatchObject({ status: PartnerStatus.REJECTED });
   });
 
   it('PATCH /:id/status still allows valid transitions', async () => {

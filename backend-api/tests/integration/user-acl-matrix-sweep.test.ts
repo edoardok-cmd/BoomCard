@@ -21,7 +21,7 @@
  *     Cancelled (within paid period): scan gate OPEN
  */
 import request from 'supertest';
-import app from '../../src/app';
+import { app } from '../../src/server';
 import prisma from '../../src/lib/prisma';
 import {
   createTestUser,
