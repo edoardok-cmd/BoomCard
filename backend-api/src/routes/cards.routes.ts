@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { cardService } from '../services/card.service';
+import { foldMixedCurrencyToEur, RESPONSE_CURRENCY } from '../utils/currency';
 import { asyncHandler } from '../utils/asyncHandler';
 import { prisma } from '../lib/prisma';
 import { z } from 'zod';
@@ -153,9 +154,28 @@ router.get('/:id/statistics', asyncHandler(async (req: AuthRequest, res: Respons
     return res.status(403).json({ error: 'You do not have permission to view this card' });
   }
 
-  const stats = await cardService.getCardStatistics(id);
+  const { cashbackByCurrency, ...stats } = await cardService.getCardStatistics(id);
 
-  res.json(stats);
+  // BC-QA-031-FOLLOWUP-1 task-r2 F14 — CONVERT AT THE ROUTE BOUNDARY.
+  //
+  // `totalCashbackEarned` used to leave this handler as the raw BGN magnitude
+  // the service computed, and the mobile app renders it with `formatEurAmount`
+  // (`MyCardScreen` card banner, `DashboardScreen` hero tiles), so a stored 100
+  // BGN was displayed as €100.00 against a true €51.13. `GET
+  // /api/wallet/statistics` reported the honest figure for the very same rows.
+  //
+  // The fold converts each per-currency subtotal and drops what it has no rate
+  // for, so this response now agrees with every other money surface in the app,
+  // and says what it could not account for instead of silently absorbing it.
+  const cashback = foldMixedCurrencyToEur(cashbackByCurrency);
+
+  res.json({
+    ...stats,
+    totalCashbackEarned: cashback.total,
+    currency: RESPONSE_CURRENCY,
+    excludedCount: cashback.excludedCount,
+    excludedCurrencies: cashback.excludedCurrencies,
+  });
 }));
 
 /**

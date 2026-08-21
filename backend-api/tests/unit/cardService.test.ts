@@ -32,7 +32,9 @@ const mockPrisma: any = {
   },
   receipt: { count: jest.fn(async () => 0) },
   stickerScan: { count: jest.fn(async () => 0) },
-  walletTransaction: { aggregate: jest.fn(async () => ({ _sum: { amount: null } })) },
+  // getCardStatistics groups by currency since BC-QA-031-FOLLOWUP-1 impl-r4 F12,
+  // so the mock returns the per-currency array shape Prisma actually produces.
+  walletTransaction: { aggregate: jest.fn(async () => ({ _sum: { amount: null } })), groupBy: jest.fn(async () => []) },
   plan: { findFirst: jest.fn(async () => null) },
 };
 
@@ -160,37 +162,67 @@ describe('cardService.getCardStatistics', () => {
     mockPrisma.card.findUnique.mockResolvedValueOnce({ id: 'c-1', userId: 'u-1', type: CardType.BASIC, createdAt: new Date() });
     mockPrisma.receipt.count.mockResolvedValueOnce(0);
     mockPrisma.stickerScan.count.mockResolvedValueOnce(0);
-    mockPrisma.walletTransaction.aggregate.mockResolvedValueOnce({ _sum: { amount: null } });
+    mockPrisma.walletTransaction.groupBy.mockResolvedValueOnce([]);
 
     const stats = await cardService.getCardStatistics('c-1');
     expect(stats.receiptsScanned).toBe(0);
     expect(stats.stickersScanned).toBe(0);
-    expect(stats.totalCashbackEarned).toBe(0);
+    // The service returns STORAGE-UNIT subtotals; the route converts
+    // (BC-QA-031-FOLLOWUP-1 task-r2 F14). No rows -> no subtotals.
+    expect(stats.cashbackByCurrency).toEqual([]);
   });
 
   it('returns real counts and cashback sum', async () => {
     mockPrisma.card.findUnique.mockResolvedValueOnce({ id: 'c-1', userId: 'u-1', type: CardType.PREMIUM, createdAt: new Date() });
     mockPrisma.receipt.count.mockResolvedValueOnce(7);
     mockPrisma.stickerScan.count.mockResolvedValueOnce(12);
-    mockPrisma.walletTransaction.aggregate.mockResolvedValueOnce({ _sum: { amount: 43.50 } });
+    mockPrisma.walletTransaction.groupBy.mockResolvedValueOnce([{ currency: 'BGN', _sum: { amount: 43.50 }, _count: { _all: 1 } }]);
 
     const stats = await cardService.getCardStatistics('c-1');
     expect(stats.receiptsScanned).toBe(7);
     expect(stats.stickersScanned).toBe(12);
-    expect(stats.totalCashbackEarned).toBe(43.50);
+    // Storage-unit subtotals, unconverted — conversion is the route's job.
+    expect(stats.cashbackByCurrency).toEqual([{ currency: 'BGN', amount: 43.5, count: 1 }]);
     expect(stats.cardType).toBe(CardType.PREMIUM);
+  });
+
+  // task-r2 F14 — the service must NOT hand out a scalar whose name implies a
+  // currency it is not denominated in. It returns per-currency subtotals in the
+  // storage unit; `cards.routes.ts` folds and converts them. The EUR value and
+  // its exclusions are asserted at the route, in
+  // bc-qa-031-followup-1-card-statistics.test.ts.
+  it('returns per-currency subtotals verbatim, including out-of-domain ones', async () => {
+    mockPrisma.card.findUnique.mockResolvedValueOnce({ id: 'c-1', userId: 'u-42', type: CardType.BASIC, createdAt: new Date() });
+    mockPrisma.receipt.count.mockResolvedValueOnce(0);
+    mockPrisma.stickerScan.count.mockResolvedValueOnce(0);
+    mockPrisma.walletTransaction.groupBy.mockResolvedValueOnce([
+      { currency: 'BGN', _sum: { amount: 43.5 }, _count: { _all: 1 } },
+      { currency: 'USD', _sum: { amount: 100 }, _count: { _all: 1 } },
+    ]);
+
+    const stats = await cardService.getCardStatistics('c-1');
+
+    // Nothing is dropped or converted here — the route decides what it can
+    // account for, so the service cannot silently lose a row.
+    expect(stats.cashbackByCurrency).toEqual([
+      { currency: 'BGN', amount: 43.5, count: 1 },
+      { currency: 'USD', amount: 100, count: 1 },
+    ]);
+    // And no field on the returned object claims to be a total.
+    expect(stats).not.toHaveProperty('totalCashbackEarned');
   });
 
   it('queries walletTransaction with CASHBACK_CREDIT type and COMPLETED status', async () => {
     mockPrisma.card.findUnique.mockResolvedValueOnce({ id: 'c-1', userId: 'u-42', type: CardType.BASIC, createdAt: new Date() });
     mockPrisma.receipt.count.mockResolvedValueOnce(0);
     mockPrisma.stickerScan.count.mockResolvedValueOnce(0);
-    mockPrisma.walletTransaction.aggregate.mockResolvedValueOnce({ _sum: { amount: null } });
+    mockPrisma.walletTransaction.groupBy.mockResolvedValueOnce([]);
 
     await cardService.getCardStatistics('c-1');
 
-    expect(mockPrisma.walletTransaction.aggregate).toHaveBeenCalledWith(
+    expect(mockPrisma.walletTransaction.groupBy).toHaveBeenCalledWith(
       expect.objectContaining({
+        by: expect.arrayContaining(['currency']),
         where: expect.objectContaining({
           type: 'CASHBACK_CREDIT',
           status: 'COMPLETED',

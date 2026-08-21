@@ -301,8 +301,15 @@ export class CardService {
           status: 'APPROVED',
         },
       }),
-      prisma.walletTransaction.aggregate({
+      // Grouped by currency (BC-QA-031-FOLLOWUP-1 impl-r4 F12): the cashback figure
+      // on a card-stats response is money, so a legacy non-BGN row must be excluded
+      // rather than folded in at face value. Cashback rows are written by
+      // walletService.credit(), which omits `currency`, so for a clean database the
+      // BGN subtotal is the only one present.
+      prisma.walletTransaction.groupBy({
+        by: ['currency'],
         _sum: { amount: true },
+        _count: { _all: true },
         where: {
           wallet: { userId: card.userId },
           type: 'CASHBACK_CREDIT',
@@ -314,7 +321,30 @@ export class CardService {
     return {
       receiptsScanned: receiptsCount,
       stickersScanned: stickersCount,
-      totalCashbackEarned: totalCashback._sum.amount || 0,
+      /**
+       * PER-CURRENCY SUBTOTALS IN THE STORAGE UNIT — not a converted total, and
+       * deliberately not named `totalCashbackEarned` (BC-QA-031-FOLLOWUP-1
+       * task-r2 F14).
+       *
+       * This service used to return a `totalCashbackEarned` scalar in raw BGN
+       * with a comment claiming "`bgnToEur` is applied by the response
+       * boundary, as before". That was false: `cards.routes.ts` did
+       * `res.json(stats)` and imported nothing from `utils/currency`, so the
+       * BGN magnitude reached the wire and `MyCardScreen`/`DashboardScreen`
+       * rendered it through `formatEurAmount` as `€100.00` where the truth was
+       * `€51.13` — a 95.6% overstatement on a user-facing banner.
+       *
+       * Handing the ROUTE the subtotals rather than a scalar is the pattern
+       * `src/utils/currency.ts` documents: services operate in the storage unit,
+       * the route boundary converts. It also removes the trap that caused this —
+       * there is no longer any field on this object whose name implies a
+       * currency it is not denominated in.
+       */
+      cashbackByCurrency: totalCashback.map((g) => ({
+        currency: g.currency,
+        amount: g._sum.amount,
+        count: g._count._all,
+      })),
       cardType: card.type,
       memberSince: card.createdAt,
     };

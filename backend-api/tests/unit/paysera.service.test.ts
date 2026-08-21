@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { PayseraService } from '../../src/services/paysera.service';
 import { PAYSERA_LIVE_PUBLIC_KEY_PEM } from '../../src/services/paysera-public-key';
 import { logger } from '../../src/utils/logger';
+import { ACCEPTED_CURRENCIES } from '../../src/utils/currency';
 
 describe('PayseraService', () => {
   let payseraService: PayseraService;
@@ -585,6 +586,39 @@ describe('PayseraService', () => {
         expected.forEach((currency) => {
           expect(result).toContain(currency);
         });
+      });
+    });
+
+    /**
+     * BC-QA-031-FOLLOWUP-1 (impl-r1 S2) — the two coherence properties that
+     * `getAcceptedCurrencies`'s docblock used to ASSERT in prose. An unmaintained
+     * universal claim over a sibling function's contents goes stale silently; an
+     * executable assertion does not.
+     */
+    describe('getAcceptedCurrencies — BoomCard policy vs Paysera capability', () => {
+      it('is exactly the application-level accepted domain', () => {
+        expect(PayseraService.getAcceptedCurrencies().sort()).toEqual([...ACCEPTED_CURRENCIES].sort());
+      });
+
+      it('is a SUBSET of what the gateway can process — we never accept what Paysera cannot take', () => {
+        const provider = PayseraService.getSupportedCurrencies();
+        for (const code of PayseraService.getAcceptedCurrencies()) {
+          expect(provider).toContain(code);
+        }
+      });
+
+      it('is strictly narrower than the provider list — the two must not be conflated', () => {
+        expect(PayseraService.getAcceptedCurrencies().length)
+          .toBeLessThan(PayseraService.getSupportedCurrencies().length);
+      });
+
+      it('every advertised payment method is quoted in an accepted currency', () => {
+        const accepted = PayseraService.getAcceptedCurrencies();
+        const methods = PayseraService.getSupportedPaymentMethods();
+        expect(methods.length).toBeGreaterThan(0);
+        for (const method of methods) {
+          expect(accepted).toContain(method.currency);
+        }
       });
     });
   });

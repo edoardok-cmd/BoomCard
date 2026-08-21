@@ -5,6 +5,7 @@ import { AppError } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
 import { LOYALTY_TIER_CASHBACK } from '../constants/tiers';
 import { walletService } from './wallet.service';
+import { assertAcceptedCurrency } from '../utils/currency';
 
 // Initialize Stripe
 const stripeKey = process.env.STRIPE_SECRET_KEY || '';
@@ -40,12 +41,18 @@ export class PaymentService {
     input: CreatePaymentIntentInput
   ) {
     const { amount, currency = 'BGN', description, metadata } = input;
+    // BC-QA-031-FOLLOWUP-1 — a PaymentIntent's currency becomes a
+    // `Transaction.currency` when the webhook lands, so the accepted domain is
+    // enforced here too. Outside the try/catch deliberately: that catch turns
+    // everything into a 500, which would misreport a bad currency as a Stripe
+    // outage.
+    const acceptedCurrency = assertAcceptedCurrency(currency, 'PaymentService.createPaymentIntent');
 
     try {
       // Create payment intent in Stripe
       const paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(amount * 100), // Convert to cents
-        currency: currency.toLowerCase(),
+        currency: acceptedCurrency.toLowerCase(),
         description,
         metadata: {
           userId,
@@ -110,6 +117,19 @@ export class PaymentService {
       metadata,
     } = input;
 
+    // BC-QA-031-FOLLOWUP-1 — every `Transaction.currency` writer enforces the
+    // accepted domain. This one throws rather than returning a 4xx because it
+    // is a service entry point with no response object of its own.
+    // `UnsupportedCurrencyError` extends `AppError` with status 400, so a route
+    // that surfaces it renders a client error rather than a 500.
+    //
+    // Like the sibling gates in `payments.routes.ts` and `stripe.service.ts`,
+    // this one is DORMANT: `PaymentService` has zero importers anywhere under
+    // `src/` (task-r1 F4). It is kept so that acquiring a caller cannot reopen
+    // the hole (impl-r4 S7 — the previous wording said "callers are internal",
+    // describing a caller population that does not exist).
+    const acceptedCurrency = assertAcceptedCurrency(currency, 'PaymentService.createTransaction');
+
     // Calculate loyalty points (1 BGN = 10 points)
     const loyaltyPoints = Math.floor(amount * 10);
 
@@ -136,7 +156,7 @@ export class PaymentService {
         type: type as any,
         status: 'PENDING',
         amount,
-        currency,
+        currency: acceptedCurrency,
         paymentMethod: 'CARD',
         description,
         metadata: JSON.stringify(metadata),

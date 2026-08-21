@@ -6,6 +6,7 @@ import { notificationService } from '../services/notification.service';
 import { detach } from '../utils/detach';
 import prisma from '../lib/prisma';
 import { logger } from '../utils/logger';
+import { ACCEPTED_CURRENCIES, normalizeCurrency } from '../utils/currency';
 
 const router = Router();
 
@@ -27,6 +28,30 @@ router.post('/intents', asyncHandler(async (req: AuthRequest, res: Response) => 
     });
   }
 
+  // BC-QA-031-FOLLOWUP-1 — a caller-supplied currency write path, and the less
+  // obvious one: nothing here writes `Transaction.currency`
+  // directly, but the currency given here is what the PaymentIntent is created
+  // in, and `stripe.service.handlePaymentSucceeded` later persists
+  // `paymentIntent.currency.toUpperCase()` onto the row when the webhook
+  // arrives. Rejecting only at the webhook would mean taking the user through
+  // a full Stripe checkout before refusing the result, so the domain is
+  // enforced here, at the request boundary, before any money moves.
+  // An absent currency keeps its historical `'bgn'` default (applied below).
+  //
+  // ⚠ THIS ROUTER IS NOT MOUNTED (task-r1 F4): `server.ts` imports
+  // `paymentsRouter` and never passes it to `app.use`, so every route in this
+  // file returns 404 and this gate is DORMANT. It is kept deliberately — the
+  // day someone mounts the router, the domain must already be enforced rather
+  // than needing to be remembered.
+  const requestedCurrency = currency ?? 'BGN';
+  const acceptedCurrency = normalizeCurrency(requestedCurrency);
+  if (acceptedCurrency === null) {
+    return res.status(400).json({
+      success: false,
+      message: `Currency ${requestedCurrency} not supported. Supported currencies: ${ACCEPTED_CURRENCIES.join(', ')}.`,
+    });
+  }
+
   try {
     // Get user details for Stripe customer
     const userDetails = await prisma.user.findUnique({
@@ -41,7 +66,7 @@ router.post('/intents', asyncHandler(async (req: AuthRequest, res: Response) => 
     // Create payment intent
     const paymentIntent = await stripeService.createPaymentIntent({
       amount,
-      currency: currency || 'bgn',
+      currency: acceptedCurrency,
       userId: user.id,
       email: userDetails.email,
       description,

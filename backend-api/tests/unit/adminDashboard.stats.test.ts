@@ -191,11 +191,14 @@ describe('GET /admin/dashboard — spec §3.1 stats', () => {
       .mockResolvedValueOnce([{ cnt: 0n }]);
 
     // Simulate a total withdrawal sum of -250 BGN (two PENDING withdrawals of 125 each)
-    m.walletTransaction.aggregate.mockImplementation(({ where }) => {
+    // The cashback tiles and payoutsDue group by currency (impl-r4 F12), so the
+    // mock returns the real per-currency array shape Prisma produces.
+    m.walletTransaction.groupBy.mockImplementation(({ where, by }: any) => {
+      if (Array.isArray(by) && by.includes('cashbackStatus')) return Promise.resolve([]);
       if (where?.type === 'WITHDRAWAL' && where?.status?.in) {
-        return Promise.resolve({ _sum: { amount: -250 } });
+        return Promise.resolve([{ currency: 'BGN', _sum: { amount: -250 }, _count: { _all: 2 } }]);
       }
-      return Promise.resolve(ZERO_AGGREGATE);
+      return Promise.resolve([]);
     });
 
     const res = await request(app).get('/admin/dashboard').expect(200);
@@ -211,8 +214,8 @@ describe('GET /admin/dashboard — spec §3.1 stats', () => {
     // Seed: 19.5583 BGN (→ 10.00 EUR) + 25.00 EUR (unchanged) = 35.00 EUR.
     // A blanket conversion of the raw sum (44.5583) would report 22.78.
     m.transaction.groupBy.mockResolvedValue([
-      { currency: 'BGN', _sum: { finalAmount: 19.5583 } },
-      { currency: 'EUR', _sum: { finalAmount: 25.0 } },
+      { currency: 'BGN', _sum: { finalAmount: 19.5583 }, _count: { _all: 1 } },
+      { currency: 'EUR', _sum: { finalAmount: 25.0 }, _count: { _all: 1 } },
     ]);
     m.transaction.count.mockResolvedValue(2);
 
@@ -228,7 +231,7 @@ describe('GET /admin/dashboard — spec §3.1 stats', () => {
 
   it('treats a null currency subtotal as BGN, matching the schema column default', async () => {
     m.transaction.groupBy.mockResolvedValue([
-      { currency: null, _sum: { finalAmount: 19.5583 } },
+      { currency: null, _sum: { finalAmount: 19.5583 }, _count: { _all: 1 } },
     ]);
     m.transaction.count.mockResolvedValue(1);
 
@@ -243,6 +246,113 @@ describe('GET /admin/dashboard — spec §3.1 stats', () => {
     expect(Number.isFinite(res.body.data.transactions.todayAvg)).toBe(true);
   });
 
+  /**
+   * BC-QA-031-FOLLOWUP-1 impl-r2 — `todayAvg`'s denominator.
+   *
+   * `foldMixedCurrencyToEur` drops any subtotal it has no conversion rate for
+   * (a legacy row written before the accepted domain was narrowed to
+   * {BGN, EUR}). `todayAvg` must therefore divide by the fold's `includedCount`
+   * and not by `todayTxCount`, or the numerator and denominator describe
+   * different sets of rows and the "average" is the mean of nothing.
+   *
+   * Every other fixture in this file is all-in-domain, where the two
+   * denominators are numerically identical and the distinction is invisible —
+   * which is exactly why this case uses a DIVERGENT fixture. It exists because
+   * a per-site fix-pinning audit found this denominator uncovered: undoing it
+   * on its own left the whole suite green.
+   */
+  it('todayAvg divides by the rows its volume covers, not by the raw row count', async () => {
+    // 2 EUR rows totalling 50.00 (included) + 1 USD row of 100.00 (no rate →
+    // excluded). `transaction.count` sees all three.
+    m.transaction.groupBy.mockResolvedValue([
+      { currency: 'EUR', _sum: { finalAmount: 50.0 }, _count: { _all: 2 } },
+      { currency: 'USD', _sum: { finalAmount: 100.0 }, _count: { _all: 1 } },
+    ]);
+    m.transaction.count.mockResolvedValue(3);
+
+    const res = await request(app).get('/admin/dashboard').expect(200);
+    const tx = res.body.data.transactions;
+
+    expect(tx.todayVolume).toBeCloseTo(50.0, 2);
+    // 25.00 = 50 / 2. Dividing by the raw count of 3 gives 16.67 — the mean of
+    // neither the included rows nor of all of them.
+    expect(tx.todayAvg).toBeCloseTo(25.0, 2);
+    expect(tx.todayAvg).not.toBeCloseTo(50 / 3, 2);
+
+    // The row count stays the true full count — a count of rows is honest
+    // whatever currency they are in — and the excluded figures let a client
+    // reconstruct the denominator: todayCount - todayExcludedCount === 2.
+    expect(tx.todayCount).toBe(3);
+    expect(tx.todayExcludedCount).toBe(1);
+    expect(tx.todayCount - tx.todayExcludedCount).toBe(2);
+    expect(tx.excludedCurrencies).toEqual(['USD']);
+  });
+
+  /**
+   * impl-r4 F12 — the cashback tiles and payoutsDue were exempted from the
+   * aggregate sweep as `internal-threshold` ("never leaves the storage unit"),
+   * which was false: every one of them is wrapped in bgnToEur() and rendered.
+   * They now group by currency and fold, so a legacy non-BGN row is excluded
+   * rather than divided by the peg.
+   */
+  it('REGRESSION: a cashback tile excludes an out-of-domain subtotal', async () => {
+    m.walletTransaction.groupBy.mockImplementation(({ where, by }: any) => {
+      if (Array.isArray(by) && by.includes('cashbackStatus')) return Promise.resolve([]);
+      if (where?.type === 'CASHBACK_CREDIT') {
+        return Promise.resolve([
+          { currency: 'BGN', _sum: { amount: 19.5583 }, _count: { _all: 1 } },
+          { currency: 'USD', _sum: { amount: 100 }, _count: { _all: 1 } },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const res = await request(app).get('/admin/dashboard').expect(200);
+    const cb = res.body.data.cashback;
+
+    // Only the BGN subtotal converts: 19.5583 BGN -> 10.00 EUR.
+    expect(cb.accrued).toBeCloseTo(10, 2);
+    // The pre-fix figure divided the USD magnitude by the peg too:
+    // (19.5583 + 100) / 1.95583 = 61.13.
+    expect(cb.accrued).not.toBeCloseTo(61.13, 1);
+    expect(cb.excludedCount).toBeGreaterThan(0);
+    expect(cb.excludedCurrencies).toEqual(['USD']);
+  });
+
+  it('REGRESSION: payoutsDue excludes an out-of-domain withdrawal subtotal', async () => {
+    m.walletTransaction.groupBy.mockImplementation(({ where, by }: any) => {
+      if (Array.isArray(by) && by.includes('cashbackStatus')) return Promise.resolve([]);
+      if (where?.type === 'WITHDRAWAL') {
+        return Promise.resolve([
+          { currency: 'BGN', _sum: { amount: -250 }, _count: { _all: 1 } },
+          { currency: 'USD', _sum: { amount: -70 }, _count: { _all: 1 } },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const res = await request(app).get('/admin/dashboard').expect(200);
+    expect(res.body.data.finance.payoutsDue).toBeCloseTo(bgnToEur(250), 2);
+    expect(res.body.data.finance.payoutsDue).not.toBeCloseTo(bgnToEur(320), 2);
+    expect(res.body.data.finance.payoutsDueExcludedCount).toBe(1);
+  });
+
+  it('reports no exclusions and the plain average for an all-in-domain day', async () => {
+    m.transaction.groupBy.mockResolvedValue([
+      { currency: 'BGN', _sum: { finalAmount: 19.5583 }, _count: { _all: 1 } },
+      { currency: 'EUR', _sum: { finalAmount: 25.0 }, _count: { _all: 1 } },
+    ]);
+    m.transaction.count.mockResolvedValue(2);
+
+    const res = await request(app).get('/admin/dashboard').expect(200);
+    const tx = res.body.data.transactions;
+
+    expect(tx.todayExcludedCount).toBe(0);
+    expect(tx.totalExcludedCount).toBe(0);
+    expect(tx.excludedCurrencies).toEqual([]);
+    expect(tx.todayAvg).toBeCloseTo(17.5, 2);
+  });
+
   it('cashback.accrued equals approved + pending (FAILED/REVERSED/PAID excluded from accrued)', async () => {
     // accrued query: status.in=[COMPLETED,TRIAL_PENDING,PENDING,PROCESSING] + cashbackStatus.not=PAID
     // approved query: status=COMPLETED + cashbackStatus.not=PAID (no cashbackExpiresAt)
@@ -255,7 +365,9 @@ describe('GET /admin/dashboard — spec §3.1 stats', () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ cnt: 0n }]);
 
-    m.walletTransaction.aggregate.mockImplementation(({ where }) => {
+    m.walletTransaction.groupBy.mockImplementation(({ where, by }: any) => {
+      const wrap = (amount: number) => Promise.resolve([{ currency: 'BGN', _sum: { amount }, _count: { _all: 1 } }]);
+      if (Array.isArray(by) && by.includes('cashbackStatus')) return Promise.resolve([]);
       if (where?.type === 'CASHBACK_CREDIT') {
         const statuses: string[] = where?.status?.in ?? [];
         // accrued: 4-element in-array + cashbackStatus.not=PAID → 140 (25 PAID excluded)
@@ -267,7 +379,7 @@ describe('GET /admin/dashboard — spec §3.1 stats', () => {
           statuses.length === 4 &&
           where?.cashbackStatus?.not === 'PAID'
         ) {
-          return Promise.resolve({ _sum: { amount: 140 } }); // 100 approved + 40 pending
+          return wrap(140); // 100 approved + 40 pending
         }
         // approved: single COMPLETED + cashbackStatus.not=PAID + no cashbackExpiresAt → 100
         if (
@@ -275,14 +387,14 @@ describe('GET /admin/dashboard — spec §3.1 stats', () => {
           where?.cashbackStatus?.not === 'PAID' &&
           !where?.cashbackExpiresAt
         ) {
-          return Promise.resolve({ _sum: { amount: 100 } });
+          return wrap(100);
         }
         // pending: 3-element in-array (TRIAL_PENDING, PENDING, PROCESSING) — 40
         if (statuses.includes('TRIAL_PENDING') && !statuses.includes('COMPLETED')) {
-          return Promise.resolve({ _sum: { amount: 40 } });
+          return wrap(40);
         }
       }
-      return Promise.resolve(ZERO_AGGREGATE);
+      return Promise.resolve([]);
     });
 
     const res = await request(app).get('/admin/dashboard').expect(200);
@@ -296,10 +408,12 @@ describe('GET /admin/dashboard — spec §3.1 stats', () => {
   it('cashback.accrued and cashback.approved carry cashbackStatus.not=PAID filter (excludes settled payouts)', async () => {
     // Captures the where-clause passed to walletTransaction.aggregate and asserts
     // that both the accrued and approved queries include cashbackStatus: { not: 'PAID' }.
+    // The cashback queries are groupBy(['currency']) since impl-r4 F12; the
+    // where-clause assertions below are unchanged, only the mocked method moved.
     const capturedWheres: object[] = [];
-    m.walletTransaction.aggregate.mockImplementation(({ where }) => {
+    m.walletTransaction.groupBy.mockImplementation(({ where }: any) => {
       capturedWheres.push(where);
-      return Promise.resolve(ZERO_AGGREGATE);
+      return Promise.resolve([]);
     });
 
     await request(app).get('/admin/dashboard').expect(200);
@@ -331,10 +445,12 @@ describe('GET /admin/dashboard — spec §3.1 stats', () => {
     // with a future expiry would inflate the "expiring soon" figure. LOCKED entries
     // (in-flight payout) should also be excluded — they are being processed, not
     // at risk of expiry.
+    // The cashback queries are groupBy(['currency']) since impl-r4 F12; the
+    // where-clause assertions below are unchanged, only the mocked method moved.
     const capturedWheres: object[] = [];
-    m.walletTransaction.aggregate.mockImplementation(({ where }) => {
+    m.walletTransaction.groupBy.mockImplementation(({ where }: any) => {
       capturedWheres.push(where);
-      return Promise.resolve(ZERO_AGGREGATE);
+      return Promise.resolve([]);
     });
 
     await request(app).get('/admin/dashboard').expect(200);

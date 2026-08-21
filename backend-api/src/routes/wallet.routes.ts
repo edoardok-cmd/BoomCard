@@ -8,7 +8,7 @@ import prisma from '../lib/prisma';
 import { WalletTransactionStatus, WalletTransactionType } from '@prisma/client';
 import { parsePagination } from '../utils/pagination';
 import { logger } from '../utils/logger';
-import { bgnToEur } from '../utils/currency';
+import { bgnToEur, toEur, displayCurrency, foldMixedCurrencyToEur, isAcceptedCurrency } from '../utils/currency';
 
 const router = Router();
 
@@ -148,8 +148,21 @@ router.get('/statistics', asyncHandler(async (req: AuthRequest, res: Response) =
   try {
     const wallet = await walletService.getOrCreateWallet(userId);
 
+    // `currency` is part of the grouping key (BC-QA-031-FOLLOWUP-1 task-r1 F1).
+    //
+    // It used to group by `type` alone, and the comment here claimed the result
+    // was safe because "WalletTransaction.currency is copied from the wallet".
+    // That was false twice over: `walletService.credit()`/`debit()`, the void
+    // path and the withdrawal path all OMIT the column and rely on
+    // `@default("BGN")` (only the admin adjust route copies `wallet.currency`);
+    // and even if every writer had copied it, a `groupBy` without `currency` in
+    // its key sums across whatever currencies are present regardless. With one
+    // 50.00 USD and one 40.00 EUR row seeded, `totalTopups` came back 156.02
+    // under `"currency":"EUR"` — the USD magnitude divided by the BGN peg and
+    // labelled euros. That is the exact `{ amount: converted, currency: EUR }`
+    // shape this task exists to remove, one aggregation level up.
     const stats = await prisma.walletTransaction.groupBy({
-      by: ['type'],
+      by: ['type', 'currency'],
       where: {
         walletId: wallet.id,
         status: WalletTransactionStatus.COMPLETED,
@@ -160,34 +173,88 @@ router.get('/statistics', asyncHandler(async (req: AuthRequest, res: Response) =
       _count: true,
     });
 
-    const totalCashback = stats
-      .filter(s => s.type === WalletTransactionType.CASHBACK_CREDIT)
-      .reduce((sum, s) => sum + (s._sum.amount || 0), 0);
+    /** Fold one transaction type's per-currency subtotals into a EUR figure. */
+    const foldType = (type: WalletTransactionType, absolute = false) =>
+      foldMixedCurrencyToEur(
+        stats
+          .filter(s => s.type === type)
+          .map(s => ({
+            currency: s.currency,
+            amount: absolute ? Math.abs(s._sum.amount ?? 0) : (s._sum.amount ?? 0),
+            count: typeof s._count === 'number' ? s._count : undefined,
+          })),
+      );
 
-    const totalTopups = stats
-      .filter(s => s.type === WalletTransactionType.TOP_UP)
-      .reduce((sum, s) => sum + (s._sum.amount || 0), 0);
+    const cashback = foldType(WalletTransactionType.CASHBACK_CREDIT);
+    const topups = foldType(WalletTransactionType.TOP_UP);
+    const spent = foldType(WalletTransactionType.PURCHASE, true);
 
-    const totalSpent = stats
-      .filter(s => s.type === WalletTransactionType.PURCHASE)
-      .reduce((sum, s) => sum + Math.abs(s._sum.amount || 0), 0);
+    // Re-fold the per-(type, currency) rows back to one entry per type for the
+    // wire, so splitting the grouping key does not split the reported breakdown.
+    //
+    // THROUGH THE FOLD, not through `toEur` per row (impl-r4 F9). `toEur`
+    // deliberately returns an out-of-domain amount UNCONVERTED — that is its
+    // documented legacy-row contract, and it is only honest when the caller
+    // also carries the row's own label. Here there is no per-row label to
+    // carry: the whole response asserts `currency: EUR`. Summing `toEur` per
+    // row therefore added a raw 50 USD straight into a EUR-labelled figure, so
+    // `transactionsByType[TOP_UP]._sum.amount` read 200.00 three fields below
+    // an honest `totalTopups` of 150.00 — arguably worse than before the fix,
+    // since the pre-fix code at least divided that magnitude by the peg.
+    // Folding per type drops what it cannot convert and counts it as excluded.
+    const byType = new Map<
+      string,
+      { type: string; _count: number; _sum: { amount: number | null }; excludedCount: number }
+    >();
+    for (const type of new Set(stats.map((s) => s.type))) {
+      const fold = foldMixedCurrencyToEur(
+        stats
+          .filter((s) => s.type === type)
+          .map((s) => ({
+            currency: s.currency,
+            amount: s._sum.amount ?? 0,
+            count: typeof s._count === 'number' ? s._count : 0,
+          })),
+      );
+      byType.set(type, {
+        type,
+        // The count describes the rows the amount covers, as everywhere else.
+        _count: fold.includedCount,
+        _sum: { amount: fold.total },
+        excludedCount: fold.excludedCount,
+      });
+    }
 
-    // Stored wallet/transaction amounts are BGN-denominated — convert to EUR
-    // before returning (BC-QA-031 — EUR-only responses).
+    // Exclusions are counted over EVERY type present, not just the three the
+    // named totals cover (impl-r4 F9): a USD WITHDRAWAL row appears in
+    // `transactionsByType` but in none of cashback/topups/spent, so it used to
+    // be excluded from no fold and counted in no exclusion — invisible to a
+    // client reading the response.
+    const perTypeExcluded = Array.from(byType.values()).reduce((n, t) => n + t.excludedCount, 0);
+    const excludedCurrencies = Array.from(
+      new Set(
+        stats
+          .filter((s) => s.currency != null && !isAcceptedCurrency(s.currency))
+          .map((s) => String(s.currency).trim().toUpperCase()),
+      ),
+    ).sort();
+
+    // The wallet's own balance columns are denominated in `Wallet.currency`
+    // (BGN by write policy; see WALLET_LEDGER_CURRENCIES) — convert keyed on
+    // that column (BC-QA-031 — EUR-only responses).
     res.json({
-      totalCashback: bgnToEur(totalCashback),
-      totalTopups: bgnToEur(totalTopups),
-      totalSpent: bgnToEur(totalSpent),
-      currentBalance: bgnToEur(wallet.balance),
-      availableBalance: bgnToEur(wallet.availableBalance),
-      pendingBalance: bgnToEur(wallet.pendingBalance),
-      transactionsByType: stats.map(s => ({
-        ...s,
-        _sum: {
-          amount: s._sum.amount != null ? bgnToEur(s._sum.amount) : null,
-        },
-      })),
-      currency: 'EUR',
+      totalCashback: cashback.total,
+      totalTopups: topups.total,
+      totalSpent: spent.total,
+      currentBalance: toEur(wallet.balance, wallet.currency),
+      availableBalance: toEur(wallet.availableBalance, wallet.currency),
+      pendingBalance: toEur(wallet.pendingBalance, wallet.currency),
+      transactionsByType: Array.from(byType.values()),
+      currency: displayCurrency(wallet.currency),
+      // What the totals above could NOT account for: rows whose stored currency
+      // has no conversion rate. Zero for any database without legacy rows.
+      excludedCount: perTypeExcluded,
+      excludedCurrencies,
     });
   } catch (error: any) {
     logger.error('Error fetching wallet statistics:', error);

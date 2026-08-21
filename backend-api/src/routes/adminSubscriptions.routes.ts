@@ -11,7 +11,7 @@ import { parsePagination } from '../utils/pagination';
 import { emailService } from '../services/email.service';
 import { logger } from '../utils/logger';
 import { detach } from '../utils/detach';
-import { toEur, sumMixedCurrencyToEur } from '../utils/currency';
+import { toDisplayMoney, foldMixedCurrencyToEur, type CurrencySubtotal } from '../utils/currency';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://boomcard.bg';
 
@@ -181,24 +181,29 @@ async function enrichSubscriptions(
   ]);
 
   const countByUser = new Map(subscriptionCounts.map((c) => [c.userId, c._count._all]));
-  // Re-fold the per-(user, currency) rows back to one entry per user: counts add,
+  // Re-fold the per-(user, currency) rows back to one entry per user:
   // lastPaymentAt takes the latest, and the amount subtotals convert then sum.
+  //
+  // The per-currency ROW COUNT travels with each subtotal rather than being
+  // accumulated separately (BC-QA-031-FOLLOWUP-1 impl-r1 F4), so that
+  // `foldMixedCurrencyToEur` can report how many rows its total actually covers.
+  // A separately-summed count would include the legacy rows the fold has to drop,
+  // and `paymentCount` would then contradict `paymentTotalAmount` on the same row
+  // of the admin grid.
   const paymentsByUser = new Map<
     string,
-    { count: number; currencySums: Array<{ currency: string | null; amount: number | null }>; lastPaymentAt: Date | null }
+    { currencySums: CurrencySubtotal[]; lastPaymentAt: Date | null }
   >();
   for (const p of paymentAggregates) {
     const existing = paymentsByUser.get(p.userId);
     if (!existing) {
       paymentsByUser.set(p.userId, {
-        count: p._count._all,
-        currencySums: [{ currency: p.currency, amount: p._sum.amount }],
+        currencySums: [{ currency: p.currency, amount: p._sum.amount, count: p._count._all }],
         lastPaymentAt: p._max.createdAt,
       });
       continue;
     }
-    existing.count += p._count._all;
-    existing.currencySums.push({ currency: p.currency, amount: p._sum.amount });
+    existing.currencySums.push({ currency: p.currency, amount: p._sum.amount, count: p._count._all });
     if (p._max.createdAt && (!existing.lastPaymentAt || p._max.createdAt > existing.lastPaymentAt)) {
       existing.lastPaymentAt = p._max.createdAt;
     }
@@ -219,6 +224,9 @@ async function enrichSubscriptions(
 
   return rows.map((s) => {
     const payments = paymentsByUser.get(s.user.id);
+    // One fold per row: `paymentCount` and `paymentTotalAmount` must describe the
+    // SAME set of payments (impl-r1 F4), so both come out of this single call.
+    const paymentTotals = foldMixedCurrencyToEur(payments?.currencySums ?? []);
     return {
       id: s.id,
       plan: s.plan,
@@ -239,10 +247,12 @@ async function enrichSubscriptions(
       planDisplayName: planDisplayName(s.plan),
       userSubscriptionCount: countByUser.get(s.user.id) ?? 1,
       billingCycle: billingCycleFromPeriod(s.currentPeriodStart, s.currentPeriodEnd),
-      paymentCount: payments?.count ?? 0,
+      paymentCount: paymentTotals.includedCount,
       // Per-currency subtotals converted then summed — see the groupBy above
       // (BC-QA-031 — EUR-only responses).
-      paymentTotalAmount: sumMixedCurrencyToEur(payments?.currencySums ?? []),
+      paymentTotalAmount: paymentTotals.total,
+      paymentExcludedCount: paymentTotals.excludedCount,
+      paymentExcludedCurrencies: paymentTotals.excludedCurrencies,
       lastPaymentAt: payments?.lastPaymentAt ?? null,
     };
   });
@@ -410,15 +420,20 @@ router.get('/user/:userId/history', requirePermission('subscriptions.read'), asy
     ]);
 
     // Build a map of subscriptionId -> payments array for quick lookup.
-    // Transaction.currency is mixed — convert only the BGN-denominated rows
-    // (BC-QA-031 — EUR-only responses).
+    // Transaction.currency is BGN-or-EUR — convert only the BGN-denominated
+    // rows (BC-QA-031 — EUR-only responses). The label is derived from the row
+    // by `toDisplayMoney` instead of being hardcoded 'EUR'
+    // (BC-QA-031-FOLLOWUP-1): a legacy row written before the accepted domain
+    // was narrowed can still be USD/GBP/PLN/CZK/RON, has no conversion rate,
+    // and must keep its own code rather than have a foreign magnitude shown to
+    // an admin as euros.
     const paymentsBySubscriptionId = new Map<string | null, Array<Omit<typeof subscriptionPayments[number], 'amount' | 'currency'> & { amount: number; currency: string }>>();
     subscriptionPayments.forEach((payment) => {
       const key = payment.subscriptionId ?? '__unattributed__';
       if (!paymentsBySubscriptionId.has(key)) {
         paymentsBySubscriptionId.set(key, []);
       }
-      paymentsBySubscriptionId.get(key)!.push({ ...payment, amount: toEur(payment.amount, payment.currency), currency: 'EUR' });
+      paymentsBySubscriptionId.get(key)!.push({ ...payment, ...toDisplayMoney(payment.amount, payment.currency) });
     });
 
     const result = subscriptions.map((s) => ({
@@ -444,10 +459,17 @@ router.get('/user/:userId/history', requirePermission('subscriptions.read'), asy
 
     // Fold the per-currency subtotals: convert each, then sum
     // (BC-QA-031 — EUR-only responses).
-    const paymentSummaryTotal = sumMixedCurrencyToEur(
-      userPaymentAgg.map((g) => ({ currency: g.currency, amount: g._sum.amount })),
+    //
+    // `count` is the fold's `includedCount`, not the raw row count
+    // (BC-QA-031-FOLLOWUP-1 impl-r1 F4). The fold drops any subtotal it has no
+    // rate for, so pairing the reduced total with the full count produced
+    // "1 payment, EUR 0.00 total" for a subscriber whose only payment is a
+    // legacy out-of-domain row — a self-contradicting summary an admin cannot
+    // distinguish from a genuinely zero-value payment. The excluded figures are
+    // returned so the client can state that some payments are unrepresentable.
+    const paymentSummary = foldMixedCurrencyToEur(
+      userPaymentAgg.map((g) => ({ currency: g.currency, amount: g._sum.amount, count: g._count._all })),
     );
-    const paymentSummaryCount = userPaymentAgg.reduce((n, g) => n + g._count._all, 0);
     const paymentSummaryLastAt = userPaymentAgg.reduce<Date | null>(
       (latest, g) => (g._max.createdAt && (!latest || g._max.createdAt > latest) ? g._max.createdAt : latest),
       null,
@@ -457,9 +479,11 @@ router.get('/user/:userId/history', requirePermission('subscriptions.read'), asy
       user: { ...user, isTest: isTestEmail(user.email) },
       subscriptions: result,
       paymentSummary: {
-        count: paymentSummaryCount,
-        totalAmount: paymentSummaryTotal,
+        count: paymentSummary.includedCount,
+        totalAmount: paymentSummary.total,
         lastPaymentAt: paymentSummaryLastAt,
+        excludedCount: paymentSummary.excludedCount,
+        excludedCurrencies: paymentSummary.excludedCurrencies,
       },
     });
   } catch (error) {
