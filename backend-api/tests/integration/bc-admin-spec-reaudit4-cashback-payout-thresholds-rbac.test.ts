@@ -93,6 +93,25 @@ describe('BC-ADMIN-SPEC-REAUDIT4 — Cashback payout-thresholds access control +
     testUserIds = testUserIds.slice(0, 1);
   });
 
+  afterAll(async () => {
+    // BC-QA-045-FOLLOWUP-3: the afterEach above deliberately skips index 0
+    // (`testUserIds.slice(1)`) because `adminUser` is a fixture shared
+    // across every test in this file, not a per-test one — but the file had
+    // NO afterAll at all, so that shared SUPER_ADMIN row was never deleted.
+    // Left behind, it is exactly the class of leaked non-archived
+    // SUPER_ADMIN fixture that defeats sa-guard-races.test.ts DEFECT 3's
+    // "exactly 1 existing SUPER_ADMIN" bootstrap precondition in any later
+    // suite that counts them (see BC-QA-045-FOLLOWUP-3 task description).
+    const adminUserId = testUserIds[0];
+    if (adminUserId) {
+      await prisma.userPermissionOverride.deleteMany({ where: { userId: adminUserId } }).catch(() => {});
+      await prisma.user.delete({ where: { id: adminUserId } }).catch(() => {
+        // Non-fatal if already gone.
+      });
+    }
+    await prisma.$disconnect();
+  });
+
   describe('GET /api/admin/cashback/payout-thresholds', () => {
     it('should require cashback.read permission', async () => {
       // Try without auth

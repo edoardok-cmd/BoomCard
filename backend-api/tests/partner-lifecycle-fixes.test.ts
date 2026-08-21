@@ -26,11 +26,26 @@ function generateTestToken(userId: string, role: string): string {
   });
 }
 
+// BC-QA-045-FOLLOWUP-3: this file's only cleanup was a "pre-cleanup" of the
+// PREVIOUS run's stale rows at the top of beforeAll (matched by `email:
+// {contains: 'lifecycle'}`) — the CURRENT run's fixtures were always left
+// behind until the next time this file happened to run, and that
+// pre-cleanup filter only ever matched the `sa-lifecycle-*` SUPER_ADMIN
+// fixture anyway (none of the `partner-*` test-body fixtures below contain
+// "lifecycle" in their email). A leaked non-archived SUPER_ADMIN is exactly
+// the fixture class that defeats sa-guard-races.test.ts DEFECT 3's
+// "exactly 1 existing SUPER_ADMIN" bootstrap precondition. Track every user
+// this file creates; deleting a User cascades Partner (and Partner cascades
+// Venue -> StickerLocation -> Sticker, and ActivationLink /
+// PartnerStatusChange — see prisma/schema.prisma onDelete: Cascade), so
+// tracking users alone is enough to clean up the whole fixture tree.
+const createdUserIds: string[] = [];
+
 /**
  * Helper to create a user with required fields
  */
 async function createTestUser(email: string, role: string = 'PARTNER') {
-  return prisma.user.create({
+  const user = await prisma.user.create({
     data: {
       email,
       passwordHash: 'hash',
@@ -42,6 +57,8 @@ async function createTestUser(email: string, role: string = 'PARTNER') {
       emailVerified: true,
     },
   });
+  createdUserIds.push(user.id);
+  return user;
 }
 
 /**
@@ -137,10 +154,17 @@ describe('Partner Lifecycle Bug Fixes', () => {
       },
     });
     superAdminId = superAdmin.id;
+    createdUserIds.push(superAdmin.id);
     superAdminToken = generateTestToken(superAdmin.id, 'SUPER_ADMIN');
   });
 
   afterAll(async () => {
+    if (createdUserIds.length) {
+      // AuditLog.actorUserId has no onDelete: Cascade — the SUPER_ADMIN
+      // fixture drives admin routes under test, which may write audit rows.
+      await prisma.auditLog.deleteMany({ where: { actorUserId: { in: createdUserIds } } }).catch(() => {});
+      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } }).catch(() => {});
+    }
     await prisma.$disconnect();
   });
 

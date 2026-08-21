@@ -213,6 +213,12 @@ describe('BC-ADMIN-SPEC-REAUDIT6-SUPERADMIN-SEEDS-E2E: Seeding and approval flow
       expect(createdAdmin).toBeDefined();
       expect(createdAdmin?.role).toBe('SUPER_ADMIN');
       expect(createdAdmin?.status).toBe('ACTIVE');
+      // BC-QA-045-FOLLOWUP-3: this user is created by the /approve route
+      // itself (not via the createSA() helper above), so it was never
+      // tracked in createdUserIds and leaked past this file's own afterEach
+      // — exactly the leaked non-archived SUPER_ADMIN fixture class that
+      // defeats sa-guard-races.test.ts DEFECT 3's bootstrap precondition.
+      if (createdAdmin) createdUserIds.push(createdAdmin.id);
 
       // Step 4: Verify the request was deleted after approval
       const reqAfter = await prisma.pendingSuperAdminRequest.findUnique({
@@ -227,7 +233,34 @@ describe('BC-ADMIN-SPEC-REAUDIT6-SUPERADMIN-SEEDS-E2E: Seeding and approval flow
   // ─────────────────────────────────────────────────────────────────────────────
   describe('Test 3: Self-approval refusal', () => {
     it('should reject self-approval with 403', async () => {
+      // BC-QA-045-FOLLOWUP-3: this test's name promises the ORDINARY 2-of-N
+      // "approver must be a different admin" rejection, but with only ONE
+      // non-archived SUPER_ADMIN in existence at approval time (`soleSA`
+      // itself — the approve route's own bootstrap-quorum check counts
+      // non-ARCHIVED SUPER_ADMINs, see adminAdmins.routes.ts "H2 fix"), the
+      // approve route takes its BOOTSTRAP-EXCEPTION branch instead: "only
+      // one Super Admin exists (non-archived) -> sole SA may self-approve",
+      // which SUCCEEDS (201) rather than rejecting (403). Historically this
+      // test still passed because the shared boomcard_test database always
+      // had OTHER leaked non-archived SUPER_ADMIN fixtures from other
+      // suites pushing the ambient count above 1 by accident — the same
+      // "borrowed isolation" trap as sa-guard-races.test.ts DEFECT 3
+      // (BC-QA-045-FOLLOWUP-3 task description). As that leakage gets fixed
+      // suite-wide, this test starts flipping to the TRUE bootstrap-success
+      // path instead: `expect(approveRes.status).toBe(403)` goes red, and —
+      // worse — the self-approval genuinely succeeds and creates a REAL new
+      // SUPER_ADMIN that this test never tracks in `createdUserIds` (it has
+      // no reason to, since it assumes approval always fails), leaking
+      // exactly the fixture class this whole follow-up exists to close.
+      // Observed directly: a batched run of this file alongside the other
+      // BC-QA-045-FOLLOWUP-3 fixes (which clean up after themselves) hit
+      // this red/leak once. Fix: create a SECOND non-archived SUPER_ADMIN
+      // so the approve route's own count check is genuinely >1 and the
+      // "different admin" branch — not the bootstrap branch — is what
+      // actually runs, matching what this test's name and assertions claim
+      // to exercise.
       const soleSA = await createSA(`self-approve-${Date.now()}`);
+      await createSA(`self-approve-other-${Date.now()}`);
       const newAdminEmail = `e2e-self-approve-${Date.now()}@test.local`;
 
       // Sole SA initiates a request
@@ -360,6 +393,15 @@ describe('BC-ADMIN-SPEC-REAUDIT6-SUPERADMIN-SEEDS-E2E: Seeding and approval flow
       if (approveRes.status !== 201) {
         // If not successful, verify error message doesn't indicate role not found
         expect(approveRes.body.error).not.toMatch(/role not found/i);
+      } else {
+        // BC-QA-045-FOLLOWUP-3: on the success path this creates a new
+        // SUPER_ADMIN via the /approve route itself (not the createSA()
+        // helper), so it was never tracked in createdUserIds and leaked
+        // past this file's own afterEach — same class as Test 2 above.
+        const createdAdmin = await prisma.user.findFirst({
+          where: { email: newAdminEmail, role: 'SUPER_ADMIN' },
+        });
+        if (createdAdmin) createdUserIds.push(createdAdmin.id);
       }
     });
   });

@@ -293,10 +293,127 @@ describe('BC-ADMIN-SPEC-REAUDIT-SA-GUARD-RACES-1: TOCTOU Race Prevention', () =>
 
   describe('DEFECT 3: POST /pending-super/:id/approve bootstrap quorum race', () => {
     it('should prevent bypassing 2-of-N when two concurrent self-approvals race with only 1 existing SA', async () => {
-      // Setup: create exactly 1 ACTIVE SUPER_ADMIN
+      // ── Isolate the bootstrap precondition (BC-QA-045-FOLLOWUP-3) ──────────
+      //
+      // The route's own bootstrap-quorum check (adminAdmins.routes.ts, "H2
+      // fix") counts every non-ARCHIVED SUPER_ADMIN — ACTIVE, INACTIVE, AND
+      // SUSPENDED all count as "exists" — not just ACTIVE ones:
+      //   tx.user.count({ where: { role: 'SUPER_ADMIN', status: { not: 'ARCHIVED' } } })
+      // This test's whole premise is "exactly 1 non-archived SUPER_ADMIN
+      // exists", so the self-approval race can even reach the bootstrap
+      // exception. Two things make that premise false by default:
+      //  1. This file's OWN DEFECT 1 / DEFECT 2 tests (which ran immediately
+      //     before this one, in file order) each create 3 ACTIVE SUPER_ADMIN
+      //     fixtures and only clean them up in this file's afterAll — so by
+      //     the time DEFECT 3 runs, up to 6 of this file's own fixtures are
+      //     still live.
+      //  2. boomcard_test is a shared integration-test database; other
+      //     suites across the file leak non-archived SUPER_ADMIN fixtures of
+      //     their own (see BC-QA-045-FOLLOWUP-3 task description).
+      // Confirmed directly (BC-QA-045 impl-r2 review, finding F6): against
+      // the polluted DB, both self-approvals were rejected with 403 "The
+      // approver must be a different admin from the original requester" —
+      // the deliberate non-bootstrap H2 rule, not a race defect.
+      //
+      // Fix: temporarily archive every OTHER non-ARCHIVED SUPER_ADMIN before
+      // the race, so the precondition holds regardless of what earlier tests
+      // in this file or other suites left behind, then restore their
+      // original status afterward (finally block) so this test does not
+      // permanently mutate rows it does not own — a leaked fixture from
+      // another suite may still be inspected by that suite's own (broken)
+      // cleanup logic, or by a human debugging the leak later.
+      //
+      // ACCEPTED RISK (BC-QA-045-FOLLOWUP-3 impl-r1 review, F1): boomcard_test
+      // is a shared integration-test database, and this machine genuinely
+      // runs multiple concurrent jest processes from OTHER worktrees against
+      // it (confirmed live during review — e.g. a sibling worktree running
+      // trialpending-label.test.ts, which holds its own ACTIVE SUPER_ADMIN
+      // fixture across several it() blocks). For the window between the
+      // archive updateMany below and the restore in the finally block, any
+      // such concurrent session's SUPER_ADMIN gets its status flipped to
+      // ARCHIVED — authenticate() (src/middleware/auth.middleware.ts) does a
+      // live per-request status check, so an authenticated request from that
+      // OTHER session during this window can receive a spurious 401 through
+      // no fault of its own code. The finally-block restore is also
+      // unconditional (writes back the snapshotted `sa.status`, not a
+      // compare-and-swap), so if that row's status legitimately changed for
+      // an unrelated reason during the window, this restore clobbers it.
+      // Judged ACCEPTABLE rather than fixed outright because: (a) the route's
+      // own bootstrap-quorum check (adminAdmins.routes.ts, "H2 fix") is a
+      // genuine global non-archived-SUPER_ADMIN count by design, so any test
+      // that wants to exercise the bootstrap path at all must transiently
+      // make that global count true — there is no per-file-scoped way to
+      // satisfy it; (b) the window is minimized below to just the archive
+      // call and the two concurrent race requests (see the restore placement
+      // right after the race responses come back, BEFORE this test's own
+      // assertions run — those assertions don't need the archived state and
+      // used to be inside the window for no reason); (c) the failure mode for
+      // a caught-out concurrent session is a transient, cheaply-retried 401
+      // in test-only code, not data corruption or a production-facing
+      // defect. If this starts causing real cross-worktree flakiness in
+      // practice, the fix is to scope DEFECT 3 to its own dedicated test
+      // database rather than trying to further shrink an inherently
+      // global-by-design precondition window.
+      const otherNonArchivedSAs = await prisma.user.findMany({
+        where: { role: 'SUPER_ADMIN', status: { not: 'ARCHIVED' } },
+        select: { id: true, status: true },
+      });
+
       // Use a stable test ID suffix to avoid timestamp collision issues at millisecond boundaries
       const testId = `defect3-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
+      // Everything the race itself needs (the sole SA + its two pending
+      // requests) is created BEFORE the archive call, outside the
+      // archived-window — none of that setup depends on other SAs being
+      // archived yet, only the race requests themselves do. This keeps the
+      // window tight: archive → fire race → restore, with no unrelated
+      // fixture-creation awaits in between.
+      const raceFixtures = await createDefect3RaceFixtures(testId, superAdminRoleId);
+
+      let raceResponses: Defect3RaceResponses;
+      if (otherNonArchivedSAs.length) {
+        await prisma.user.updateMany({
+          where: { id: { in: otherNonArchivedSAs.map((u) => u.id) } },
+          data: { status: 'ARCHIVED' },
+        });
+      }
+      try {
+        raceResponses = await fireDefect3Race(raceFixtures);
+      } finally {
+        // Restore whatever we temporarily archived to isolate this test's
+        // precondition — do this even on failure so a red assertion above
+        // cannot leave other suites' fixtures stuck ARCHIVED. Placed
+        // immediately after the race responses come back (not after this
+        // test's own follow-up assertions, which run below, outside the
+        // try/finally) so the archived window is no longer than it has to be.
+        for (const sa of otherNonArchivedSAs) {
+          await prisma.user.update({ where: { id: sa.id }, data: { status: sa.status } }).catch(() => {
+            // The row may no longer exist (e.g. another suite's own afterAll
+            // deleted it concurrently) — non-fatal, nothing to restore.
+          });
+        }
+      }
+
+      await assertDefect3Race(testId, raceFixtures, raceResponses);
+    });
+  });
+
+  interface Defect3RaceFixtures {
+    existingSA: { id: string };
+    existingSAToken: string;
+    pending1: { id: string };
+    pending2: { id: string };
+  }
+
+  interface Defect3RaceResponses {
+    res1: { status: number };
+    res2: { status: number };
+  }
+
+  async function createDefect3RaceFixtures(
+    testId: string,
+    superAdminRoleId: string,
+  ): Promise<Defect3RaceFixtures> {
       const existingSA = await prisma.user.create({
         data: {
           email: `race-existing-sa-${testId}@test.local`,
@@ -340,6 +457,16 @@ describe('BC-ADMIN-SPEC-REAUDIT-SA-GUARD-RACES-1: TOCTOU Race Prevention', () =>
         }),
       ]);
 
+      return { existingSA, existingSAToken, pending1, pending2 };
+  }
+
+  // Fires the two concurrent self-approvals. This is the ONLY part of the
+  // whole DEFECT 3 flow that structurally needs the other-SAs-archived
+  // window to be in effect (see the ACCEPTED RISK comment above) — fixture
+  // creation happens before this is called, and assertions happen after the
+  // window has already been closed by the `it()` block's restore.
+  async function fireDefect3Race(fixtures: Defect3RaceFixtures): Promise<Defect3RaceResponses> {
+      const { pending1, pending2, existingSAToken } = fixtures;
       // Fire two concurrent self-approvals (existingSA approves both pending requests)
       // Both will see existingSuperAdminCount = 1 initially.
       // Spec §3.9: "if only one Super Admin EXISTS" → bootstrap exception allows self-approval.
@@ -356,6 +483,16 @@ describe('BC-ADMIN-SPEC-REAUDIT-SA-GUARD-RACES-1: TOCTOU Race Prevention', () =>
           .post(`/api/admin/admins/pending-super/${pending2.id}/approve`)
           .set('Authorization', `Bearer ${existingSAToken}`),
       ]);
+      return { res1, res2 };
+  }
+
+  async function assertDefect3Race(
+    testId: string,
+    fixtures: Defect3RaceFixtures,
+    responses: Defect3RaceResponses,
+  ): Promise<void> {
+      const { existingSA } = fixtures;
+      const { res1, res2 } = responses;
 
       // Expected outcome:
       // - One succeeds (201 Created)
@@ -391,13 +528,24 @@ describe('BC-ADMIN-SPEC-REAUDIT-SA-GUARD-RACES-1: TOCTOU Race Prevention', () =>
       // - One newly created SA (1)
       // - One rejected/not-created (0)
       // = 2 total (this is correct: 2-of-N rule preserved)
-      const totalSuperAdmins = await prisma.user.count({
-        where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+      //
+      // Scoped to THIS test's own rows rather than a raw global count
+      // (BC-QA-045-FOLLOWUP-3): a raw `prisma.user.count({ role:
+      // 'SUPER_ADMIN', status: 'ACTIVE' })` would be polluted by any other
+      // non-archived SUPER_ADMIN row that exists in the shared
+      // boomcard_test database — this file's own DEFECT 1/2 fixtures
+      // (cleaned up only in this file's afterAll, which has not run yet)
+      // and any cross-suite leakage alike. existingSA itself is untouched
+      // by the approve race, so its own ACTIVE count plus the number of
+      // newly created SAs is the exact, delta-free invariant this test
+      // actually owns.
+      const existingSAStillActive = await prisma.user.count({
+        where: { id: existingSA.id, role: 'SUPER_ADMIN', status: 'ACTIVE' },
       });
-      expect(totalSuperAdmins).toBeLessThanOrEqual(2);
-      expect(totalSuperAdmins).toBeGreaterThanOrEqual(1);
-    });
-  });
+      const scopedTotalSuperAdmins = existingSAStillActive + createdSuperAdmins;
+      expect(scopedTotalSuperAdmins).toBeLessThanOrEqual(2);
+      expect(scopedTotalSuperAdmins).toBeGreaterThanOrEqual(1);
+  }
 });
 
 /**
