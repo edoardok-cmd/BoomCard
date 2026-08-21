@@ -31,11 +31,17 @@
  *   partner-sla-escalation           — 0 * * * *    (every hour — §5.1 admin alert for partner applications past 24h SLA)
  *   auto-approve-sweep               — 0 * * * *    (every hour — §2.2/§3.4/§8.1 re-attempt Low/Medium auto-approval for stranded MANUAL_REVIEW scans)
  *   ticket-auto-close                — 0 23 * * *   (11:00 PM daily — §11.4 auto-close RESOLVED tickets after 7 days)
+ *   paysera-key-rotation-check       — 0 5 * * *    (5:00 AM daily — BC-QA-031-FOLLOWUP-8: alert-only diff of the
+ *                                                     published Paysera callback-signing key against the bundled one)
  */
 
 import cron from 'node-cron';
+import crypto from 'crypto';
+import axios from 'axios';
 import { WalletTransactionType, WalletTransactionStatus, SubscriptionStatus, CashbackEntryStatus, PartnerRequestStatus, ScanStatus, StickerStatus, PartnerStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { PAYSERA_LIVE_PUBLIC_KEY_PEM } from '../services/paysera-public-key';
+import { PAYSERA_SIGNATURE_REJECTED_AUDIT_ACTION } from '../services/payment-provider';
 import { stickerService } from '../services/sticker.service';
 import { logger } from '../utils/logger';
 import { emailService } from '../services/email.service';
@@ -879,6 +885,91 @@ const PAYMENT_FAILURE_RATE_WINDOW_MIN = 60;
 const PAYMENT_FAILURE_RATE_MIN_SAMPLES = 10;
 const PAYMENT_FAILURE_RATE_THRESHOLD_PCT = 20;
 
+// ── Paysera signing-key rotation detection ──────────────────────────────────
+// BC-QA-031-FOLLOWUP-8 item 2. `paysera.service.ts` verifies callback ss2/ss3
+// signatures against the certificate bundled in `paysera-public-key.ts`;
+// nothing previously noticed when Paysera republishes a NEW key there. A
+// rotation would silently start rejecting every genuine ss2/ss3-carrying
+// callback under the default PAYSERA_SS2_MODE=enforce/require — see
+// `checkPaymentFailureSpike` below for the companion observability gap this
+// closes (a total verification outage can drive that job's own sample to
+// zero). This job only ALERTS on a mismatch; it never fails the build/job
+// and never changes verification behaviour itself — that stays an operator
+// decision, using the levers documented in paysera-public-key.ts's ROTATION
+// section (PAYSERA_PUBLIC_KEY_PATH for a no-redeploy swap, or
+// PAYSERA_SS2_MODE=off as break-glass).
+
+const PAYSERA_PUBLIC_KEY_URL = 'https://www.paysera.com/download/public.key';
+const PAYSERA_KEY_FETCH_TIMEOUT_MS = 10_000;
+
+export async function checkPayseraKeyRotation(): Promise<void> {
+  let bundledFingerprint: string;
+  try {
+    bundledFingerprint = new crypto.X509Certificate(PAYSERA_LIVE_PUBLIC_KEY_PEM).fingerprint256;
+  } catch (err) {
+    // Should be unreachable — the bundled PEM is a committed, test-pinned
+    // constant (see "bundled Paysera public key identity" in
+    // paysera.service.test.ts) — but a parsing bug here must never crash the
+    // scheduler.
+    logger.error('[paysera-key-rotation-check] Failed to parse the bundled Paysera certificate:', err);
+    return;
+  }
+
+  let publishedPem: string;
+  try {
+    const response = await axios.get(PAYSERA_PUBLIC_KEY_URL, {
+      timeout: PAYSERA_KEY_FETCH_TIMEOUT_MS,
+      responseType: 'text',
+    });
+    publishedPem = response.data;
+  } catch (err: any) {
+    // A fetch failure (network blip, Paysera's own outage) is NOT evidence of
+    // a rotation — log and move on rather than paging on noise.
+    logger.warn(`[paysera-key-rotation-check] Could not fetch ${PAYSERA_PUBLIC_KEY_URL}: ${err?.message ?? err}`);
+    return;
+  }
+
+  let publishedFingerprint: string;
+  try {
+    // The live URL always serves an X.509 certificate PEM (see
+    // paysera-public-key.ts's own doc comment); a different shape here is
+    // unexpected, not itself proof of a rotation, so it is reported and
+    // skipped rather than alerted as a mismatch.
+    publishedFingerprint = new crypto.X509Certificate(publishedPem).fingerprint256;
+  } catch (err: any) {
+    logger.warn(`[paysera-key-rotation-check] Published key at ${PAYSERA_PUBLIC_KEY_URL} was not a parseable X.509 certificate: ${err?.message ?? err}`);
+    return;
+  }
+
+  if (publishedFingerprint === bundledFingerprint) {
+    logger.info('[paysera-key-rotation-check] Published Paysera key matches the bundled certificate — no rotation.');
+    return;
+  }
+
+  logger.error(
+    `[paysera-key-rotation-check] MISMATCH — Paysera has published a new callback-signing key. ` +
+      `Bundled: ${bundledFingerprint}. Published: ${publishedFingerprint}. Genuine ss2/ss3-carrying ` +
+      `callbacks will be rejected under PAYSERA_SS2_MODE=enforce/require until this is fixed.`
+  );
+
+  await notificationService.notifyAdminOps({
+    opsType: 'paysera_key_rotation_detected',
+    title: 'Paysera callback-signing key has rotated',
+    message:
+      `The public key at ${PAYSERA_PUBLIC_KEY_URL} no longer matches the certificate bundled in ` +
+      `src/services/paysera-public-key.ts. Genuine Paysera callbacks carrying ss2/ss3 will start failing ` +
+      `verification under PAYSERA_SS2_MODE=enforce/require. Fix via PAYSERA_PUBLIC_KEY_PATH (no redeploy ` +
+      `needed) or update the bundled constant + its pinned test digests and redeploy — see that file's ` +
+      `ROTATION section for the full lever list, including PAYSERA_SS2_MODE=off as break-glass.`,
+    severity: 'critical',
+    fields: [
+      { label: 'Bundled fingerprint (SHA-256)', value: bundledFingerprint },
+      { label: 'Published fingerprint (SHA-256)', value: publishedFingerprint },
+    ],
+    cooldownHours: 24, // one page per day is enough once the rotation is known
+  }).catch((err) => logger.error('[paysera-key-rotation-check] Failed to notify admins:', err));
+}
+
 // ── Resolve TRIAL_PENDING cashback after trial window closes ──────────────────
 // Finds TRIAL_PENDING CASHBACK_CREDIT transactions whose owner's subscription
 // trial window (trialRefundEligibleUntil) has now expired, then promotes them
@@ -1232,22 +1323,57 @@ async function runAutoPayouts(): Promise<void> {
   logger.info(`[auto-payout] No-IBAN holds — prompted ${prompted}, skipped ${promptSkipped}`);
 }
 
-async function checkPaymentFailureSpike(): Promise<void> {
+export async function checkPaymentFailureSpike(): Promise<void> {
   const now = new Date();
   const windowStart = new Date(now.getTime() - PAYMENT_FAILURE_RATE_WINDOW_MIN * 60 * 1000);
 
-  const [failures, successes] = await Promise.all([
+  const [failures, successes, signatureRejection] = await Promise.all([
     prisma.transaction.count({
       where: { status: 'FAILED', createdAt: { gte: windowStart } },
     }),
     prisma.transaction.count({
       where: { status: 'COMPLETED', createdAt: { gte: windowStart } },
     }),
+    // BC-QA-031-FOLLOWUP-8 item 4 (task-r1 F1). A total RSA-verification
+    // outage (Paysera key rotation, misconfigured PAYSERA_PUBLIC_KEY) drives
+    // COMPLETED to zero — which starves THIS scan's own FAILED/COMPLETED
+    // sample and used to let "Below sample threshold — skipping" hide the
+    // outage entirely. An AuditLog row written by
+    // `recordPayseraSignatureRejection` (payment-provider.ts) in this same
+    // window is itself proof of a real problem, independent of `total`, so
+    // its mere presence forces an alert below even when `total` is 0.
+    prisma.auditLog.findFirst({
+      where: { action: PAYSERA_SIGNATURE_REJECTED_AUDIT_ACTION, createdAt: { gte: windowStart } },
+      select: { id: true },
+    }),
   ]);
 
   const total = failures + successes;
+
+  if (signatureRejection) {
+    await notificationService.notifyAdminOps({
+      opsType: 'paysera_rsa_signature_rejection_spike',
+      title: 'Paysera RSA signature rejections detected — payment-failure-spike-scan',
+      message:
+        `At least one Paysera callback failed ss2/ss3 RSA verification in the last ` +
+        `${PAYMENT_FAILURE_RATE_WINDOW_MIN} minutes (AuditLog action=${PAYSERA_SIGNATURE_REJECTED_AUDIT_ACTION}). ` +
+        `This scan's own FAILED/COMPLETED sample was ${total}/${PAYMENT_FAILURE_RATE_MIN_SAMPLES} — a total ` +
+        `verification outage drives COMPLETED to zero and would otherwise hide behind "below sample threshold". ` +
+        `Check for a Paysera signing-key rotation (see paysera-key-rotation-check) or a misconfigured ` +
+        `PAYSERA_PUBLIC_KEY / PAYSERA_PUBLIC_KEY_PATH.`,
+      severity: 'critical',
+      fields: [
+        { label: 'Failures (FAILED)', value: String(failures) },
+        { label: 'Successes (COMPLETED)', value: String(successes) },
+        { label: 'Window (minutes)', value: String(PAYMENT_FAILURE_RATE_WINDOW_MIN) },
+      ],
+      cooldownHours: 1,
+    }).catch((err) => logger.error('[payment-failure-spike-scan] Failed to send signature-rejection alert:', err));
+    logger.warn(`[payment-failure-spike-scan] ALERT — Paysera RSA signature rejection(s) detected in last ${PAYMENT_FAILURE_RATE_WINDOW_MIN}m (sample was ${total}/${PAYMENT_FAILURE_RATE_MIN_SAMPLES})`);
+  }
+
   if (total < PAYMENT_FAILURE_RATE_MIN_SAMPLES) {
-    logger.info(`[payment-failure-spike-scan] Below sample threshold (${total}/${PAYMENT_FAILURE_RATE_MIN_SAMPLES}) — skipping`);
+    logger.info(`[payment-failure-spike-scan] Below sample threshold (${total}/${PAYMENT_FAILURE_RATE_MIN_SAMPLES}) — skipping rate check`);
     return;
   }
 
@@ -2178,4 +2304,14 @@ export function registerScheduledJobs(): void {
   }, { timezone: 'Europe/Sofia' });
 
   logger.info('[scheduler] Registered: ticket-auto-close (0 23 * * *)');
+
+  // 5:00 AM every day (UTC-agnostic — this is an alert-only diff, not a
+  // billing-critical run, so no timezone precision is needed) — detect a
+  // Paysera signing-key rotation before the 2027-02-05 certificate boundary.
+  // BC-QA-031-FOLLOWUP-8 item 2.
+  cron.schedule('0 5 * * *', () => {
+    checkPayseraKeyRotation().catch((err) => alertSchedulerFailure('paysera-key-rotation-check', err));
+  }, { timezone: 'Europe/Sofia' });
+
+  logger.info('[scheduler] Registered: paysera-key-rotation-check (0 5 * * *)');
 }

@@ -32,6 +32,9 @@
  */
 
 import { logger } from '../utils/logger';
+import { writeAudit } from '../middleware/audit.middleware';
+import { notificationService } from './notification.service';
+import { detach } from '../utils/detach';
 import {
   payseraService,
   type CreatePaymentParams,
@@ -113,6 +116,89 @@ export interface RefundResult {
   status: string;
 }
 
+// ============================================
+// Signature-rejection observability (BC-QA-031-FOLLOWUP-8 item 4)
+// ============================================
+
+/**
+ * Thrown by `verifyAndParseWebhook`/`verifyAndParseRedirect` specifically when
+ * `payseraService.handleCallback` rejected the callback's ss1/ss2/ss3
+ * signature (as opposed to some other failure — a missing order, a DB error,
+ * a malformed `data` payload). Callers use `instanceof` to distinguish "this
+ * callback was not genuinely from Paysera (or Paysera rotated its signing
+ * key)" from ordinary processing errors, so they can make the rejection
+ * OBSERVABLE via `recordPayseraSignatureRejection` below instead of it
+ * disappearing into the generic catch-all log line every callback route
+ * already has (which acks the webhook regardless, to stop Paysera retries —
+ * see each route's own comment on that).
+ */
+export class PayseraSignatureVerificationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PayseraSignatureVerificationError';
+  }
+}
+
+/**
+ * The exact string `PayseraService.handleCallback` throws on a rejected
+ * signature. Exported so a caller that bypasses this adapter and calls
+ * `payseraService.handleCallback` directly (pending-checkout.routes.ts) can
+ * still detect a signature rejection without duplicating the literal.
+ */
+export const SIGNATURE_REJECTION_MESSAGE = 'Invalid callback signature';
+
+/** AuditLog `action` value written by `recordPayseraSignatureRejection` — also
+ *  read by `scheduler.ts#checkPaymentFailureSpike` to detect an RSA-verification
+ *  outage even when it drives the COMPLETED sample to zero (task-r1 F1). Shared
+ *  as a constant so the writer and the reader cannot drift apart. */
+export const PAYSERA_SIGNATURE_REJECTED_AUDIT_ACTION = 'PAYSERA_SIGNATURE_REJECTED';
+
+/**
+ * Record an RSA (ss2/ss3) callback-signature rejection somewhere other than a
+ * log line. Called by every callback route's catch block right where it is
+ * already about to ack-and-drop the callback. Two independent, durable
+ * signals come out of this:
+ *   1. An AuditLog row (`action: PAYSERA_SIGNATURE_REJECTED`) — a total
+ *      verification outage (key rotation, misconfigured
+ *      PAYSERA_PUBLIC_KEY) leaves a queryable trail even though it also
+ *      starves scheduler.ts's hourly payment-failure-spike-scan of its usual
+ *      FAILED/COMPLETED sample.
+ *   2. A best-effort near-real-time admin-ops notification (1h cooldown per
+ *      opsType), so operators are not limited to the next hourly scan.
+ * Both are fire-and-forget (`detach`) — a notification/audit failure must
+ * never affect the webhook ack Paysera receives.
+ */
+export function recordPayseraSignatureRejection(params: { route: string; dataPrefix: string }): void {
+  detach(
+    writeAudit({
+      actorUserId: null,
+      action: PAYSERA_SIGNATURE_REJECTED_AUDIT_ACTION,
+      objectType: 'PayseraCallback',
+      objectId: null,
+      after: { route: params.route, dataPrefix: params.dataPrefix },
+    }),
+    (err) => logger.error('[paysera] Failed to record signature-rejection audit entry:', err)
+  );
+  detach(
+    notificationService.notifyAdminOps({
+      opsType: 'paysera_rsa_signature_rejected',
+      title: 'Paysera callback rejected — invalid RSA signature (ss2/ss3)',
+      message:
+        `A callback to ${params.route} failed ss2/ss3 RSA verification and was acknowledged-but-dropped ` +
+        `(prevents Paysera retries; the underlying order is left un-settled for manual reconciliation). ` +
+        `This can mean a forged callback, or that Paysera has rotated its published signing key — see ` +
+        `src/services/paysera-public-key.ts's ROTATION section if this keeps happening.`,
+      severity: 'critical',
+      cooldownHours: 1,
+      fields: [
+        { label: 'Route', value: params.route },
+        { label: 'Data prefix', value: params.dataPrefix },
+      ],
+    }),
+    (err) => logger.error('[paysera] Failed to send signature-rejection admin-ops alert:', err)
+  );
+}
+
 export interface CreatePayoutParams extends CreateTransferParams {
   /**
    * Invoked once the provider has created (but not yet committed) the
@@ -131,6 +217,27 @@ export type PayoutResult = PayseraTransfer;
 export interface PaymentProvider {
   createCheckout(params: CreateCheckoutParams): Promise<CheckoutSession>;
   verifyAndParseWebhook(payload: WebhookPayload): Promise<VerifiedWebhookResult>;
+  /**
+   * Like `verifyAndParseWebhook`, but for a caller that verifies data the
+   * PROVIDER'S REDIRECT (not its webhook) carries — e.g. Paysera's
+   * accept/cancel-URL querystring, which only ever carries `data`+`ss1` and
+   * can never carry an ss2/ss3 RSA signature. Exempts the RSA requirement for
+   * that specific call without weakening it for genuine webhook callers, and
+   * without weakening the underlying ss1 (shared-secret MAC) check, which
+   * every mode enforces unconditionally either way.
+   * (BC-QA-031-FOLLOWUP-8 item 1 — see payments.paysera.routes.ts's
+   * `/verify-redirect`, the only current caller.)
+   *
+   * OPTIONAL: only Paysera has a redirect-vs-webhook distinction worth
+   * exempting (myPOS's `MyPOSService` — BC-MYPOS-002/003 — does not implement
+   * this). A caller resolving an arbitrary `PaymentProvider` must fall back
+   * to `verifyAndParseWebhook` when this is undefined; see
+   * payments.paysera.routes.ts's `/verify-redirect` handler for that
+   * fallback in practice. Kept optional specifically so adding it did not
+   * require touching mypos.service.ts (outside this change's scope) to add a
+   * same-shaped method that provider has no real use for.
+   */
+  verifyAndParseRedirect?(payload: WebhookPayload): Promise<VerifiedWebhookResult>;
   refund(params: RefundParams): Promise<RefundResult>;
   createPayout(params: CreatePayoutParams): Promise<PayoutResult>;
   mapStatus(rawStatus: string): PaymentStatus;
@@ -150,12 +257,48 @@ const payseraPaymentProvider: PaymentProvider = {
   },
 
   async verifyAndParseWebhook(payload: WebhookPayload): Promise<VerifiedWebhookResult> {
-    const { data, ss1, ss2 } = payload as { data?: string; ss1?: string; ss2?: string };
+    // ss3 (RSA/SHA-256) is forwarded alongside ss2 (RSA/SHA-1) — the vendor
+    // library's own last-field-wins precedence (ss3 beats ss2 when both are
+    // present) lives in PayseraService.verifyCallback / RSA_SIGN_FIELDS;
+    // dropping ss3 here silently downgraded a ss3-signing project to ss1-only
+    // (BC-QA-031-FOLLOWUP-7 impl-r1 F2, closed by BC-QA-031-FOLLOWUP-8).
+    const { data, ss1, ss2, ss3 } = payload as { data?: string; ss1?: string; ss2?: string; ss3?: string };
     if (!data || !ss1) {
       throw new Error('Invalid callback data');
     }
-    const callback: PayseraCallback = { data, ss1, ss2 };
-    return payseraService.handleCallback(callback);
+    const callback: PayseraCallback = { data, ss1, ss2, ss3 };
+    try {
+      return await payseraService.handleCallback(callback);
+    } catch (err: any) {
+      if (err?.message === SIGNATURE_REJECTION_MESSAGE) {
+        throw new PayseraSignatureVerificationError(err.message);
+      }
+      throw err;
+    }
+  },
+
+  async verifyAndParseRedirect(payload: WebhookPayload): Promise<VerifiedWebhookResult> {
+    // Paysera's redirect querystring (what /verify-redirect receives) only
+    // ever carries `data`+`ss1` — never ss2/ss3, since that RSA signature is
+    // only ever part of the asynchronous webhook callback. Forcing the
+    // 'enforce' mode override (rather than passing none, which would fall
+    // back to `this.ss2Mode` and reject 100% of this route's traffic under a
+    // global PAYSERA_SS2_MODE=require) exempts this call from the RSA
+    // requirement without weakening ss1, which stays an unconditional hard
+    // gate in every mode (see verifyCallback rule 1).
+    const { data, ss1 } = payload as { data?: string; ss1?: string };
+    if (!data || !ss1) {
+      throw new Error('Invalid callback data');
+    }
+    const callback: PayseraCallback = { data, ss1 };
+    try {
+      return await payseraService.handleCallback(callback, 'enforce');
+    } catch (err: any) {
+      if (err?.message === SIGNATURE_REJECTION_MESSAGE) {
+        throw new PayseraSignatureVerificationError(err.message);
+      }
+      throw err;
+    }
   },
 
   async refund(_params: RefundParams): Promise<RefundResult> {

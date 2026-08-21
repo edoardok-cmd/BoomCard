@@ -7,7 +7,7 @@ import { Router, Response, Request } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/error.middleware';
 import { payseraService, PayseraService } from '../services/paysera.service';
-import { paymentProvider } from '../services/payment-provider';
+import { paymentProvider, PayseraSignatureVerificationError, recordPayseraSignatureRejection } from '../services/payment-provider';
 import { emailService } from '../services/email.service';
 import { cardService } from '../services/card.service';
 import { TransactionType, TransactionStatus, SubscriptionStatus, SubscriptionPlan, UserStatus, WalletTransactionType, WalletTransactionStatus } from '@prisma/client';
@@ -259,10 +259,14 @@ router.post(
  * Shared handler for payment callbacks (GET or POST)
  */
 async function handlePaymentCallback(req: Request, res: Response) {
-    // Paysera sends data, ss1, ss2 as GET query params
+    // Paysera sends data, ss1, ss2, ss3 as GET query params. ss3 (RSA/SHA-256)
+    // is forwarded alongside ss2 (RSA/SHA-1) — see verifyAndParseWebhook's own
+    // comment for why dropping it silently downgraded a ss3-signing project
+    // to ss1-only (BC-QA-031-FOLLOWUP-8, closing FOLLOWUP-7 impl-r1 F2).
     const data = (req.query.data || req.body?.data) as string;
     const ss1 = (req.query.ss1 || req.body?.ss1) as string;
     const ss2 = (req.query.ss2 || req.body?.ss2) as string;
+    const ss3 = (req.query.ss3 || req.body?.ss3) as string;
 
     logger.info('Received Paysera callback');
 
@@ -277,6 +281,7 @@ async function handlePaymentCallback(req: Request, res: Response) {
         data,
         ss1,
         ss2,
+        ss3,
       });
 
       logger.info(`Callback result: ${result.orderId} - status ${result.rawStatus} (${result.status})`);
@@ -595,7 +600,16 @@ async function handlePaymentCallback(req: Request, res: Response) {
       // Send "OK" response to Paysera
       res.send(paymentProvider.getWebhookAckResponse());
     } catch (error: any) {
-      logger.error('Error processing callback:', error);
+      if (error instanceof PayseraSignatureVerificationError) {
+        // BC-QA-031-FOLLOWUP-8 item 4 — a rejected ss2/ss3 signature used to
+        // disappear into this same log line, with the order silently stuck
+        // PENDING forever (Paysera stops retrying once it gets the ack below).
+        // Make it observable instead: durable AuditLog row + admin-ops alert.
+        logger.error(`Paysera callback rejected — invalid RSA signature (ss2/ss3): ${error.message}`);
+        recordPayseraSignatureRejection({ route: '/api/payments/callback', dataPrefix: data.slice(0, 64) });
+      } else {
+        logger.error('Error processing callback:', error);
+      }
       // Still send OK to prevent retries
       res.send(paymentProvider.getWebhookAckResponse());
     }
@@ -1220,10 +1234,12 @@ router.post(
 // ============================================
 
 async function handleSubscriptionCallback(req: Request, res: Response) {
-    // Paysera sends data, ss1, ss2 as GET query params
+    // Paysera sends data, ss1, ss2, ss3 as GET query params. See
+    // handlePaymentCallback's comment on why ss3 must be forwarded too.
     const data = (req.query.data || req.body?.data) as string;
     const ss1 = (req.query.ss1 || req.body?.ss1) as string;
     const ss2 = (req.query.ss2 || req.body?.ss2) as string;
+    const ss3 = (req.query.ss3 || req.body?.ss3) as string;
 
     logger.info('Received Paysera subscription callback');
 
@@ -1238,6 +1254,7 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
         data,
         ss1,
         ss2,
+        ss3,
       });
 
       logger.info(`Subscription callback result: ${result.orderId} - status ${result.rawStatus} (${result.status})`);
@@ -1520,7 +1537,12 @@ async function handleSubscriptionCallback(req: Request, res: Response) {
       // Send "OK" response to Paysera
       res.send(paymentProvider.getWebhookAckResponse());
     } catch (error: any) {
-      logger.error('Error processing subscription callback:', error);
+      if (error instanceof PayseraSignatureVerificationError) {
+        logger.error(`Paysera subscription callback rejected — invalid RSA signature (ss2/ss3): ${error.message}`);
+        recordPayseraSignatureRejection({ route: '/api/payments/subscription/callback', dataPrefix: data.slice(0, 64) });
+      } else {
+        logger.error('Error processing subscription callback:', error);
+      }
       // Still send OK to prevent retries
       res.send(paymentProvider.getWebhookAckResponse());
     }
@@ -1547,7 +1569,17 @@ router.post('/verify-redirect', paymentRateLimiter, asyncHandler(async (req: Req
   }
 
   try {
-    const result = await paymentProvider.verifyAndParseWebhook({ data, ss1 });
+    // Paysera's redirect querystring (what lands here) never carries ss2/ss3 —
+    // only the async webhook callback does — so this prefers
+    // verifyAndParseRedirect, which exempts the RSA requirement for this call
+    // only (ss1 stays a hard gate) instead of making PAYSERA_SS2_MODE=require
+    // reject 100% of guest checkout traffic (BC-QA-031-FOLLOWUP-7 impl-r1 F2,
+    // closed by BC-QA-031-FOLLOWUP-8). Falls back to verifyAndParseWebhook for
+    // a resolved provider that doesn't implement the (optional) redirect
+    // method — e.g. myPOS, which has no such exemption to make.
+    const result = paymentProvider.verifyAndParseRedirect
+      ? await paymentProvider.verifyAndParseRedirect({ data, ss1 })
+      : await paymentProvider.verifyAndParseWebhook({ data, ss1 });
     // Paysera can settle a payment in BGN or EUR depending on the order — only
     // convert the BGN-denominated case; an already-EUR-native amount passes
     // through unchanged (BC-QA-031 — EUR-only responses).

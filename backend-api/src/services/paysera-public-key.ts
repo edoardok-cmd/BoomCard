@@ -33,12 +33,25 @@
  * ROTATION
  * --------
  * Paysera will eventually rotate this key; the bundled certificate carries its
- * own expiry, which is where the timescale is authoritatively recorded.
- * Verification here uses only the embedded public key, never the certificate's
- * validity dates, so an expired certificate does NOT by itself break anything
- * — but a *rotated* key does: genuine callbacks would then be signed by a key
- * we do not hold, and under the default `PAYSERA_SS2_MODE=enforce` they would
- * be rejected. The operational levers, in preference order, are:
+ * own expiry (2027-02-05, see the PEM below), which is where the timescale is
+ * authoritatively recorded. Verification here uses only the embedded public
+ * key, never the certificate's validity dates, so an expired certificate does
+ * NOT by itself break anything — but a *rotated* key does: genuine callbacks
+ * would then be signed by a key we do not hold, and under the default
+ * `PAYSERA_SS2_MODE=enforce` they would be rejected.
+ *
+ * DETECTION (BC-QA-031-FOLLOWUP-8 item 2)
+ * ----------------------------------------
+ * `checkPayseraKeyRotation` in `src/jobs/scheduler.ts` runs daily, fetches the
+ * published key from the URL above, and compares its SHA-256 certificate
+ * fingerprint against this bundled one — alerting admins on a mismatch
+ * without ever failing the job or changing verification behaviour itself.
+ * That job is the out-of-band signal; a human still has to act on it using
+ * the levers below. Treat 2027-02-05 as a hard operational reminder either
+ * way: confirm this key is still current well ahead of that date even if the
+ * job has stayed quiet.
+ *
+ * The operational levers, in preference order, are:
  *   1. `PAYSERA_PUBLIC_KEY_PATH=/path/to/public.key` — point at a mounted file
  *      holding the new key; no redeploy needed.
  *   2. `PAYSERA_PUBLIC_KEY='<PEM>'` — inline PEM (literal or \n-escaped).

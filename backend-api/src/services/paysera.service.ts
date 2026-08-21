@@ -546,26 +546,29 @@ export class PayseraService {
    *     password, so an attacker gains nothing by omitting ss2 that they did
    *     not already have.
    *
-   *     `PAYSERA_SS2_MODE=require` is the mode that would close this gap, and
-   *     it is CURRENTLY UNUSABLE — do not enable it as things stand:
-   *       • `POST /api/payments/verify-redirect` (the guest-checkout success
-   *         path, payments.paysera.routes.ts) reaches this method with `data`
-   *         and `ss1` only and never an ss2, so `require` would reject 100% of
-   *         that route's traffic regardless of what Paysera signs.
-   *       • No in-repo caller forwards the `ss3` field at all — the route
-   *         handlers and `payment-provider.ts` read `data`/`ss1`/`ss2` only —
-   *         so a Paysera project that signs with ss3 (which the vendor library
-   *         prefers over ss2 when both are present) is rejected under
-   *         `require`, and under `enforce` is silently skipped rather than
-   *         verified, landing on the ss1 gate as in rule 3.
-   *     Making `require` mean what it says needs the callers to forward `ss3`
-   *     and the redirect path to be exempted from the RSA requirement. Those
-   *     files are outside this change; nothing here promises when that lands.
-   *  4. `PAYSERA_SS2_MODE=off` is a documented break-glass for a Paysera key
+   *     `PAYSERA_SS2_MODE=require` closes this gap and is now genuinely
+   *     selectable (BC-QA-031-FOLLOWUP-8): every real webhook route forwards
+   *     both `ss2` AND `ss3` to this method (whichever field(s) the Paysera
+   *     project actually signs with are checked; ss3 wins when both are
+   *     present, per `RSA_SIGN_FIELDS` above), and
+   *     `POST /api/payments/verify-redirect` — the one caller that can never
+   *     carry an ss2/ss3, because Paysera's redirect querystring only ever
+   *     carries `data`+`ss1` — is exempted via the `modeOverride` parameter
+   *     below rather than by weakening this method's default behaviour for
+   *     every other, genuinely-webhook caller.
+   *  4. `modeOverride`, when passed, REPLACES `this.ss2Mode` for that single
+   *     call only — the instance-wide mode driven by `PAYSERA_SS2_MODE` is
+   *     untouched for every other call. The only caller that uses it today is
+   *     `payment-provider.ts#verifyAndParseRedirect`, which forces
+   *     `'enforce'` so a global `PAYSERA_SS2_MODE=require` cannot reject
+   *     `/verify-redirect` for lacking a signature it could never have
+   *     carried in the first place. ss1 (rule 1) stays an unconditional hard
+   *     gate regardless of `modeOverride`.
+   *  5. `PAYSERA_SS2_MODE=off` is a documented break-glass for a Paysera key
    *     rotation: it skips step 2 and falls back to ss1 only. It cannot make a
    *     callback easier to forge than it was before this change.
    */
-  async verifyCallback(callback: PayseraCallback): Promise<boolean> {
+  async verifyCallback(callback: PayseraCallback, modeOverride?: PayseraSs2Mode): Promise<boolean> {
     try {
       // (1) ss1 — hard gate, always, first.
       const expectedSs1 = this.generateSign(callback.data);
@@ -583,8 +586,13 @@ export class PayseraService {
       );
       const chosen = present.length > 0 ? present[present.length - 1] : undefined;
 
-      if (this.ss2Mode === 'off') {
-        logger.info('Callback signature verified (ss1); RSA check skipped (PAYSERA_SS2_MODE=off)');
+      // `modeOverride` (rule 4 above) lets a single call — currently only
+      // verify-redirect's — use a different effective mode than the
+      // instance-wide `this.ss2Mode` without touching that field at all.
+      const effectiveMode = modeOverride ?? this.ss2Mode;
+
+      if (effectiveMode === 'off') {
+        logger.info('Callback signature verified (ss1); RSA check skipped (mode=off)');
         return true;
       }
 
@@ -593,8 +601,8 @@ export class PayseraService {
         const reason = !chosen
           ? 'callback carries no ss2/ss3 signature'
           : 'no Paysera public key is configured';
-        if (this.ss2Mode === 'require') {
-          logger.warn(`Rejecting callback: PAYSERA_SS2_MODE=require but ${reason}`, {
+        if (effectiveMode === 'require') {
+          logger.warn(`Rejecting callback: effective PAYSERA_SS2_MODE=require but ${reason}`, {
             dataPrefix: callback.data.slice(0, 64),
           });
           return false;
@@ -670,8 +678,12 @@ export class PayseraService {
 
   /**
    * Handle payment callback: verify, parse, and return result
+   *
+   * `modeOverride`: see `verifyCallback`'s rule 4 — passed straight through,
+   * unused by default. `payment-provider.ts#verifyAndParseRedirect` is the
+   * only caller that supplies one.
    */
-  async handleCallback(callback: PayseraCallback): Promise<{
+  async handleCallback(callback: PayseraCallback, modeOverride?: PayseraSs2Mode): Promise<{
     orderId: string;
     status: 'pending' | 'success' | 'failed' | 'cancelled' | 'unknown';
     rawStatus: string;
@@ -687,7 +699,7 @@ export class PayseraService {
     try {
       // Verify signatures: ss1 (MD5, always) plus Paysera's RSA ss2/ss3 when the
       // callback carries one and a public key is available. See verifyCallback.
-      if (!await this.verifyCallback(callback)) {
+      if (!await this.verifyCallback(callback, modeOverride)) {
         throw new Error('Invalid callback signature');
       }
 
