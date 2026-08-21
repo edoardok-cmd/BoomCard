@@ -39,6 +39,7 @@ describe('Checkout Flow (Payment-First Onboarding)', () => {
           priceWeeklyEur: 399, // 3.99 EUR
           priceMonthlyEur: 999, // 9.99 EUR
           priceYearlyEur: 8999, // 89.99 EUR
+          cashbackRate: 5,
         },
       });
       testPlanId = plan.id;

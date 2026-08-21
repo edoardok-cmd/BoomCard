@@ -2,7 +2,7 @@ import { prisma } from '../../src/lib/prisma';
 import { PartnerStatus, PartnerRequestStatus } from '@prisma/client';
 import { createTestUser } from '../helpers/test-utils';
 import request from 'supertest';
-import app from '../../src/app';
+import { app } from '../../src/server';
 import jwt from 'jsonwebtoken';
 import { genTestPhone } from '../helpers/test-utils';
 
@@ -78,12 +78,14 @@ describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates ac
 
   describe('Spec §1.6 / §3.5 step 6: Reject invalidates activation links', () => {
     test('Setup: Create partner in PENDING/APPROVED status with unconsumed activation link', async () => {
-      // Create a partner in NEW status (onboarding pipeline)
+      // Create a partner in PENDING status (the schema default -- see
+      // prisma/schema.prisma; PartnerStatus has no NEW member) with a fresh
+      // onboarding-pipeline requestStatus.
       const partner = await prisma.partner.create({
         data: {
           businessName: 'Test Reject Link Invalidation Partner',
           category: 'restaurants',
-          status: PartnerStatus.NEW,
+          status: PartnerStatus.PENDING,
           requestStatus: PartnerRequestStatus.NEW,
           userId: partnerUser.id,
         },
@@ -136,7 +138,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates ac
 
       // Call POST /:id/reject (via API route)
       const response = await request(app)
-        .post(`/api/admin/partners/${partnerId}/reject`)
+        .post(`/api/admin/partner-requests/${partnerId}/reject`)
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send({
           reason: 'Test rejection for link invalidation',
@@ -199,14 +201,21 @@ describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates ac
     });
 
     test('Multiple unconsumed links should all be invalidated atomically', async () => {
-      // Setup: Create another partner with multiple links
+      // Setup: Create another partner with multiple links. Partner.userId is
+      // @unique (see prisma/schema.prisma), so this needs its own owner user
+      // rather than reusing partnerUser (already bound to the top-level partner).
+      const { user: partner2User } = await createTestUser({
+        email: `partner-user-2-${Date.now()}@test.local`,
+        firstName: 'Partner2',
+        lastName: 'Owner',
+      });
       const partner2 = await prisma.partner.create({
         data: {
           businessName: 'Test Multiple Links Partner',
           category: 'restaurants',
           status: PartnerStatus.PENDING,
           requestStatus: PartnerRequestStatus.APPROVED,
-          userId: partnerUser.id,
+          userId: partner2User.id,
         },
       });
       const partner2Id = partner2.id;
@@ -246,7 +255,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates ac
 
       // Reject the partner
       await request(app)
-        .post(`/api/admin/partners/${partner2Id}/reject`)
+        .post(`/api/admin/partner-requests/${partner2Id}/reject`)
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send({ reason: 'Test multiple links rejection' })
         .expect(200);
@@ -271,6 +280,8 @@ describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates ac
       await prisma.partnerStatusChange.deleteMany({ where: { partnerId: partner2Id } }).catch(() => {});
       await prisma.partnerRequestNote.deleteMany({ where: { partnerId: partner2Id } }).catch(() => {});
       await prisma.partner.delete({ where: { id: partner2Id } }).catch(() => {});
+      await prisma.refreshToken.deleteMany({ where: { userId: partner2User.id } }).catch(() => {});
+      await prisma.user.delete({ where: { id: partner2User.id } }).catch(() => {});
     });
 
     test('Already-rejected partner should not allow re-rejection via POST /:id/reject', async () => {
@@ -278,7 +289,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates ac
 
       // Try to reject again
       const response = await request(app)
-        .post(`/api/admin/partners/${partnerId}/reject`)
+        .post(`/api/admin/partner-requests/${partnerId}/reject`)
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send({ reason: 'Another rejection attempt' })
         .expect(400);
@@ -287,14 +298,20 @@ describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates ac
     });
 
     test('POST /partner-status with ARCHIVED should also invalidate links', async () => {
-      // Setup: Create a partner in ACTIVE status with an activation link (edge case)
+      // Setup: Create a partner in ACTIVE status with an activation link (edge case).
+      // Partner.userId is @unique, so this needs its own owner user too.
+      const { user: partner3User } = await createTestUser({
+        email: `partner-user-3-${Date.now()}@test.local`,
+        firstName: 'Partner3',
+        lastName: 'Owner',
+      });
       const partner3 = await prisma.partner.create({
         data: {
           businessName: 'Test Archive Link Invalidation Partner',
           category: 'restaurants',
           status: PartnerStatus.ACTIVE,
           requestStatus: PartnerRequestStatus.APPROVED,
-          userId: partnerUser.id,
+          userId: partner3User.id,
         },
       });
       const partner3Id = partner3.id;
@@ -309,7 +326,7 @@ describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates ac
 
       // Archive the partner via /partner-status (uses setPartnerStatus internally)
       const response = await request(app)
-        .patch(`/api/admin/partners/${partner3Id}/partner-status`)
+        .patch(`/api/admin/partner-requests/${partner3Id}/partner-status`)
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send({ status: PartnerStatus.ARCHIVED, reason: 'Test archive invalidation' })
         .expect(200);
@@ -324,6 +341,8 @@ describe('BC-ADMIN-SPEC-REAUDIT2-REJECT-LINK-INVALIDATE-1: Reject invalidates ac
       await prisma.activationLink.deleteMany({ where: { partnerId: partner3Id } }).catch(() => {});
       await prisma.partnerStatusChange.deleteMany({ where: { partnerId: partner3Id } }).catch(() => {});
       await prisma.partner.delete({ where: { id: partner3Id } }).catch(() => {});
+      await prisma.refreshToken.deleteMany({ where: { userId: partner3User.id } }).catch(() => {});
+      await prisma.user.delete({ where: { id: partner3User.id } }).catch(() => {});
     });
   });
 });

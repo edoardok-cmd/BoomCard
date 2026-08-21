@@ -764,10 +764,13 @@ describe('Admin Impersonation', () => {
       // Mock the auditLog.create to throw an error
       const originalCreate = prisma.auditLog.create;
       let auditCreateCalled = false;
+      // The mock always throws before producing a value, so it can never
+      // satisfy Prisma's fluent Prisma__AuditLogClient return shape -- cast
+      // to the real method type rather than loosen it to `any`.
       prisma.auditLog.create = jest.fn(async () => {
         auditCreateCalled = true;
         throw new Error('Simulated audit write failure');
-      });
+      }) as unknown as typeof prisma.auditLog.create;
 
       try {
         const res = await request(app)
@@ -834,10 +837,12 @@ describe('Admin Impersonation', () => {
       // Now mock auditLog.create to throw on the next call (for stop-impersonate)
       const originalCreate = prisma.auditLog.create;
       let auditCreateCallCount = 0;
+      // Same rationale as above: always-throws mock, cast to the real
+      // method type instead of widening to `any`.
       prisma.auditLog.create = jest.fn(async () => {
         auditCreateCallCount++;
         throw new Error('Simulated audit write failure on stop');
-      });
+      }) as unknown as typeof prisma.auditLog.create;
 
       try {
         const stopRes = await request(app)

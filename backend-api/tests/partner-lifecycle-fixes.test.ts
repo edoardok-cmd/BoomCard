@@ -11,7 +11,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/glo
 import request from 'supertest';
 import { prisma } from '../src/lib/prisma';
 import { app } from '../src/server';
-import { PartnerStatus, StickerStatus } from '@prisma/client';
+import { PartnerStatus, StickerStatus, UserRole } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { genTestPhone } from './helpers/test-utils';
 
@@ -44,7 +44,7 @@ const createdUserIds: string[] = [];
 /**
  * Helper to create a user with required fields
  */
-async function createTestUser(email: string, role: string = 'PARTNER') {
+async function createTestUser(email: string, role: UserRole = 'PARTNER') {
   const user = await prisma.user.create({
     data: {
       email,

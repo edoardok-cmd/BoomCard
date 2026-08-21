@@ -50,6 +50,7 @@
 import request from 'supertest';
 import { app } from '../../src/server';
 import { prisma } from '../../src/lib/prisma';
+import { BookingStatus } from '@prisma/client';
 import {
   createTestUser,
   createTestVenue,
@@ -1664,7 +1665,7 @@ describe('INV-RDM-079 — PATCH /api/bookings/partner/:id/status rejects transit
     const partnerA = await prisma.partner.findFirstOrThrow({ where: { userId: partnerAUserId } });
     partnerA079PartnerId = partnerA.id;
 
-    const makeBooking = (status: string) => prisma.booking.create({
+    const makeBooking = (status: BookingStatus) => prisma.booking.create({
       data: {
         userId: userAUserId,
         partnerId: partnerA079PartnerId,
@@ -1739,7 +1740,7 @@ describe('INV-RDM-080 — PATCH/DELETE /api/bookings/:id restricted to non-termi
     const partnerA = await prisma.partner.findFirstOrThrow({ where: { userId: partnerAUserId } });
     partnerA080PartnerId = partnerA.id;
 
-    const makeBooking = (status: string, tag: string) => prisma.booking.create({
+    const makeBooking = (status: BookingStatus, tag: string) => prisma.booking.create({
       data: {
         userId: userAUserId,
         partnerId: partnerA080PartnerId,

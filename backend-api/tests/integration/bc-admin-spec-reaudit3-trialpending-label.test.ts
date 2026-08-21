@@ -103,13 +103,22 @@ async function createSubscriber() {
 }
 
 async function grantPermission(userId: string, permissions: string[]) {
-  // Create or update the permission record
-  for (const permission of permissions) {
+  // There is no `Permission.userId`/`permission` column -- permissions are
+  // granted per-user via UserPermissionOverride against the seeded
+  // Permission table (BC-QA-042; see e.g.
+  // tests/integration/bc-admin-audit-fix-004-cashback.test.ts for the same
+  // pattern).
+  for (const key of permissions) {
+    const permission = await prisma.permission.findUnique({ where: { key } });
+    if (!permission) {
+      throw new Error(`${key} permission not found — run seed-permissions first`);
+    }
     try {
-      await prisma.permission.create({
+      await prisma.userPermissionOverride.create({
         data: {
           userId,
-          permission,
+          permissionId: permission.id,
+          allow: true,
         },
       });
     } catch (e) {

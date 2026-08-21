@@ -25,36 +25,9 @@
     "src/routes/adminAdmins.routes.ts",
     "src/routes/adminTransactions.routes.ts",
 
-    // BC-QA-060-FOLLOWUP-2 (tests/ files, 30):
-    "tests/bc-admin-spec-reaudit-pending-super-hygiene.test.ts",
-    "tests/bc-admin-spec-reaudit3-expire-legacy-locked.test.ts",
-    "tests/bc-admin-spec-reaudit3-partner-reject-patch.test.ts",
-    "tests/helpers/test-utils.ts",
-    "tests/integration/admin-help-change-bucket.test.ts",
-    "tests/integration/adminSubscriptionsHistory.test.ts",
-    "tests/integration/bc-admin-audit-fix-008.integration.test.ts",
-    "tests/integration/bc-admin-contract-notify.integration.test.ts",
-    "tests/integration/bc-admin-spec-reaudit-ticket-shortref-1.integration.test.ts",
-    "tests/integration/bc-admin-spec-reaudit2-bounce-shortref-width-1.integration.test.ts",
-    "tests/integration/bc-admin-spec-reaudit2-reject-link-invalidate.test.ts",
-    "tests/integration/bc-admin-spec-reaudit2-void-actor-fallback.test.ts",
-    "tests/integration/bc-admin-spec-reaudit3-trialpending-label.test.ts",
-    "tests/integration/bc-admin-spec-reaudit9-ptype-null-500.test.ts",
-    "tests/integration/bc-align-partner-audit-fixes.integration.test.ts",
-    "tests/integration/bc-align-partner.integration.test.ts",
-    "tests/integration/bc-qa-035-onboard-phone-required.test.ts",
-    "tests/integration/bc-qua-020-currency-mode.integration.test.ts",
-    "tests/integration/checkout-flow.test.ts",
-    "tests/integration/help-ticket-withdraw.test.ts",
-    "tests/integration/impersonation.test.ts",
-    "tests/integration/redemption-cross-scope-sweep.test.ts",
-    "tests/integration/stickers-permission-gating.test.ts",
-    "tests/integration/user-acl-matrix-sweep.test.ts",
-    "tests/partner-lifecycle-fixes.test.ts",
-    "tests/unit/adminPayoutsBulkApprove.test.ts",
-    "tests/unit/auth.deletedGuards.test.ts",
-    "tests/unit/bc-admin-audit-fix-002.test.ts",
-    "tests/unit/section5.coverage.test.ts",
-    "tests/unit/section7.autoApprove.test.ts"
+    // BC-QA-060-FOLLOWUP-2 (tests/ files): 1 file intentionally left
+    // excluded here -- it's owned by a separate, currently in-flight task
+    // fixing an unrelated jest automock issue in the same file.
+    "tests/unit/auth.deletedGuards.test.ts"
   ]
 }

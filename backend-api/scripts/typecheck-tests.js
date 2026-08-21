@@ -40,7 +40,18 @@ const path = require('path');
 
 const BACKEND_ROOT = path.join(__dirname, '..');
 const TSCONFIG_PATH = path.join(BACKEND_ROOT, 'tsconfig.test.json');
-const TSC_BIN = path.join(BACKEND_ROOT, 'node_modules', '.bin', 'tsc');
+// Prefer a local install, but fall back to Node's own module resolution
+// (which correctly walks up to a hoisted install, e.g. an npm/pnpm
+// workspace root) so this doesn't silently no-op with "0 diagnostics" (or
+// hard-fail with a confusing "no recognized diagnostics" error) in a
+// monorepo layout where `typescript` isn't vendored directly under this
+// package's own node_modules/.bin.
+function resolveTscBin() {
+  const localBin = path.join(BACKEND_ROOT, 'node_modules', '.bin', 'tsc');
+  if (fs.existsSync(localBin)) return localBin;
+  return require.resolve('typescript/bin/tsc', { paths: [BACKEND_ROOT] });
+}
+const TSC_BIN = resolveTscBin();
 
 function loadKnownBrokenFiles() {
   const raw = fs.readFileSync(TSCONFIG_PATH, 'utf8');

@@ -15,7 +15,11 @@
  */
 
 const findManyMock        = jest.fn();
-const updateMock          = jest.fn(async () => ({}));
+// The (..._args: any[]) rest param (rather than a zero-arg () =>) keeps
+// updateMock.mock.calls[n] typed as any[] instead of TS inferring the
+// narrower `[]` tuple from a zero-parameter implementation -- the latter
+// makes `call[0]` (used throughout this file) a type error.
+const updateMock          = jest.fn(async (..._args: any[]) => ({}));
 const subFindFirstMock    = jest.fn();
 const findUniqueMock      = jest.fn();
 const executeTransferMock = jest.fn();

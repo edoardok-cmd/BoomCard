@@ -340,7 +340,14 @@ describe('QR/location write routes — requirePermission stickers.write gating',
       for (const testCase of testCases) {
         const req = request(app)[testCase.method as 'post' | 'put'](testCase.path);
         const res = await req.send(testCase.body);
-        expect(res.status).toBe(403, `${testCase.method.toUpperCase()} ${testCase.path} should return 403`);
+        // Jest's `toBe` takes a single argument (unlike Jasmine/Chai) -- assert
+        // with an explicit message so a failure in this loop still names which
+        // case failed, instead of silently widening the assertion.
+        if (res.status !== 403) {
+          throw new Error(
+            `${testCase.method.toUpperCase()} ${testCase.path} should return 403, got ${res.status}`
+          );
+        }
         expect(res.body.error).toMatch(/Missing permission/i);
       }
     });

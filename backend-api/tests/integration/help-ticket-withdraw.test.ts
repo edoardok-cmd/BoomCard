@@ -367,8 +367,10 @@ describe('POST /api/help/tickets/:id/cancel (User Withdrawal)', () => {
     });
     expect(audit).toBeDefined();
     expect(audit?.action).toBe('ticket.withdraw');
-    expect(audit?.before?.status).toBe(originalStatus);
-    expect(audit?.after?.status).toBe('CANCELLED');
+    // before/after are Prisma Json (JsonValue); assert on shape rather than
+    // a narrowed `.status` property TS can't see through a Json type.
+    expect(audit?.before).toMatchObject({ status: originalStatus });
+    expect(audit?.after).toMatchObject({ status: 'CANCELLED' });
   });
 });
 
@@ -542,7 +544,9 @@ describe('POST /api/partner/help/tickets/:id/cancel (Partner Withdrawal)', () =>
     });
     expect(audit).toBeDefined();
     expect(audit?.action).toBe('ticket.withdraw');
-    expect(audit?.before?.status).toBe(originalStatus);
-    expect(audit?.after?.status).toBe('CANCELLED');
+    // before/after are Prisma Json (JsonValue); assert on shape rather than
+    // a narrowed `.status` property TS can't see through a Json type.
+    expect(audit?.before).toMatchObject({ status: originalStatus });
+    expect(audit?.after).toMatchObject({ status: 'CANCELLED' });
   });
 });
