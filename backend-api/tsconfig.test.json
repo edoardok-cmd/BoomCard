@@ -20,11 +20,6 @@
     "node_modules",
     "dist",
 
-    // BC-QA-060-FOLLOWUP-1 (src/ files, 3):
-    "src/middleware/audit.middleware.ts",
-    "src/routes/adminAdmins.routes.ts",
-    "src/routes/adminTransactions.routes.ts",
-
     // BC-QA-060-FOLLOWUP-2 (tests/ files): 1 file intentionally left
     // excluded here -- it's owned by a separate, currently in-flight task
     // fixing an unrelated jest automock issue in the same file.

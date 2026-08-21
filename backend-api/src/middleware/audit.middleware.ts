@@ -118,14 +118,13 @@ export function deriveActionAndObject(req: AuthRequest): { action: string; objec
 //
 // Route handlers can override derived values by setting fields on req before calling
 // res.json:  req.auditAction, req.auditObjectType, req.auditObjectId, req.skipAudit
-declare module 'express-serve-static-core' {
-  interface Request {
-    auditAction?: string;
-    auditObjectType?: string;
-    auditObjectId?: string | null;
-    skipAudit?: boolean;
-  }
-}
+//
+// These fields are declared on the Express `Request` type in the single canonical
+// augmentation at src/types/express.d.ts (BC-QA-060-FOLLOWUP-1) — do not re-declare
+// them here. A duplicate `declare module 'express-serve-static-core'` block used to
+// live in this file too; two independent copies of the same augmentation is exactly
+// the kind of drift that risks the two copies silently diverging, so this file now
+// defers to the single canonical declaration instead of maintaining its own.
 
 export const auditMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
   if (req.method === 'GET') {

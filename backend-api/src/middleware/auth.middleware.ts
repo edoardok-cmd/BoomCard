@@ -29,11 +29,6 @@ export interface AuthRequest extends Request {
     aro?: true;
   };
   file?: any; // Multer file upload
-  // Audit middleware overrides — allow routes to customise the auto-logged audit entry.
-  skipAudit?: boolean;
-  auditAction?: string;
-  auditObjectType?: string;
-  auditObjectId?: string | null;
 }
 
 export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction) => {
