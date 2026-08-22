@@ -147,6 +147,86 @@ check "regular file in the way exits 1" "$RC" "1"
 run c8 --bogus
 check "unknown argument exits 1" "$RC" "1"
 
+# --- 10. leak OUTSIDE the hardcoded LINK_PATHS is still detected ------------
+# BC-QA-061-task-r1 F1: `.gitignore`'s `**/.claude/reviews` hides a stray dir
+# from `git status` at EVERY level, so detection must not be a fixed list.
+make_repo c10 >/dev/null
+run c10                                     # establish the three links
+mkdir -p "$WORK/c10/repo/partner-dashboard/.claude/reviews"
+printf 'stray\n' > "$WORK/c10/repo/partner-dashboard/.claude/reviews/ZZ-FUTURE-LEAK-impl-r1.md"
+run c10 --check
+check "leak in an unlisted subproject fails --check" "$RC" "2"
+case "$OUT" in *partner-dashboard*) ok "names the unlisted subproject" ;;
+               *) bad "did not name the unlisted subproject" ;; esac
+rm -rf "$WORK/c10/repo/partner-dashboard/.claude/reviews"
+run c10 --check
+check "--check exits 0 again once the stray is gone" "$RC" "0"
+
+# --- 11. fully_represented() is load-bearing --------------------------------
+# BC-QA-061-task-r1 F2: this is the last gate before the rm -rf recipe, and the
+# only one that can catch a concurrent write to the shared harness between the
+# copy phase and verification. Simulate exactly that via the test seam.
+make_repo c11 >/dev/null
+H11="$(harness_of c11)"; L11="$WORK/c11/repo/backend-api/.claude/reviews"
+mkdir -p "$L11"
+printf 'only copy of this review\n' > "$L11/ZZ-ONLY-impl-r1.md"
+cat > "$WORK/c11/hook.sh" <<HOOK
+rm -f '$H11/ZZ-ONLY-impl-r1.md'
+HOOK
+OUT="$(AGENTX_REVIEWS_DIR="$H11" LINK_REVIEWS_TEST_HOOK="$WORK/c11/hook.sh" \
+       "$WORK/c11/repo/scripts/link-claude-reviews.sh" --reconcile 2>&1)"; RC=$?
+check "concurrent harness deletion blocks removal" "$RC" "2"
+case "$OUT" in *"rm -rf"*) bad "printed rm -rf despite a missing harness copy" ;;
+               *) ok "no rm -rf when a file is not represented" ;; esac
+case "$OUT" in *"NOT REPRESENTED"*) ok "names the unrepresented file" ;;
+               *) bad "did not report the unrepresented file" ;; esac
+[ -f "$L11/ZZ-ONLY-impl-r1.md" ] && ok "leaked original still intact" \
+                                 || bad "leaked original was destroyed"
+
+# --- 12. rename advice matches the real gate grammar ------------------------
+# BC-QA-061-task-r1 F3: `-z` preserves gate visibility ONLY if the resulting
+# name parses. 7 of the 9 files BC-QA-061 routed to an inert copy were `.md`
+# files the old code would have advised `-z` for.
+make_repo c12 >/dev/null
+H12="$(harness_of c12)"; L12="$WORK/c12/repo/backend-api/.claude/reviews"
+mkdir -p "$L12"
+printf 'harness A\n' > "$H12/BC-QA-023-task-r4.md"
+printf 'leaked A\n'  > "$L12/BC-QA-023-task-r4.md"
+printf 'harness B\n' > "$H12/BC-ADMIN-SPEC-REAUDIT-A-r1.md"
+printf 'leaked B\n'  > "$L12/BC-ADMIN-SPEC-REAUDIT-A-r1.md"
+run c12 --reconcile
+case "$OUT" in *"BC-QA-023-task-r4-z.md"*) ok "gate-shaped name advised as -z shard" ;;
+               *) bad "gate-shaped name not advised as -z" ;; esac
+case "$OUT" in *"BC-ADMIN-SPEC-REAUDIT-A-r1-z.md"*)
+                 bad "advised -z for a name the gate cannot parse" ;;
+               *) ok "no -z advised for a non-gate-shaped name" ;; esac
+case "$OUT" in *"BC-ADMIN-SPEC-REAUDIT-A-r1-boomcard-copy.md"*)
+                 ok "non-gate-shaped name routed to an inert copy" ;;
+               *) bad "non-gate-shaped name not routed to an inert copy" ;; esac
+
+# --- 13. same basename in two leaked dirs gets distinct targets -------------
+# BC-QA-061-task-r1 F4: identical targets meant pasting both overwrote the first.
+make_repo c13 >/dev/null
+H13="$(harness_of c13)"
+mkdir -p "$WORK/c13/repo/backend-api/.claude/reviews" \
+         "$WORK/c13/repo/boomcard-mobile/.claude/reviews"
+printf 'harness\n' > "$H13/ZZ-X-impl-r1.md"
+printf 'from backend\n' > "$WORK/c13/repo/backend-api/.claude/reviews/ZZ-X-impl-r1.md"
+printf 'from mobile\n'  > "$WORK/c13/repo/boomcard-mobile/.claude/reviews/ZZ-X-impl-r1.md"
+run c13 --reconcile
+NTARGETS="$(printf '%s\n' "$OUT" | grep -c "$H13/ZZ-X-impl-r1-")"
+NUNIQUE="$(printf '%s\n' "$OUT" | grep -o "ZZ-X-impl-r1-[a-z]\.md" | sort -u | wc -l | tr -d ' ')"
+check "two dirs, same basename -> two targets" "$NTARGETS" "2"
+check "those two targets are distinct" "$NUNIQUE" "2"
+
+# --- 14. --help renders from the sentinel block -----------------------------
+run c13 --help
+check "--help exits 0" "$RC" "0"
+case "$OUT" in *"Exit codes:"*) ok "--help includes the exit-code table" ;;
+               *) bad "--help lost its content" ;; esac
+case "$OUT" in *"set -euo"*) bad "--help spilled executable lines" ;;
+               *) ok "--help contains no executable lines" ;; esac
+
 echo
 echo "passed: $PASS   failed: $FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

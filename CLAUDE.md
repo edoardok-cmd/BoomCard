@@ -215,10 +215,19 @@ the ones with no counterpart in the harness, verifies each copy byte-for-byte,
 and **never deletes or overwrites anything**. It then lists what it could not
 decide automatically:
 
-- **same name, different content** — land the leaked copy as `<base>-z.md`. That
-  still parses to the same task and round, so `pick_latest` groups it with its
-  sibling and the round's verdict aggregates strictest-wins, keeping both
-  documents readable by the gate.
+- **same name, different content** — the reconciler prints the exact `cp` to run,
+  and which of two landings applies depends on the basename:
+  - If the name is a **review round** the gate can parse (`…-impl-r<N>.md`,
+    `…-task-r<N>.md`, `…-reaudit-r<N>.md`), it lands as `<base>-<letter>.md`.
+    That still parses to the same task and round, so `pick_latest` groups it
+    with its sibling and the round's verdict aggregates strictest-wins, keeping
+    both documents readable by the gate.
+  - If the name is **not** a review round — e.g. the per-area
+    `BC-ADMIN-SPEC-REAUDIT-A-r1.md` shape, or a handover note — no suffix can
+    make it one. It lands as an inert `…-boomcard-copy.md`: preserved and
+    readable, but not parsed by any verdict engine. Do not rename it into a
+    round shape it never had. (7 of the 9 inert files BC-QA-061 landed are
+    exactly this case.)
 - **nested files** — the harness reviews dir is flat and the gate parses
   basenames, so these need a deliberate destination.
 
