@@ -138,14 +138,28 @@ discover_leaks() { _find_reviews_paths d; }
 # excluded here because the main loop already repairs those; this covers every
 # OTHER location, where we only report (repointing could silently orphan files
 # already written to the wrong target).
+#
+# F10(a): compare RESOLVED PHYSICAL paths, not link text. A relative symlink
+# (`../../.claude/reviews`) or one crossing another symlinked parent can point
+# at the harness while its readlink output differs from $REVIEWS_DIR verbatim.
+# Comparing the raw text reported such a link as misdirected and exited 2 -- a
+# false "writes land outside the harness" in the check recommended for CI.
+_physical() {  # physical path of $1, or empty if it cannot be resolved
+  ( cd "$1" 2>/dev/null && pwd -P ) || true
+}
+HARNESS_PHYS="$(_physical "$REVIEWS_DIR")"
+
 discover_misdirected() {
+  local phys
   while IFS= read -r -d '' rel; do
-    local l; l=$(cd "$REPO_ROOT" && readlink "$rel" 2>/dev/null || true)
-    [ "$l" = "$REVIEWS_DIR" ] && continue
+    phys="$(_physical "$REPO_ROOT/$rel")"
+    # Empty phys = dangling or unreadable link; that is misdirected too.
+    [ -n "$phys" ] && [ "$phys" = "$HARNESS_PHYS" ] && continue
     local known=1 k
     for k in "${LINK_PATHS[@]}"; do [ "$k" = "$rel" ] && known=0 && break; done
     [ "$known" -eq 0 ] && continue
-    printf '%s\0' "$rel|$l"
+    local shown; shown=$(cd "$REPO_ROOT" && readlink "$rel" 2>/dev/null || true)
+    printf '%s\0' "$rel|${shown:-<unreadable>}"
   done < <(_find_reviews_paths l)
 }
 
@@ -181,12 +195,12 @@ gate_parseable() {
 # original is represented and stops being flagged. A name-only test would keep
 # reporting it forever and the removal step could never be reached.
 HASH_INDEX=""
-# MUST end with an unconditional success. Under `set -e`, an EXIT trap whose
-# last command fails overrides the script's exit status with 1 -- which would
-# make every successful run look like a failure to a CI check.
-# Capture the real status FIRST and re-exit with it, so the trap can never
-# substitute its own. (Before this, the trap ended in `return 0`; under `set -e`
-# a trap whose last command FAILS overrides the script's status with 1.)
+# MUST NOT let its own last command decide the script's exit status. Under
+# `set -e` an EXIT trap whose last command fails overrides the status with 1,
+# which would make every successful run look like a failure to a CI check. This
+# one therefore captures the real status first and re-exits with it explicitly.
+# (An earlier version ended in `return 0`, which avoided the override but also
+# discarded any status the trap itself might have clobbered.)
 #
 # KNOWN LIMITATION (BC-QA-061-task-r2 F7) - this does NOT fix the `set -u` case
 # on /bin/bash 3.2, the system bash on macOS. Measured there:
@@ -199,7 +213,9 @@ HASH_INDEX=""
 # means running under bash >= 4 (shebang change) or restructuring the body into
 # a subshell - both larger than this, and deliberately not done here. Net
 # effect while it stands: a `set -u` abort can report exit 0, i.e. "no leak"
-# over a crashed run. The test suite catches that class (5 red).
+# over a crashed run. The test suite does catch the class: injecting an unbound
+# variable here turned 8 of the 51 cases red when measured on 2026-08-22. Treat
+# that figure as a dated observation, not an invariant - it moves with the suite.
 cleanup_tmp() {
   local rc=$?
   [ -n "$HASH_INDEX" ] && rm -f "$HASH_INDEX"
@@ -253,7 +269,13 @@ propose_target() {
   local base="${src_base%.md}"
   local cand L
   [ -n "$PROPOSED" ] || PROPOSED="$(mktemp)"
-  if [ "$base" != "$src_base" ]; then
+  # Every safety guard below carries a trailing `GUARD:<id>` marker (written as
+  # a comment on the guard's own line). The guard sweep in
+  # test-link-claude-reviews.sh enumerates those markers from this file, refuses
+  # to pass if any is unregistered, and proves each one load-bearing by mutating
+  # it and requiring the suite to go red. Adding a guard here without registering
+  # it turns the suite red by construction. See "Guard sweep" in that file.
+  if [ "$base" != "$src_base" ]; then   # GUARD:shard-branch-requires-md
     for L in z y x w v u t s r q; do
       cand="$base-$L.md"
       # DO NOT "correct" this to `gate_parseable "$src_base"`. The question is
@@ -263,16 +285,20 @@ propose_target() {
       # does not (NAME_RE's shard group takes a SINGLE letter). Testing the
       # source there would advise `-z-z` and the operator would land a
       # gate-invisible document believing it visible -- F3's exact failure mode,
-      # on a shape BC-QA-061 created 14 of. Round 1's fix text said "test the
-      # basename", which reads like the source; it is the target. Pinned by
-      # test 15.
-      gate_parseable "$cand" || continue
+      # on a shape this repo's review trail contains several of (a cross-repo
+      # count, not checkable from here). Round 1's fix text said "test the
+      # basename", which reads like the source; it is the target.
+      # Pinned by: "no -z-z advised for an already-sharded source".
+      gate_parseable "$cand" || continue   # GUARD:shard-target-must-parse
       # Never propose a destination that already exists: the printed command is
       # a `cp`, so a taken name is an instruction to overwrite a review file --
       # the one thing the DATA-SAFETY RULE promises never to happen. Walks to
-      # the next letter instead. Pinned by test 16.
-      [ -e "$REVIEWS_DIR/$cand" ] && continue
-      grep -qxF "$cand" "$PROPOSED" && continue
+      # the next letter instead.
+      # Pinned by: "did not propose an existing harness file as target".
+      [ -e "$REVIEWS_DIR/$cand" ] && continue   # GUARD:shard-target-free-in-harness
+      # Same name must not be handed out twice in one run (two leaked dirs
+      # holding the same basename). Pinned by: "those two targets are distinct".
+      grep -qxF "$cand" "$PROPOSED" && continue   # GUARD:shard-target-unused-this-run
       printf '%s\n' "$cand" >> "$PROPOSED"; PROPOSED_TARGET="$cand"; return 0
     done
   fi
@@ -284,10 +310,17 @@ propose_target() {
   while :; do
     if [ "$n" -eq 0 ]; then cand="$base-boomcard-copy.md"; else cand="$base-boomcard-copy-$n.md"; fi
     [ "$base" = "$src_base" ] && { if [ "$n" -eq 0 ]; then cand="$src_base.boomcard-copy"; else cand="$src_base.boomcard-copy-$n"; fi; }
-    if [ ! -e "$REVIEWS_DIR/$cand" ] && ! grep -qxF "$cand" "$PROPOSED"; then
-      printf '%s\n' "$cand" >> "$PROPOSED"; PROPOSED_TARGET="$cand"; return 0
-    fi
     n=$((n + 1))
+    # The inert branch needs the SAME two guarantees as the shard branch, and
+    # they are just as reachable: the harness already holds several
+    # `-boomcard-copy.md` files, so a re-leak of one of those basenames lands
+    # here. Kept as two separate single-line guards so the guard sweep can
+    # mutate each independently.
+    # Pinned by: "inert target does not overwrite an existing harness file".
+    [ -e "$REVIEWS_DIR/$cand" ] && continue     # GUARD:inert-target-free-in-harness
+    # Pinned by: "inert targets are distinct across two leaked dirs".
+    grep -qxF "$cand" "$PROPOSED" && continue   # GUARD:inert-target-unused-this-run
+    printf '%s\n' "$cand" >> "$PROPOSED"; PROPOSED_TARGET="$cand"; return 0
   done
 }
 
@@ -404,6 +437,29 @@ while IFS= read -r -d '' entry; do
   misdirected+=("$entry")
 done < <(discover_misdirected)
 
+# F10(c): a misdirected link is an unresolved leak, so NO mode may report
+# success while one exists - including --reconcile, which used to exit 0 after
+# reconciling a directory leak even with a misdirected symlink still present.
+# Called immediately before every success exit.
+exit_if_misdirected() {
+  [ ${#misdirected[@]} -gt 0 ] || return 0
+  echo "MISDIRECTED REVIEW LINK(S) - review writes land outside the harness." >&2
+  echo >&2
+  echo "These paths are symlinks pointing somewhere other than the harness, so" >&2
+  echo "files written through them are invisible to every verdict engine just as" >&2
+  echo "a stray directory would be. They are NOT repointed automatically: their" >&2
+  echo "current target may already hold review files that would be orphaned." >&2
+  echo >&2
+  for entry in "${misdirected[@]}"; do
+    echo "  ${entry%%|*}  ->  ${entry##*|}" >&2
+  done
+  echo >&2
+  echo "Move anything already written to those targets into the harness (the" >&2
+  echo "reconciler does NOT do it for you - it only handles real directories)," >&2
+  echo "then remove the symlink and re-run this script." >&2
+  exit 2
+}
+
 is_leaked() {
   local needle="$1" l
   for l in ${leaked+"${leaked[@]}"}; do [ "$l" = "$needle" ] && return 0; done
@@ -424,7 +480,10 @@ for rel in "${LINK_PATHS[@]}"; do
 
   if [ -L "$path" ]; then
     current="$(readlink "$path")"
-    if [ "$current" = "$REVIEWS_DIR" ]; then
+    # F10(a), same class as discover_misdirected: compare RESOLVED paths. A
+    # relative link that resolves to the harness is correct; comparing link
+    # text would report it WRONG (exit 4 under --check) and needlessly relink.
+    if [ -n "$(_physical "$path")" ] && [ "$(_physical "$path")" = "$HARNESS_PHYS" ]; then
       echo "  ok     $rel"; ok=$((ok + 1)); continue
     fi
     if [ "$MODE" = "check" ]; then
@@ -518,6 +577,8 @@ if [ ${#leaked[@]} -gt 0 ]; then
     echo
     for rel in "${leaked[@]}"; do echo "  rm -rf '$REPO_ROOT/$rel'"; done
     echo "  ${ENVPFX}$SELF"
+    echo
+    exit_if_misdirected
     exit 0
   fi
 
@@ -547,34 +608,23 @@ if [ ${#leaked[@]} -gt 0 ]; then
   exit 2
 fi
 
-if [ ${#misdirected[@]} -gt 0 ]; then
-  echo "MISDIRECTED REVIEW LINK(S) - review writes land outside the harness." >&2
-  echo >&2
-  echo "These paths are symlinks pointing somewhere other than the harness, so" >&2
-  echo "files written through them are invisible to every verdict engine just as" >&2
-  echo "a stray directory would be. They are NOT repointed automatically: their" >&2
-  echo "current target may already hold review files that would be orphaned." >&2
-  echo >&2
-  for entry in "${misdirected[@]}"; do
-    echo "  ${entry%%|*}  ->  ${entry##*|}" >&2
-  done
-  echo >&2
-  echo "Reconcile anything already written to those targets into the harness," >&2
-  echo "then remove the symlink and re-run this script." >&2
-  exit 2
-fi
-
 if [ "$MODE" = "check" ]; then
   if [ "$wrong" -gt 0 ]; then
     echo "CHECK FAILED: $wrong link(s) missing or pointing elsewhere; $ok correct." >&2
     echo "Repair with:  ${ENVPFX}$SELF" >&2
     exit 4
   fi
+  exit_if_misdirected
+  # F10(b): scoped, not categorical. The scan covers real directories and
+  # symlinks named `.claude/reviews`, outside the pruned trees, in the forms
+  # `_find_reviews_paths` recognises - not "nothing can possibly be stray".
   echo "CHECK PASSED: all $ok managed link(s) point at the harness reviews dir,"
-  echo "and no stray .claude/reviews directory exists anywhere in the repo."
+  echo "and the repo-wide scan found no stray or misdirected .claude/reviews"
+  echo "path outside the pruned trees (node_modules, .git, build output, ...)."
   exit 0
 fi
 
+exit_if_misdirected
 echo "Summary: $ok already correct, $created created, $repaired repaired."
-echo "All review writes under this repo now land in the harness reviews dir."
+echo "All review writes through the managed paths now land in the harness."
 exit 0

@@ -11,12 +11,20 @@
 # Fully self-contained: builds a throwaway repo and a throwaway harness under
 # $TMPDIR for every case. Never touches the real repo or the real harness.
 #
-# Usage:  ./scripts/test-link-claude-reviews.sh
+# Usage:  ./scripts/test-link-claude-reviews.sh          # cases + guard sweep
+#         ./scripts/test-link-claude-reviews.sh --core   # cases only
 # Exit:   0 all pass, 1 otherwise.
+#
+# `--core` exists so the guard sweep at the bottom can re-run the case suite
+# against a MUTATED copy of the script without recursing into itself. The copy
+# under test is selected with LINK_REVIEWS_SUITE_TARGET.
 
 set -uo pipefail
 
-SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/link-claude-reviews.sh"
+CORE_ONLY=0
+[ "${1:-}" = "--core" ] && CORE_ONLY=1
+
+SCRIPT="${LINK_REVIEWS_SUITE_TARGET:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/link-claude-reviews.sh}"
 PASS=0; FAIL=0
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -295,7 +303,184 @@ check "concurrent harness replacement blocks removal" "$RC" "2"
 case "$OUT" in *"rm -rf"*) bad "printed rm -rf despite replaced harness content" ;;
                *) ok "no rm -rf when harness content was replaced" ;; esac
 
+# --- 19. the INERT branch must not overwrite an existing harness file -------
+# BC-QA-061-task-r3 F9, same class as F5b but the other branch. Reachable: the
+# harness holds several `-boomcard-copy.md` files already.
+make_repo c19 >/dev/null
+H19="$(harness_of c19)"; L19="$WORK/c19/repo/backend-api/.claude/reviews"
+mkdir -p "$L19"
+printf 'harness per-area\n'  > "$H19/BC-ADMIN-SPEC-REAUDIT-A-r1.md"
+printf 'existing inert\n'    > "$H19/BC-ADMIN-SPEC-REAUDIT-A-r1-boomcard-copy.md"
+printf 'leaked per-area\n'   > "$L19/BC-ADMIN-SPEC-REAUDIT-A-r1.md"
+run c19 --reconcile
+case "$OUT" in *"BC-ADMIN-SPEC-REAUDIT-A-r1-boomcard-copy.md'"*)
+       bad "inert target does not overwrite an existing harness file" ;;
+     *) ok "inert target does not overwrite an existing harness file" ;; esac
+case "$OUT" in *"BC-ADMIN-SPEC-REAUDIT-A-r1-boomcard-copy-1.md"*)
+       ok "inert branch walks to the next free suffix" ;;
+     *) bad "inert branch walks to the next free suffix" ;; esac
+grep -q 'existing inert' "$H19/BC-ADMIN-SPEC-REAUDIT-A-r1-boomcard-copy.md" \
+  && ok "existing inert copy untouched" || bad "existing inert copy was modified"
+
+# --- 20. inert targets are distinct across two leaked dirs ------------------
+make_repo c20 >/dev/null
+H20="$(harness_of c20)"
+mkdir -p "$WORK/c20/repo/backend-api/.claude/reviews" \
+         "$WORK/c20/repo/boomcard-mobile/.claude/reviews"
+printf 'harness\n' > "$H20/ZZ-AREA-A-r1.md"
+printf 'backend\n' > "$WORK/c20/repo/backend-api/.claude/reviews/ZZ-AREA-A-r1.md"
+printf 'mobile\n'  > "$WORK/c20/repo/boomcard-mobile/.claude/reviews/ZZ-AREA-A-r1.md"
+run c20 --reconcile
+NIN="$(printf '%s\n' "$OUT" | grep -o 'ZZ-AREA-A-r1-boomcard-copy[^ ]*\.md' | sort -u | wc -l | tr -d ' ')"
+check "inert targets are distinct across two leaked dirs" "$NIN" "2"
+
+# --- 21. a RELATIVE link that resolves to the harness is not a leak ---------
+# BC-QA-061-task-r3 F10(a): comparing link TEXT reported this as misdirected
+# and exited 2, a false positive in the check recommended for CI.
+make_repo c21 >/dev/null
+run c21
+mkdir -p "$WORK/c21/repo/partner-dashboard/.claude"
+( cd "$WORK/c21/repo/partner-dashboard/.claude" \
+  && ln -s ../../../harness reviews )
+run c21 --check
+check "relative link resolving to the harness is accepted" "$RC" "0"
+case "$OUT" in *MISDIRECTED*) bad "false MISDIRECTED on a relative link" ;;
+               *) ok "no false MISDIRECTED on a relative link" ;; esac
+
+# --- 22. --reconcile must not report success while a link is misdirected ----
+# BC-QA-061-task-r3 F10(c): it used to exit 0 after reconciling a directory
+# leak even with a misdirected symlink still present.
+make_repo c22 >/dev/null
+H22="$(harness_of c22)"
+mkdir -p "$WORK/c22/repo/backend-api/.claude/reviews" \
+         "$WORK/c22/repo/partner-dashboard/.claude" "$WORK/c22/elsewhere"
+printf 'unique\n' > "$WORK/c22/repo/backend-api/.claude/reviews/ZZ-OK-impl-r1.md"
+ln -s "$WORK/c22/elsewhere" "$WORK/c22/repo/partner-dashboard/.claude/reviews"
+run c22 --reconcile
+check "reconcile does not exit 0 while a link is misdirected" "$RC" "2"
+case "$OUT" in *MISDIRECTED*) ok "reconcile reports the misdirected link" ;;
+               *) bad "reconcile did not report the misdirected link" ;; esac
+
+# --- 23. a non-.md file is never renamed INTO a gate-parseable round --------
+# Found by the guard sweep itself (guard `shard-branch-requires-md` reported
+# not-load-bearing). The shard branch is gated on the name ending in `.md`.
+# Without that gate, an extensionless `foo-task-r1` would be proposed as
+# `foo-task-r1-z.md` -- inventing a review round out of a file that never was
+# one, and landing it gate-visible. With it, the file lands inert.
+make_repo c23 >/dev/null
+H23="$(harness_of c23)"; L23="$WORK/c23/repo/backend-api/.claude/reviews"
+mkdir -p "$L23"
+printf 'harness\n' > "$H23/foo-task-r1"
+printf 'leaked\n'  > "$L23/foo-task-r1"
+run c23 --reconcile
+case "$OUT" in *"foo-task-r1-z.md"*)
+       bad "non-.md file renamed into a gate-parseable round" ;;
+     *) ok "non-.md file not renamed into a gate-parseable round" ;; esac
+case "$OUT" in *"foo-task-r1.boomcard-copy"*)
+       ok "non-.md collision lands inert" ;;
+     *) bad "non-.md collision did not land inert" ;; esac
+
 echo
 echo "passed: $PASS   failed: $FAIL"
+
+# --- Guard sweep ------------------------------------------------------------
+# Closes the recurring finding-class behind F5a, F5b and F9: a safety guard in
+# propose_target() that is behaviourally correct but that no test would notice
+# the removal of. Three consecutive review rounds each found one more.
+#
+# WHAT THIS GUARANTEES. Every guard carrying a `GUARD:<id>` marker in
+# propose_target() is mutated out, one at a time, and the whole --core suite is
+# re-run against the mutated copy. If the suite still passes, that guard is not
+# load-bearing in any test and the sweep FAILS, naming it. So a guard added
+# tomorrow WITH a marker but WITHOUT a test turns this red by construction --
+# no fourth hand-written finding required.
+#
+# WHAT IT DOES NOT GUARANTEE. It cannot see a guard added WITHOUT a marker.
+# That gap is covered by a deliberately dumb tripwire: the number of
+# conditional constructs in the function is asserted against a recorded count,
+# so ANY added conditional -- marked or not -- turns the suite red and forces
+# the author to either mark it (and get it swept) or bump the count knowing
+# what they are opting out of. The tripwire is a change-detector, not semantic
+# coverage: it proves someone looked, not that the new guard is tested.
+#
+# Why not the alternatives: a fixed table of mutants does not close the class
+# (a fourth guard is simply absent from the table and nothing goes red); and a
+# purely structural "every `[ ... ]` is exercised" check cannot distinguish a
+# safety guard from name-selection or initialisation logic in the same
+# function, so it would either miss guards or flag non-guards forever.
+#
+# TO ADD A GUARD: put `# GUARD:<id>` at the end of its line, add a test that
+# fails without it, and bump EXPECTED_CONDITIONALS below.
+if [ "$CORE_ONLY" -eq 0 ]; then
+  echo
+  echo "guard sweep (each guard mutated out; suite must go red)"
+  EXPECTED_CONDITIONALS=7   # measured 2026-08-22; see TO ADD A GUARD above
+
+  fn_body() { sed -n '/^propose_target() {/,/^}/p' "$SCRIPT"; }
+
+  GUARD_IDS="$(fn_body | grep -oE '# GUARD:[a-z-]+' | sed 's/# GUARD://')"
+  NGUARDS="$(printf '%s\n' "$GUARD_IDS" | grep -c . || true)"
+  if [ "$NGUARDS" -eq 0 ]; then
+    echo "  FAIL  no GUARD: markers found - the sweep is not actually sweeping"
+  fi
+
+  NCOND="$(fn_body | grep -cE '(^|[[:space:];])(if |\[ |\[\[ )' || true)"
+  if [ "$NCOND" = "$EXPECTED_CONDITIONALS" ]; then
+    ok "guard tripwire: $NCOND conditional constructs, as recorded"
+  else
+    bad "guard tripwire: $NCOND conditional constructs, expected $EXPECTED_CONDITIONALS (mark any new guard and bump EXPECTED_CONDITIONALS)"
+  fi
+
+  # CONTROL: the sweep is only meaningful if an UNMUTATED copy, run through the
+  # exact same machinery, PASSES. Without this the sweep is vacuous -- an early
+  # version wrote mutants as `mutant-<id>.sh`, but make_repo/run() invoke
+  # `link-claude-reviews.sh` by name, so every mutant died with 127 and every
+  # guard was reported load-bearing regardless of whether it was.
+  mkdir -p "$WORK/control"
+  cp "$SCRIPT" "$WORK/control/link-claude-reviews.sh"
+  chmod +x "$WORK/control/link-claude-reviews.sh"
+  if LINK_REVIEWS_SUITE_TARGET="$WORK/control/link-claude-reviews.sh" \
+       bash "${BASH_SOURCE[0]}" --core >/dev/null 2>&1; then
+    ok "sweep control: unmutated copy passes (sweep is not vacuous)"
+  else
+    bad "sweep control: unmutated copy FAILS - every 'load-bearing' result below is meaningless"
+  fi
+
+  for gid in $GUARD_IDS; do
+    mkdir -p "$WORK/mut-$gid"
+    MUT="$WORK/mut-$gid/link-claude-reviews.sh"
+    # Two generic mutations, chosen by the guard line's own shape:
+    #   `... || continue` / `... && continue`  -> delete the line
+    #   `if <cond>; then`                      -> replace <cond> with `true`
+    awk -v id="$gid" '
+      $0 ~ ("# GUARD:" id "$") {
+        if ($0 ~ /(\|\||&&)[[:space:]]+continue/) { next }
+        if ($0 ~ /^[[:space:]]*if .*; then/) {
+          sub(/if .*; then/, "if true; then"); print; next
+        }
+        print "### UNMUTATABLE GUARD SHAPE"; print; next
+      }
+      { print }
+    ' "$SCRIPT" > "$MUT"
+    chmod +x "$MUT"
+    if grep -q '^### UNMUTATABLE GUARD SHAPE' "$MUT"; then
+      bad "guard '$gid' has a shape the sweep cannot mutate - extend the sweep"
+      continue
+    fi
+    if cmp -s "$MUT" "$SCRIPT"; then
+      bad "guard '$gid' mutation was a no-op - marker is not on the guard line"
+      continue
+    fi
+    if LINK_REVIEWS_SUITE_TARGET="$MUT" bash "${BASH_SOURCE[0]}" --core >/dev/null 2>&1; then
+      bad "guard '$gid' is NOT load-bearing: suite still passes without it"
+    else
+      ok "guard '$gid' is load-bearing (suite goes red without it)"
+    fi
+  done
+
+  echo
+  echo "passed: $PASS   failed: $FAIL   (guards swept: $NGUARDS)"
+fi
+
 [ "$FAIL" -eq 0 ] || exit 1
 echo "ALL TESTS PASSED"

@@ -195,20 +195,37 @@ touched these paths** — git silently replaces a symlink with a real directory
 rather than following it, which quietly re-opens the leak.
 
 Exit codes: `0` fine, `1` usage error / unexpected object in the way,
-`2` leak detected, `3` harness dir not found, `4` (`--check`) a link is missing
-or points elsewhere.
+`2` **review files are landing outside the harness** — either a stray real
+directory or a misdirected symlink (see below), `3` harness dir not found,
+`4` (`--check`) a managed link is missing or points elsewhere.
 
-### If it reports a leak
+`2` deliberately covers both leak shapes rather than splitting into two codes:
+they mean the same operational thing — writes are going somewhere no verdict
+engine reads, nothing was modified, and a human must reconcile before anything
+is deleted. The remedies differ, so the script always names which shape it
+found, but no automated caller would react differently to the two.
 
-A real directory where a symlink belongs means review files have been written
-outside the harness. **Do not just delete it** — those files are often the only
-copy, and a same-name file already in the harness is frequently a *different
+### If it reports a leak (exit 2)
+
+**Which shape?** The output says. They need different remedies:
+
+**(a) A real directory where a symlink belongs.** Review files have been
+written there. **Do not just delete it** — those files are often the only copy,
+and a same-name file already in the harness is frequently a *different
 document* (21 of the 80 files recovered by BC-QA-061 were exactly that, so any
 plain `cp` either overwrites one side or silently skips it).
 
 ```bash
 ./scripts/link-claude-reviews.sh --reconcile
 ```
+
+**(b) A misdirected symlink** — a `.claude/reviews` link pointing somewhere
+other than the harness. `--reconcile` does **not** handle this: it only walks
+real directories. The script does not repoint it either, because whatever it
+currently points at may already hold review files that repointing would orphan.
+Move anything already written to that target into the harness yourself, remove
+the symlink, then re-run the script to recreate it correctly. A *relative* link
+that resolves to the harness is fine and is not reported.
 
 The reconciler examines every file recursively (not just `*.md`), copies only
 the ones with no counterpart in the harness, verifies each copy byte-for-byte,
@@ -246,6 +263,20 @@ to git and unreadable by every verdict engine, because the old `.gitignore` rule
 harness under `$TMPDIR`; never touches the real ones). Run it after any edit to
 the linker: the symlinks it manages are gitignored, so a regression there is
 invisible to `git status` and to every completion gate.
+
+It ends with a **guard sweep**. Every safety guard in `propose_target()` carries
+a `GUARD:<id>` marker; the sweep mutates each one out in turn and re-runs the
+whole suite against the mutated copy, failing if the suite still passes — i.e.
+if that guard is not load-bearing in any test. Three consecutive review rounds
+each found one more unpinned guard there, so the sweep exists to make that class
+of gap self-detecting rather than reviewer-detected.
+
+**If you add a guard to `propose_target()`:** put `# GUARD:<id>` at the end of
+its line, add a test that fails without it, and bump `EXPECTED_CONDITIONALS` in
+the sweep. That last number is a tripwire on the count of conditional constructs
+in the function — it catches a guard added *without* a marker, which the sweep
+would otherwise not see. It proves someone looked; it does not prove the new
+guard is tested.
 
 ---
 
