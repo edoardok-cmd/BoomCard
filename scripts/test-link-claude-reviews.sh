@@ -24,6 +24,12 @@ set -uo pipefail
 CORE_ONLY=0
 [ "${1:-}" = "--core" ] && CORE_ONLY=1
 
+# Only the outermost invocation runs the marker-stripping self-check below; the
+# nested run it spawns must not spawn another. Nothing else recurses: the sweep
+# control and the per-guard mutant runs all use --core.
+TOP_LEVEL=1
+[ -n "${LINK_REVIEWS_SUITE_TARGET:-}" ] && TOP_LEVEL=0
+
 SCRIPT="${LINK_REVIEWS_SUITE_TARGET:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/link-claude-reviews.sh}"
 PASS=0; FAIL=0
 WORK="$(mktemp -d)"
@@ -380,6 +386,25 @@ case "$OUT" in *"foo-task-r1.boomcard-copy"*)
        ok "non-.md collision lands inert" ;;
      *) bad "non-.md collision did not land inert" ;; esac
 
+# --- 24. F10(a) at the MANAGED-path site -----------------------------------
+# Pinned at discover_misdirected already; this is the other comparison site.
+# Pre-fix a relative managed link exited 4 from --check.
+make_repo c24 >/dev/null
+run c24
+rm "$WORK/c24/repo/backend-api/.claude/reviews"
+( cd "$WORK/c24/repo/backend-api/.claude" && ln -s ../../../harness reviews )
+run c24 --check
+check "relative MANAGED link resolving to the harness is accepted" "$RC" "0"
+
+# --- 25. F10(c) in default (link) mode -------------------------------------
+# Pinned for --check and --reconcile; this is the third success exit.
+make_repo c25 >/dev/null
+run c25
+mkdir -p "$WORK/c25/repo/partner-dashboard/.claude" "$WORK/c25/elsewhere"
+ln -s "$WORK/c25/elsewhere" "$WORK/c25/repo/partner-dashboard/.claude/reviews"
+run c25
+check "default mode does not exit 0 while a link is misdirected" "$RC" "2"
+
 echo
 echo "passed: $PASS   failed: $FAIL"
 
@@ -396,12 +421,22 @@ echo "passed: $PASS   failed: $FAIL"
 # no fourth hand-written finding required.
 #
 # WHAT IT DOES NOT GUARANTEE. It cannot see a guard added WITHOUT a marker.
-# That gap is covered by a deliberately dumb tripwire: the number of
+# That gap is PARTLY covered by a deliberately dumb tripwire: the number of
 # conditional constructs in the function is asserted against a recorded count,
-# so ANY added conditional -- marked or not -- turns the suite red and forces
-# the author to either mark it (and get it swept) or bump the count knowing
-# what they are opting out of. The tripwire is a change-detector, not semantic
-# coverage: it proves someone looked, not that the new guard is tested.
+# so an added conditional IN A RECOGNISED SHAPE -- marked or not -- turns the
+# suite red and forces the author to either mark it (and get it swept) or bump
+# the count knowing what they are opting out of.
+#
+# "Recognised shape" is exactly: `if` / `[` / `[[` / `test` tests, and the
+# `cmd && continue|return|break|exit` / `cmd || ...` early-exit form. Anything
+# else STILL ESCAPES SILENTLY -- a `case` statement, a `while` condition, a
+# guard hidden inside a helper this function calls, or an early exit written
+# with a bare `if` on the next line. Do not read the tripwire as "any new
+# conditional is caught"; an earlier version of this comment said that, and it
+# was false for the `&& continue` shape that 4 of the 6 shipped guards use
+# (BC-QA-061-task-r4 F14). The tripwire is a change-detector over a known set
+# of shapes, not semantic coverage: it proves someone looked, not that the new
+# guard is tested.
 #
 # Why not the alternatives: a fixed table of mutants does not close the class
 # (a fourth guard is simply absent from the table and nothing goes red); and a
@@ -414,17 +449,29 @@ echo "passed: $PASS   failed: $FAIL"
 if [ "$CORE_ONLY" -eq 0 ]; then
   echo
   echo "guard sweep (each guard mutated out; suite must go red)"
-  EXPECTED_CONDITIONALS=7   # measured 2026-08-22; see TO ADD A GUARD above
+  EXPECTED_CONDITIONALS=9   # recount with the sweep after any edit; see "TO ADD A GUARD"
 
   fn_body() { sed -n '/^propose_target() {/,/^}/p' "$SCRIPT"; }
 
   GUARD_IDS="$(fn_body | grep -oE '# GUARD:[a-z-]+' | sed 's/# GUARD://')"
   NGUARDS="$(printf '%s\n' "$GUARD_IDS" | grep -c . || true)"
   if [ "$NGUARDS" -eq 0 ]; then
-    echo "  FAIL  no GUARD: markers found - the sweep is not actually sweeping"
+    # MUST be bad(), not a bare echo. With `echo` the sweep reported its own
+    # disablement and the suite still exited 0 - the same failure mode as the
+    # vacuous-mutant bug, one level up. Pinned by "sweep self-check fails the
+    # suite when all markers are stripped".
+    bad "no GUARD: markers found - the sweep is not actually sweeping"
   fi
 
-  NCOND="$(fn_body | grep -cE '(^|[[:space:];])(if |\[ |\[\[ )' || true)"
+  # Comments are removed first (whole-line and trailing), so a comment
+  # containing " if " cannot move the count. Recognised shapes are the ones the
+  # guards in this function actually use: `if`/`[`/`[[` tests, and the
+  # `cmd && continue` / `cmd || continue` early-exit form, which is how 4 of the
+  # 6 shipped guards are written and which the previous regex never matched.
+  NCOND="$(fn_body \
+    | sed -e '/^[[:space:]]*#/d' -e 's/[[:space:]]#[^{].*$//' \
+    | grep -cE '(^|[[:space:];])(if |\[ |\[\[ |test )|(\|\||&&)[[:space:]]+(continue|return|break|exit)' \
+    || true)"
   if [ "$NCOND" = "$EXPECTED_CONDITIONALS" ]; then
     ok "guard tripwire: $NCOND conditional constructs, as recorded"
   else
@@ -444,6 +491,23 @@ if [ "$CORE_ONLY" -eq 0 ]; then
     ok "sweep control: unmutated copy passes (sweep is not vacuous)"
   else
     bad "sweep control: unmutated copy FAILS - every 'load-bearing' result below is meaningless"
+  fi
+
+  # F13: the one sweep branch the sweep cannot exercise on itself. Strip every
+  # marker (leaving all guard LOGIC intact) and require the suite to FAIL. It
+  # used to print "FAIL no GUARD: markers found" via a bare echo and then exit
+  # 0 -- the mechanism reporting its own disablement and passing anyway.
+  if [ "$TOP_LEVEL" -eq 1 ]; then
+    mkdir -p "$WORK/nomarkers"
+    sed 's/[[:space:]]*# GUARD:[a-z-]*$//' "$SCRIPT" \
+      > "$WORK/nomarkers/link-claude-reviews.sh"
+    chmod +x "$WORK/nomarkers/link-claude-reviews.sh"
+    if LINK_REVIEWS_SUITE_TARGET="$WORK/nomarkers/link-claude-reviews.sh" \
+         bash "${BASH_SOURCE[0]}" >/dev/null 2>&1; then
+      bad "sweep self-check: all markers stripped and the suite still exits 0"
+    else
+      ok "sweep self-check fails the suite when all markers are stripped"
+    fi
   fi
 
   for gid in $GUARD_IDS; do

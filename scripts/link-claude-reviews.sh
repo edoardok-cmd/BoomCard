@@ -214,8 +214,10 @@ HASH_INDEX=""
 # a subshell - both larger than this, and deliberately not done here. Net
 # effect while it stands: a `set -u` abort can report exit 0, i.e. "no leak"
 # over a crashed run. The test suite does catch the class: injecting an unbound
-# variable here turned 8 of the 51 cases red when measured on 2026-08-22. Treat
-# that figure as a dated observation, not an invariant - it moves with the suite.
+# variable into this script turns a spread of cases red, because the aborted run
+# fails the exit-code assertions rather than the leak assertions. No count is
+# quoted here on purpose - two previous attempts to embed one went stale within
+# a single review round. Run the suite if you want the current figure.
 cleanup_tmp() {
   local rc=$?
   [ -n "$HASH_INDEX" ] && rm -f "$HASH_INDEX"

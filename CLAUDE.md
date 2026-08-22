@@ -272,11 +272,18 @@ each found one more unpinned guard there, so the sweep exists to make that class
 of gap self-detecting rather than reviewer-detected.
 
 **If you add a guard to `propose_target()`:** put `# GUARD:<id>` at the end of
-its line, add a test that fails without it, and bump `EXPECTED_CONDITIONALS` in
-the sweep. That last number is a tripwire on the count of conditional constructs
-in the function — it catches a guard added *without* a marker, which the sweep
-would otherwise not see. It proves someone looked; it does not prove the new
-guard is tested.
+its line, add a test that fails without it, and re-run the suite — if the
+tripwire reports a different conditional count, update `EXPECTED_CONDITIONALS`
+in the sweep to the number it reports.
+
+That number is a tripwire on the count of conditional constructs in the
+function, and it is the only thing that would notice a guard added *without* a
+marker. It is partial by construction: it recognises `if` / `[` / `[[` / `test`
+tests and the `cmd && continue` / `cmd || …` early-exit form, and **nothing
+else** — a `case`, a `while` condition, or a guard inside a helper called from
+here will not move it. So it proves someone looked, over a known set of shapes;
+it does not prove the new guard is tested, and it is not a guarantee that every
+new conditional is caught.
 
 ---
 
