@@ -32,8 +32,9 @@
 #   0  all links correct and no leak anywhere (idempotent no-op when correct)
 #   1  usage error, or an unexpected object is in the way
 #   2  LEAK DETECTED - a real `.claude/reviews` directory exists somewhere in
-#      the repo, or --reconcile left files needing a human decision. Never
-#      destructive.
+#      the repo, or a `.claude/reviews` symlink outside the managed set points
+#      somewhere other than the harness, or --reconcile left files needing a
+#      human decision. Never destructive.
 #   3  harness reviews dir not found (distinct from 2 so a CI check can tell
 #      "this machine has no harness" apart from "review files are leaking")
 #   4  --check only: a managed link is missing or points somewhere else
@@ -120,13 +121,32 @@ fi
 # without -L, so this never descends into the harness itself. Prunes the usual
 # heavy/irrelevant trees so --check stays fast enough for CI (~0.1s on this
 # repo). Prints repo-relative paths, NUL-separated.
-discover_leaks() {
+_find_reviews_paths() {  # $1 = find -type argument (d or l)
   find "$REPO_ROOT" \
     \( -name node_modules -o -name .git -o -name dist -o -name build \
        -o -name .next -o -name coverage -o -name vendor -o -name .venv \
        -o -name __pycache__ -o -name .terraform \) -prune -o \
-    -type d -path '*/.claude/reviews' -print0 2>/dev/null \
+    -type "$1" -path '*/.claude/reviews' -print0 2>/dev/null \
   | while IFS= read -r -d '' p; do printf '%s\0' "${p#"$REPO_ROOT"/}"; done
+}
+
+discover_leaks() { _find_reviews_paths d; }
+
+# F6: a `.claude/reviews` SYMLINK that points somewhere other than the harness
+# is just as much a leak - writes through it land outside the harness - but it
+# is not `-type d`, so leak discovery cannot see it. Paths in LINK_PATHS are
+# excluded here because the main loop already repairs those; this covers every
+# OTHER location, where we only report (repointing could silently orphan files
+# already written to the wrong target).
+discover_misdirected() {
+  while IFS= read -r -d '' rel; do
+    local l; l=$(cd "$REPO_ROOT" && readlink "$rel" 2>/dev/null || true)
+    [ "$l" = "$REVIEWS_DIR" ] && continue
+    local known=1 k
+    for k in "${LINK_PATHS[@]}"; do [ "$k" = "$rel" ] && known=0 && break; done
+    [ "$known" -eq 0 ] && continue
+    printf '%s\0' "$rel|$l"
+  done < <(_find_reviews_paths l)
 }
 
 # --- gate grammar ----------------------------------------------------------
@@ -164,10 +184,27 @@ HASH_INDEX=""
 # MUST end with an unconditional success. Under `set -e`, an EXIT trap whose
 # last command fails overrides the script's exit status with 1 -- which would
 # make every successful run look like a failure to a CI check.
+# Capture the real status FIRST and re-exit with it, so the trap can never
+# substitute its own. (Before this, the trap ended in `return 0`; under `set -e`
+# a trap whose last command FAILS overrides the script's status with 1.)
+#
+# KNOWN LIMITATION (BC-QA-061-task-r2 F7) - this does NOT fix the `set -u` case
+# on /bin/bash 3.2, the system bash on macOS. Measured there:
+#     explicit `exit 2`           -> trap sees 2   (correct)
+#     `set -e` command failure    -> trap sees 1   (correct)
+#     `set -u` unbound-var abort  -> trap sees 0   (WRONG - masked by 3.2)
+# The masking happens before any handler runs, so no `$?` capture can recover
+# it; `local` is not the culprit (a plain `rc=$?` behaves identically). bash
+# 5.3.9 does not have the bug at all, with or without the capture. A real fix
+# means running under bash >= 4 (shebang change) or restructuring the body into
+# a subshell - both larger than this, and deliberately not done here. Net
+# effect while it stands: a `set -u` abort can report exit 0, i.e. "no leak"
+# over a crashed run. The test suite catches that class (5 red).
 cleanup_tmp() {
+  local rc=$?
   [ -n "$HASH_INDEX" ] && rm -f "$HASH_INDEX"
   [ -n "${PROPOSED:-}" ] && rm -f "$PROPOSED"
-  return 0
+  exit "$rc"
 }
 trap cleanup_tmp EXIT
 
@@ -219,7 +256,21 @@ propose_target() {
   if [ "$base" != "$src_base" ]; then
     for L in z y x w v u t s r q; do
       cand="$base-$L.md"
+      # DO NOT "correct" this to `gate_parseable "$src_base"`. The question is
+      # not whether the SOURCE parses -- it is whether the name we are about to
+      # hand the operator parses. The two diverge exactly when the source is
+      # ALREADY a shard: `foo-task-r1-z.md` parses, but `foo-task-r1-z-z.md`
+      # does not (NAME_RE's shard group takes a SINGLE letter). Testing the
+      # source there would advise `-z-z` and the operator would land a
+      # gate-invisible document believing it visible -- F3's exact failure mode,
+      # on a shape BC-QA-061 created 14 of. Round 1's fix text said "test the
+      # basename", which reads like the source; it is the target. Pinned by
+      # test 15.
       gate_parseable "$cand" || continue
+      # Never propose a destination that already exists: the printed command is
+      # a `cp`, so a taken name is an instruction to overwrite a review file --
+      # the one thing the DATA-SAFETY RULE promises never to happen. Walks to
+      # the next letter instead. Pinned by test 16.
       [ -e "$REVIEWS_DIR/$cand" ] && continue
       grep -qxF "$cand" "$PROPOSED" && continue
       printf '%s\n' "$cand" >> "$PROPOSED"; PROPOSED_TARGET="$cand"; return 0
@@ -296,9 +347,16 @@ reconcile_dir() {
       if gate_parseable "$target"; then
         echo "        # '-<letter>' is a shard suffix: pick_latest groups this into the SAME"
         echo "        #  round as its sibling, so verdicts aggregate strictest-wins."
+      elif gate_parseable "$rel"; then
+        echo "        # '$rel' IS a review round, but it is already a shard, and a"
+        echo "        #  second shard suffix does not parse (the shard group takes a"
+        echo "        #  SINGLE letter). Landed as an inert copy - preserved and"
+        echo "        #  readable, but no verdict engine will parse it. Landing it under"
+        echo "        #  a name that does not parse would be worse: it would look"
+        echo "        #  gate-visible while being invisible."
       else
-        echo "        # NOT gate-parseable: '$rel' is not a review-round basename, so no"
-        echo "        #  suffix can make it one. Landed as an inert copy - preserved and"
+        echo "        # '$rel' is not a review-round basename, so no suffix can make it"
+        echo "        #  one. Landed as an inert copy - preserved and"
         echo "        #  readable, but no verdict engine will parse it. That is correct"
         echo "        #  here; do not rename it into a round shape it never had."
       fi
@@ -340,6 +398,11 @@ leaked=()
 while IFS= read -r -d '' rel; do
   leaked+=("$rel")
 done < <(discover_leaks)
+
+misdirected=()
+while IFS= read -r -d '' entry; do
+  misdirected+=("$entry")
+done < <(discover_misdirected)
 
 is_leaked() {
   local needle="$1" l
@@ -385,6 +448,9 @@ for rel in ${leaked+"${leaked[@]}"}; do
   count=$(find "$REPO_ROOT/$rel" -type f | wc -l | tr -d ' ')
   echo "  LEAK   $rel  (real directory, $count file(s))"
 done
+for entry in ${misdirected+"${misdirected[@]}"}; do
+  echo "  WRONG  ${entry%%|*}  -> ${entry##*|}  (symlink, not the harness)"
+done
 
 echo
 
@@ -400,11 +466,34 @@ if [ ${#leaked[@]} -gt 0 ]; then
       echo
     done
 
-    # TEST SEAM (test-link-claude-reviews.sh only). Runs between the copy phase
-    # and verification so the suite can simulate the concurrent harness write
-    # that `fully_represented` exists to catch. Unset in normal use.
-    if [ -n "${LINK_REVIEWS_TEST_HOOK:-}" ] && [ -f "$LINK_REVIEWS_TEST_HOOK" ]; then
-      bash "$LINK_REVIEWS_TEST_HOOK" || true
+    # TEST SEAM (test-link-claude-reviews.sh only). An interposition point is
+    # needed HERE, between the copy phase and verification, because that is the
+    # only window in which a concurrent harness write flips the safety verdict
+    # -- which is precisely what `fully_represented` exists to catch. A
+    # seam-free `--verify-only` flag would not do: it rebuilds the index by
+    # construction and so cannot exercise the stale-index case at all.
+    #
+    # This is a CLOSED dispatcher, not an arbitrary-path executor: it performs
+    # one of a fixed set of named actions on a path under the harness dir. No
+    # caller-supplied code is ever executed.
+    if [ -n "${LINK_REVIEWS_TEST_ACTION:-}" ]; then
+      case "$LINK_REVIEWS_TEST_ACTION" in
+        remove-harness-file)
+          # Simulate another agent deleting a just-copied review file.
+          [ -n "${LINK_REVIEWS_TEST_ARG:-}" ] \
+            && rm -f "$REVIEWS_DIR/$(basename "$LINK_REVIEWS_TEST_ARG")"
+          ;;
+        corrupt-harness-file)
+          # Simulate a just-copied file being replaced by different content.
+          [ -n "${LINK_REVIEWS_TEST_ARG:-}" ] \
+            && printf 'concurrently replaced\n' \
+                 > "$REVIEWS_DIR/$(basename "$LINK_REVIEWS_TEST_ARG")"
+          ;;
+        *)
+          echo "ERROR: unknown LINK_REVIEWS_TEST_ACTION '$LINK_REVIEWS_TEST_ACTION'" >&2
+          exit 1
+          ;;
+      esac
     fi
 
     if [ "$total_unresolved" -gt 0 ]; then
@@ -455,6 +544,23 @@ if [ ${#leaked[@]} -gt 0 ]; then
   echo "  ${ENVPFX}$SELF --reconcile" >&2
   echo >&2
   echo "See CLAUDE.md ('Where review files go') for the full procedure." >&2
+  exit 2
+fi
+
+if [ ${#misdirected[@]} -gt 0 ]; then
+  echo "MISDIRECTED REVIEW LINK(S) - review writes land outside the harness." >&2
+  echo >&2
+  echo "These paths are symlinks pointing somewhere other than the harness, so" >&2
+  echo "files written through them are invisible to every verdict engine just as" >&2
+  echo "a stray directory would be. They are NOT repointed automatically: their" >&2
+  echo "current target may already hold review files that would be orphaned." >&2
+  echo >&2
+  for entry in "${misdirected[@]}"; do
+    echo "  ${entry%%|*}  ->  ${entry##*|}" >&2
+  done
+  echo >&2
+  echo "Reconcile anything already written to those targets into the harness," >&2
+  echo "then remove the symlink and re-run this script." >&2
   exit 2
 fi
 

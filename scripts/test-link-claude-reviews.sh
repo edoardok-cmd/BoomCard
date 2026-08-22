@@ -170,10 +170,9 @@ make_repo c11 >/dev/null
 H11="$(harness_of c11)"; L11="$WORK/c11/repo/backend-api/.claude/reviews"
 mkdir -p "$L11"
 printf 'only copy of this review\n' > "$L11/ZZ-ONLY-impl-r1.md"
-cat > "$WORK/c11/hook.sh" <<HOOK
-rm -f '$H11/ZZ-ONLY-impl-r1.md'
-HOOK
-OUT="$(AGENTX_REVIEWS_DIR="$H11" LINK_REVIEWS_TEST_HOOK="$WORK/c11/hook.sh" \
+OUT="$(AGENTX_REVIEWS_DIR="$H11" \
+       LINK_REVIEWS_TEST_ACTION=remove-harness-file \
+       LINK_REVIEWS_TEST_ARG=ZZ-ONLY-impl-r1.md \
        "$WORK/c11/repo/scripts/link-claude-reviews.sh" --reconcile 2>&1)"; RC=$?
 check "concurrent harness deletion blocks removal" "$RC" "2"
 case "$OUT" in *"rm -rf"*) bad "printed rm -rf despite a missing harness copy" ;;
@@ -226,6 +225,75 @@ case "$OUT" in *"Exit codes:"*) ok "--help includes the exit-code table" ;;
                *) bad "--help lost its content" ;; esac
 case "$OUT" in *"set -euo"*) bad "--help spilled executable lines" ;;
                *) ok "--help contains no executable lines" ;; esac
+
+# --- 15. the grammar check is against the TARGET, not the source ------------
+# BC-QA-061-task-r2 F5(a). Source and target agree for most names, so this is
+# the only shape that discriminates: an ALREADY-sharded source parses, but
+# appending a second shard letter does not (the shard group takes ONE letter).
+# Testing the source here - which is how round 1's fix text reads - would
+# advise `-z-z` and land a gate-invisible document believing it visible.
+make_repo c15 >/dev/null
+H15="$(harness_of c15)"; L15="$WORK/c15/repo/backend-api/.claude/reviews"
+mkdir -p "$L15"
+printf 'harness shard\n' > "$H15/foo-task-r1-z.md"
+printf 'leaked shard\n'  > "$L15/foo-task-r1-z.md"
+run c15 --reconcile
+case "$OUT" in *"foo-task-r1-z-z.md"*)
+                 bad "advised -z-z for an already-sharded source" ;;
+               *) ok "no -z-z advised for an already-sharded source" ;; esac
+case "$OUT" in *"foo-task-r1-z-boomcard-copy.md"*)
+                 ok "already-sharded source routed to an inert copy" ;;
+               *) bad "already-sharded source not routed to an inert copy" ;; esac
+case "$OUT" in *"already a shard"*) ok "explains WHY it is inert (not 'never a round')" ;;
+               *) bad "gave the wrong reason for the inert landing" ;; esac
+
+# --- 16. never propose a destination that already exists -------------------
+# BC-QA-061-task-r2 F5(b). The printed command is a `cp`; a taken target is an
+# instruction to overwrite a review file. Real case: the harness already holds
+# BC-QA-023-task-r4-z.md, so a re-leak of BC-QA-023-task-r4.md hits this.
+make_repo c16 >/dev/null
+H16="$(harness_of c16)"; L16="$WORK/c16/repo/backend-api/.claude/reviews"
+mkdir -p "$L16"
+printf 'harness r4\n'       > "$H16/BC-QA-023-task-r4.md"
+printf 'existing z shard\n' > "$H16/BC-QA-023-task-r4-z.md"   # -z slot taken
+printf 'leaked r4\n'        > "$L16/BC-QA-023-task-r4.md"
+run c16 --reconcile
+case "$OUT" in *"BC-QA-023-task-r4-z.md'"*)
+                 bad "proposed a target that already exists in the harness" ;;
+               *) ok "did not propose an existing harness file as target" ;; esac
+case "$OUT" in *"BC-QA-023-task-r4-y.md"*)
+                 ok "walked to the next free shard letter" ;;
+               *) bad "did not walk past the taken shard letter" ;; esac
+grep -q 'existing z shard' "$H16/BC-QA-023-task-r4-z.md" \
+  && ok "existing harness shard untouched" || bad "existing harness shard was modified"
+
+# --- 17. a misdirected reviews SYMLINK outside LINK_PATHS is detected -------
+# BC-QA-061-task-r2 F6: writes through it land outside the harness, but it is
+# not -type d so leak discovery alone cannot see it.
+make_repo c17 >/dev/null
+run c17
+mkdir -p "$WORK/c17/repo/partner-dashboard/.claude" "$WORK/c17/elsewhere"
+ln -s "$WORK/c17/elsewhere" "$WORK/c17/repo/partner-dashboard/.claude/reviews"
+run c17 --check
+check "misdirected symlink fails --check" "$RC" "2"
+case "$OUT" in *partner-dashboard*) ok "names the misdirected path" ;;
+               *) bad "did not name the misdirected path" ;; esac
+[ -L "$WORK/c17/repo/partner-dashboard/.claude/reviews" ] \
+  && ok "misdirected symlink not silently repointed" \
+  || bad "misdirected symlink was repointed, orphaning its target"
+
+# --- 18. concurrent REPLACEMENT (not just deletion) also blocks removal -----
+make_repo c18 >/dev/null
+H18="$(harness_of c18)"; L18="$WORK/c18/repo/backend-api/.claude/reviews"
+mkdir -p "$L18"
+printf 'only copy\n' > "$L18/ZZ-REPL-impl-r1.md"
+OUT="$(AGENTX_REVIEWS_DIR="$H18" \
+       LINK_REVIEWS_TEST_ACTION=corrupt-harness-file \
+       LINK_REVIEWS_TEST_ARG=ZZ-REPL-impl-r1.md \
+       "$WORK/c18/repo/scripts/link-claude-reviews.sh" --reconcile 2>&1)"; RC=$?
+check "concurrent harness replacement blocks removal" "$RC" "2"
+case "$OUT" in *"rm -rf"*) bad "printed rm -rf despite replaced harness content" ;;
+               *) ok "no rm -rf when harness content was replaced" ;; esac
 
 echo
 echo "passed: $PASS   failed: $FAIL"
